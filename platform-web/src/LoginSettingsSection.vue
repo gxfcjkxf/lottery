@@ -2,34 +2,31 @@
 import { useOperationToast } from "@lottery/shared";
 import { formValidationText } from '@lottery/shared'
 import { vWriteGuard } from "@lottery/shared";
-import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { withGlobalLoading, vGlobalLoading, vInlineValidation } from '@lottery/shared';
 import DetailModal from '@lottery/shared/DetailModal.vue';
 import { usePlatformI18n } from './i18n';
 import { PlatformApiError, type PlatformAccount } from './platform-api';
-import { createSecuritySettingsApi, securityIntents, type AuthSettings, type CompliancePolicy, type SecurityKind, type SecurityIntent } from './security-settings-api';
+import { createSecuritySettingsApi, securityIntents, type AuthSettings, type SecurityKind, type SecurityIntent } from './security-settings-api';
 const props = defineProps<{ account: PlatformAccount; kind: SecurityKind; blocked: boolean }>();
 const emit = defineEmits<{ failure: [cause: unknown]; locked: [value: boolean] }>();
 const { t, errorMessage, displayError } = usePlatformI18n();
 const api = createSecuritySettingsApi();
-const complianceFormId = useId();
 const selected = computed(() => props.kind);
-const auth = ref<AuthSettings | null>(null), policy = ref<CompliancePolicy | null>(null);
-const editorOpen = ref(false), draftAuth = ref<AuthSettings | null>(null), draftPolicy = ref<CompliancePolicy | null>(null);
-const countryValidation = ref(false);
+const auth = ref<AuthSettings | null>(null);
+const editorOpen = ref(false), draftAuth = ref<AuthSettings | null>(null);
 const loading = ref(false), busy = ref(false), readFailed = ref(false), confirmOpen = ref(false), freshConflict = ref(false);
 const pending = ref<SecurityIntent | null>(null), error = ref<ReturnType<typeof errorMessage> | null>(null), saved = ref(false);
 let generation = 0;
 const scope = () => `${props.account.id}::${selected.value}`;
-const resource = computed(() => selected.value === 'auth' ? 'auth_config' : 'compliance_policy');
+const resource = computed(() => 'auth_config');
 const canView = computed(() => props.account.platform_permissions.includes(`${resource.value}.view.platform`));
 const canWrite = computed(() => props.account.platform_permissions.includes(`${resource.value}.write.platform`));
 const editable = computed(() => canWrite.value && !props.blocked && !loading.value && !busy.value && !pending.value && !readFailed.value);
 function startEdit() {
   if (!canView.value || !editable.value) return;
   draftAuth.value = auth.value ? { ...auth.value } : null;
-  draftPolicy.value = policy.value ? { ...policy.value, config: { ...policy.value.config, allowed_countries: [...policy.value.config.allowed_countries] } } : null;
-  error.value = null; countryValidation.value = false; saved.value = false; editorOpen.value = true;
+  error.value = null; saved.value = false; editorOpen.value = true;
 }
 function report(cause: unknown, read = false) {
  error.value = errorMessage(cause, read ? 'read' : 'write');
@@ -40,18 +37,14 @@ async function load() {
   try {
     const value = await api.read(kind, '');
     if (token !== generation) return;
-    if (kind === 'auth') auth.value = value as AuthSettings;
-    else policy.value = value as CompliancePolicy;
+    auth.value = value as AuthSettings;
     readFailed.value = false; freshConflict.value = pending.value?.phase === 'conflict';
   } catch (cause) { if (token === generation) { readFailed.value = true; report(cause, true); } }
   finally { if (token === generation) loading.value = false; }
 }
 function prepare() {
   if (!editable.value) return;
-  countryValidation.value = true;
-  if (selected.value === 'compliance' && draftPolicy.value && draftPolicy.value.config.region_enabled && !draftPolicy.value.config.allowed_countries.length) return;
-  const body = selected.value === 'auth' && draftAuth.value ? { version: draftAuth.value.version, inherit_platform: false, captcha_enabled: draftAuth.value.captcha_enabled, telegram_enabled: draftAuth.value.telegram_enabled, telegram_client_id: draftAuth.value.telegram_client_id.trim(), reason: '' }
-    : selected.value === 'compliance' && draftPolicy.value ? { version: draftPolicy.value.version, inherit_platform: false, config: { ...draftPolicy.value.config, allowed_countries: [...draftPolicy.value.config.allowed_countries].sort() }, reason: '' } : null;
+  const body = selected.value === 'auth' && draftAuth.value ? { version: draftAuth.value.version, inherit_platform: false, captcha_enabled: draftAuth.value.captcha_enabled, telegram_enabled: draftAuth.value.telegram_enabled, telegram_client_id: draftAuth.value.telegram_client_id.trim(), reason: '' } : null;
   if (!body) return;
   pending.value = { kind: selected.value, body: JSON.stringify(body), key: crypto.randomUUID(), phase: 'review' };
   securityIntents.set(scope(), pending.value); saved.value = false; confirmOpen.value = true;
@@ -79,25 +72,13 @@ async function submit() {
   } finally { if (scope() === own) busy.value = false; }
 }
 watch(() => [props.account.id], () => {
-  ++generation; editorOpen.value = false; draftAuth.value = null; draftPolicy.value = null; auth.value = null; policy.value = null; busy.value = false; saved.value = false; readFailed.value = false;
+  ++generation; editorOpen.value = false; draftAuth.value = null; auth.value = null; busy.value = false; saved.value = false; readFailed.value = false;
   pending.value = securityIntents.get(scope());
   confirmOpen.value = Boolean(pending.value);
   if (canView.value) void withGlobalLoading(load);
 }, { immediate: true });
 watch(() => Boolean(pending.value) || busy.value || editorOpen.value, value => emit('locked', value), { immediate: true });
 onBeforeUnmount(() => { ++generation; });
-const checks = ['age_enabled', 'region_enabled'] as const;
-const commonCountries = ['CN', 'HK', 'MO', 'TW', 'SG', 'MY', 'TH', 'VN', 'ID', 'PH', 'KH', 'LA', 'MM', 'BN', 'JP', 'KR', 'IN', 'PK', 'BD', 'LK', 'NP', 'AE', 'SA', 'TR', 'AU', 'NZ', 'US', 'CA', 'GB', 'FR', 'DE', 'IT', 'ES', 'RU', 'BR', 'MX', 'ZA'];
-// Include published codes outside the common list so existing policies remain editable.
-const countryOptions = computed(() => [...new Set([...commonCountries, ...(policy.value?.config.allowed_countries ?? [])])]);
-function countryName(code: string) {
-  return commonCountries.includes(code) ? t(`security.country.${code}`) : code;
-}
-function selectCountries(action: 'all' | 'invert' | 'clear') {
-  if (!draftPolicy.value) return;
-  const selected = draftPolicy.value.config.allowed_countries;
-  draftPolicy.value.config.allowed_countries = action === 'clear' ? [] : countryOptions.value.filter(code => action === 'all' || !selected.includes(code));
-}
 useOperationToast(saved, () => t('security.saved'), 'success');
 
 useOperationToast(error, value => displayError(value), 'error');
@@ -106,21 +87,16 @@ useOperationToast(error, value => displayError(value), 'error');
 <template>
   <section class="security-settings-section brand-settings-panel" :data-kind="kind">
     <p v-if="!canView" role="status">{{ t('security.noPermission') }}</p>
-    <p v-global-loading v-else-if="loading && !(selected === 'auth' ? auth : policy)">{{ t('platform.copy.fa02e7b1') }}</p>
-    <template v-else-if="canView && (selected === 'auth' ? auth : policy)">
+    <p v-global-loading v-else-if="loading && !(auth)">{{ t('platform.copy.fa02e7b1') }}</p>
+    <template v-else-if="canView && (auth)">
       <dl v-if="selected === 'auth' && auth" class="confirm-list">
         <div><dt>{{ t('security.captcha') }}</dt><dd>{{ t(auth.captcha_enabled ? 'platform.copy.997d5f45' : 'platform.copy.6762439b') }}</dd></div>
         <div><dt>{{ t('security.telegram') }}</dt><dd>{{ t(auth.telegram_enabled ? 'platform.copy.997d5f45' : 'platform.copy.6762439b') }}</dd></div>
         <div v-if="auth.telegram_enabled"><dt>{{ t('security.clientId') }}</dt><dd>{{ auth.telegram_client_id || '—' }}</dd></div>
       </dl>
-      <dl v-else-if="selected === 'compliance' && policy" class="confirm-list">
-        <div v-for="check in checks" :key="check"><dt>{{ t(`security.${check}`) }}</dt><dd>{{ t(policy.config[check] ? 'platform.copy.997d5f45' : 'platform.copy.6762439b') }}</dd></div>
-        <div v-if="policy.config.age_enabled"><dt>{{ t('security.minimumAge') }}</dt><dd>{{ policy.config.minimum_age }}</dd></div>
-        <div v-if="policy.config.region_enabled"><dt>{{ t('security.countries') }}</dt><dd>{{ policy.config.allowed_countries.map(countryName).join(', ') || '—' }}</dd></div>
-      </dl>
       <div class="ui-form-actions"><button class="button button-secondary" type="button" :disabled="!editable" @click="startEdit">{{ t('common.editSettings') }}</button></div>
     </template>
-    <DetailModal class="brand-settings-dialog" v-if="editorOpen && canView" :open="!confirmOpen && !pending" :title="t(selected === 'auth' ? 'settings.tab.auth' : 'security.compliance')" :close-label="t('platform.copy.27b2fd29')" :close-disabled="busy" @close="!busy && (editorOpen = false)">
+    <DetailModal class="brand-settings-dialog" v-if="editorOpen && canView" :open="!confirmOpen && !pending" :title="t('settings.tab.auth')" :close-label="t('platform.copy.27b2fd29')" :close-disabled="busy" @close="!busy && (editorOpen = false)">
 
     <form class="ui-form" v-if="selected === 'auth' && draftAuth" novalidate v-inline-validation @submit.prevent="withGlobalLoading(prepare)">
       <fieldset :disabled="!editable">
@@ -130,35 +106,12 @@ useOperationToast(error, value => displayError(value), 'error');
       </fieldset>
       <div class="form-actions ui-form-actions"><button class="button button-primary" :disabled="!editable" type="submit">{{ t('security.save') }}</button></div>
     </form>
-    <form class="ui-form" v-else-if="selected === 'compliance' && draftPolicy" :id="complianceFormId" novalidate v-inline-validation @submit.prevent="withGlobalLoading(prepare)">
-      <fieldset :disabled="!editable">
-      <div class="security-option">
-        <label class="check"><input v-model="draftPolicy.config.age_enabled" type="checkbox" @change="draftPolicy.config.age_enabled && (draftPolicy.config.minimum_age ??= 18)">{{ t('security.age_enabled') }}</label>
-        <label v-if="draftPolicy.config.age_enabled" class="field security-age">{{ t('security.minimumAge') }}<input v-model.number="draftPolicy.config.minimum_age" type="number" min="18" max="120" required></label>
-      </div>
-      <div class="security-option">
-        <label class="check"><input v-model="draftPolicy.config.region_enabled" type="checkbox">{{ t('security.region_enabled') }}</label>
-        <div v-if="draftPolicy.config.region_enabled" class="security-countries" role="group" :aria-label="t('security.countries')">
-          <div class="country-toolbar"><span>{{ t('security.countries') }}</span><div class="country-actions">
-            <button v-for="action in (['all', 'invert', 'clear'] as const)" :key="action" class="button button-secondary" type="button" @click="selectCountries(action)">{{ t(`security.countries.${action}`) }}</button>
-          </div></div>
-          <div class="country-grid">
-            <label v-for="code in countryOptions" :key="code" class="check"><input v-model="draftPolicy.config.allowed_countries" type="checkbox" :value="code" :aria-label="countryName(code)">{{ countryName(code) }}</label>
-          </div>
-          <p v-if="countryValidation && !draftPolicy.config.allowed_countries.length" class="country-error" role="alert">{{ t('security.countries.required') }}</p>
-        </div>
-      </div>
-      </fieldset>
-    </form>
-    <template v-if="selected === 'compliance' && draftPolicy" #footer>
-      <button class="button button-primary" :disabled="!editable" type="submit" :form="complianceFormId">{{ t('security.save') }}</button>
-    </template>
     </DetailModal>
     <button v-if="pending" class="button button-secondary" type="button" @click="confirmOpen = true">{{ t('security.pending') }}</button>
     <button v-if="readFailed" class="button button-secondary" type="button" :disabled="busy || loading" @click="withGlobalLoading(load)">{{ t('security.reread') }}</button>
 
     <DetailModal class="brand-settings-dialog" v-if="pending && confirmOpen" :title="t('security.confirm')" :close-label="t('platform.copy.27b2fd29')" :close-disabled="busy" @close="close">
-      <p>{{ t(pending.kind === 'auth' ? 'security.confirmAuth' : 'security.confirmPolicy') }}</p>
+      <p>{{ t('security.confirmAuth') }}</p>
       <p v-if="pending.phase === 'unknown'" role="alert">{{ t('security.unknown') }}</p><p v-if="pending.phase === 'conflict'" role="alert">{{ t('security.conflict') }}</p>
       <template #footer><button v-write-guard="busy" v-if="pending.phase !== 'conflict'" class="button button-primary" type="button" :disabled="busy || !canWrite" @click="withGlobalLoading(submit)">{{ t(pending.phase === 'unknown' ? 'security.retry' : 'security.confirm') }}</button><button v-if="pending.phase === 'conflict' && !freshConflict" class="button button-secondary" type="button" :disabled="busy || loading" @click="withGlobalLoading(load)">{{ t('security.reread') }}</button><button v-if="pending.phase === 'conflict' && freshConflict" class="button button-secondary" type="button" :disabled="busy" @click="withGlobalLoading(discardConflict)">{{ t('security.startAgain') }}</button></template>
     </DetailModal>
@@ -168,15 +121,7 @@ useOperationToast(error, value => displayError(value), 'error');
 .confirm-list { margin-bottom: 0; }
 .security-settings-section form { display:grid; gap:12px; min-width:0; }
 .security-settings-section fieldset { display:grid; gap:12px; margin:0; padding:0; border:0; min-width:0; }
-.security-option { display:grid; gap:6px; min-width:0; }
-.security-option + .security-option { border-top:1px solid var(--line); padding-top:12px; }
-.security-age { max-width:160px; margin-left:26px; }
-.security-countries { display:grid; gap:8px; min-width:0; }
-.country-toolbar, .country-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
-.country-toolbar { justify-content:space-between; }
-.country-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr)); gap:0 12px; max-height:264px; overflow-y:auto; padding:8px; border:1px solid var(--line); border-radius:var(--radius-sm); }
-.country-error { margin:0; color:var(--danger); }
-.country-grid .check { min-width:0; overflow-wrap:anywhere; }
+.check { min-width:0; overflow-wrap:anywhere; }
 .check { display:flex; align-items:center; gap:8px; min-height:var(--control-height); }
 .check input { width:18px; height:18px; min-height:18px; margin:0; accent-color:var(--primary); }
 .field { align-self:start; align-content:start; height:auto; padding:0; border:0; border-radius:0; background:transparent; display:grid; gap:6px; min-width:0; max-width:480px; }

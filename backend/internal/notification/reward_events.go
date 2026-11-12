@@ -105,7 +105,7 @@ func validateRewardEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate 
  LEFT JOIN point_ledger_entries l ON l.id=a.ledger_entry_id AND l.brand_id=a.brand_id
 	 WHERE a.brand_id=$1::uuid AND a.id=$2::uuid AND a.order_id=$4::uuid
    AND a.audit_log_id=$8::uuid
-   AND o.member_id=$3::uuid AND o.points=$7::text::bigint
+   AND o.member_id=$3::uuid AND o.points=$7::text::numeric
    AND a.version=$5 AND a.state_after=$6
 	   AND au.actor_type='admin' AND au.actor_id=a.actor_id
 	   AND au.action='reward.order.'||a.operation AND au.resource_type='reward_order' AND au.resource_id=o.id

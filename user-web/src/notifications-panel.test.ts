@@ -8,12 +8,13 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { afterEach, expect, it, vi } from 'vitest';
 import * as I18n from './i18n';
+import { notificationAmount } from './notification-presentation';
 import * as Shared from '@lottery/shared';
 
 function localComponent(filename: string, modules: Record<string, unknown>) {
   const descriptor = parse(readFileSync(new URL(filename, import.meta.url), 'utf8')).descriptor;
   const compiled = ts.transpileModule(compileScript(descriptor, { id: filename, inlineTemplate: true }).content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const body = compiled.replace(/^import SelectControl from .*$/m, 'const SelectControl = { render: () => null };').replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings, specifier) => `const {${bindings.replace(/\s+as\s+/g, ': ')}}=modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, 'return ');
+  const body = compiled.replace(/^import SelectControl from .*$/m, 'const SelectControl = { render: () => null };').replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings, specifier) => `const {${bindings.replace(/\s+as\s+/g, ': ')}}=modules[${JSON.stringify(specifier)}];`).replace(/^import SiteIcon from .*$/m, 'const SiteIcon = modules["./SiteIcon"];').replace(/export\s+default\s+/, 'return ');
   return new Function('modules', body)(modules);
 }
 const ConfiguredBetReviewTable = localComponent('./ConfiguredBetReviewTable.vue', {vue: Vue, '@lottery/shared': Shared, './i18n': I18n});
@@ -22,14 +23,14 @@ const list = vi.fn(), markRead = vi.fn(), readNotificationOrder = vi.fn();
 const descriptor = parse(readFileSync(new URL('./NotificationsPanel.vue', import.meta.url), 'utf8')).descriptor;
 const js = ts.transpileModule(compileScript(descriptor, { id: 'notifications-test', inlineTemplate: true }).content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 const modules = {
-  '@lottery/shared/TablePagination.vue': localComponent('../../shared/src/TablePagination.vue', {vue: Vue, './localization': Localization, './pagination-catalog': PaginationCatalog, './global-loading': Shared}),
+  '@lottery/shared/TablePagination.vue': localComponent('../../shared/src/TablePagination.vue', {vue: Vue, './localization': Localization, './pagination-catalog': PaginationCatalog, './global-loading': Shared, './SiteIcon': SiteIcon}),
   "@lottery/shared/SiteIcon": SiteIcon,
   '@lottery/shared': Shared,
   vue: Vue, './i18n': I18n,
   './notification-api': { createNotificationApi: () => ({ list, markRead }) },
   './notification-order': { readNotificationOrder },
   './ConfiguredBetReviewTable.vue': ConfiguredBetReviewTable,
-  './notification-presentation': { renderNotification: (item: any, locale: string) => ({ ...item.content[locale], createdAt: item.created_at }) },
+  './notification-presentation': { notificationAmount, renderNotification: (item: any, locale: string) => ({ ...item.content[locale === 'en' ? 'en' : 'zh-CN'], createdAt: item.created_at }) },
   '@lottery/shared/DetailModal.vue': { props: ['title', 'closeLabel'], setup: (props: any, { slots, emit }: any) => () => h('dialog', {}, [h('h2', props.title), slots.default?.(), slots.footer?.(), h('button', { onClick: () => emit('close') }, props.closeLabel)]) },
 };
 const body = js.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings, specifier) => `const {${bindings.replace(/\s+as\s+/g, ': ')}}=modules[${JSON.stringify(specifier)}];`)
@@ -51,16 +52,14 @@ const text = (n: Node): string => n.text + n.children.filter(c => c.tag !== '#co
 const find = (n: Node, match: (n: Node) => boolean): Node[] => [...(match(n) ? [n] : []), ...n.children.flatMap(c => find(c, match))];
 const summaries = (root: Node) => find(root, n => n.props.class === 'notification-summary');
 const apps: Array<{ unmount(): void }> = [];
-let intersect: (entries: any[]) => void;
-const message = (id: number) => ({ id: String(id), event_type: 'member.joined', created_at: '2026-10-17T08:21:00Z', read_at: null, content: { en: { title: `Title ${id}`, body: 'Secret body' }, 'zh-CN': { title: `标题 ${id}`, body: '消息正文' } } });
+const message = (id: number) => ({ id: String(id), event_type: 'member.joined', created_at: '2026-10-17T08:21:00Z', read_at: null, template_version: 1, payload: { resource_id: '', points: null }, content: { en: { title: `Title ${id}`, body: 'Secret body' }, 'zh-CN': { title: `标题 ${id}`, body: '消息正文' } } });
 const page = (offset = 0, count = 20, member = 'member', total = offset + count + (count === 20 ? 1 : 0)) => ({ brand_id: 'brand', member_id: member, offset, unread_count: '50', items: Array.from({ length: count }, (_, i) => message(offset + i)), total_count: String(total) });
 async function flush() { for (let i = 0; i < 25; i++) await Promise.resolve(); await nextTick() }
 function mount(mobile = true) {
   vi.stubGlobal('window', { matchMedia: () => ({ matches: mobile, addEventListener: vi.fn(), removeEventListener: vi.fn() }) });
   vi.stubGlobal('navigator', { languages: ['en'], language: 'en' });
-  vi.stubGlobal('IntersectionObserver', class { constructor(cb: typeof intersect) { intersect = cb } observe() {} disconnect() {} });
   const root = node('root'), i18n = I18n.createUserI18n();
-  const app = renderer.createApp({ setup: () => () => h(Panel, { locale: i18n.locale.value }) }).provide(I18n.userI18nKey, i18n);
+  const app = renderer.createApp({ setup: () => () => h(Panel, { locale: i18n.locale.value === 'en' ? 'en' : 'zh' }) }).provide(I18n.userI18nKey, i18n);
   app.mount(root); apps.push(app); return { root, i18n };
 }
 afterEach(() => { apps.splice(0).forEach(a => a.unmount()); vi.unstubAllGlobals(); list.mockReset(); markRead.mockReset(); readNotificationOrder.mockReset() });
@@ -100,11 +99,11 @@ it('shows the purchased lottery, period, selection, odds and stake in both langu
   expect(text(root)).toContain(Shared.configuredTicketLabel(betSnapshot, betLine, 'en'));
   expect(text(root)).not.toContain('order-0');
   expect(text(root)).not.toContain('Secret body');
-  expect(text(root)).not.toContain('Placed at');
+  expect(text(root)).toContain('Placed at');
   i18n.setLocale('zh-CN'); await flush();
   expect(text(root)).toContain('投注彩种'); expect(text(root)).toContain('投注内容');
   expect(text(root)).not.toContain('消息正文');
-  expect(text(root)).not.toContain('投注时间');
+  expect(text(root)).toContain('投注时间');
   expect(text(root)).toContain(Shared.configuredTicketLabel(betSnapshot, betLine, 'zh-CN'));
 });
 
@@ -125,20 +124,22 @@ it('discards a late ticket response after switching messages', async () => {
   summaries(root)[1].props.onClick(); await flush(); expect(text(root)).toContain('2026303');
   finish(ticket); await flush(); expect(text(root)).toContain('2026303'); expect(text(root)).not.toContain('2026302');
 });
-it('appends mobile pages and preserves the cursor when loading fails', async () => {
+it('replaces mobile pages and keeps the visible page after a failed read', async () => {
   list.mockResolvedValueOnce(page()).mockRejectedValueOnce({ status: 503 }).mockResolvedValueOnce(page(20, 1));
-  const { root } = mount(); await flush(); intersect([{ isIntersecting: true }]); await flush();
-  expect(summaries(root)).toHaveLength(20); expect(text(root)).toContain('Retry loading');
-  intersect([{ isIntersecting: true }]); await flush(); expect(list).toHaveBeenCalledTimes(2);
-  find(root, n => n.tag === 'button' && text(n) === 'Retry loading')[0].props.onClick(); await flush();
-  expect(list.mock.calls.map(c => c[1])).toEqual([0, 20, 20]); expect(summaries(root)).toHaveLength(21); expect(text(root)).toContain('No more messages');
+  const { root } = mount(); await flush();
+  const next = () => find(root, n => n.tag === 'button' && n.props['aria-label'] === 'Next')[0];
+  next().props.onClick(); await flush(); expect(summaries(root)).toHaveLength(20);
+  next().props.onClick(); await flush();
+  expect(list.mock.calls.map(c => c[1])).toEqual([0, 20, 20]);
+  expect(summaries(root)).toHaveLength(1); expect(text(root)).toContain('Title 20');
 });
-it('uses confirmed automatic-read receipts without discarding accumulated messages', async () => {
-  list.mockResolvedValueOnce(page()).mockResolvedValueOnce(page(20, 1));
+it('uses confirmed automatic-read receipts when refreshing the current mobile page', async () => {
+  list.mockResolvedValue(page());
   markRead.mockResolvedValue({ brand_id: 'brand', member_id: 'member', ids: ['0'], unread_count: '49' });
-  const { root } = mount(); await flush(); intersect([{ isIntersecting: true }]); await flush();
-  summaries(root)[0].props.onClick(); await flush();
-  expect(markRead).toHaveBeenCalledTimes(1); expect(summaries(root)).toHaveLength(21); expect(find(summaries(root)[0], n => n.props.role === 'img')[0].props['aria-label']).toBe('Read'); expect(text(summaries(root)[0])).not.toContain('Read'); expect(list).toHaveBeenCalledTimes(2);
+  const { root } = mount(); await flush(); summaries(root)[0].props.onClick(); await flush();
+  expect(markRead).toHaveBeenCalledTimes(1); expect(summaries(root)).toHaveLength(20);
+  expect(find(summaries(root)[0], n => n.props.role === 'img')[0].props['aria-label']).toBe('Read');
+  expect(list.mock.calls.map(c => c[1])).toEqual([0, 0]);
 });
 it('keeps desktop pagination and replaces the current page', async () => {
   list.mockResolvedValueOnce(page()).mockResolvedValueOnce(page(20, 1));
@@ -159,20 +160,16 @@ it('keeps failed reads unread and lets users mark them read again without a reco
   expect(markRead.mock.calls[1][2]).not.toBe(markRead.mock.calls[0][2]);
   summaries(root)[0].props.onClick(); await flush(); expect(markRead).toHaveBeenCalledTimes(2);
 });
-it('deduplicates overlapping pages and limits bulk reads to 100 IDs', async () => {
-  list.mockImplementation((_limit: number, offset: number) => Promise.resolve(page(offset)));
+it('limits bulk reads to the currently loaded page', async () => {
+  list.mockResolvedValue(page());
   markRead.mockImplementation((ids: string[]) => Promise.resolve({ brand_id: 'brand', member_id: 'member', ids, unread_count: '20' }));
   const { root } = mount(); await flush();
-  for (let i = 0; i < 5; i++) { intersect([{ isIntersecting: true }]); await flush() }
-  expect(summaries(root)).toHaveLength(120);
-  find(root, n => n.tag === 'button' && n.props['aria-label'] === 'Mark 100 loaded messages read')[0].props.onClick(); await flush();
-  expect(markRead.mock.calls[0][0]).toHaveLength(100); expect(summaries(root)).toHaveLength(120);
-  list.mockResolvedValueOnce({ ...page(120, 2), items: [message(119), message(120)]  ,total_count: '2'});
-  intersect([{ isIntersecting: true }]); await flush(); expect(summaries(root)).toHaveLength(121);
+  find(root, n => n.tag === 'button' && n.props['aria-label'] === 'Mark 20 loaded messages read')[0].props.onClick(); await flush();
+  expect(markRead.mock.calls[0][0]).toHaveLength(20); expect(summaries(root)).toHaveLength(20);
 });
 it('clears old membership messages and modal when the account changes', async () => {
   markRead.mockResolvedValue({ brand_id: 'brand', member_id: 'member', ids: ['1'], unread_count: '49' });
-  list.mockResolvedValueOnce(page()).mockResolvedValueOnce(page(20, 1, 'other')).mockResolvedValueOnce(page(0, 1, 'other'));
-  const { root } = mount(); await flush(); summaries(root)[1].props.onClick(); await flush(); intersect([{ isIntersecting: true }]); await flush();
+  list.mockResolvedValueOnce({ ...page(), items: page().items.map(item => ({...item, read_at:'2026-10-17T08:22:00Z'})) }).mockResolvedValueOnce(page(20, 1, 'other')).mockResolvedValueOnce(page(0, 1, 'other'));
+  const { root } = mount(); await flush(); summaries(root)[1].props.onClick(); await flush(); find(root, n => n.tag === 'button' && n.props['aria-label'] === 'Next')[0].props.onClick(); await flush();
   expect(summaries(root)).toHaveLength(1); expect(find(root, n => n.tag === 'dialog')).toHaveLength(0); expect(list.mock.calls.map(c => c[1])).toEqual([0, 20, 0]);
 });

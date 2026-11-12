@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"math/big"
+	"strings"
 )
 
 const maxTraceNodes = 200000
@@ -91,16 +92,16 @@ func SimulateContext(ctx context.Context, in SimulationInput) (Simulation, error
 			if !trace.Matched {
 				raw.SetInt64(0)
 			}
-			rawText := raw.RatString()
+			rawText := rawPointsText(raw)
 			if tier.CapPoints != nil && raw.Cmp(new(big.Rat).SetInt64(int64(*tier.CapPoints))) > 0 {
 				raw.SetInt64(int64(*tier.CapPoints))
 			}
-			cappedText := raw.RatString()
+			cappedText := rawPointsText(raw)
 			if d.RoundingScope == "tier" {
 				raw.SetInt(roundedInteger(raw))
 			}
 			rawAmounts[i] = raw
-			rounded := roundedInteger(raw).String()
+			rounded := roundedPointsText(roundedInteger(raw))
 			result.Hits = append(result.Hits, TierHit{Code: tier.Code, Exclusive: tier.Exclusive, Matched: trace.Matched, RawPoints: rawText, CappedPoints: cappedText, Points: rounded, Trace: trace})
 			matched[i], exclusive[i] = trace.Matched, tier.Exclusive
 		}
@@ -117,22 +118,30 @@ func SimulateContext(ctx context.Context, in SimulationInput) (Simulation, error
 				lineTotal.Add(lineTotal, rawAmounts[i])
 			}
 		}
-		result.Points = roundedInteger(lineTotal).String()
+		result.Points = roundedPointsText(roundedInteger(lineTotal))
 		if d.RoundingScope == "line" {
 			lineTotal.SetInt(roundedInteger(lineTotal))
 		}
 		total.Add(total, lineTotal)
 		out.Lines = append(out.Lines, result)
 	}
-	out.RawPrizePoints = total.RatString()
+	out.RawPrizePoints = rawPointsText(total)
 	cappedTotal := new(big.Rat).Set(total)
 	if d.CapPoints != nil && cappedTotal.Cmp(new(big.Rat).SetInt64(int64(*d.CapPoints))) > 0 {
 		cappedTotal.SetInt64(int64(*d.CapPoints))
 	}
-	out.CappedPrizePoints = cappedTotal.RatString()
+	out.CappedPrizePoints = rawPointsText(cappedTotal)
 	out.PrizePoints, err = exactPoints(total, d.CapPoints)
 	if err != nil {
 		return out, err
 	}
 	return out, nil
+}
+
+func rawPointsText(value *big.Rat) string {
+	return new(big.Rat).Quo(value, big.NewRat(100, 1)).RatString()
+}
+
+func roundedPointsText(value *big.Int) string {
+	return strings.TrimRight(strings.TrimRight(new(big.Rat).SetFrac(value, big.NewInt(100)).FloatString(2), "0"), ".")
 }

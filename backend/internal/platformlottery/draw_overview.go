@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -11,17 +12,25 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type DrawNumberAttribute struct {
+	Wave    string `json:"wave"`
+	Zodiac  string `json:"zodiac"`
+	Element string `json:"element"`
+}
+
 type DrawHistoryItem struct {
-	PeriodNo string     `json:"period_no"`
-	DrawDate *string    `json:"draw_date"`
-	Result   rules.Draw `json:"result"`
-	Source   string     `json:"source"`
+	Attributes map[string]DrawNumberAttribute `json:"attributes"`
+	PeriodNo   string                         `json:"period_no"`
+	DrawDate   *string                        `json:"draw_date"`
+	Result     rules.Draw                     `json:"result"`
+	Source     string                         `json:"source"`
 }
 type PendingDraw struct {
 	Period
 	State string `json:"state"`
 }
 type DrawOverview struct {
+	MarkSix        bool              `json:"mark_six"`
 	TotalCount     string            `json:"total_count"`
 	Years          []string          `json:"years"`
 	Year           string            `json:"year"`
@@ -43,14 +52,20 @@ func (s Service) DrawOverview(ctx context.Context, game, year string, limit, off
 	}
 	defer tx.Rollback(ctx)
 	var zone string
+	var modelRaw []byte
+	var model rules.Model
 	var now time.Time
-	err = tx.QueryRow(ctx, `SELECT (SELECT timezone FROM platform_settings WHERE id=true),clock_timestamp() FROM platform_games WHERE id=$1`, game).Scan(&zone, &now)
+	err = tx.QueryRow(ctx, `SELECT (SELECT timezone FROM platform_settings WHERE id=true),clock_timestamp(),model FROM platform_games WHERE id=$1`, game).Scan(&zone, &now, &modelRaw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, ErrNotFound
 	}
 	if err != nil {
 		return out, err
 	}
+	if err = json.Unmarshal(modelRaw, &model); err != nil {
+		return out, err
+	}
+	out.MarkSix = rules.ValidateMarkSixModel(model) == nil
 	location, err := time.LoadLocation(zone)
 	if err != nil {
 		return out, err
@@ -58,9 +73,9 @@ func (s Service) DrawOverview(ctx context.Context, game, year string, limit, off
 	current := now.In(location).Year()
 	// Prefer imported evidence when the same period also exists in the operational table.
 	const history = ` FROM (
- SELECT h.period_no,h.draw_date::text AS draw_date,h.draw_year AS year,h.result,h.source FROM platform_draw_history h WHERE h.game_id=$1
+ SELECT h.period_no,h.draw_date::text AS draw_date,h.draw_year AS year,h.result,h.source,h.attributes,NULL::jsonb AS bindings FROM platform_draw_history h WHERE h.game_id=$1
  UNION ALL
- SELECT p.period_no,to_char(p.draw_at AT TIME ZONE $2,'YYYY-MM-DD'),extract(year FROM p.draw_at AT TIME ZONE $2)::int,p.result,'published' FROM platform_game_periods p WHERE p.game_id=$1 AND p.result IS NOT NULL AND NOT EXISTS(SELECT 1 FROM platform_draw_history h WHERE h.game_id=p.game_id AND h.period_no=p.period_no)
+ SELECT p.period_no,to_char(p.draw_at AT TIME ZONE $2,'YYYY-MM-DD'),extract(year FROM p.draw_at AT TIME ZONE $2)::int,p.result,'published',NULL::jsonb,(SELECT v.snapshot->'bindings'->'attributes' FROM configured_rule_versions v WHERE v.game_id=p.game_id AND v.status IN ('published','retired') AND v.created_at<=p.published_at ORDER BY v.created_at DESC,v.id DESC LIMIT 1) FROM platform_game_periods p WHERE p.game_id=$1 AND p.result IS NOT NULL AND NOT EXISTS(SELECT 1 FROM platform_draw_history h WHERE h.game_id=p.game_id AND h.period_no=p.period_no)
  ) h`
 	rows, err := tx.Query(ctx, `SELECT DISTINCT year`+history+` ORDER BY year DESC`, game, zone)
 	if err != nil {
@@ -94,20 +109,54 @@ func (s Service) DrawOverview(ctx context.Context, game, year string, limit, off
 		return out, err
 	}
 
-	rows, err = tx.Query(ctx, `SELECT period_no,draw_date,result,source`+history+` WHERE year=$3 ORDER BY CASE WHEN period_no ~ '^[0-9]+$' THEN period_no::numeric END DESC NULLS LAST,period_no DESC LIMIT $4 OFFSET $5`, game, zone, y, limit+1, offset)
+	rows, err = tx.Query(ctx, `SELECT period_no,draw_date,result,source,attributes,bindings`+history+` WHERE year=$3 ORDER BY CASE WHEN period_no ~ '^[0-9]+$' THEN period_no::numeric END DESC NULLS LAST,period_no DESC LIMIT $4 OFFSET $5`, game, zone, y, limit+1, offset)
 	if err != nil {
 		return out, err
 	}
 	for rows.Next() {
 		var item DrawHistoryItem
-		var raw []byte
-		if err = rows.Scan(&item.PeriodNo, &item.DrawDate, &raw, &item.Source); err != nil {
+		var raw, attributesRaw, bindingsRaw []byte
+		if err = rows.Scan(&item.PeriodNo, &item.DrawDate, &raw, &item.Source, &attributesRaw, &bindingsRaw); err != nil {
 			rows.Close()
 			return out, err
 		}
 		if err = json.Unmarshal(raw, &item.Result); err != nil {
 			rows.Close()
 			return out, err
+		}
+		item.Attributes = map[string]DrawNumberAttribute{}
+		if len(attributesRaw) > 0 {
+			if err = json.Unmarshal(attributesRaw, &item.Attributes); err != nil {
+				rows.Close()
+				return out, err
+			}
+		}
+		if out.MarkSix && len(bindingsRaw) > 0 {
+			var bindings map[string]map[string][]int
+			if err = json.Unmarshal(bindingsRaw, &bindings); err != nil {
+				rows.Close()
+				return out, err
+			}
+			for _, number := range append(append([]int{}, item.Result.Regular...), item.Result.Special...) {
+				a := DrawNumberAttribute{}
+				for group, labels := range bindings {
+					for label, numbers := range labels {
+						for _, n := range numbers {
+							if n == number {
+								switch group {
+								case "wave":
+									a.Wave = label
+								case "zodiac":
+									a.Zodiac = label
+								case "element":
+									a.Element = label
+								}
+							}
+						}
+					}
+				}
+				item.Attributes[fmt.Sprintf("%02d", number)] = a
+			}
 		}
 		out.Items = append(out.Items, item)
 	}

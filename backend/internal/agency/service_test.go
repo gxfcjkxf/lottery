@@ -33,7 +33,7 @@ func member(t *testing.T, s Service, brand string) string {
 	if _, e := s.DB.Exec(context.Background(), `INSERT INTO global_users(id,username) VALUES($1,$2)`, u, "agency_"+u); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := s.DB.Exec(context.Background(), `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, m, brand, u); e != nil {
+	if _, e := s.DB.Exec(context.Background(), `INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, m, brand, u); e != nil {
 		t.Fatal(e)
 	}
 	return m

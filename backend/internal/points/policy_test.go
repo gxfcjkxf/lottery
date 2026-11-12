@@ -29,7 +29,7 @@ func TestPolicyInputRequiresCompleteCanonicalReplacementJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(valid), &input); err != nil {
 		t.Fatal(err)
 	}
-	if input.Version != 3 || input.MaxBalancePoints == nil || *input.MaxBalancePoints != 1000 || input.MaxRechargePoints != nil || input.MaxAdjustmentPoints == nil || *input.MaxAdjustmentPoints != 25 || input.Reason != "update policy" {
+	if input.Version != 3 || input.MaxBalancePoints == nil || *input.MaxBalancePoints != 100000 || input.MaxRechargePoints != nil || input.MaxAdjustmentPoints == nil || *input.MaxAdjustmentPoints != 2500 || input.Reason != "update policy" {
 		t.Fatalf("decoded policy input=%+v", input)
 	}
 	encoded, err := json.Marshal(input)
@@ -82,9 +82,9 @@ func TestPolicyInputRequiresCompleteCanonicalReplacementJSON(t *testing.T) {
 }
 
 func TestPolicyCheckBalanceIncreaseCapAndReversal(t *testing.T) {
-	policy := Policy{MaxBalancePoints: amountLimit(100)}
-	before := balanceTotalForPolicy(100)
-	decrease := balanceTotalForPolicy(95)
+	policy := Policy{MaxBalancePoints: amountLimit(10000)}
+	before := balanceTotalForPolicy(10000)
+	decrease := balanceTotalForPolicy(9500)
 	if err := policy.CheckBalance(before, decrease, false); err != nil {
 		t.Fatalf("decrease from an already capped balance: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestPolicyCheckBalanceIncreaseCapAndReversal(t *testing.T) {
 	if err := policy.CheckBalance(before, unchanged, false); err != nil {
 		t.Fatalf("balance-neutral movement: %v", err)
 	}
-	increase := balanceTotalForPolicy(101)
+	increase := balanceTotalForPolicy(10100)
 	if err := policy.CheckBalance(before, increase, false); !errors.Is(err, ErrPolicyLimit) {
 		t.Fatalf("over-cap net increase error=%v, want ErrPolicyLimit", err)
 	}
@@ -103,36 +103,36 @@ func TestPolicyCheckBalanceIncreaseCapAndReversal(t *testing.T) {
 		t.Fatalf("new over-cap balance error=%v, want ErrPolicyLimit", err)
 	}
 	invalid := Balance{}
-	invalid[0][0] = -1
+	invalid[0][0] = -100
 	if err := policy.CheckBalance(Balance{}, invalid, true); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("reversal bypassed balance validity: %v", err)
 	}
 	overflow := Balance{}
-	overflow[0][0], overflow[0][1] = Amount(math.MaxInt64), 1
+	overflow[0][0], overflow[0][1] = Amount(math.MaxInt64), 100
 	if err := (Policy{}).CheckBalance(Balance{}, overflow, false); !errors.Is(err, ErrOverflow) {
 		t.Fatalf("total overflow error=%v, want ErrOverflow", err)
 	}
 }
 
 func TestPolicyCheckRechargeAndAdjustmentPerOperationCaps(t *testing.T) {
-	policy := Policy{MaxRechargePoints: amountLimit(50), MaxAdjustmentPoints: amountLimit(30)}
-	if err := policy.CheckRecharge(50); err != nil {
+	policy := Policy{MaxRechargePoints: amountLimit(5000), MaxAdjustmentPoints: amountLimit(3000)}
+	if err := policy.CheckRecharge(5000); err != nil {
 		t.Fatal("exact recharge cap rejected:", err)
 	}
-	if err := policy.CheckRecharge(51); !errors.Is(err, ErrPolicyLimit) {
+	if err := policy.CheckRecharge(5100); !errors.Is(err, ErrPolicyLimit) {
 		t.Fatalf("recharge above cap error=%v", err)
 	}
-	for _, amount := range []Amount{0, -1} {
+	for _, amount := range []Amount{0, -100} {
 		if err := policy.CheckRecharge(amount); !errors.Is(err, ErrInvalid) {
 			t.Errorf("CheckRecharge(%d) error=%v, want ErrInvalid", amount, err)
 		}
 	}
 	var within, above Balance
-	within[0][0], within[1][2] = 15, -15
+	within[0][0], within[1][2] = 1500, -1500
 	if err := policy.CheckAdjustment(within); err != nil {
 		t.Fatalf("adjustment with 30 absolute points rejected: %v", err)
 	}
-	above[0][0], above[1][2] = 16, -15
+	above[0][0], above[1][2] = 1600, -1500
 	if err := policy.CheckAdjustment(above); !errors.Is(err, ErrPolicyLimit) {
 		t.Fatalf("adjustment above per-operation cap error=%v", err)
 	}
@@ -142,7 +142,7 @@ func TestPolicyCheckRechargeAndAdjustmentPerOperationCaps(t *testing.T) {
 		t.Fatalf("MinInt64 absolute adjustment error=%v, want ErrOverflow", err)
 	}
 	var sumOverflow Balance
-	sumOverflow[0][0], sumOverflow[1][0] = Amount(math.MaxInt64), 1
+	sumOverflow[0][0], sumOverflow[1][0] = Amount(math.MaxInt64), 100
 	if err := (Policy{}).CheckAdjustment(sumOverflow); !errors.Is(err, ErrOverflow) {
 		t.Fatalf("absolute adjustment sum overflow error=%v", err)
 	}
@@ -181,7 +181,7 @@ func TestPolicyReadUpdateCASAuditAndBrandIsolation(t *testing.T) {
 	if _, err = p.Exec(ctx, "INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,$2,'test-only-hash')", adminID, "policy_admin_"+adminID); err != nil {
 		t.Fatal(err)
 	}
-	input := PolicyInput{Version: 1, MaxBalancePoints: amountLimit(900), MaxRechargePoints: amountLimit(300), MaxAdjustmentPoints: amountLimit(100), Reason: "  set brand point caps  "}
+	input := PolicyInput{Version: 1, MaxBalancePoints: amountLimit(90000), MaxRechargePoints: amountLimit(30000), MaxAdjustmentPoints: amountLimit(10000), Reason: "  set brand point caps  "}
 	meta := Metadata{ActorType: "admin", ActorID: adminID, RequestID: "policy-update-test", IP: "127.0.0.1"}
 	tx, err := p.Begin(ctx)
 	if err != nil {
@@ -195,11 +195,11 @@ func TestPolicyReadUpdateCASAuditAndBrandIsolation(t *testing.T) {
 	if err = tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if updated.Version != 2 || updated.AuditLogID == "" || updated.MaxBalancePoints == nil || *updated.MaxBalancePoints != 900 || updated.MaxRechargePoints == nil || *updated.MaxRechargePoints != 300 || updated.MaxAdjustmentPoints == nil || *updated.MaxAdjustmentPoints != 100 {
+	if updated.Version != 2 || updated.AuditLogID == "" || updated.MaxBalancePoints == nil || *updated.MaxBalancePoints != 90000 || updated.MaxRechargePoints == nil || *updated.MaxRechargePoints != 30000 || updated.MaxAdjustmentPoints == nil || *updated.MaxAdjustmentPoints != 10000 {
 		t.Fatalf("unexpected updated policy: %+v", updated)
 	}
 	readBack, err := store.ReadPolicy(ctx, testBrand)
-	if err != nil || readBack.Version != 2 || readBack.MaxBalancePoints == nil || *readBack.MaxBalancePoints != 900 {
+	if err != nil || readBack.Version != 2 || readBack.MaxBalancePoints == nil || *readBack.MaxBalancePoints != 90000 {
 		t.Fatalf("policy did not persist: policy=%+v err=%v", readBack, err)
 	}
 	otherAfter, err := store.ReadPolicy(ctx, other.BrandID)
@@ -219,7 +219,7 @@ func TestPolicyReadUpdateCASAuditAndBrandIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	staleInput := input
-	staleInput.MaxBalancePoints = amountLimit(950)
+	staleInput.MaxBalancePoints = amountLimit(95000)
 	stale, err := store.UpdatePolicy(ctx, staleTx, testBrand, staleInput, meta)
 	_ = staleTx.Rollback(ctx)
 	if !errors.Is(err, ErrConflict) || stale.Version != 0 {
@@ -240,7 +240,7 @@ func TestPolicyUpdateRejectsInvalidCapsAndReason(t *testing.T) {
 		input PolicyInput
 	}{
 		{name: "zero cap", input: PolicyInput{Version: 1, MaxRechargePoints: amountLimit(0), Reason: "valid reason"}},
-		{name: "negative cap", input: PolicyInput{Version: 1, MaxAdjustmentPoints: amountLimit(-1), Reason: "valid reason"}},
+		{name: "negative cap", input: PolicyInput{Version: 1, MaxAdjustmentPoints: amountLimit(-100), Reason: "valid reason"}},
 		{name: "long reason", input: PolicyInput{Version: 1, Reason: string(make([]byte, 501))}},
 		{name: "invalid version", input: PolicyInput{Version: 0, Reason: "valid reason"}},
 	} {
@@ -305,12 +305,12 @@ func TestPolicyLockedReadAndMissingBrand(t *testing.T) {
 func TestPostRefundMayExceedBalanceCapAndFreezeUnfreezeStillWorks(t *testing.T) {
 	p, store, member := fixture(t)
 	ctx := context.Background()
-	credit(t, p, store, member, 0, 100)
+	credit(t, p, store, member, 0, 10000)
 	adminID := ids.New()
 	if _, err := p.Exec(ctx, "INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,$2,'test-only-hash')", adminID, "policy_refund_"+adminID); err != nil {
 		t.Fatal(err)
 	}
-	capValue := Amount(90)
+	capValue := Amount(9000)
 	tx, err := p.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -325,14 +325,14 @@ func TestPostRefundMayExceedBalanceCapAndFreezeUnfreezeStillWorks(t *testing.T) 
 	if err = tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if policy.Version != 2 || policy.MaxBalancePoints == nil || *policy.MaxBalancePoints != 90 {
+	if policy.Version != 2 || policy.MaxBalancePoints == nil || *policy.MaxBalancePoints != 9000 {
 		t.Fatalf("cap policy update=%+v", policy)
 	}
 	wallet, err := store.Read(ctx, testBrand, member)
 	if err != nil {
 		t.Fatal(err)
 	}
-	allocation, err := wallet.BySource.Allocate(20, "available")
+	allocation, err := wallet.BySource.Allocate(2000, "available")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,11 +356,11 @@ func TestPostRefundMayExceedBalanceCapAndFreezeUnfreezeStillWorks(t *testing.T) 
 		t.Fatal(err)
 	}
 	refunded, err := store.Read(ctx, testBrand, member)
-	if err != nil || refunded.AvailablePoints != 100 || refunded.DisplayPoints != 100 {
+	if err != nil || refunded.AvailablePoints != 10000 || refunded.DisplayPoints != 10000 {
 		t.Fatalf("refund did not restore above-cap balance: wallet=%+v err=%v", refunded, err)
 	}
 
-	freezeAllocation, err := refunded.BySource.Allocate(10, "available")
+	freezeAllocation, err := refunded.BySource.Allocate(1000, "available")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,10 +372,10 @@ func TestPostRefundMayExceedBalanceCapAndFreezeUnfreezeStillWorks(t *testing.T) 
 	freeze.EntryType = "freeze"
 	post(t, p, store, freeze)
 	frozen, err := store.Read(ctx, testBrand, member)
-	if err != nil || frozen.AvailablePoints != 90 || frozen.ManualFrozenPoints != 10 || frozen.DisplayPoints != 100 {
+	if err != nil || frozen.AvailablePoints != 9000 || frozen.ManualFrozenPoints != 1000 || frozen.DisplayPoints != 10000 {
 		t.Fatalf("freeze failed while balance is over cap: wallet=%+v err=%v", frozen, err)
 	}
-	unfreezeAllocation, err := frozen.BySource.Allocate(10, "manual_frozen")
+	unfreezeAllocation, err := frozen.BySource.Allocate(1000, "manual_frozen")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +387,7 @@ func TestPostRefundMayExceedBalanceCapAndFreezeUnfreezeStillWorks(t *testing.T) 
 	unfreeze.EntryType = "unfreeze"
 	post(t, p, store, unfreeze)
 	restored, err := store.Read(ctx, testBrand, member)
-	if err != nil || restored.AvailablePoints != 100 || restored.ManualFrozenPoints != 0 || restored.DisplayPoints != 100 {
+	if err != nil || restored.AvailablePoints != 10000 || restored.ManualFrozenPoints != 0 || restored.DisplayPoints != 10000 {
 		t.Fatalf("unfreeze failed while balance is over cap: wallet=%+v err=%v", restored, err)
 	}
 }

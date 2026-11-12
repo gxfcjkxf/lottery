@@ -21,9 +21,9 @@ export async function expectFilterSpacing(page: Page) {
         if (frame && frame !== document.body) {
           const box = frame.getBoundingClientRect()
           const content = control.closest<HTMLElement>('.detail-modal-content')
-          const scrolls = frame.matches('dialog') && content && content.scrollHeight > content.clientHeight + 1
+          const scrolls = (frame.matches('dialog') && content && content.scrollHeight > content.clientHeight + 1) || (bar.scrollHeight > bar.clientHeight + 1 && ['auto','scroll'].includes(getComputedStyle(bar).overflowY))
           const gaps = [rect.left - box.left, box.right - rect.right]
-          // A tall modal clips its scrolling body; that clipping is not field padding.
+          // Scrolling modals and filter bars clip their contents; clipping is not field padding.
           if (!scrolls) gaps.push(rect.top - box.top, box.bottom - rect.bottom)
           if (Math.min(...gaps) < 7.5) issues.push(`${label}: touches ${frame.className}; gaps=${gaps.map(value=>value.toFixed(1)).join(',')}; control=${rect.x.toFixed(1)},${rect.y.toFixed(1)},${rect.width.toFixed(1)},${rect.height.toFixed(1)}; frame=${box.x.toFixed(1)},${box.y.toFixed(1)},${box.width.toFixed(1)},${box.height.toFixed(1)}`)
         }

@@ -68,7 +68,7 @@ func TestWithdrawalReportProjectionAuthorizationAndCSV(t *testing.T) {
 	if _, err := f.pool.Exec(context.Background(), `INSERT INTO global_users(id,username) VALUES('0199a000-0000-7000-8000-000000000004','withdrawal_report_foreign') ON CONFLICT DO NOTHING`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.pool.Exec(context.Background(), `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,'0199a000-0000-7000-8000-000000000004','operator','test-1','test-1') ON CONFLICT DO NOTHING`, foreign, pointsBrandB); err != nil {
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,'0199a000-0000-7000-8000-000000000004','operator') ON CONFLICT DO NOTHING`, foreign, pointsBrandB); err != nil {
 		t.Fatal(err)
 	}
 	mustStatus(t, f.call("GET", withdrawalReportURL(false, foreign), "", f.token, managedBrand, nil), 404)

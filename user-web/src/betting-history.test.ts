@@ -1,3 +1,4 @@
+import * as BettingHistoryCatalog from '../../shared/src/betting-history-catalog'
 import * as PaginationCatalog from '../../shared/src/pagination-catalog'
 import * as Localization from '../../shared/src/localization'
 import * as MarkSix from '../../shared/src/mark-six'
@@ -24,12 +25,14 @@ function clientComponent(filename: string, modules: Record<string, unknown>): Co
 const TablePagination = clientComponent('../../shared/src/TablePagination.vue', {vue: VueRuntime, './localization': Localization, './pagination-catalog': PaginationCatalog, './global-loading': Shared, './SelectControl.vue': { props: ['modelValue', 'options', 'label'], emits: ['change'], setup(_props: unknown, { emit }: { emit: (event: string, size: number) => void }) { return () => h('size-control', { onChange: (size: number) => emit('change', size) }) } }})
 const commonModules = { '@lottery/shared/TablePagination.vue': TablePagination, vue: VueRuntime, '@lottery/shared': Shared, './i18n': UserI18n }
 const OrderHistoryLayout = clientComponent('./OrderHistoryLayout.vue', commonModules)
-const BettingHistoryTable = clientComponent('./BettingHistoryTable.vue', { ...commonModules, 'vue-router': RouterRuntime,
+const OrderOutcome = clientComponent('../../shared/src/OrderOutcome.vue', {vue: VueRuntime,'./configured-rule-catalog':Shared})
+const BettingHistoryTable = clientComponent('../../shared/src/BettingHistoryTable.vue', { ...commonModules, 'vue-router': RouterRuntime,
+  './OrderOutcome.vue':OrderOutcome,'./betting-history-catalog':BettingHistoryCatalog,
   '../../shared/src/mark-six': MarkSix, '../../shared/src/canada': Canada,
   '@lottery/shared/MarkSixLine.vue': { render: () => null }, '@lottery/shared/CanadaLine.vue': { render: () => null },
   '@lottery/shared/SelectionSummary.vue': { render: () => null },
 })
-const BettingHistory = clientComponent('./BettingHistory.vue', { ...commonModules, 'vue-router': RouterRuntime, './betting-history-api': HistoryApi, './OrderHistoryLayout.vue': OrderHistoryLayout, './BettingHistoryTable.vue': BettingHistoryTable })
+const BettingHistory = clientComponent('./BettingHistory.vue', { ...commonModules, 'vue-router': RouterRuntime, './betting-history-api': HistoryApi, './OrderHistoryLayout.vue': OrderHistoryLayout, '@lottery/shared/BettingHistoryTable.vue': BettingHistoryTable })
 import { createUserI18n, userI18nKey } from './i18n'
 import { setPlatformDisplaySettings } from '@lottery/shared'
 import type { AuthProfile } from '../../shared/src/auth'

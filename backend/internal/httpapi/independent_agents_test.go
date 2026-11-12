@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/agency"
+	"github.com/gxfcjkxf/lottery/backend/internal/cash"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
@@ -142,6 +143,35 @@ func TestIndependentAgentBrowserFixture(t *testing.T) {
 	_ = os.Remove(os.Getenv("AGENT_BROWSER_FIXTURE_FILE") + ".stop")
 	f := managedFixture(t)
 	agentGrantRoot(t, f)
+	ctx := context.Background()
+	tx, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := cash.EmptyConfig()
+	for i := range config.Rules {
+		r := &config.Rules[i]
+		r.Enabled = r.Currency == "CNY"
+		r.Rate = "7"
+		r.DepositMin = "1"
+		r.DepositMax = "10000"
+		r.WithdrawalMin = "1"
+		r.WithdrawalMax = "10000"
+	}
+	metadata := points.Metadata{ActorType: "system", RequestID: ids.New()}
+	if _, err = cash.SaveConfig(ctx, tx, "platform", config, metadata); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = cash.SaveConfig(ctx, tx, managedBrand, config, metadata); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = cash.SaveDestination(ctx, tx, managedBrand, "", cash.Destination{Currency: "CNY", Channel: "bank", Holder: "Agent test", Institution: "Bank", Number: "123456", Enabled: true}, metadata); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+
 	input := agency.CreateInput{PolicyVersion: 1, Username: "portal_reviewer", Password: "agent123", Config: agency.NodeConfig{Ratio: "0", Mode: new("loss"), Status: "active", CanCreateChildren: true}}
 	mustStatus(t, f.call("POST", "/api/v1/admin/agents", "browser-fixture-root-001", f.token, managedBrand, input), 201)
 
@@ -153,6 +183,23 @@ func TestIndependentAgentBrowserFixture(t *testing.T) {
 			mustStatus(t, rootResult, 201)
 			var root agency.Node
 			managedData(t, rootResult, &root)
+			creditTx, err := f.pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var delta points.Balance
+			delta[0][0] = 10000
+			if _, err = (points.Store{DB: f.pool}).Post(ctx, creditTx, points.Change{BrandID: managedBrand, MemberID: root.MemberID, EntryType: "recharge", ReferenceType: "agent_browser_fixture", OperationKey: "browser-credit:" + root.ID, ActorType: "system", RequestID: ids.New(), Delta: delta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 10000}}}); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err = (cash.Service{Points: points.Store{DB: f.pool}}).DepositAgent(ctx, creditTx, managedBrand, root.MemberID, cash.Input{Currency: "CNY", Amount: "10"}, points.Metadata{ActorType: "agent", ActorID: root.MemberID, RequestID: ids.New()}); err != nil {
+				t.Fatal(err)
+			}
+			if err = creditTx.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+
 			seed := in
 			seed.Username = "seed_" + device + "_" + lang
 			seed.ParentID = &root.ID

@@ -23,10 +23,10 @@ func (f turnoverBaseCheckerFunc) Check(ctx context.Context, tx pgx.Tx, input Eli
 func TestWithdrawalTurnoverBaseSnapshotsAllAvailableBeforeReservation(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
 	f.fund(t, []points.Allocation{
-		{Source: "recharge", State: "available", Points: 100},
-		{Source: "winning", State: "available", Points: 90},
-		{Source: "gift", State: "available", Points: 80},
-		{Source: "commission", State: "available", Points: 70},
+		{Source: "recharge", State: "available", Points: 10000},
+		{Source: "winning", State: "available", Points: 9000},
+		{Source: "gift", State: "available", Points: 8000},
+		{Source: "commission", State: "available", Points: 7000},
 	})
 	ctx := context.Background()
 	tx, err := f.db.Begin(ctx)
@@ -34,7 +34,7 @@ func TestWithdrawalTurnoverBaseSnapshotsAllAvailableBeforeReservation(t *testing
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 40}, {Source: "gift", State: "available", Points: 30}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 4000}, {Source: "gift", State: "available", Points: 3000}}
 	delta, err := points.AllocationDelta(allocation, "available", "manual_frozen")
 	if err != nil {
 		t.Fatal(err)
@@ -55,11 +55,11 @@ func TestWithdrawalTurnoverBaseSnapshotsAllAvailableBeforeReservation(t *testing
 		// Even a checker must not replace the server's locked balance snapshot.
 		return EligibilityDecision{Allowed: true, Evidence: json.RawMessage(`{"test_adapter":true,"turnover_base_snapshot":{"points":"1"}}`)}, nil
 	})
-	order := createOrder(t, f, 30, "turnover-base-small-request", []points.Allocation{{Source: "recharge", State: "available", Points: 20}, {Source: "gift", State: "available", Points: 10}})
-	if observed.Wallet.BySource[0][0] != 60 || observed.Wallet.BySource[2][0] != 50 || observed.Wallet.BySource[3][0] != 70 {
+	order := createOrder(t, f, 3000, "turnover-base-small-request", []points.Allocation{{Source: "recharge", State: "available", Points: 2000}, {Source: "gift", State: "available", Points: 1000}})
+	if observed.Wallet.BySource[0][0] != 6000 || observed.Wallet.BySource[2][0] != 5000 || observed.Wallet.BySource[3][0] != 7000 {
 		t.Fatalf("checker observed a deducted or incorrect balance: %+v", observed.Wallet.BySource)
 	}
-	if observed.TurnoverBase.Points != 110 || observed.TurnoverBase.WalletVersion != observed.Wallet.Version {
+	if observed.TurnoverBase.Points != 11000 || observed.TurnoverBase.WalletVersion != observed.Wallet.Version {
 		t.Fatalf("checker basis is not the server-owned pre-reservation snapshot: %+v", observed.TurnoverBase)
 	}
 	var evidence struct {
@@ -74,7 +74,7 @@ func TestWithdrawalTurnoverBaseSnapshotsAllAvailableBeforeReservation(t *testing
 	if err = json.Unmarshal(order.EligibilityEvidence, &evidence); err != nil {
 		t.Fatal(err)
 	}
-	if !evidence.TestAdapter || evidence.Snapshot.Recharge != 60 || evidence.Snapshot.Gift != 50 || evidence.Snapshot.Points != 110 || evidence.Snapshot.Version != observed.Wallet.Version {
+	if !evidence.TestAdapter || evidence.Snapshot.Recharge != 6000 || evidence.Snapshot.Gift != 5000 || evidence.Snapshot.Points != 11000 || evidence.Snapshot.Version != observed.Wallet.Version {
 		t.Fatalf("base must be all available recharge/gift before the 30-point reservation: %+v", evidence)
 	}
 	var saved json.RawMessage
@@ -88,13 +88,13 @@ func TestWithdrawalTurnoverBaseSnapshotsAllAvailableBeforeReservation(t *testing
 	var savedSnapshot struct {
 		Points points.Amount `json:"points"`
 	}
-	if err = json.Unmarshal(persisted["turnover_base_snapshot"], &savedSnapshot); err != nil || savedSnapshot.Points != 110 {
+	if err = json.Unmarshal(persisted["turnover_base_snapshot"], &savedSnapshot); err != nil || savedSnapshot.Points != 11000 {
 		t.Fatalf("persistent base snapshot: %+v, error=%v", savedSnapshot, err)
 	}
 	// A later credit changes current balances, but original-key replay must not
 	// recheck eligibility, recompute the basis or reserve again.
-	f.fund(t, []points.Allocation{{Source: "gift", State: "available", Points: 7}})
-	replayed := createOrder(t, f, 30, "turnover-base-small-request", order.SourceAllocation)
+	f.fund(t, []points.Allocation{{Source: "gift", State: "available", Points: 700}})
+	replayed := createOrder(t, f, 3000, "turnover-base-small-request", order.SourceAllocation)
 	var originalEvidence, replayedEvidence map[string]any
 	if err = json.Unmarshal(order.EligibilityEvidence, &originalEvidence); err != nil {
 		t.Fatal(err)
@@ -109,7 +109,7 @@ func TestWithdrawalTurnoverBaseSnapshotsAllAvailableBeforeReservation(t *testing
 
 func TestWithdrawalTurnoverBaseEvidenceLimitRejectsBeforeReservation(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	f.fund(t, oneRechargeAllocation(100))
+	f.fund(t, oneRechargeAllocation(10000))
 	ctx := context.Background()
 	for _, noteLength := range []int{16340, 16000} {
 		name := "compact_limit"
@@ -141,7 +141,7 @@ func TestWithdrawalTurnoverBaseEvidenceLimitRejectsBeforeReservation(t *testing.
 				t.Fatal(err)
 			}
 			defer tx.Rollback(ctx)
-			_, err = f.service.Create(ctx, tx, orderTestBrand, f.member, OrderInput{Points: 10, SourceAllocation: oneRechargeAllocation(10), ClientKey: "basis-limit-" + ids.New()}, f.actor)
+			_, err = f.service.Create(ctx, tx, orderTestBrand, f.member, OrderInput{Points: 1000, SourceAllocation: oneRechargeAllocation(1000), ClientKey: "basis-limit-" + ids.New()}, f.actor)
 			if !errors.Is(err, ErrInvalid) {
 				t.Fatalf("oversized basis evidence: %v", err)
 			}

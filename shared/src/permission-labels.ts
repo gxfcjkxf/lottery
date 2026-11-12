@@ -1,14 +1,16 @@
 const modules: Record<string, [string, string]> = {
+	announcement: ['公告', 'Announcements'],
 	overview: ['经营总览', 'Platform overview'],
   platform_game: ['平台彩种', 'Platform games'],
   admin: ['账号', 'Accounts'], agent: ['代理', 'Agents'], agent_policy: ['代理政策', 'Agent policy'], audit: ['审计', 'Audit'], auth_config: ['认证配置', 'Authentication settings'],
   bet: ['注单', 'Bet orders'], bet_policy: ['投注政策', 'Betting policy'], brand: ['品牌', 'Brands'], brand_domains: ['品牌域名', 'Brand domains'], brand_operation: ['品牌运营', 'Brand operations'], brand_presentation: ['品牌展示', 'Brand presentation'],
   commission: ['佣金', 'Commission'], commission_adjustment: ['佣金调整', 'Commission adjustments'], commission_correction: ['佣金更正', 'Commission corrections'], commission_correction_policy: ['佣金更正政策', 'Commission correction policy'], commission_payment: ['佣金支付', 'Commission payments'], commission_payment_policy: ['佣金支付政策', 'Commission payment policy'], commission_policy: ['佣金政策', 'Commission policy'], platform_settings: ['平台设置', 'Platform settings'],
-  compliance_check: ['合规检查', 'Compliance checks'], compliance_policy: ['合规政策', 'Compliance policy'], draw: ['开奖', 'Draws'], draw_source: ['开奖来源', 'Draw sources'], game: ['彩种', 'Games'], join_code: ['推荐码与代理码', 'Referral & agent codes'], notification: ['通知', 'Notifications'], notification_template: ['通知模板', 'Notification templates'], period: ['期次', 'Periods'], point_policy: ['积分政策', 'Point policy'], recharge: ['充值', 'Recharges'], recharge_quota: ['品牌充值额度', 'Brand recharge quota'],
+  draw: ['开奖', 'Draws'], draw_source: ['开奖来源', 'Draw sources'], game: ['彩种', 'Games'], join_code: ['推荐码与代理码', 'Referral & agent codes'], notification: ['通知', 'Notifications'], notification_template: ['通知模板', 'Notification templates'], period: ['期次', 'Periods'], point_policy: ['积分政策', 'Point policy'], recharge: ['充值', 'Recharges'], recharge_quota: ['品牌充值额度', 'Brand recharge quota'],
   report_archive: ['报表归档', 'Report archives'], report_archive_policy: ['报表归档政策', 'Report archive policy'], report_archive_task: ['报表归档任务', 'Report archive tasks'], report_attribution: ['归因报表', 'Attribution reports'], report_betting: ['投注报表', 'Betting reports'], report_commission: ['佣金报表', 'Commission reports'], report_ledger: ['账本报表', 'Ledger reports'], report_reward: ['奖励报表', 'Reward reports'], report_withdrawal: ['提现报表', 'Withdrawal reports'], reward: ['奖励', 'Rewards'], role: ['角色', 'Roles'], rule: ['规则', 'Rules'], schedule: ['日程', 'Schedules'], settlement: ['结算', 'Settlement'], settlement_policy: ['结算政策', 'Settlement policy'], user: ['会员', 'Members'], wallet: ['钱包', 'Wallet'], withdrawal: ['提现', 'Withdrawals'], withdrawal_policy: ['提现政策', 'Withdrawal policy'],
 }
 
 const actions: Record<string, [string, string]> = {
+  publish: ['发布与下架', 'Publish and take down'],
   kick: ['强制下线', 'Force sign out'],
   connect: ['接入', 'Connect'], sell: ['投注配置', 'Betting configuration'],
   view: ['查看', 'View'], write: ['编辑', 'Edit'], create: ['创建', 'Create'], delete: ['删除', 'Delete'], export: ['导出', 'Export'], download: ['下载', 'Download'],
@@ -40,8 +42,17 @@ export function permissionActionLabel(key: string, locale: 'en' | 'zh-CN'): stri
 
 /** Audit identifiers are structured paths; resolve the longest business prefix. */
 const auditResources: Record<string, [string, string]> = {
+ cash:["资金钱包","Currency wallet"],
+ "cash.config":["币种设置","Currency settings"],
+ "cash.destination":["收款账号","Payment accounts"],
+ "cash.deposit":["充值","Deposits"],
+ "cash.withdrawal":["提现","Withdrawals"],
+ "cash.order":["资金订单","Currency orders"],
+ "cash.balances":["资金余额","Currency balances"],
   ...modules,
   association: ['关联账号搜索', 'Account search'], filter: ['筛选选项', 'Filter options'],
+  brand_contacts: ['品牌联系方式', 'Brand contact details'],
+  'brand_contacts.image': ['联系图片', 'Contact image'],
   'brand_presentation.logo': ['品牌标志素材', 'Brand logo asset'],
 
   'query': ['业务查询', 'Business query'],
@@ -90,13 +101,8 @@ const auditResources: Record<string, [string, string]> = {
   'platform_game.calendar': ['开奖日历', 'Draw calendar'],
   'platform_auth_settings': ['平台认证默认', 'Platform authentication defaults'],
   'auth_config.platform': ['平台认证默认', 'Platform authentication defaults'],
-  'platform_compliance_settings': ['平台风控默认', 'Platform risk defaults'],
-  'compliance.platform': ['平台风控默认', 'Platform risk defaults'],
   'platform_commission_policy': ['平台佣金政策', 'Platform commission policy'],
   'platform_report_archive_policy': ['平台归档政策', 'Platform archive policy'],
-  'compliance': ['合规', 'Compliance'],
-  'compliance_decision': ['合规检查结果', 'Compliance decision'],
-  'compliance_gate': ['合规限制', 'Compliance restriction'],
   'workbench': ['工作台', 'Workbench'],
   'report': ['报表', 'Reports'],
   'commission_cycle': ['佣金周期', 'Commission cycle'],
@@ -107,6 +113,8 @@ const auditResources: Record<string, [string, string]> = {
   'commission_payment_target': ['佣金支付对象', 'Commission payment target'],
 }
 const auditOperations: Record<string, [string, string]> = {
+ agent_transfer_credit:["代理转入","Agent transfer received"], agent_transfer_debit:["转给会员","Transfer to member"], transfer:["转移","Transfer"],
+ currency_exchange_credit:["资金转积分","Convert funds to points"], currency_exchange_debit:["积分转资金","Convert points to currency"], exchange:["兑换","Exchange"], config:["配置","Configure"],
   ...actions,
   withdrawal_reserve: ['占用提现积分', 'Reserve withdrawal points'], withdrawal_paid: ['扣除已付提现积分', 'Debit paid withdrawal points'], withdrawal_release: ['退还提现占用积分', 'Release withdrawal points'],
   reward_grant: ['奖励入账', 'Credit reward'], reward_reversal: ['撤销奖励积分', 'Reverse reward points'],
@@ -134,7 +142,7 @@ const auditOperations: Record<string, [string, string]> = {
   save: ['保存', 'Save'], publish: ['发布', 'Publish'], confirm: ['确认', 'Confirm'],
   login: ['登录', 'Sign in'], logout: ['退出登录', 'Sign out'], password_change: ['修改密码', 'Change password'],
   operator_create: ['后台创建', 'Create by operator'], profile_fill: ['补充资料', 'Complete profile'], telegram_bind: ['绑定 Telegram', 'Bind Telegram'],
-  terms_accept: ['接受条款', 'Accept terms'], rate_limit: ['限制访问频率', 'Rate limit'], denied: ['访问被拒绝', 'Access denied'],
+  rate_limit: ['限制访问频率', 'Rate limit'], denied: ['访问被拒绝', 'Access denied'],
   place: ['投注', 'Place bet'], settle: ['结算', 'Settle'], settled: ['已结算', 'Settled'],
   lifecycle: ['修改上架状态', 'Change listing status'], availability: ['修改可用状态', 'Change availability'],
   opening: ['设置开盘时间', 'Set opening time'], attributes: ['设置属性', 'Set attributes'], sync: ['同步', 'Sync'],

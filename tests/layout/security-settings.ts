@@ -6,7 +6,7 @@ export function registerSecuritySettingsTests(reflow = false) {
   const zh=locale==='zh-CN';await installLayoutApi(page,locale)
   const errors:string[]=[],reads:string[]=[],writes:{body:string|null;key:string|undefined}[]=[]
   page.on('pageerror',error=>errors.push(error.message))
-  let auth={version:3,inherit_platform:false,captcha_enabled:false,telegram_enabled:false,telegram_client_id:'',privacy_policy_version:'terms-1',service_terms_version:'terms-1',audit_log_id:gameId}
+  let auth={version:3,inherit_platform:false,captcha_enabled:false,telegram_enabled:false,telegram_client_id:'',audit_log_id:gameId}
   let policy={inherit_platform:false,brand_id:'',version:1,config:{age_enabled:false,minimum_age:null as number|null,region_enabled:false,allowed_countries:[] as string[],identity_enabled:false,account_risk_enabled:false,betting_risk_enabled:false,exclusion_enabled:false,responsible_gambling_enabled:false},updated_at:'2026-10-21T00:00:00Z',audit_log_id:gameId}
   let lose=true,conflict=true
   const receipts=new Map<string,typeof auth>()

@@ -57,7 +57,7 @@ func TestConfiguredBrowserDOMAutomaticDrawAndSettlement(t *testing.T) {
 	if e := c.f.db.QueryRow(ctx, `SELECT id::text FROM platform_game_periods WHERE game_id=$1 AND period_no='browser-next'`, c.g.ID).Scan(&periodID); e != nil {
 		t.Fatal(e)
 	}
-	fundBettingWallet(t, c.f, 100)
+	fundBettingWallet(t, c.f, 10000)
 	c.input.PeriodID = periodID
 	first, e := configuredPlace(t, c, "dynamic-dom-order", c.input)
 	if e != nil {
@@ -68,7 +68,7 @@ func TestConfiguredBrowserDOMAutomaticDrawAndSettlement(t *testing.T) {
 		t.Fatal("idempotent debit", e)
 	}
 	wallet, e := (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, c.f.member)
-	if e != nil || wallet.AvailablePoints != 90 {
+	if e != nil || wallet.AvailablePoints != 9000 {
 		t.Fatal("one debit after replay", wallet, e)
 	}
 	// A saved but unselected browser change cannot alter this frozen reader.
@@ -114,7 +114,7 @@ func TestConfiguredBrowserDOMAutomaticDrawAndSettlement(t *testing.T) {
 		t.Fatal("repeat payout", n, e)
 	}
 	wallet, e = (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, c.f.member)
-	if e != nil || wallet.AvailablePoints != 115 {
+	if e != nil || wallet.AvailablePoints != 11500 {
 		t.Fatal("wallet", wallet, e)
 	}
 	if replay, err := configuredPlace(t, c, "dynamic-dom-order", c.input); err != nil || string(replay.Data) != string(first.Data) {

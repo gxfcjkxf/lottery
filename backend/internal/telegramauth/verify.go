@@ -44,9 +44,10 @@ type Verifier struct {
 // Claims contains the identity fields needed by the application. ID comes
 // from Telegram's numeric id claim; Subject is the OIDC sub claim.
 type Claims struct {
-	ID      string
-	Subject string
-	Name    string
+	ID       string
+	Subject  string
+	Name     string
+	Username string
 }
 
 // Verify validates a Telegram Login ID token and returns its authenticated
@@ -127,6 +128,7 @@ func (v Verifier) Verify(ctx context.Context, token, clientID, expectedNonce str
 		Subject  string          `json:"sub"`
 		ID       json.RawMessage `json:"id"`
 		Name     string          `json:"name"`
+		Username string          `json:"preferred_username"`
 		Nonce    string          `json:"nonce"`
 		IssuedAt json.Number     `json:"iat"`
 		Expires  json.Number     `json:"exp"`
@@ -156,7 +158,7 @@ func (v Verifier) Verify(ctx context.Context, token, clientID, expectedNonce str
 	if !ok {
 		return Claims{}, ErrInvalidToken
 	}
-	return Claims{ID: id, Subject: claims.Subject, Name: claims.Name}, nil
+	return Claims{ID: id, Subject: claims.Subject, Name: claims.Name, Username: claims.Username}, nil
 }
 
 func validPublicKey(key *rsa.PublicKey) bool {

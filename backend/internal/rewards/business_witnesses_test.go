@@ -7,7 +7,7 @@ import (
 
 func TestFinanceBusinessWitnessesIncludeRealGrantAndRevocation(t *testing.T) {
 	f := newRewardFixture(t)
-	order := rewardGrant(t, f, 25)
+	order := rewardGrant(t, f, 2500)
 	if _, err := rewardRevoke(t, f, order, f.actor, "full approved reversal"); err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestFinanceBusinessWitnessesIncludeRealGrantAndRevocation(t *testing.T) {
 
 func TestFinanceBusinessWitnessesRetainMissingRequiredRewardPointer(t *testing.T) {
 	f := newRewardFixture(t)
-	order := rewardGrant(t, f, 11)
+	order := rewardGrant(t, f, 1100)
 	if _, err := rewardRevoke(t, f, order, f.actor, "full approved reversal"); err != nil {
 		t.Fatal(err)
 	}

@@ -507,3 +507,18 @@ it("requires a positive withdrawal increment and verifies the saved increment", 
   expect(fetcher).not.toHaveBeenCalled();
   await expect(api.updateBrandPolicy(brand,{points_step:"10",version:1,config:brandConfig,reason:""},"saved-step")).rejects.toMatchObject({code:"INVALID_RESPONSE"});
 });
+
+it('reads fractional withdrawal minimums, maximums and increments', async () => {
+  const data = {...brandPolicy, points_step:'0.01', config:{...brandConfig,min_points:'0.05',max_points:'100.25'}}
+  await expect(createWithdrawalPolicyApi(vi.fn<typeof fetch>().mockResolvedValue(ok(data))).getBrandPolicy(brand)).resolves.toMatchObject(data)
+  for (const invalid of ['0','-0.01','0.001','92233720368547758.08']) {
+    await expect(createWithdrawalPolicyApi(vi.fn<typeof fetch>().mockResolvedValue(ok({...data,points_step:invalid}))).getBrandPolicy(brand)).rejects.toMatchObject({code:'INVALID_RESPONSE'})
+  }
+})
+
+it('matches saved policy point values independently of decimal scale', async () => {
+ const config={...brandConfig,min_points:'0.50',max_points:'100.00'},body={points_step:'0.10',version:1,config,reason:''}
+ const data={...brandPolicy,points_step:'0.1',version:2,config:{...config,min_points:'0.5',max_points:'100'}}
+ await expect(createWithdrawalPolicyApi(async()=>ok(data)).updateBrandPolicy(brand,body,'decimal-policy-key')).resolves.toEqual(data)
+ await expect(createWithdrawalPolicyApi(async()=>ok({...data,points_step:'0.11'})).updateBrandPolicy(brand,body,'decimal-policy-key')).rejects.toMatchObject({code:'INVALID_RESPONSE'})
+})

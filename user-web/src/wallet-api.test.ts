@@ -90,4 +90,15 @@ describe("user wallet API", () => {
     const api = createWalletApi({ fetcher: vi.fn<typeof fetch>().mockResolvedValue(ok(legacy)) });
     await expect(api.wallet()).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
   });
+  it("preserves incoming agent receipts and rejects missing sender metadata",async()=>{
+    const receipt={agent_id:wallet.member_id,agent_account:"sending_agent",amount:"12.5",created_at:"2026-11-12T08:00:00Z"};
+    const entry={entry_type:"agent_transfer_credit",before_snapshot:wallet.by_source,delta_snapshot:wallet.by_source,after_snapshot:wallet.by_source,agent_transfer:receipt};
+    const api=createWalletApi({fetcher:vi.fn<typeof fetch>().mockResolvedValue(ok({items:[entry],total_count:"1"}))});
+    expect((await api.ledger()).items[0]?.agent_transfer).toEqual(receipt);
+    for(const agent_transfer of [undefined,{...receipt,agent_account:123},{...receipt,amount:"invalid"},{...receipt,created_at:"invalid"}]){
+      const invalid=createWalletApi({fetcher:vi.fn<typeof fetch>().mockResolvedValue(ok({items:[{...entry,agent_transfer}],total_count:"1"}))});
+      await expect(invalid.ledger()).rejects.toMatchObject({status:502,code:"INVALID_RESPONSE"});
+    }
+  });
+
 });

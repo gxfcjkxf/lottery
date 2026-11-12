@@ -24,7 +24,7 @@ func TestGlobalUserDeletionInSelectedBrandPreservesLedger(t *testing.T) {
 	if _, err := p.Exec(ctx, `INSERT INTO admin_accounts(id,username,password_hash,is_super_admin) VALUES($1,'global_delete_admin','unused',true)`, f.super); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1'),($4,$5,$3,'domain','dev-1','dev-1')`, f.memberA, f.brandA, f.user, f.memberB, f.brandB); err != nil {
+	if _, err := p.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain'),($4,$5,$3,'domain')`, f.memberA, f.brandA, f.user, f.memberB, f.brandB); err != nil {
 		t.Fatal(err)
 	}
 	token := strings.Repeat("a", 43)
@@ -43,7 +43,7 @@ func TestGlobalUserDeletionInSelectedBrandPreservesLedger(t *testing.T) {
 	if _, err = p.Exec(ctx, `INSERT INTO global_users(id,username,password_hash) VALUES($1,'unrelated_member','unrelated-hash')`, otherUser); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = p.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, otherMember, f.brandA, otherUser); err != nil {
+	if _, err = p.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, otherMember, f.brandA, otherUser); err != nil {
 		t.Fatal(err)
 	}
 	s := Store{DB: p}
@@ -56,13 +56,13 @@ func TestGlobalUserDeletionInSelectedBrandPreservesLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	var delta points.Balance
-	delta[0][0] = 70
+	delta[0][0] = 7000
 	tx, err := p.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ledger := points.Store{DB: p}
-	_, err = ledger.Post(ctx, tx, points.Change{BrandID: f.brandA, MemberID: f.memberA, EntryType: "credit", ReferenceType: "test", OperationKey: "deletion-test-credit", Reason: "deletion test", ActorType: "system", RequestID: "deletion-test", Delta: delta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 70}}})
+	_, err = ledger.Post(ctx, tx, points.Change{BrandID: f.brandA, MemberID: f.memberA, EntryType: "credit", ReferenceType: "test", OperationKey: "deletion-test-credit", Reason: "deletion test", ActorType: "system", RequestID: "deletion-test", Delta: delta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 7000}}})
 	if err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)

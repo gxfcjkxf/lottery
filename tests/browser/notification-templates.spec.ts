@@ -25,7 +25,7 @@ async function restore(page:Page,content:Content){
 }
 async function register(page:Page){
  return unwrap<{access_token:string;member:{id:string}}>(await page.request.post(userBase+"/auth/register",{
-  headers:{Origin:"http://localhost:5173","Idempotency-Key":key()},data:{username:"template_"+key().replaceAll("-","").slice(0,12),password:"isolated-notification-user-test-password-2026",privacy_policy_version:"dev-1",service_terms_version:"dev-1"}
+  headers:{Origin:"http://localhost:5173","Idempotency-Key":key()},data:{username:"template_"+key().replaceAll("-","").slice(0,12),password:"isolated-notification-user-test-password-2026",}
  }),201);
 }
 async function inbox(page:Page,token:string){

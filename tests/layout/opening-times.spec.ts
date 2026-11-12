@@ -59,7 +59,7 @@ for(const locale of ['en','zh-CN'] as const)test(`opening schedule disables bett
  await expect(toast).toHaveCount(0)
 })
 
-for(const locale of ['en','zh-CN'] as const)test(`successful configured bet uses shared toast ${locale}`,async({page},info)=>{
+for(const locale of ['en','zh-CN'] as const)test(`successful configured bet clears selection and stake ${locale}`,async({page},info)=>{
  await page.clock.install({time:new Date('2026-10-27T03:00:00Z')})
  await page.clock.pauseAt(new Date('2026-10-27T03:00:01Z'))
  await installLayoutApi(page,locale);await installWalletLayoutApi(page)
@@ -73,9 +73,15 @@ for(const locale of ['en','zh-CN'] as const)test(`successful configured bet uses
  })
  let writes=0
  await page.route('**/api/v1/configured/orders',route=>{expect(route.request().method()).toBe('POST');writes++;expect(route.request().headers()['idempotency-key']).toBeTruthy();return route.fulfill({json:{success:true,data:{}}})})
+ await page.addInitScript(({id})=>localStorage.setItem(`lottery:betting-preferences:${id}:${id}`,JSON.stringify({lastPoints:'75'})),{id:gameId})
  await page.goto(`${origins.user}/configured/${gameId}`)
  await page.clock.resume()
  const selection=page.getByTestId('configured-selection')
+ const points=selection.locator('.configured-points-control input')
+ await expect(points).toHaveValue('')
+ await points.fill('25')
+ await page.reload()
+ await expect(points).toHaveValue('')
  const mobile=page.viewportSize()!.width<1000
  await expect(page.locator('.period-times time').first().locator('span:visible')).toHaveText(mobile?'10-24 21:00':'2026-10-24 21:00:00')
  await expect(page.locator('.period-times time').nth(1).locator('span:visible')).toHaveText(mobile?'10-27 21:29':'2026-10-27 21:29:45')
@@ -83,6 +89,7 @@ for(const locale of ['en','zh-CN'] as const)test(`successful configured bet uses
  if(mobile)await expect(summary).toBeHidden()
  const dockHeight=(await dock.boundingBox())!.height
  await selection.locator('.configured-options button').first().click()
+ await expect(points).toBeFocused()
  await expect(summary).toBeVisible()
  if(mobile){
   const shownDock=(await dock.boundingBox())!,shownSummary=(await summary.boundingBox())!
@@ -107,9 +114,57 @@ for(const locale of ['en','zh-CN'] as const)test(`successful configured bet uses
  const dialog=page.getByRole('dialog')
  await dialog.getByRole('button',{name:locale==='en'?'Confirm bet':'确认投注',exact:true}).click()
  await expect(dialog).toHaveCount(0);expect(writes).toBe(1)
+ await expect(selection.locator('.configured-options [aria-pressed=true]')).toHaveCount(0)
+ await expect(points).toHaveValue('')
+ await selection.locator('.configured-options button').first().click()
+ await expect(points).toBeFocused()
+ await expect(points).toHaveValue('')
+ await selection.locator('.configured-clear').click()
  const toast=page.locator('.operation-toast-stack .toast-success')
  await expect(toast).toContainText(locale==='en'?'Bet placed':'投注成功')
  await expect(page.locator('.configured-bet-notice')).toHaveCount(0)
  await expectNoPageOverflow(page)
  await page.screenshot({path:info.outputPath(`bet-success-${locale}.png`)})
+})
+
+for(const locale of ['en','zh-CN'] as const)test(`betting unavailability identifies the actual reason ${locale}`,async({page},info)=>{
+ await installLayoutApi(page,locale)
+ await installWalletLayoutApi(page)
+ const snapshot=configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/mark_six_v2.json','utf8')))
+ const now=Date.now()
+ const period={id:gameId,period_no:'2026115',bet_start_at:new Date(now-60000).toISOString(),bet_end_at:new Date(now+3600000).toISOString(),draw_at:new Date(now+3660000).toISOString()}
+ const catalog={game:{id:gameId,name:'Mark Six',status:'active',brand_enabled:true},snapshot,rule_id:gameId,snapshot_hash:'reason-test',sales:{version:1,enabled:true},period:period as typeof period|null,previous_draw:null}
+ let periods:typeof period[]=[]
+ await page.route(`**/api/v1/configured/games/${gameId}`,route=>route.fulfill({json:{success:true,data:catalog}}))
+ await page.route(`**/api/v1/platform-games/${gameId}?*`,route=>route.fulfill({json:{success:true,data:{game:catalog.game,plays:[],rule_protocol:'configured',periods,total_count:String(periods.length)}}}))
+ const cases=[
+  {zh:'彩种已停用。',en:'This game is disabled.',setup:()=>{catalog.game.status='disabled'}},
+  {zh:'当前品牌未启用此彩种。',en:'This game is not enabled for this brand.',setup:()=>{catalog.game.status='active';catalog.game.brand_enabled=false}},
+  {zh:'投注已暂停。',en:'Betting is paused.',setup:()=>{catalog.game.brand_enabled=true;catalog.sales.enabled=false}},
+  {zh:'暂无可投注期次。',en:'No period is available for betting.',setup:()=>{catalog.sales.enabled=true;catalog.period=null}},
+  {zh:'本期已封盘。',en:'This period is closed.',setup:()=>{periods=[{...period,bet_end_at:new Date(now-1000).toISOString()}]}},
+ ]
+ const toast=page.locator('.operation-toast-center .toast-error')
+ for(const item of cases){
+  item.setup()
+  await page.goto(`${origins.user}/configured/${gameId}`)
+  await expect(toast).toHaveText(locale==='en'?item.en:item.zh)
+  await expect(page.getByTestId('configured-selection').locator('.configured-options button').first()).toBeDisabled()
+  await expectNoPageOverflow(page)
+ }
+ catalog.period={...period,bet_end_at:new Date(now-1000).toISOString()}
+ await page.reload()
+ await expect(toast).toHaveText(locale==='en'?'This period is closed.':'本期已封盘。')
+ catalog.period=period;periods=[]
+ await page.reload()
+ await expect(toast).toHaveCount(0)
+ await expect(page.getByTestId('configured-selection').locator('.configured-options button').first()).toBeEnabled()
+ catalog.game.brand_enabled=false
+ await page.reload()
+ await expect(toast).toHaveText(locale==='en'?'This game is not enabled for this brand.':'当前品牌未启用此彩种。')
+ for(const width of info.project.name.endsWith('reflow')?[320,480,900,1280]:[page.viewportSize()!.width]){
+  if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:800})
+  await expectNoPageOverflow(page)
+ }
+ await page.screenshot({path:info.outputPath(`betting-reason-${locale}.png`)})
 })

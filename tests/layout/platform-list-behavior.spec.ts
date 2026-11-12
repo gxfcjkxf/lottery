@@ -38,7 +38,20 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
       if (path.endsWith('/ledger')) {
         ledgerReads.push(url)
         const memberId = path.split('/wallets/')[1]!.split('/')[0]!
-        const entries = Array.from({length:51},(_,i) => ({id:ids(300+i),brand_id:gameId,member_id:memberId,account_id:gameId,entry_type:'recharge',reference_type:'recharge',reference_id:ids(300+i),operation_key:`fixture-${i}`,before_snapshot:buckets,delta_snapshot:buckets,after_snapshot:buckets,source_allocation:[],reason:'',actor_type:'admin',actor_id:gameId,request_id:'fixture',version:1,created_at:at}))
+        const entries = Array.from({length:51},(_,i) => {
+          const before = structuredClone(buckets), delta = structuredClone(buckets), after = structuredClone(buckets)
+          const type = ['recharge', 'freeze', 'bet'][i % 3]!
+          if (type === 'recharge') { delta.recharge!.available = '105.25'; after.recharge!.available = '105.25' }
+          else {
+            before.recharge!.available = '100.25'; before.gift!.available = '5'
+            delta.recharge!.available = '-100.25'; delta.gift!.available = '-5'
+            if (type === 'freeze') {
+              delta.recharge!.manual_frozen = '100.25'; delta.gift!.manual_frozen = '5'
+              after.recharge!.manual_frozen = '100.25'; after.gift!.manual_frozen = '5'
+            }
+          }
+          return {id:ids(300+i),brand_id:gameId,member_id:memberId,account_id:gameId,entry_type:type,reference_type:type,reference_id:ids(300+i),operation_key:`fixture-${i}`,before_snapshot:before,delta_snapshot:delta,after_snapshot:after,source_allocation:[],reason:'',actor_type:'admin',actor_id:gameId,request_id:'fixture',version:1,created_at:at}
+        })
         const offset = Number(url.searchParams.get('offset')), limit = Number(url.searchParams.get('limit'))
         return reply({items:entries.slice(offset,offset+limit),total_count:String(entries.length)})
       }
@@ -83,7 +96,7 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
   expect(memberReads.at(-1)!.searchParams.has('username')).toBe(false)
   await pages.getByRole('button', { name: zh ? '下一页' : 'Next page', exact: true }).click()
   await expect(directory.locator('tbody tr')).toHaveCount(1)
-  const input = directory.getByRole('textbox',{name:zh?'搜索账号或手机号':'Search account or phone',exact:true}), query = directory.locator('button[type=submit]')
+  const input = directory.getByRole('searchbox',{name:zh?'搜索账号或手机号':'Search account or phone',exact:true}), query = directory.locator('button[type=submit]')
   const preset = page.viewportSize()!
   for (const width of info.project.name.includes('reflow') ? [320, 640, 900, 901, 1440] : [preset.width]) {
     if (info.project.name.includes('reflow')) await page.setViewportSize({ width, height: preset.height })
@@ -99,8 +112,8 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
     await expect(dialog).toBeVisible()
     await expect(dialog.getByTestId(content)).toBeVisible()
     await expect(page.getByTestId('platform-wallet-members')).toHaveCount(0)
-    await expect(dialog.locator('form, input:not(.table-pagination-input)')).toHaveCount(0)
-    await expect(dialog.locator('.panel-heading [data-refresh-button], .management-list-toolbar [data-refresh-button]')).toHaveCount(1)
+    await expect(dialog.locator('form, input:not(.table-pagination input)')).toHaveCount(0)
+    await expect(dialog.locator('.panel-heading [data-refresh-button], .management-list-toolbar [data-refresh-button]')).toHaveCount(content === 'platform-wallet-balances' ? 1 : 0)
     await expect(dialog.locator('.table-pagination [data-refresh-button]')).toHaveCount(0)
     if (content === 'platform-wallet-balances') {
       expect(ledgerReads).toHaveLength(0)
@@ -109,13 +122,26 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
       await expect(dialog.getByTestId('platform-wallet-balances')).toHaveCount(0)
       const ledger = dialog.getByTestId('platform-wallet-ledger'), pager = dialog.getByTestId('platform-wallet-pages')
       await expect(ledger.locator('tbody tr')).toHaveCount(50)
+      await expect(ledger.locator('thead th').nth(3)).toHaveText(zh ? '可用积分变动' : 'Available change')
+      await expect(ledger.locator('tbody tr').nth(0).locator('td').nth(3)).toHaveText('+105.25')
+      await expect(ledger.locator('tbody tr').nth(1).locator('td').nth(3)).toHaveText('-105.25')
+      await ledger.locator('tbody tr').nth(1).getByRole('button').click()
+      const freezeDetail = page.getByTestId('platform-wallet-entry')
+      await expect(freezeDetail.locator('tbody tr')).toHaveCount(4)
+      await page.keyboard.press('Escape')
       await pager.getByRole('button',{name:zh?'下一页':'Next page',exact:true}).click()
       await expect(ledger.locator('tbody tr')).toHaveCount(1)
       expect(ledgerReads.at(-1)!.searchParams.get('offset')).toBe('50')
       await ledger.locator('tbody button').click()
       const entry = page.getByRole('dialog',{name:zh?'流水详情':'Ledger entry detail',exact:true})
       await expect(entry).toBeVisible()
-      await expect(entry.locator('tbody tr')).toHaveCount(16)
+      await expect(entry.locator('tbody tr')).toHaveCount(2)
+      await expect(ledger.locator('tbody tr td').nth(2)).toHaveText('105.25')
+      await expect(ledger.locator('tbody tr td').nth(3)).toHaveText('-105.25')
+      await expect(ledger.locator('tbody tr td').nth(4)).toHaveText('0')
+      await expect(entry.locator('tbody tr').nth(0).locator('td').nth(3)).toHaveText('-100.25')
+      await expect(entry.locator('tbody tr').nth(0).locator('td').nth(4)).toHaveText('0')
+      await expect(entry.locator('tbody tr').nth(1).locator('td').nth(3)).toHaveText('-5')
       await expect(entry).not.toContainText(ids(350))
       for (const width of info.project.name.includes('reflow') ? [320,1440] : [preset.width]) {
         if (info.project.name.includes('reflow')) await page.setViewportSize({width,height:preset.height})

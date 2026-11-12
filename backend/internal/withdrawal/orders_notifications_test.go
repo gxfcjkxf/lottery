@@ -17,8 +17,8 @@ func TestWithdrawalNotificationHistorySurvivesLaterStateAndConcurrentDelivery(t 
 	for _, actions := range [][]string{{"reject"}, {"cancel"}, {"approve", "cancel"}, {"approve", "fail"}, {"approve", "mark_paid"}} {
 		t.Run(strings.Join(actions, "_"), func(t *testing.T) {
 			f := newOrderIntegrationFixture(t, true, true)
-			f.fund(t, oneRechargeAllocation(100))
-			original := createOrder(t, f, 40, "notify-create", oneRechargeAllocation(40))
+			f.fund(t, oneRechargeAllocation(10000))
+			original := createOrder(t, f, 4000, "notify-create", oneRechargeAllocation(4000))
 			current := original
 			states := []string{"reviewing"}
 			for _, action := range actions {
@@ -30,7 +30,7 @@ func TestWithdrawalNotificationHistorySurvivesLaterStateAndConcurrentDelivery(t 
 				states = append(states, current.State)
 			}
 			// Original receipt replay after terminal state must not enqueue again.
-			replay := createOrder(t, f, 40, "notify-create", oneRechargeAllocation(40))
+			replay := createOrder(t, f, 4000, "notify-create", oneRechargeAllocation(4000))
 			if replay.ID != original.ID || replay.State != "reviewing" {
 				t.Fatal(replay)
 			}
@@ -89,11 +89,11 @@ func TestWithdrawalOutboxFailureRollsBackReservationAndStateMutation(t *testing.
 	for _, during := range []string{"reviewing", "paid", "failed"} {
 		t.Run(during, func(t *testing.T) {
 			f := newOrderIntegrationFixture(t, true, true)
-			f.fund(t, oneRechargeAllocation(100))
+			f.fund(t, oneRechargeAllocation(10000))
 			ctx := context.Background()
 			var current Order
 			if during != "reviewing" {
-				current = createOrder(t, f, 40, "rollback-create", oneRechargeAllocation(40))
+				current = createOrder(t, f, 4000, "rollback-create", oneRechargeAllocation(4000))
 				var err error
 				current, err = orderAction(t, f, current.ID, "approve", "rollback-approve", f.admin, ActionInput{Version: 1, ClientKey: "rollback-approve", Reason: "review"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
 				if err != nil {
@@ -113,7 +113,7 @@ func TestWithdrawalOutboxFailureRollsBackReservationAndStateMutation(t *testing.
 				t.Fatal(err)
 			}
 			if during == "reviewing" {
-				_, err = f.service.Create(ctx, tx, orderTestBrand, f.member, OrderInput{Points: 40, SourceAllocation: oneRechargeAllocation(40), ClientKey: "rollback-failed-create"}, f.actor)
+				_, err = f.service.Create(ctx, tx, orderTestBrand, f.member, OrderInput{Points: 4000, SourceAllocation: oneRechargeAllocation(4000), ClientKey: "rollback-failed-create"}, f.actor)
 			} else {
 				action := "mark_paid"
 				if during == "failed" {
@@ -135,8 +135,8 @@ func TestWithdrawalOutboxFailureRollsBackReservationAndStateMutation(t *testing.
 
 func TestWithdrawalOutboxRejectsInventedDuplicatedAndRewrittenFacts(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	f.fund(t, oneRechargeAllocation(100))
-	o := createOrder(t, f, 40, "protected-outbox", oneRechargeAllocation(40))
+	f.fund(t, oneRechargeAllocation(10000))
+	o := createOrder(t, f, 4000, "protected-outbox", oneRechargeAllocation(4000))
 	ctx := context.Background()
 	var eventID string
 	if err := f.db.QueryRow(ctx, `SELECT id::text FROM outbox_events WHERE aggregate_id=$1 AND event_type='withdrawal.order.reviewing'`, o.ID).Scan(&eventID); err != nil {

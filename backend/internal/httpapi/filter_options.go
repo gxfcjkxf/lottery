@@ -18,7 +18,7 @@ func registerFilterOptions(handle func(string, string, http.HandlerFunc), d Depe
 			"report_commission": "agent member cycle", "report_attribution": "game agent member",
 			"report_rewards": "member reward_order", "report_reward_orders": "member reward_order",
 			"period": "game period", "draw": "game period", "bet_policy": "game", "withdrawal_policy": "game",
-			"audit": "actor audit_resource", "commission": "agent member cycle bet_order anchor_order", "reward": "reward_order member",
+			"audit": "actor audit_resource", "commission": "agent member cycle bet_order", "reward": "reward_order member",
 		}
 		if !slices.Contains(strings.Fields(allowed[resource]), kind) || kind == "" || allowed[resource] == "" {
 			failure(w, r, 400, "REQUEST_INVALID", "筛选项类型无效")
@@ -76,10 +76,6 @@ func registerFilterOptions(handle func(string, string, http.HandlerFunc), d Depe
 			query = `SELECT o.id::text,u.username||' · '||o.points::text||' · '||to_char(o.created_at AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')||' UTC' AS name FROM reward_orders o JOIN brand_members m ON m.id=o.member_id AND m.brand_id=o.brand_id JOIN global_users u ON u.id=m.global_user_id WHERE o.brand_id=$1`
 		case "bet_order":
 			query = `SELECT DISTINCT o.id::text,g.name||' · '||p.period_no||' · '||u.username||' · '||to_char(o.placed_at AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')||' UTC' AS name FROM commission_allocations a JOIN betting_financial_facts o ON o.id=a.order_id AND o.brand_id=a.brand_id JOIN platform_games g ON g.id=o.game_id JOIN platform_game_periods p ON p.id=o.period_id JOIN brand_members m ON m.id=o.brand_member_id AND m.brand_id=o.brand_id JOIN global_users u ON u.id=m.global_user_id WHERE a.brand_id=$1`
-		case "anchor_order":
-			query = `SELECT o.id::text,u.username||' · '||to_char(o.placed_at AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')||' UTC' AS name
-            FROM betting_financial_facts o JOIN brand_members m ON m.id=o.brand_member_id AND m.brand_id=o.brand_id JOIN global_users u ON u.id=m.global_user_id
-            WHERE o.brand_id=$1 AND o.commission_rule_snapshot IS NOT NULL`
 		case "actor":
 			query = `SELECT DISTINCT a.id::text,a.username AS name FROM audit_logs l JOIN admin_accounts a ON a.id=l.actor_id WHERE l.brand_id=$1 UNION SELECT DISTINCT u.id::text,u.username AS name FROM audit_logs l JOIN global_users u ON u.id=l.actor_id WHERE l.brand_id=$1`
 		case "audit_resource":

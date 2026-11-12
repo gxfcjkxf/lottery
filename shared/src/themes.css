@@ -1,0 +1,144 @@
+/* Global palette owner. Component layouts and semantic lottery colors stay local. */
+html[data-theme='jade'] { --theme-primary: #059669; --theme-accent: #d97706; --theme-canvas: #f6f7f5; }
+html[data-theme='vermilion'] { --theme-primary: #dc2626; --theme-accent: #d97706; --theme-canvas: #faf8f5; }
+html[data-theme='ocean'] { --theme-primary: #0284c7; --theme-accent: #ea580c; --theme-canvas: #f4f7fa; }
+html[data-theme='obsidian'] { --theme-primary: #047857; --theme-accent: #b45309; --theme-canvas: #f0f3f1; }
+html[data-theme] { --on-primary: #ffffff; --theme-surface: #fff; --theme-ink: #111827; --theme-muted: #64748b; --theme-line: #dfe5e2; --theme-warning: #b45309; --theme-success: #047857; --theme-danger: #be123c; --theme-danger-bg: #fff1f2; }
+html[data-theme][data-user-theme='dark'] { --on-primary: #071510; --theme-canvas: #090d16; --theme-surface: #111923; --theme-ink: #e5ece9; --theme-muted: #a0b0b9; --theme-line: #303c46; --theme-warning: #fbbf24; --theme-success: #6ee7b7; --theme-danger: #fb7185; --theme-danger-bg: #361c29; }
+html[data-theme='jade'][data-user-theme='dark'], html[data-theme='obsidian'][data-user-theme='dark'] { --theme-primary: #34d399; --theme-accent: #fbbf24; }
+html[data-theme='vermilion'][data-user-theme='dark'] { --theme-primary: #fb7185; --theme-accent: #fbbf24; }
+html[data-theme='ocean'][data-user-theme='dark'] { --theme-primary: #38bdf8; --theme-accent: #fb923c; }
+html[data-theme], html[data-theme] #app, html[data-theme] #app :is(.workspace-frame,.management-console,.login-entry) {
+ --primary: var(--theme-primary) !important;
+ --brand-primary: var(--theme-primary) !important;
+ --brand-accent: var(--theme-accent) !important;
+ --brand-success: var(--success) !important;
+ --brand-danger: var(--danger) !important;
+ --brand-warning: var(--warning) !important;
+ --warning: var(--theme-warning) !important;
+ --muted-light: var(--theme-muted) !important;
+ --info: #0284c7 !important;
+ --info-bg: color-mix(in srgb, var(--info) 12%, var(--surface)) !important;
+ --info-text: #0369a1 !important;
+
+ --primary-dark: color-mix(in srgb, var(--theme-primary) 85%, var(--theme-ink)) !important;
+ --primary-light: color-mix(in srgb, var(--theme-primary) 11%, var(--theme-surface)) !important;
+ --primary-ring: color-mix(in srgb, var(--theme-primary) 24%, transparent) !important;
+ --accent: var(--theme-accent) !important;
+ --accent-light: color-mix(in srgb, var(--theme-accent) 12%, var(--theme-surface)) !important;
+ --canvas: var(--theme-canvas) !important;
+ --surface: var(--theme-surface) !important;
+ --surface-card: var(--theme-surface) !important;
+ --navigation-bg: var(--theme-surface) !important;
+ --ink: var(--theme-ink) !important;
+ --ink-secondary: var(--theme-ink) !important;
+ --muted: var(--theme-muted) !important;
+ --line: var(--theme-line) !important;
+ --line-subtle: color-mix(in srgb, var(--theme-line) 45%, var(--theme-surface)) !important;
+ --table-header-bg: var(--theme-canvas) !important;
+ --danger-text: var(--theme-danger) !important;
+ --danger-bg: var(--theme-danger-bg) !important;
+ --console-sidebar-bg: var(--theme-surface) !important;
+ --console-sidebar-art: none !important;
+ --console-sidebar-ink: var(--theme-muted) !important;
+ --console-sidebar-icon: var(--theme-muted) !important;
+ --console-sidebar-ink-strong: var(--theme-ink) !important;
+ --console-sidebar-hover: var(--primary-light) !important;
+ --console-sidebar-active-bg: var(--primary-light) !important;
+ --console-sidebar-active-ink: var(--theme-primary) !important;
+ --console-sidebar-border: var(--theme-line) !important;
+ --console-topbar-bg: var(--theme-surface) !important;
+ --console-topbar-ink: var(--theme-ink) !important;
+ --console-topbar-border: var(--theme-line) !important;
+ color: var(--ink);
+}
+html[data-theme] body, html[data-theme] #app :is(.app-frame,.app-shell,.main-shell) { background: var(--canvas); color: var(--ink); }
+html[data-theme] #app :is(.topbar,.workspace-header,.workspace-sidebar,.sidebar,.mobile-nav,.page-footer,.detail-modal,.detail-modal-heading,.panel,.user-record-list,.user-data-card,.popover,.account-menu__popover) { background: var(--surface); color: var(--ink); border-color: var(--line); }
+html[data-theme] #app :is(input,textarea,.select-control__trigger,.icon-button,.button-secondary) { background-color: var(--surface); color: var(--ink); border-color: var(--line); }
+html[data-theme] #app .button-primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+html[data-theme][data-user-theme='dark'] #app .button-primary { color: var(--on-primary); }
+html[data-theme] #app :is(.workspace-sidebar,.sidebar) { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M32 0H0V32' fill='none' stroke='%23889988' stroke-opacity='.07'/%3E%3C/svg%3E"); }
+html[data-theme] #app :is(.nav-item.active,.nav-item.selected,.workspace-nav-item.active) { background: var(--primary-light); color: var(--primary-dark); }
+/* The same main workspace material on all four clients. */
+html[data-theme], html[data-theme] #app, html[data-theme] #app :is(.workspace-frame,.management-console,.login-entry) {
+ --radius: 12px !important; --radius-sm: 8px !important;
+ --shadow-sm: 0 1px 3px color-mix(in srgb, var(--theme-ink) 7%, transparent) !important;
+ --shadow: 0 6px 20px color-mix(in srgb, var(--theme-ink) 8%, transparent) !important;
+ --shadow-md: 0 10px 28px color-mix(in srgb, var(--theme-ink) 12%, transparent) !important;
+ --shadow-lg: 0 16px 40px color-mix(in srgb, var(--theme-ink) 16%, transparent) !important;
+ --danger: var(--theme-danger) !important;
+ --success: #059669 !important; --success-text: var(--theme-success) !important;
+ --success-bg: color-mix(in srgb, #059669 10%, var(--theme-surface)) !important;
+ --warning-text: var(--theme-warning) !important;
+ --warning-bg: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-surface)) !important;
+}
+html[data-theme] body { background: var(--canvas); color: var(--ink); }
+html[data-theme] #app :is(.content,.page-content,.main-shell,.workspace-main) { background: var(--canvas); color: var(--ink); }
+html[data-theme] #app :is(.workspace-topbar,.detail-modal,.detail-modal-heading,.cash-balance,.cash-order-card,.table-pagination,.ui-filter-bar,.configured-stakes--dock,.select-control-listbox,.account-popover) { background: var(--surface); color: var(--ink); border-color: var(--line); }
+html[data-theme] #app :is(.panel,.user-record-list,.user-data-card,.management-list) { box-shadow: var(--shadow-sm); backdrop-filter: none; }
+html[data-theme] #app :is(th,thead) { background: var(--table-header-bg); color: var(--ink); border-color: var(--line); }
+html[data-theme] #app td { background-color: var(--surface); color: var(--ink); border-color: var(--line); }
+html[data-theme] #app :is(.text-button,.header-points > strong) { color: var(--primary-dark); }
+html[data-theme] #app .configured-options button { background: var(--surface); color: var(--ink); border-color: var(--line); }
+html[data-theme] #app .configured-options button.selected { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+html[data-theme] #app .button:not(.button-secondary):not(.button-danger):not(.button-ghost) { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+html[data-theme][data-user-theme='dark'] #app .button:not(.button-secondary):not(.button-danger):not(.button-ghost) { color: var(--on-primary); }
+html[data-theme] #app :is(.topbar,.workspace-topbar) { background-image: none; }
+html[data-theme] #app :is(.game-card,.wallet-card) { background: var(--surface); color: var(--ink); border-color: var(--line); box-shadow: var(--shadow-sm); }
+html[data-theme] #app .game-art { background: var(--primary-light); border-color: var(--primary-ring); }
+html[data-theme] #app .announcement { background: var(--accent-light); border-color: color-mix(in srgb,var(--accent) 25%,var(--line)); }
+html[data-theme] #app .announcement :is(h3,p,.announcement-icon,.announcement-link) { color: var(--warning-text); }
+html[data-theme] #app .wallet-primary { background: var(--primary-light); color: var(--ink); border-color: var(--primary-ring); }
+html[data-theme] #app .wallet-primary :is(strong,span,small,p,h2,h3) { color: inherit; }
+html[data-theme] #app :is(.button-secondary,button.secondary,.jc-secondary) { background: var(--surface) !important; color: var(--ink) !important; border-color: var(--line) !important; }
+html[data-theme] #app :is(.button-secondary,button.secondary,.jc-secondary):hover { background: var(--line-subtle) !important; }
+html[data-theme] #app :is(.panel-heading,.panel-header,.management-list-toolbar,.confirm-list,.detail-list) { background: var(--surface); color: var(--ink); border-color: var(--line); }
+html[data-theme] #app :is(.confirm-list,.detail-list,.key-value-list) dt { color: var(--muted); }
+html[data-theme] #app :is(.confirm-list,.detail-list,.key-value-list) dd { color: var(--ink); }
+html[data-theme] #app :is(.breadcrumb,.breadcrumbs) :is(button,b,strong) { color: var(--ink); }
+html[data-theme] #app :is(.locale-picker__trigger,.account-trigger) { background: var(--surface); color: var(--ink); border-color: var(--line); }
+html[data-theme][data-user-theme='dark'] #app .button:not(.button-secondary):not(.button-danger):not(.button-ghost) { color: var(--on-primary) !important; }
+html[data-theme] #app :is(.confirm-list,.detail-list,.key-value-list) > div { border-color: var(--line); }
+
+/* Player links and selected controls follow the palette, not saved brand hex colors. */
+html[data-theme] #app .workspace-frame a:not([class]) { color: var(--primary-dark); }
+html[data-theme] #app .workspace-frame .button-primary:hover:not(:disabled) { background: var(--primary-dark) !important; border-color: var(--primary-dark) !important; }
+html[data-theme] #app .workspace-frame .configured-options button[aria-pressed="true"]:not(.configured-wave-option) { background: var(--primary) !important; border-color: var(--primary) !important; color: var(--on-primary) !important; }
+html[data-theme] #app .workspace-frame .configured-options button[aria-pressed="true"]:not(.configured-wave-option) strong { color: inherit; }
+html[data-theme] #app .workspace-frame :is(.digit-slots button.selected,.number-button.picked,.special-number.picked) { background: var(--primary) !important; border-color: var(--primary) !important; color: var(--on-primary) !important; }
+html[data-theme] #app .workspace-frame :is(.result-foot a,.form-between a,.auth-switch a,.round-link,.captcha-refresh) { color: var(--primary-dark); }
+
+/* Native fields and scroll containers use the resolved theme as well. */
+html[data-theme] {
+ --scrollbar-thumb: color-mix(in srgb, var(--theme-primary) 45%, var(--theme-muted));
+ scrollbar-color: var(--scrollbar-thumb) var(--theme-canvas);
+}
+html[data-theme][data-user-theme='light'] { color-scheme: light; }
+html[data-theme][data-user-theme='dark'] { color-scheme: dark; }
+html[data-theme] #app { color-scheme: inherit; }
+
+html[data-theme][data-user-theme='dark'] #app { --info-text: #38bdf8 !important; }
+html[data-theme] #app {
+ --lottery-attribute-zodiac: #2563eb;
+ --lottery-element-metal: var(--warning-text);
+ --lottery-element-wood: var(--success-text);
+ --lottery-element-water: #2563eb;
+ --lottery-element-fire: #9f1239;
+ --lottery-element-earth: #854d0e;
+ --lottery-attribute-parity: #0284c7;
+ --lottery-attribute-sum-parity: var(--warning-text);
+ --lottery-attribute-animal: var(--warning-text);
+ --lottery-attribute-total-parity: var(--success-text);
+ --lottery-wave-green-text: var(--success-text);
+}
+html[data-theme][data-user-theme='dark'] #app {
+ --lottery-attribute-zodiac: #38bdf8;
+ --lottery-element-water: #38bdf8;
+ --lottery-element-fire: #fb7185;
+ --lottery-element-earth: #fbbf24;
+ --lottery-attribute-parity: #38bdf8;
+}
+
+html[data-theme][data-user-theme='dark'] { --slider-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23071510' stroke-width='2'%3E%3Cpath d='m8 5 7 7-7 7'/%3E%3C/svg%3E"); }
+
+html[data-theme][data-user-theme='dark'] { --empty-state-illustration: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='40' viewBox='0 0 48 40' fill='none'%3E%3Crect x='13' y='7' width='23' height='28' rx='4' stroke='%23a0b0b9' stroke-width='1.5'/%3E%3Cpath d='M19 15h11M19 21h11M19 27h6M9 11v19' stroke='%23a0b0b9' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); }

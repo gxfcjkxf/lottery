@@ -10,7 +10,7 @@ func TestRechargeOutboxFailureRollsBackCreditOrderAndAudit(t *testing.T) {
 	f := newFinanceFixture(t)
 	ctx := context.Background()
 	tx := financeTx(t, f.pool)
-	r, e := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, points.Amount(20), "proof", "test", "fixture", financeMeta(f.adminID))
+	r, e := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, points.Amount(2000), "proof", "test", "fixture", financeMeta(f.adminID))
 	if e != nil {
 		t.Fatal(e)
 	}

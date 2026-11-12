@@ -30,7 +30,7 @@ func sessionFailure(r *http.Request, code, message string) (string, string) {
 		return "SERVICE_UNAVAILABLE", "服务暂时不可用，请稍后重试"
 	}
 	if replaced {
-		return "AUTH_SESSION_REPLACED", "账号有新的登录，当前会话已失效，请重新登录"
+		return "AUTH_SESSION_REPLACED", "账号在别处登录,如果不是本人行为,请重新登录后修改密码."
 	}
 	return code, message
 }

@@ -49,7 +49,7 @@ func TestPlatformDeletesAdminWithHistoricalReferences(t *testing.T) {
 			if _, err := f.pool.Exec(ctx, `INSERT INTO global_users(id,username) VALUES($1,'history_member')`, user); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := f.pool.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version,created_by) VALUES($1,$2,$3,'operator','v1','v1',$4)`, member, managedBrand, user, target.ID); err != nil {
+			if _, err := f.pool.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,created_by) VALUES($1,$2,$3,'operator',$4)`, member, managedBrand, user, target.ID); err != nil {
 				t.Fatal(err)
 			}
 			var before string

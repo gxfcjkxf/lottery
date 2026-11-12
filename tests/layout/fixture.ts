@@ -2,6 +2,7 @@ import { expect, type Page, type Locator } from '@playwright/test'
 import { expectFilterSpacing } from './filter-spacing'
 import {readFileSync} from 'node:fs'
 import {configuredDemo} from '../../shared/src/configured-rules'
+import { redundantAnnotation } from '../ui-copy-contract.mjs'
 const configuredSnapshot=configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/mark_six_v2.json','utf8')))
 
 const portBase = Number(process.env.LOTTERY_LAYOUT_PORT_BASE ?? 15273)
@@ -64,15 +65,17 @@ export async function installLayoutApi(page: Page, locale: 'en' | 'zh-CN') {
     const respond = (data: unknown) => route.fulfill({ json: { success: true, data } })
     if (path === '/api/v1/platform/presentation') return respond({ display_name: 'Layout trial', logo_text: 'L', logo_url: '' })
     if (['/api/v1/admin/auth/config', '/api/v1/agent/auth/config'].includes(path)) return respond({captcha_enabled:false})
-    if (path === '/api/v1/display-settings') return respond({ timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' })
+    if (path === '/api/v1/display-settings') return respond({ theme: 'jade', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' })
     if (path === '/api/v1/configured/games') return respond({games:[{id:gameId,name:'Mark Six'}], total_count: '1'})
     if (path === '/api/v1/games') return respond({items:[], total_count: '0'})
+    if (path === '/api/v1/announcements') return respond({items:[]})
+    if (path === '/api/v1/brand-contacts') return respond({items:[], default_id:null})
     if (path === '/api/v1/me/betting-preferences') return respond({brand_id:gameId,member_id:gameId,quick_amounts:[]})
     if (path === '/api/v1/betting-summary') return respond({brand_id:gameId,member_id:gameId,unsettled_points:'120',today_net_points:'-30'})
     if (path === '/api/v1/context') return respond({
       auth: { captcha_enabled: false, telegram_enabled: false, telegram_client_id: '' },
       available_locales: ['en', 'zh-CN'], brand: { id: gameId, code: 'layout', name: 'Layout trial', status: 'active', default_locale: 'en', timezone: 'Asia/Singapore', theme, config_version: 1 },
-      features: { pwa: false, real_payments: false }, terms: { privacy_policy_version: 'layout-1', service_terms_version: 'layout-1' },
+      features: { pwa: false, real_payments: false },
     })
     if (['/api/v1/agent/me', '/api/v1/me', '/api/v1/admin/me', '/api/v1/platform/me'].includes(path)) return route.fulfill({ status: 401, json: { success: false, error: { code: 'UNAUTHORIZED', message: 'Sign in required' } } })
     if (path === `/api/v1/platform-games/${gameId}`) {const now=Date.now();return respond({game:{id:gameId,name:'Mark Six'},plays:[],rule_protocol:'configured',periods:[{id:gameId,game_id:gameId,period_no:'2026111',bet_start_at:new Date(now-3600000).toISOString(),bet_end_at:new Date(now+3600000).toISOString(),draw_at:new Date(now+3660000).toISOString(),result:null,published_at:null}], total_count: '1'})}
@@ -135,6 +138,14 @@ export async function expectPageActionControls(page: Page) {
 }
 
 export async function expectNoPageOverflow(page: Page) {
+  const redundantCopy = await page.locator('h1,h2,h3,h4,th,dt,label,button,[role=option],input[placeholder],textarea[placeholder]').evaluateAll((elements, pattern) => {
+    const forbidden = new RegExp(pattern, 'i')
+    return elements.filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden').flatMap(el => {
+      const values = [el.textContent?.trim(), el.getAttribute('placeholder'), el.getAttribute('aria-label')].filter((text): text is string => Boolean(text))
+      return values.filter(text => forbidden.test(text))
+    })
+  }, redundantAnnotation.source)
+  expect(redundantCopy, 'Visible labels and placeholders must omit redundant parenthetical instructions').toEqual([])
   await expectFilterSpacing(page)
   await expect.poll(() => page.evaluate(() => innerWidth)).toBe(page.viewportSize()!.width)
   await page.locator('.locale-picker__trigger').evaluateAll(async buttons => {
@@ -246,7 +257,6 @@ export async function expectRefreshControls(page: Page) {
   const open=await menu.count()>0 && !await menu.isVisible();
   if(open)await page.locator('.workspace-trailing > button.icon-button').click();
   const buttons = page.locator('[data-refresh-button]').filter({ visible: true });
-  expect(await buttons.count()).toBeGreaterThan(0);
   for (const button of await buttons.all()) {
     const management = await button.evaluate(el => !!el.closest('.management-console'));
     const compact = management && await page.evaluate(() => matchMedia('(min-width: 901px) and (pointer: fine)').matches);

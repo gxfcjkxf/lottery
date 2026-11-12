@@ -34,7 +34,7 @@ func TestPointsAdjustmentSharesQuotaAndPreservesRemark(t *testing.T) {
 		}
 	}
 	quota("60")
-	if pointWallet(t, f).AvailablePoints != 40 {
+	if pointWallet(t, f).AvailablePoints != 4000 {
 		t.Fatal("replay credited twice")
 	}
 	// A recharge consumes the very same pool.

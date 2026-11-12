@@ -43,7 +43,7 @@ func newNormalAgentMemberInBrand(t *testing.T, f managementHTTP, brand, suffix s
 	if _, err := f.pool.Exec(ctx, `INSERT INTO global_users(id,username) VALUES($1,$2)`, user, "agent_test_"+suffix); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.pool.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version,status,terms_accepted) VALUES($1,$2,$3,'operator','dev-1','dev-1','normal',true)`, member, brand, user); err != nil {
+	if _, err := f.pool.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,status) VALUES($1,$2,$3,'operator','normal')`, member, brand, user); err != nil {
 		t.Fatal(err)
 	}
 	return member

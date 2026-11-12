@@ -10,18 +10,18 @@ import (
 // BetQuote contains the validated, expanded stake for a selection. It does not
 // evaluate a draw or estimate any prize.
 type BetQuote struct {
-	Normalized       Selection     `json:"normalized"`
-	Expanded         []Selection   `json:"expanded_bets"`
-	CombinationCount int           `json:"combination_count"`
-	UnitPoints       points.Amount `json:"unit_points"`
-	Multiplier       points.Amount `json:"multiplier"`
-	BetPoints        points.Amount `json:"bet_points"`
+	Normalized       Selection      `json:"normalized"`
+	Expanded         []Selection    `json:"expanded_bets"`
+	CombinationCount int            `json:"combination_count"`
+	UnitPoints       points.Amount  `json:"unit_points"`
+	Multiplier       points.Integer `json:"multiplier"`
+	BetPoints        points.Amount  `json:"bet_points"`
 }
 
 // PrepareBet validates a definition and selection and returns their exact
 // stake. The caller owns persistence and settlement; this function has no draw
 // input and performs no payout calculation.
-func PrepareBet(ctx context.Context, d Definition, selection Selection, multiplier points.Amount) (BetQuote, error) {
+func PrepareBet(ctx context.Context, d Definition, selection Selection, multiplier points.Integer) (BetQuote, error) {
 	if ctx == nil {
 		return BetQuote{}, ErrInvalid
 	}

@@ -18,7 +18,7 @@ if(frozen.value){amount.value=frozen.value.body.points;remark.value=frozen.value
 watch(frozen,value=>{if(value)pendingManualRecharges.set(scope,value);else pendingManualRecharges.delete(scope);emit('pending',!!value)},{flush:'sync',immediate:true})
 function updateAmount(event:Event){
  const input=event.target as HTMLInputElement
- if(/^\d*$/.test(input.value))amount.value=input.value
+ if(/^\d*(?:\.\d{0,2})?$/.test(input.value))amount.value=input.value
  else input.value=amount.value
 }
 async function submit(){
@@ -43,7 +43,7 @@ useOperationToast(() => notice.value, () => t('admin.recharge.credited'), 'succe
   <p><strong>{{t('admin.recharge.member')}}</strong> {{username}}</p>
   <form v-write-guard="busy" novalidate v-inline-validation class="manual-form ui-form" @submit.prevent="withGlobalLoading(submit)">
    <div class="recharge-amount-row">
-    <label>{{t('admin.workbench.field.rechargePoints')}}<input :value="amount" @input="updateAmount" inputmode="numeric" required pattern="[1-9][0-9]*" :data-validation-format="formValidationText('positiveInteger')" :disabled="busy||!!frozen" /></label>
+    <label>{{t('admin.workbench.field.rechargePoints')}}<input :value="amount" @input="updateAmount" inputmode="decimal" required pattern="(0|[1-9][0-9]*)([.][0-9]{1,2})?" :data-validation-format="formValidationText('positivePoints')" :disabled="busy||!!frozen" /></label>
     <RechargeQuotaPanel external-feedback summary-only ref="quota" :brand-id="brandId" :locale="locale" base-path="/api/v1/admin" @failure="cause => { error = errorMessage(cause,'read') }" />
    </div>
    <label>{{t('admin.copy.fd2d2c8b')}}<input v-model.trim="remark" maxlength="500" :disabled="busy||!!frozen" /></label>

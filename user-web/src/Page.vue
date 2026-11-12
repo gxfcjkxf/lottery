@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import UnreadBadge from "./UnreadBadge.vue";
+import { createNotificationApi } from "./notification-api";
+import ThemeSwitcher from "@lottery/shared/ThemeSwitcher.vue"
+import BrandContacts from "./BrandContacts.vue";
 import SiteUnavailable from "./SiteUnavailable.vue";
 import { useOperationToast, useCaptchaRefresh } from "@lottery/shared";
 import LoginEntry from '@lottery/shared/LoginEntry.vue'
@@ -14,6 +18,7 @@ import SiteIcon from "@lottery/shared/SiteIcon";
 import { vRefreshButton } from '@lottery/shared';
 import { useSessionReplacement, vGlobalLoading } from "@lottery/shared";
 import LanguageSwitcher from '@lottery/shared/LanguageSwitcher.vue';
+import SelectControl from '@lottery/shared/SelectControl.vue';
 import DetailModal from '@lottery/shared/DetailModal.vue';
 import BettingPreferencesSettings from './BettingPreferencesSettings.vue';
 import PolicyContent from './PolicyContent.vue';
@@ -25,20 +30,22 @@ import {
   nativeLocaleName,
   type Language,
 } from "@lottery/shared";
-import WithdrawalPanel from "./WithdrawalPanel.vue";
+import CurrencyWallet from "./CurrencyWallet.vue";
 import WalletSummary from "./WalletSummary.vue";
 import HeaderPoints from './HeaderPoints.vue';
 import UserOverview from './UserOverview.vue';
 import { loadUserGames, gamePath, rememberGame, recalledGame, type UserGame } from './user-games';
-import RechargePanel from "./RechargePanel.vue";
+
 import ConfiguredBetting from './ConfiguredBetting.vue';
 import BettingHistory from './BettingHistory.vue';
 import DrawArchive from './DrawArchive.vue';
+import Announcements from "./Announcements.vue";
 import NotificationsPanel from "./NotificationsPanel.vue";
 import JoinCodesPanel from "./JoinCodesPanel.vue";
 import { setUserLocale, useUserI18n } from "./i18n";
+import { resolvedTheme } from "@lottery/shared/theme";
 import { parentUserPage } from './navigation';
-import { resolveJoinLink, joinLinkFields, joinLinkKey, type JoinLink } from './join-attribution';
+import { resolveJoinLink, joinLinkFields, type JoinLink } from './join-attribution';
 import {
   createAuthClient,
   type AuthChallenge,
@@ -48,7 +55,6 @@ import {
 import {
   ApiError,
   discardAccessToken,
-  isBrandJoinRequired,
   isTelegramClientIdConfigured,
   loadTelegramLoginSdk,
   normalizeIdentifier,
@@ -64,6 +70,7 @@ const i18n = useUserI18n();
 const localeCode = i18n.locale;
 const locale = computed<Language>(() => localeCode.value === "zh-CN" ? "zh" : "en");
 const ui = i18n.t;
+
 function setLocale(value: string) { setUserLocale(i18n, value === "zh" ? "zh-CN" : value); }
 function languageLabel(code: Language) { return nativeLocaleName(code === "en" ? "en" : "zh-CN"); }
 const api = createApiClient({
@@ -77,6 +84,7 @@ const connectionMessage = ref(ui('user.page.checking'));
 const siteEntryState = ref<"loading" | "ready" | "unbound" | "failed">("loading");
 const reloadSite = () => window.location.reload();
 const brandName = ref("");
+const brandContextId = ref("");
 const brandLogoText = ref("");
 const brandLogoUrl = ref<string | null>(null);
 const brandLogoFailed = ref(false);
@@ -85,25 +93,12 @@ const contextLoaded = ref(false);
 const brandContent = ref({ en: {tagline:"",announcement:""}, zh: {tagline:"",announcement:""} });
 const brandPaused = ref(false);
 
-const privacyAgreed = ref(false);
-const serviceTermsAgreed = ref(false);
-const policiesAgreed = computed({ get: () => privacyAgreed.value && serviceTermsAgreed.value, set: value => { privacyAgreed.value = value; serviceTermsAgreed.value = value; } });
-const policyDialog = ref<'privacy' | 'terms' | null>(null);
-const joinTermsAgreed = ref(false);
-const joinTermsPrompt = ref(false);
-const joinAttributionFixed = ref(false);
 const activeJoinLink = ref<JoinLink | null>(null);
 const joinLinkBrand = ref('');
 const joinLinkChecking = ref(true);
 const joinLinkFailed = ref(false);
 const joinLinkUnavailable = ref(false);
 let joinLinkGeneration = 0;
-const pendingBrandJoin = ref<{
-  identifier: string;
-  password: string;
-  source: "none" | "agent" | "referral";
-  fields: { agent_code?: string; referral_code?: string };
-} | null>(null);
 const authBusy = ref(false);
 const logoutError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const authError = ref<string | import("@lottery/shared").LocalizedMessage>("");
@@ -112,14 +107,40 @@ const password = ref("");
 const authProfile = ref<AuthProfile | null>(null);
 let profileReadGeneration = 0;
 const notificationUnreadCount = ref<string | null>(null);
+const notificationCountError = ref('');
+let notificationCountGeneration = 0;
+function updateNotificationUnreadCount(count: string | null) {
+  notificationCountGeneration++;
+  notificationUnreadCount.value = count;
+}
+async function loadNotificationUnreadCount() {
+  const generation = ++notificationCountGeneration;
+  if (!authProfile.value || route.path === '/notifications') return;
+  const member = authProfile.value.member;
+  notificationCountError.value = '';
+  try {
+    const result = await createNotificationApi({ brandCode: walletBrandCode }).list(1);
+    if (generation !== notificationCountGeneration) return;
+    if (result.brand_id !== member.brand_id || result.member_id !== member.id) {
+      throw new Error('Notification scope mismatch');
+    }
+    notificationUnreadCount.value = result.unread_count;
+  } catch (error) {
+    if (generation !== notificationCountGeneration) return;
+    notificationUnreadCount.value = null;
+    if (error instanceof Error && 'status' in error && error.status === 401) authProfile.value = null;
+    else notificationCountError.value = publicErrorI18n.errorText(error);
+  }
+}
 const profileLoading = ref(true);
 const profileSaving = ref(false);
 const profileEditorOpen = ref(false);
 const profileUsername = ref("");
 const profilePhone = ref("");
+const profileContacts = ref({ wechat: "", telegram: "", whatsapp: "" });
+const contactKeys = ["wechat", "telegram", "whatsapp"] as const;
 const profileError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const profileNotice = ref("");
-const termsVersions = ref<{ privacy_policy_version: string; service_terms_version: string } | null>(null);
 const authConfiguration = ref<AuthFeatures>({
   captcha_enabled: false,
   telegram_enabled: false,
@@ -163,6 +184,7 @@ let workspaceSyncTimer: ReturnType<typeof setInterval> | undefined;
 let tickTimer: ReturnType<typeof setInterval> | undefined;
 let pageGeneration = 0;
 onUnmounted(() => {
+  notificationCountGeneration++;
   pageGeneration++;
   joinLinkGeneration++;
   if (tickTimer) clearInterval(tickTimer);
@@ -199,7 +221,6 @@ const t = computed(() => ({
   password: ui('user.page.password'),
   telegram: ui('user.page.telegram'),
   verification: ui('user.page.verification'),
-  terms: ui('user.page.terms'),
   continue: ui('user.page.continue'),
   invites: ui('user.page.invites'),
   joinSourceLabel: ui('user.page.joinSourceLabel'),
@@ -221,10 +242,10 @@ const nav = computed(() => [
   { to: "/", label: t.value.home, icon: "home" as const },
   { to: "/orders", label: t.value.orders, icon: "ticket" as const },
   { to: "/wallet", label: t.value.wallet, icon: "wallet" as const },
-  { to: "/withdraw", label: ui('user.withdrawal.action'), icon: "wallet" as const },
   { to: "/results", label: t.value.results, icon: "calendar" as const },
-  { to: "/notifications", label: t.value.notifications, icon: "bell" as const },
+  { to: "/announcements", label: ui('user.updates.title'), icon: "bell" as const },
   { to: "/invites", label: t.value.invites, icon: "link" as const },
+  { to: "/contacts", label: ui('user.contacts.title'), icon: "support" as const },
   { to: "/help", label: t.value.help, icon: "help" as const },
 ]);
 const mobileNav = computed(() => [
@@ -234,27 +255,35 @@ const mobileNav = computed(() => [
   { to: '/account', label: ui('user.nav.personal'), icon: "user" as const },
 ]);
 const desktopNav = computed(() => [...nav.value, mobileNav.value[3]!]);
-const accountTools = computed(() => nav.value.filter(item => ['/invites', '/help'].includes(item.to)));
+const accountTools = computed(() => nav.value.filter(item => ['/announcements', '/invites', '/contacts', '/help'].includes(item.to)));
 const helpFaqs = [
   ['user.help.bettingQuestion', 'user.help.bettingAnswer'],
   ['common.numberPicksQuestion', 'common.numberPicksAnswer'],
   ['user.help.ordersQuestion', 'user.help.ordersAnswer'],
-  ['common.pointsQuestion', 'user.help.pointsAnswer'],
+  ['user.help.pointsQuestion', 'user.help.pointsAnswer'],
+  ['user.help.exchangeQuestion', 'user.help.exchangeAnswer'],
+  ['user.help.depositQuestion', 'user.help.depositAnswer'],
+  ['user.help.withdrawalQuestion', 'user.help.withdrawalAnswer'],
+  ['user.help.paymentIssueQuestion', 'user.help.paymentIssueAnswer'],
   ['user.help.referralQuestion', 'user.help.referralAnswer'],
   ['user.help.preferencesQuestion', 'user.help.preferencesAnswer'],
+  ['user.help.updatesQuestion', 'user.help.updatesAnswer'],
+  ['user.help.profileQuestion', 'user.help.profileAnswer'],
+  ['user.help.supportQuestion', 'user.help.supportAnswer'],
 ] as const;
 const bettingGameTitle = ref('');
 const pageTitle = computed(() => {
   const path = route.path;
   const item = nav.value.find(item => item.to === path);
-  if (path === '/withdraw') return ui('user.withdrawal.records');
+  if (path === '/notifications') return ui('user.updates.title');
+  if (path === '/withdraw') return ui('cash.withdrawal');
   if (item) return item.label;
   if (path === '/account') return ui('user.nav.personal');
   if (path === '/login') return t.value.login;
   if (path === '/register') return ui('user.auth.registerAction');
   if (path === '/terms') return ui('common.serviceTerms');
   if (path === '/privacy') return ui('common.privacyPolicy');
-  if (path === '/recharge') return ui('user.recharge.title');
+  if (path === '/recharge') return ui('cash.deposit');
   if (path === '/wallet/buckets') return ui('user.wallet.buckets');
   if (path === '/wallet/ledger') return ui('user.wallet.ledger');
   if (path.startsWith('/orders/')) return t.value.orders;
@@ -275,14 +304,14 @@ const pickerGames = computed(() => route.path === '/orders'
   ? [{ id: '', name: ui('user.orders.allGames') }, ...new Map([...allUserGames.value, ...historyGames.value].map(game => [game.id, game])).values()]
   : allUserGames.value);
 const pickerGame = computed(() => route.path === '/orders' ? pickerGames.value.find(game => game.id === ordersGameId.value) : currentGame.value);
-function choosePickerGame(game: { id: string; name: string }) {
-  if (route.path === '/orders') { historyGameId.value = game.id; gamePickerOpen.value = false; }
-  else selectWorkspaceGame(allUserGames.value.find(item => item.id === game.id)!);
+function choosePickerGame(id: string) {
+  menuOpen.value = false;
+  if (route.path === '/orders') historyGameId.value = id;
+  else selectWorkspaceGame(allUserGames.value.find(item => item.id === id)!);
 }
 
 const gamesError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const gamesReady = ref(false);
-const gamePickerOpen = ref(false);
 const menuOpen = ref(false);
 const sidebarCollapsed = ref(false);
 const overviewOpen = ref(false);
@@ -317,12 +346,12 @@ async function loadWorkspaceGames() {
 function selectWorkspaceGame(game: UserGame) {
   chosenGame.value = game;
   rememberGame(localStorage, joinLinkBrand.value, game);
-  gamePickerOpen.value = false; gamesError.value = '';
+  gamesError.value = '';
   if (route.path === '/results') void router.push({ path: '/results', query: { platform_game_id: game.id } });
   else if (route.path !== '/' && route.path !== '/orders') void router.push(gamePath(game));
 }
 function workspaceParent() {
-  menuOpen.value = false; gamePickerOpen.value = false;
+  menuOpen.value = false;
   void router.push(['/orders','/wallet','/account'].includes(route.path) ? '/' : parentUserPage(route.path));
 }
 watch(() => [contextLoaded.value, isAuth.value, authProfile.value], () => {
@@ -331,23 +360,26 @@ watch(() => [contextLoaded.value, isAuth.value, authProfile.value], () => {
 watch(() => authProfile.value?.member.id, () => { historyGames.value = []; historyGameId.value = null; });
 watch(() => route.fullPath, () => {
   profileEditorOpen.value = false;
-  menuOpen.value = false; gamePickerOpen.value = false;
+  menuOpen.value = false;
   const game = allUserGames.value.find(g => g.id === String(route.params.gameId ?? ''));
   if (game) { chosenGame.value = game; rememberGame(localStorage, joinLinkBrand.value, game); }
 });
 
 const activePage = computed(() => route.path);
+const isUpdatesPage = computed(() => ['/announcements', '/notifications'].includes(route.path));
+function moveUpdatesTab(event: KeyboardEvent) {
+  const path = route.path === '/announcements' ? '/notifications' : '/announcements';
+  void router.push(path);
+  (event.currentTarget as HTMLElement).parentElement?.querySelector<HTMLButtonElement>(`[data-path="${path}"]`)?.focus();
+}
 function isNavItemActive(path: string, includeAccountTools = true) {
   return activePage.value === path ||
-    (includeAccountTools && path === '/account' && accountTools.value.some(item => item.to === activePage.value)) ||
+    (path === '/announcements' && isUpdatesPage.value) ||
+    (includeAccountTools && path === '/account' && (isUpdatesPage.value || accountTools.value.some(item => item.to === activePage.value))) ||
     (path === '/' && (activePage.value === '/games' || activePage.value.startsWith('/games/') || activePage.value.startsWith('/configured/') || activePage.value === '/bet/confirm')) ||
     (path === "/games" && activePage.value.startsWith("/games/")) ||
     (path === "/orders" && activePage.value.startsWith("/orders/")) ||
-    (path === "/wallet" && (activePage.value.startsWith("/wallet/") || (activePage.value === '/recharge' || includeAccountTools && activePage.value === '/withdraw')));
-}
-function authTerms() {
-  if (!termsVersions.value) throw new Error('Policy versions have not loaded');
-  return { ...termsVersions.value };
+    (path === "/wallet" && (activePage.value.startsWith("/wallet/") || (activePage.value === '/recharge' || activePage.value === '/withdraw')));
 }
 async function refreshCaptcha() {
   if (
@@ -455,37 +487,16 @@ function passwordError() {
   if (characters < 6 || characters > 30) return ui('user.auth.passwordCharacters');
   return "";
 }
-function handleAuthError(error: unknown) {
-  if (isBrandJoinRequired(error)) {
-    joinAttributionFixed.value = false;
-    const pending = pendingBrandJoin.value;
-    if (pending) {
-      identifier.value = pending.identifier;
-      password.value = pending.password;
-    }
-    joinTermsPrompt.value = true;
-    joinTermsAgreed.value = false;
-    authError.value = ui('user.auth.joinTerms');
-    return;
-  }
-  authError.value = publicErrorMessage(error);
-}
 async function finishAuth(
   session: import("../../shared/src/auth").AuthSession,
 ) {
-  pendingBrandJoin.value = null;
-  joinTermsPrompt.value = false;
-  joinAttributionFixed.value = false;
   password.value = "";
   authProfile.value = discardAccessToken(session);
   await router.replace("/");
 }
 async function authSubmit() {
   sessionReplaced.value = false;
-  if (joinTermsPrompt.value) return;
   authError.value = "";
-  joinAttributionFixed.value = false;
-  joinTermsPrompt.value = false;
   if (!authConfigurationLoaded.value) {
     authError.value = ui('user.auth.settingsUnavailable');
     return;
@@ -508,13 +519,6 @@ async function authSubmit() {
     authError.value = ui('user.auth.captcha');
     return;
   }
-  if (
-    route.path === "/register" &&
-    (!privacyAgreed.value || !serviceTermsAgreed.value)
-  ) {
-    authError.value = ui('user.auth.acceptPolicies');
-    return;
-  }
   let choice: ReturnType<typeof captureJoinChoice>;
   try {
     choice = captureJoinChoice();
@@ -522,19 +526,11 @@ async function authSubmit() {
     authError.value = error instanceof Error ? publicErrorMessage(error) : t.value.joinSourceRequired;
     return;
   }
-  if (route.path === "/login") {
-    pendingBrandJoin.value = {
-      identifier: normalized.identifier,
-      password: password.value,
-      ...choice,
-    };
-  }
   authBusy.value = true;
   try {
     const session =
       route.path === "/register"
         ? await authApi.register({
-            ...authTerms(),
             ...captchaInput(),
             ...choice.fields,
             password: password.value,
@@ -549,8 +545,7 @@ async function authSubmit() {
           });
     await finishAuth(session);
   } catch (error) {
-    if (isBrandJoinRequired(error) && route.path === "/login") handleAuthError(error);
-    else if (route.path === "/register" && error instanceof ApiError && error.code === "IDENTITY_EXISTS")
+    if (route.path === "/register" && error instanceof ApiError && error.code === "IDENTITY_EXISTS")
       authError.value = ui('user.auth.accountExists');
     else authError.value = publicErrorMessage(error);
     await refreshCaptcha();
@@ -558,82 +553,12 @@ async function authSubmit() {
     authBusy.value = false;
   }
 }
-async function acceptBrandTermsAndLogin() {
-  if (!joinTermsAgreed.value) return;
-  if (!authConfigurationLoaded.value) {
-    authError.value = ui('user.auth.settingsUnavailable');
-    return;
-  }
-  if (!captchaReady.value) {
-    authError.value = ui('user.auth.captchaRetry');
-    return;
-  }
-  const pending = pendingBrandJoin.value;
-  if (!pending) {
-    authError.value = ui('user.auth.signInAgain');
-    joinTermsPrompt.value = false;
-    return;
-  }
-  authError.value = "";
-  authBusy.value = true;
-  try {
-    const session = await authApi.login({
-      identifier: pending.identifier,
-      password: pending.password,
-      ...authTerms(),
-      ...captchaInput(),
-      ...pending.fields,
-    });
-    joinTermsPrompt.value = false;
-    await finishAuth(session);
-  } catch (error) {
-    if (
-      error instanceof ApiError &&
-      error.code?.toUpperCase() === "JOIN_ATTRIBUTION_FIXED"
-    ) {
-      joinAttributionFixed.value = true;
-      authError.value = ui('user.auth.joinFixed');
-    } else if (isBrandJoinRequired(error)) {
-      handleAuthError(error);
-    } else {
-      authError.value = publicErrorMessage(error);
-    }
-    await refreshCaptcha();
-  } finally {
-    authBusy.value = false;
-  }
-}
-async function useDirectEntry() {
-  try {
-    window.localStorage.removeItem(joinLinkKey(joinLinkBrand.value));
-  } catch {
-    joinLinkFailed.value = true;
-    return;
-  }
-  activeJoinLink.value = null;
-  joinLinkUnavailable.value = false;
-  const query = {...route.query};
-  delete query.agent_code;
-  delete query.referral_code;
-  await router.replace({path: route.path, query});
-}
-function cancelBrandJoin(): void {
-  pendingBrandJoin.value = null;
-  joinTermsPrompt.value = false;
-  joinTermsAgreed.value = false;
-  joinAttributionFixed.value = false;
-  void useDirectEntry();
-  authError.value = "";
-}
 async function startTelegramAuth() {
   sessionReplaced.value = false;
   if (!telegramReady.value || authBusy.value || joinLinkChecking.value || joinLinkFailed.value || joinLinkUnavailable.value) return;
-  if (!privacyAgreed.value || !serviceTermsAgreed.value) {
-    authError.value = ui('user.auth.acceptTelegramPolicies');
-    return;
-  }
   authBusy.value = true;
   authError.value = "";
+  telegramError.value = "";
   try {
     const choice = route.path === '/register' ? captureJoinChoice() : { source: 'none' as const, fields: {} };
     const challenge = telegramChallenge.value!;
@@ -645,7 +570,6 @@ async function startTelegramAuth() {
       id_token: idToken,
       challenge_id: challenge.id,
       nonce: challenge.nonce,
-      ...authTerms(),
       ...choice.fields,
     });
     await finishAuth(session);
@@ -668,12 +592,13 @@ async function loadProfile() {
     authProfile.value = profile;
     profileUsername.value = profile.user.username ?? "";
     profilePhone.value = profile.user.phone ?? "";
+    for (const key of contactKeys) profileContacts.value[key] = profile.user[key] ?? "";
   } catch (error) {
     if (requestGeneration !== profileReadGeneration || mountedGeneration !== pageGeneration) return;
     if (error instanceof Error && "status" in error && error.status === 401) {
       authProfile.value = null;
-      profileError.value = ui('user.auth.profileSignIn');
-      await router.replace({ path: '/login', query: route.query });
+      if (!['/login','/register','/announcements','/terms','/privacy'].includes(route.path)) profileError.value = ui('user.auth.profileSignIn');
+      if (!['/login','/register','/announcements','/terms','/privacy'].includes(route.path)) await router.replace({ path: '/login', query: route.query });
     } else profileError.value = publicErrorMessage(error);
   } finally {
     if (requestGeneration === profileReadGeneration && mountedGeneration === pageGeneration) profileLoading.value = false;
@@ -686,16 +611,21 @@ function expireRechargeProfile() {
   profileLoading.value = false;
   profileUsername.value = "";
   profilePhone.value = "";
+  profileContacts.value = { wechat: "", telegram: "", whatsapp: "" };
 }
+watch(() => [authProfile.value?.member.brand_id, authProfile.value?.member.id, walletBrandCode] as const, () => {
+  updateNotificationUnreadCount(null);
+  void loadNotificationUnreadCount();
+});
+watch(() => route.path, () => { void loadNotificationUnreadCount(); });
 watch(authProfile, profile => {
   if (profile) return;
   profileEditorOpen.value = false;
   allUserGames.value = [];
   chosenGame.value = null;
   gamesReady.value = false;
-  gamePickerOpen.value = false;
   menuOpen.value = false;
-  if (!['/login', '/register', '/terms', '/privacy'].includes(route.path)) {
+  if (!['/login', '/register', '/terms', '/privacy', '/announcements'].includes(route.path)) {
     void router.replace({ path: '/login', query: route.query });
   }
 }, { flush: 'sync' });
@@ -706,7 +636,10 @@ const sessionReplaced = useSessionReplacement(() => !!authProfile.value, () => a
 async function saveProfile() {
   profileError.value = "";
   profileNotice.value = "";
-  const next: { username?: string; phone?: string } = {};
+  const next: { username?: string; phone?: string; wechat?: string; telegram?: string; whatsapp?: string } = {};
+  for (const key of contactKeys) {
+    if (!authProfile.value?.user[key] && profileContacts.value[key].trim()) next[key] = profileContacts.value[key].trim();
+  }
   if (!authProfile.value?.user.username && profileUsername.value.trim())
     next.username = profileUsername.value.trim().toLowerCase();
   if (!authProfile.value?.user.phone && profilePhone.value.trim()) {
@@ -728,6 +661,7 @@ async function saveProfile() {
     authProfile.value = profile;
     profileUsername.value = profile.user.username ?? "";
     profilePhone.value = profile.user.phone ?? "";
+    for (const key of contactKeys) profileContacts.value[key] = profile.user[key] ?? "";
     profileEditorOpen.value = false;
     profileNotice.value = ui('user.auth.profileUpdated');
   } catch (error) {
@@ -761,14 +695,14 @@ onMounted(() => withGlobalLoading(async () => {
     brandLogoText.value = context.brand.logoText || context.brand.name;
     brandLogoUrl.value = context.brand.logoUrl ?? null;
     brandLogoFailed.value = false;
+    if (!context.brand.id) throw new ApiError("Missing brand identifier");
+    brandContextId.value = context.brand.id;
     brandContent.value = {
       en: context.brand.content?.en ?? { tagline: "", announcement: "" },
       zh: context.brand.content?.zh ?? { tagline: "", announcement: "" },
     };
     availableLanguages.value = context.brand.languages;
     brandPaused.value = context.paused;
-    if (!context.terms) throw new Error('Missing policy versions');
-    termsVersions.value = context.terms;
     const requestedLanguage: Language = localeCode.value === "zh-CN" ? "zh" : "en";
     const selectedLanguage = context.brand.languages.includes(requestedLanguage)
       ? requestedLanguage
@@ -791,9 +725,9 @@ onMounted(() => withGlobalLoading(async () => {
     connection.value = "offline";
     connectionMessage.value = publicErrorI18n.errorText(error);
   }
-  if (!isAuth.value) void loadProfile();
+  void loadProfile();
   tickTimer = setInterval(() => tick.value++, 1000);
-  workspaceSyncTimer = setInterval(() => { if (authProfile.value && !isAuth.value && document.visibilityState === 'visible') void loadWorkspaceGames(); }, 5000);
+  workspaceSyncTimer = setInterval(() => { if (authProfile.value && !isAuth.value && document.visibilityState === 'visible') { void loadWorkspaceGames(); void loadNotificationUnreadCount(); } }, 5000);
 }));
 watch(locale, () => {
   connectionMessage.value =
@@ -810,14 +744,7 @@ watch(
   () => route.path,
   (path) => {
     if (siteEntryState.value !== "ready") return;
-    policyDialog.value = null;
     bettingGameTitle.value = '';
-    if (path !== "/login") {
-      pendingBrandJoin.value = null;
-      joinTermsPrompt.value = false;
-      joinTermsAgreed.value = false;
-      joinAttributionFixed.value = false;
-    }
     if (path !== '/login' && path !== '/register') void loadProfile();
     if (path === "/login" || path === "/register") {
       if (authConfigurationLoaded.value) void refreshCaptcha();
@@ -828,6 +755,7 @@ watch(
     }
   },
 );
+useOperationToast(notificationCountError, value => value, 'error');
 useOperationToast(profileNotice, value => value, 'success');
 useOperationToast(logoutError, value => displayPublicError(value), 'error');
 useOperationToast(profileError, value => displayPublicError(value), 'error');
@@ -839,18 +767,24 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
   <SiteUnavailable v-else-if="siteEntryState === 'failed'" :retry="reloadSite" />
   <main v-global-loading v-else-if="siteEntryState === 'loading'" class="site-entry-loading" role="status">{{ ui('common.loading') }}</main>
   <template v-else>
-  <LoginEntry v-if="isAuth" :brand-name="brandName" :logo-text="brandLogoText" :logo-url="displayLogoUrl" :title="pageTitle" title-id="user-login-title" :locale="locale" :language-label="ui('common.language')" :languages="contextLoaded ? availableLanguages.map(code => ({code,label:languageLabel(code)})) : []" @update:locale="setLocale" @logo-error="brandLogoFailed = true">
+  <LoginEntry v-if="isAuth" class="player-login" :brand-name="brandName" :logo-text="brandLogoText" :logo-url="displayLogoUrl" :title="pageTitle" title-id="user-login-title" :locale="locale" :language-label="ui('common.language')" :languages="contextLoaded ? availableLanguages.map(code => ({code,label:languageLabel(code)})) : []" @update:locale="setLocale" @logo-error="brandLogoFailed = true">
+    <template #heading>
+      <h1 id="user-login-title" class="player-login-title">{{ pageTitle }}</h1>
+      <a class="player-login-brand" href="/" :aria-label="brandName">
+        <img v-if="displayLogoUrl" :src="displayLogoUrl" alt="" crossorigin="anonymous" referrerpolicy="no-referrer" @error="brandLogoFailed = true" />
+        <template v-else><span class="player-login-mark" aria-hidden="true">{{ brandLogoText }}</span><strong>{{ brandName }}</strong></template>
+      </a>
+      <nav class="player-login-tabs">
+        <RouterLink to="/register" :aria-current="route.path === '/register' ? 'page' : undefined"><SiteIcon name="user" />{{ ui('user.auth.registerAction') }}</RouterLink>
+        <RouterLink to="/login" :aria-current="route.path === '/login' ? 'page' : undefined"><SiteIcon name="login" />{{ ui('user.auth.loginAction') }}</RouterLink>
+      </nav>
+    </template>
     <template #status>
       <div v-if="connection === 'offline' || brandPaused" class="connection-alert" role="status"><strong class="footer-online">{{brandPaused ? ui('common.brandPaused') : t.offline}}</strong><span>{{brandPaused ? ui('common.brandUnavailable') : connectionMessage}}</span></div>
 
     </template>
             <form v-inline-validation v-write-guard="authBusy" class="auth-form" novalidate :aria-describedby="authError || sessionReplaced ? 'auth-feedback' : undefined" @submit.prevent="withGlobalLoading(authSubmit)">
-              <LoginCredentials v-model:identifier="identifier" v-model:password="password" :identifier-label="ui('user.auth.accountLabel')" :password-label="t.password" :readonly="joinTermsPrompt" :password-maxlength="128" />
-              <template v-if="route.path === '/register' || joinTermsPrompt || joinLinkUnavailable || joinLinkFailed">
-                <p v-global-loading v-if="joinLinkChecking" class="tiny-note" role="status">{{ ui('user.auth.joinLinkChecking') }}</p>
-                <div v-if="joinLinkUnavailable" class="auth-error" role="alert">{{ ui('user.auth.joinLinkUnavailable') }}<button type="button" class="captcha-refresh" @click="withGlobalLoading(useDirectEntry)">{{ ui('user.auth.useDirectEntry') }}</button></div>
-                <div v-if="joinLinkFailed" class="auth-error" role="alert">{{ ui('user.auth.joinLinkFailed') }}<button type="button" class="captcha-refresh" @click="withGlobalLoading(refreshJoinLink)">{{ ui('user.auth.joinLinkRetry') }}</button></div>
-              </template>
+              <LoginCredentials :password-visibility-labels="{ show: ui('common.showPassword'), hide: ui('common.hidePassword') }" v-model:identifier="identifier" v-model:password="password" :identifier-label="ui('user.auth.accountLabel')" :password-label="t.password" :password-maxlength="128" />
               <div v-if="authConfiguration.captcha_enabled" class="captcha-box">
                 <div class="captcha-heading">
                   <strong>{{
@@ -870,85 +804,10 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
                 <PuzzleCaptcha v-if="captchaChallenge" v-model="captchaAnswer" :challenge="captchaChallenge" :locale="localeCode" :disabled="captchaLoading || authBusy" />
                 <p v-global-loading v-else-if="captchaLoading" class="muted">{{ ui("common.loadingVerification") }}</p>
               </div>
-              <template
-                v-if="
-                  route.path === '/register' ||
-                  (authConfiguration.telegram_enabled &&
-                    isTelegramClientIdConfigured(
-                      authConfiguration.telegram_client_id,
-                    ))
-                "
-              >
-                <label class="check-row combined-terms"
-                  ><input v-model="policiesAgreed" type="checkbox" /><span>{{
-                    ui("common.accept")
-                  }}
-                  <a href="/privacy" class="policy-trigger" tabindex="0" aria-haspopup="dialog" @click.stop.prevent="policyDialog = 'privacy'">{{
-                    ui("common.privacyPolicy")
-                  }}</a>
-                  {{ ui('user.auth.and') }}
-                  <a href="/terms" class="policy-trigger" tabindex="0" aria-haspopup="dialog" @click.stop.prevent="policyDialog = 'terms'">{{
-                    ui("common.serviceTerms")
-                  }}</a>
-                  </span>
-                </label>
-              </template>
-              <div
-                v-if="route.path === '/login' && joinTermsPrompt"
-                class="join-terms"
-              >
-                <p>
-                  {{
-                    ui("common.existingAccountTerms")
-                  }}
-                </p>
-                <div class="join-source-review">
-                  <strong>{{ t.joinSourceReview }}</strong>
-                  <span v-if="pendingBrandJoin?.source === 'none'">{{ t.joinSourceNoCode }}</span>
-                  <span v-else>{{ pendingBrandJoin?.source === 'agent' ? t.joinSourceAgent : t.joinSourceReferral }} · {{ pendingBrandJoin?.fields.agent_code || pendingBrandJoin?.fields.referral_code }}</span>
-                </div>
-                <label class="check-row"
-                  ><input v-model="joinTermsAgreed" type="checkbox" />{{
-                    ui("common.accept")
-                  }}
-                  <a href="/terms" class="policy-trigger" tabindex="0" aria-haspopup="dialog" @click.stop.prevent="policyDialog = 'terms'">{{
-                    ui("common.joinTermsLink")
-                  }}</a>
-                  <span
-                    >({{ termsVersions?.privacy_policy_version }} ·
-                    {{ termsVersions?.service_terms_version }})</span
-                  ></label
-                >
-                <button
-                  v-write-guard="authBusy"
-                  type="button"
-                  class="button button-secondary full-button"
-                :disabled="!joinTermsAgreed || authBusy || !captchaReady || joinLinkChecking || joinLinkFailed || joinLinkUnavailable"
-                  @click="withGlobalLoading(acceptBrandTermsAndLogin)"
-                >
-                  {{
-                    ui("common.acceptAndJoin")
-                  }}
-                  <span>→</span>
-                </button>
-              </div>
               <p v-if="sessionReplaced" id="auth-feedback" class="auth-error" role="alert">{{ ui('auth.sessionReplaced') }}</p>
               <p v-else-if="authError" id="auth-feedback" class="auth-error" role="alert">
                 {{ displayPublicError(authError) }}
               </p>
-              <button
-                v-if="route.path === '/login' && joinTermsPrompt"
-                type="button"
-                class="button button-secondary full-button"
-                :disabled="authBusy"
-                @click="cancelBrandJoin"
-              >
-                {{
-                  joinAttributionFixed
-                      ? ui("common.cancelNoCode")
-                      : ui("common.cancelJoinChoice")
-                }}
-              </button>
               <button
                 v-if="!authConfigurationLoaded"
                 type="button"
@@ -962,7 +821,7 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
                     : ui("common.retrySignInSettings")
                 }}
               </button>
-              <div v-if="!joinTermsPrompt" class="auth-actions" :class="{ 'auth-login-actions': route.path === '/login' }">
+              <div class="auth-actions" :class="{ 'auth-login-actions': route.path === '/login' }">
               <button
                 class="button button-primary full-button"
                 type="submit"
@@ -974,21 +833,19 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
                     : route.path === '/login' ? ui('user.auth.loginAction') : ui('user.auth.registerAction')
                 }}
               </button>
-              <RouterLink v-if="route.path === '/login'" to="/register" class="button button-secondary auth-register-button">{{ ui('user.auth.registerAction') }}</RouterLink>
-              <RouterLink v-else to="/login" class="button button-secondary auth-login-button">{{ ui('user.auth.loginAction') }}</RouterLink>
               </div>
+              <div v-if="telegramReady" class="auth-quick-login">
+              <div class="auth-quick-login-heading">{{ ui('common.quickLogin') }}</div>
               <button
-                v-if="telegramReady"
-                class="button button-secondary full-button"
+                :aria-label="ui('common.continueTelegram')"
+                class="button button-secondary telegram-login-button"
                 type="button"
-                :disabled="authBusy || !privacyAgreed || !serviceTermsAgreed || joinTermsPrompt || joinLinkChecking || joinLinkFailed || joinLinkUnavailable"
+                :disabled="authBusy || joinLinkChecking || joinLinkFailed || joinLinkUnavailable"
                 v-write-guard="authBusy" @click="withGlobalLoading(startTelegramAuth)"
               >
-                {{
-                  ui("common.continueTelegram")
-                }}
-                <SiteIcon name="external" />
+                <img src="/icons/telegram.svg" width="44" height="44" alt="" aria-hidden="true" />
               </button>
+              </div>
               <button v-refresh-button="ui('common.refreshTelegram')"
                 v-if="
                   authConfiguration.telegram_enabled &&
@@ -1013,7 +870,7 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
               </p>
             </form>
   </LoginEntry>
-  <div v-else class="app-frame workspace-frame" :class="{ 'workspace-sidebar-collapsed': sidebarCollapsed }">
+  <div v-else class="app-frame workspace-frame" :data-user-theme="resolvedTheme" :class="{ 'workspace-sidebar-collapsed': sidebarCollapsed }">
     <aside v-show="!sidebarCollapsed" id="workspace-sidebar" class="workspace-sidebar">
       <RouterLink to="/" class="workspace-sidebar-brand">
         <img v-if="displayLogoUrl" :src="displayLogoUrl" alt="" @error="brandLogoFailed = true" />
@@ -1022,7 +879,7 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
       <nav class="side-nav" :aria-label="ui('user.nav.primary')">
         <RouterLink v-for="item in desktopNav" :key="item.to" :to="item.to" :class="{ active: isNavItemActive(item.to, false) }" :aria-current="isNavItemActive(item.to, false) ? 'page' : undefined">
           <span class="nav-icon" aria-hidden="true"><SiteIcon :name="item.icon" /></span>
-          <span>{{ item.label }}</span>
+          <span>{{ item.label }}</span><UnreadBadge v-if="item.to === '/announcements'" :count="notificationUnreadCount" />
         </RouterLink>
         <button v-if="authProfile" v-write-guard="authBusy" type="button" class="workspace-signout" :disabled="authBusy" @click="withGlobalLoading(logout)"><span class="nav-icon" aria-hidden="true"><SiteIcon name="logout" /></span><span>{{ ui('common.signOut') }}</span></button>
       </nav>
@@ -1030,12 +887,12 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
     </aside>
     <button type="button" class="workspace-sidebar-toggle" :aria-label="ui(sidebarCollapsed ? 'workspace.expandSidebar' : 'workspace.collapseSidebar')" :title="ui(sidebarCollapsed ? 'workspace.expandSidebar' : 'workspace.collapseSidebar')" :aria-expanded="!sidebarCollapsed" aria-controls="workspace-sidebar" @click="sidebarCollapsed = !sidebarCollapsed"><SiteIcon name="back" :class="{ 'is-collapsed': sidebarCollapsed }" /></button>
     <div class="main-column" :class="{ 'results-column': route.path === '/results' }">
-      <header v-if="!isAuth" class="workspace-topbar" :class="{ 'workspace-guest': !profileLoading && !authProfile }">
-        <div class="workspace-leading"><span v-if="route.path === '/'" class="workspace-brand" :title="brandName">{{ brandName }}</span><template v-else><button class="icon-button" type="button" :aria-label="ui('user.nav.back')" @click="workspaceParent"><SiteIcon name="back" /></button><h1 class="workspace-page-title">{{ pageTitle }}</h1></template></div>
-        <div class="workspace-game-heading"><button type="button" class="workspace-game-trigger" :title="pickerGame?.name ?? ui('workspace.games')" :aria-label="ui('workspace.games')" :aria-expanded="gamePickerOpen" @click="gamePickerOpen = !gamePickerOpen; menuOpen = false"><strong>{{ pickerGame?.name ?? ui('workspace.games') }}</strong><SiteIcon name="down" /></button><div id="user-game-help"></div></div>
+      <header v-if="!isAuth" class="workspace-topbar" :class="{ 'workspace-guest': !profileLoading && !authProfile, 'workspace-announcements': isUpdatesPage, 'workspace-ledger': route.path==='/wallet/ledger' }">
+        <div class="workspace-leading"><button v-if="route.path !== '/'" class="icon-button" type="button" :aria-label="ui('user.nav.back')" @click="workspaceParent"><SiteIcon name="back" /></button><h1 class="workspace-page-title">{{ pageTitle }}</h1></div>
+        <div v-if="!isUpdatesPage" class="workspace-game-heading"><SelectControl class="workspace-game-picker" :model-value="pickerGame?.id" :label="ui('workspace.games')" :placeholder="pickerGame?.name ?? ui('workspace.games')" :disabled="!pickerGames.length" :options="pickerGames.map(game => ({ value: game.id, label: game.name }))" @change="choosePickerGame($event!)" /><div id="user-game-help"></div></div>
         <div class="workspace-trailing"><RouterLink v-if="!profileLoading && !authProfile" to="/login" class="button button-quiet workspace-login">{{ t.login }}</RouterLink>
-        <button type="button" class="icon-button" :aria-label="ui('workspace.menu')" :aria-expanded="menuOpen" @click="menuOpen = true; gamePickerOpen = false"><SiteIcon name="menu" /></button></div>
-        <div v-if="gamePickerOpen" class="workspace-game-picker"><button v-for="game in pickerGames" :key="game.id" type="button" :aria-pressed="pickerGame?.id === game.id" @click="choosePickerGame(game)">{{ game.name }}</button><p v-if="gamesReady && !pickerGames.length" class="empty-state workspace-game-empty">{{ ui('betting.noGames') }}</p></div>
+        <ThemeSwitcher :locale="locale === 'en' ? 'en' : 'zh-CN'" />
+        <button type="button" class="icon-button workspace-menu-trigger" :aria-label="notificationUnreadCount !== null && notificationUnreadCount !== '0' ? `${ui('workspace.menu')}, ${ui('common.unreadNotifications', { count: notificationUnreadCount })}` : ui('workspace.menu')" :aria-expanded="menuOpen" @click="menuOpen = true"><SiteIcon name="menu" /><span v-if="notificationUnreadCount !== null && notificationUnreadCount !== '0'" class="workspace-menu-unread-dot" aria-hidden="true"></span></button></div>
       </header>
 
       <template v-if="!isAuth">
@@ -1052,8 +909,8 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
           <aside class="workspace-menu" :aria-label="ui('workspace.menu')"><div class="workspace-menu-heading"><strong>{{ brandName }}</strong><div class="workspace-menu-actions"><div class="workspace-menu-tools"><LanguageSwitcher v-if="contextLoaded && availableLanguages.length > 1" :model-value="locale" :label="ui('common.language')" :options="availableLanguages.map(code => ({code,label:languageLabel(code)}))" @update:model-value="setLocale" /><div id="user-page-refresh" class="user-page-refresh"></div></div><button type="button" class="icon-button workspace-menu-close" :aria-label="ui('draw.close')" @click="menuOpen = false"><SiteIcon name="close" /></button></div></div>
             <nav class="side-nav" :aria-label="ui('user.nav.primary')">
               <RouterLink v-if="currentGame" :to="{path:'/results',query:{platform_game_id:currentGame.id}}" :class="{ active: isNavItemActive('/results', false) }" :aria-current="isNavItemActive('/results', false) ? 'page' : undefined"><span class="nav-icon" aria-hidden="true"><SiteIcon name="calendar" /></span><span>{{ ui('draw.results') }}</span></RouterLink>
-              <RouterLink to="/withdraw" @click="menuOpen = false" :class="{ active: isNavItemActive('/withdraw', false) }" :aria-current="isNavItemActive('/withdraw', false) ? 'page' : undefined"><span class="nav-icon" aria-hidden="true"><SiteIcon name="wallet" /></span><span>{{ ui('user.withdrawal.action') }}</span></RouterLink>
-              <RouterLink to="/notifications" :class="{ active: isNavItemActive('/notifications', false) }" :aria-current="isNavItemActive('/notifications', false) ? 'page' : undefined"><span class="nav-icon" aria-hidden="true"><SiteIcon name="bell" /></span><span>{{ t.notifications }}</span></RouterLink>
+              <RouterLink to="/announcements" :class="{ active: isUpdatesPage }" :aria-current="isUpdatesPage ? 'page' : undefined"><span class="nav-icon" aria-hidden="true"><SiteIcon name="bell" /></span><span>{{ ui('user.updates.title') }}</span><UnreadBadge :count="notificationUnreadCount" /></RouterLink>
+              <RouterLink to="/contacts" @click="menuOpen = false" :class="{ active: isNavItemActive('/contacts', false) }" :aria-current="isNavItemActive('/contacts', false) ? 'page' : undefined"><span class="nav-icon" aria-hidden="true"><SiteIcon name="support" /></span><span>{{ ui('user.contacts.title') }}</span></RouterLink>
               <RouterLink to="/help" :class="{ active: isNavItemActive('/help', false) }" :aria-current="isNavItemActive('/help', false) ? 'page' : undefined"><span class="nav-icon" aria-hidden="true"><SiteIcon name="help" /></span><span>{{ t.help }}</span></RouterLink>
               <button v-if="authProfile" v-write-guard="authBusy" type="button" class="workspace-signout" :disabled="authBusy" @click="withGlobalLoading(logout)"><span class="nav-icon" aria-hidden="true"><SiteIcon name="logout" /></span><span>{{ ui('common.signOut') }}</span></button>
             </nav>
@@ -1063,6 +920,7 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
       </template>
 
       <main v-if="!profileLoading || authProfile" id="main-content" class="content" :class="{ 'compact-content': route.path === '/' || route.path.startsWith('/configured/') }">
+        <BrandContacts v-if="joinLinkBrand" :key="joinLinkBrand" :brand-id="joinLinkBrand" :brand-code="walletBrandCode" :page-active="route.path === '/contacts'" />
         <div
           v-if="connection === 'offline' || brandPaused"
           class="connection-alert"
@@ -1122,13 +980,15 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
             <dl class="account-details">
               <div v-if="authProfile.user.username"><dt>{{ ui('user.auth.accountLabel') }}</dt><dd>{{ authProfile.user.username }}</dd></div>
               <div class="account-points"><dt>{{ ui('user.account.points') }}</dt><dd><HeaderPoints :brand-code="walletBrandCode" :brand-id="authProfile.member.brand_id" :member-id="authProfile.member.id" :route-key="route.fullPath" @auth-expired="authProfile = null" /></dd></div>
-              <div v-if="authProfile.user.phone"><dt>{{ ui('common.phone') }}</dt><dd>{{ authProfile.user.phone }}</dd></div>
+              <div><dt>{{ ui('common.phone') }}</dt><dd>{{ authProfile.user.phone || "—" }}</dd></div>
+              <div v-for="key in contactKeys" :key="key"><dt>{{ ui(`common.${key}`) }}</dt><dd>{{ authProfile.user[key] || "—" }}</dd></div>
             </dl>
-            <button v-if="!authProfile.user.username || !authProfile.user.phone" type="button" class="button button-secondary" tabindex="0" aria-haspopup="dialog" @click="profileEditorOpen = true">{{ ui('user.account.completeProfile') }}</button>
+            <button v-if="!authProfile.user.username || !authProfile.user.phone || contactKeys.some(key => !authProfile?.user[key])" type="button" class="button button-secondary" tabindex="0" aria-haspopup="dialog" @click="profileEditorOpen = true">{{ ui('user.account.completeProfile') }}</button>
             <DetailModal v-if="profileEditorOpen" class="ui-form-dialog" :title="ui('user.account.completeProfile')" :close-label="ui('user.notifications.close')" :close-disabled="profileSaving" @close="profileEditorOpen = false">
               <form novalidate v-inline-validation v-write-guard="profileSaving" class="ui-form" @submit.prevent="withGlobalLoading(saveProfile)">
-                <label v-if="!authProfile.user.username" class="field-label">{{ ui('user.auth.accountLabel') }}<input v-model="profileUsername" autocomplete="username" :disabled="profileSaving" :placeholder="ui('common.addUsername')" /></label>
-                <label v-if="!authProfile.user.phone" class="field-label">{{ ui('common.phone') }}<input v-model="profilePhone" autocomplete="tel" :disabled="profileSaving" :placeholder="ui('common.addPhone')" /></label>
+                <label v-if="!authProfile.user.username">{{ ui('user.auth.accountLabel') }}<input v-model="profileUsername" autocomplete="username" :disabled="profileSaving" :placeholder="ui('common.addUsername')" /></label>
+                <label v-if="!authProfile.user.phone">{{ ui('common.phone') }}<input v-model="profilePhone" autocomplete="tel" :disabled="profileSaving" :placeholder="ui('common.addPhone')" /></label>
+                <template v-for="key in contactKeys" :key="key"><label v-if="!authProfile.user[key]">{{ ui(`common.${key}`) }}<input v-model="profileContacts[key]" maxlength="120" :disabled="profileSaving" /></label></template>
                 <div class="ui-form-actions"><button v-write-guard="profileSaving" type="submit" class="button button-primary" :disabled="profileSaving">{{ profileSaving ? ui('common.saving') : ui('common.saveProfile') }}</button></div>
               </form>
             </DetailModal>
@@ -1138,7 +998,7 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
           </div>
           <BettingPreferencesSettings :brand-code="walletBrandCode" v-if="authProfile" :brand-id="authProfile.member.brand_id" :member-id="authProfile.member.id" :locale="localeCode" />
           <nav class="account-tools" :aria-label="ui('user.nav.services')">
-            <RouterLink v-for="item in accountTools" :key="item.to" :to="item.to"><span class="account-tool-icon" aria-hidden="true"><SiteIcon :name="item.icon" /></span><span>{{ item.label }}</span><SiteIcon name="next" /></RouterLink>
+            <RouterLink v-for="item in accountTools" :key="item.to" :to="item.to"><span class="account-tool-icon" aria-hidden="true"><SiteIcon :name="item.icon" /></span><span>{{ item.label }}</span><UnreadBadge v-if="item.to === '/announcements'" :count="notificationUnreadCount" /><SiteIcon name="next" /></RouterLink>
           </nav>
         </section>
 
@@ -1151,12 +1011,6 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
               <div class="eyebrow">
                 {{
                   route.path === "/terms" ? ui("common.serviceTermsUpper") : ui("common.privacyPolicyUpper")
-                }}
-                ·
-                {{
-                  route.path === "/terms"
-                    ? termsVersions?.service_terms_version
-                    : termsVersions?.privacy_policy_version
                 }}
               </div>
 
@@ -1178,16 +1032,16 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
           v-else-if="
             route.path === '/wallet' || route.path === '/wallet/buckets' || route.path === '/wallet/ledger'
           "
-          class="page-section"
+          class="page-section wallet-page"
         >
           <WalletSummary :key="`${route.path}:${authProfile?.member.brand_id}:${authProfile?.member.id}`" :view="route.path === '/wallet' ? 'overview' : route.path === '/wallet/buckets' ? 'buckets' : 'ledger'" :brand-code="walletBrandCode" :locale="locale" />
+          <CurrencyWallet v-if="route.path === '/wallet'" :key="`cash:${authProfile?.member.brand_id}:${authProfile?.member.id}`" mode="overview" :brand-code="walletBrandCode" :member="authProfile?.member ?? null" @auth-expired="expireRechargeProfile" />
         </section>
 
         <template v-else-if="route.path === '/recharge'">
-        <RechargePanel
+        <CurrencyWallet mode="deposit"
           v-if="!profileLoading"
           :key="`${authProfile?.member.brand_id ?? 'signed-out'}:${authProfile?.member.id ?? 'signed-out'}`"
-          :locale="locale"
           :brand-code="walletBrandCode"
           :member="authProfile?.member ?? null"
           @auth-expired="expireRechargeProfile"
@@ -1196,10 +1050,9 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
         </template>
 
         <template v-else-if="route.path === '/withdraw'">
-        <WithdrawalPanel
+        <CurrencyWallet mode="withdrawal"
           v-if="!profileLoading"
           :key="`${authProfile?.member.brand_id ?? 'signed-out'}:${authProfile?.member.id ?? 'signed-out'}`"
-          :locale="locale"
           :brand-code="walletBrandCode"
           :member="authProfile?.member ?? null"
           @auth-expired="authProfile = null"
@@ -1212,13 +1065,15 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
         <p v-else-if="gamesReady" class="empty-state">{{ ui('draw.chooseGame') }}</p>
         </template>
 
-        <NotificationsPanel
-          v-else-if="route.path === '/notifications'"
-          :locale="locale"
-          :brand-code="walletBrandCode"
-          @unread-count="notificationUnreadCount = $event"
-          @auth-expired="authProfile = null"
-        />
+        <section v-else-if="isUpdatesPage" class="updates-page">
+          <div class="updates-tabs" role="tablist" :aria-label="ui('user.updates.title')">
+            <button v-for="tab in [{ path: '/announcements', label: ui('announcements.title') }, { path: '/notifications', label: t.notifications }]" :id="`updates-tab-${tab.path.slice(1)}`" :key="tab.path" type="button" role="tab" :data-path="tab.path" :aria-selected="route.path === tab.path" aria-controls="updates-panel" :tabindex="route.path === tab.path ? 0 : -1" :class="['button', route.path === tab.path ? 'button-primary' : 'button-secondary']" @click="router.push(tab.path)" @keydown.left.prevent="moveUpdatesTab" @keydown.right.prevent="moveUpdatesTab">{{ tab.label }}<UnreadBadge v-if="tab.path === '/notifications'" :count="notificationUnreadCount" /></button>
+          </div>
+          <div id="updates-panel" role="tabpanel" :aria-labelledby="`updates-tab-${route.path.slice(1)}`">
+            <div v-if="route.path === '/announcements'" id="announcements-directory"></div>
+            <NotificationsPanel v-else :locale="locale" :brand-code="walletBrandCode" @unread-count="updateNotificationUnreadCount" @auth-expired="authProfile = null" />
+          </div>
+        </section>
 
 <section v-else-if="route.path === '/help'" class="page-section help-page" :aria-label="pageTitle">
 
@@ -1248,10 +1103,8 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
       </nav>
     </div>
   </div>
-  <DetailModal v-if="policyDialog" class="policy-modal" :title="policyDialog === 'privacy' ? ui('common.privacyPolicy') : ui('common.serviceTerms')" :close-label="ui('user.auth.closePolicy')" @close="policyDialog = null">
-    <PolicyContent />
-  </DetailModal>
   </template>
+  <Announcements v-if="contextLoaded && !profileLoading" :brand-code="walletBrandCode" :brand-id="authProfile?.member.brand_id ?? brandContextId" :member-id="authProfile?.member.id" :locale="localeCode" :path="route.path" :list="route.path === '/announcements'" @auth-expired="authProfile=null" />
 </template>
 
 <style scoped>

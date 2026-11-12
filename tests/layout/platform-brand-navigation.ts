@@ -1,9 +1,38 @@
+import { expectNavigationStyle } from './navigation-style'
 import { selectControl } from '../select-control'
 import { expect, test } from '@playwright/test'
 import { origins, gameId, installLayoutApi, expectNoPageOverflow, expectCompactPageLayout } from './fixture'
 
 export function registerPlatformBrandNavigationTests(reflow = false) {
   for (const locale of ['en', 'zh-CN'] as const) {
+    test(`brand console navigation shares the management style (${locale})`, async ({ page }, info) => {
+      await installLayoutApi(page, locale)
+      await page.route('**/api/v1/admin/**', async route => {
+        expect(route.request().method()).toBe('GET')
+        const path = new URL(route.request().url()).pathname
+        const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
+        if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'navigation_reviewer', super_admin: false, brand_ids: [gameId], permissions_by_brand: { [gameId]: ['user.view.brand'] } } })
+        if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status: 'active' }] })
+        if (path.endsWith('/users')) return reply({ items: [], limit: 100, offset: 0, total_count: '0' })
+        throw Error(`Unexpected brand navigation request: ${path}`)
+      })
+      await page.goto(origins.brand)
+      await expect(page.locator('.management-console')).toBeVisible()
+      const preset = page.viewportSize()!
+      for (const width of reflow ? [320, 700, 701, 900, 901, 1440] : [preset.width]) {
+        if (reflow) await page.setViewportSize({ width, height: preset.height })
+        await expectNavigationStyle(page, '.sidebar .nav-item.active')
+        const mobile = page.locator('.mobile-nav')
+        if (await mobile.isVisible()) {
+          await mobile.getByRole('button').last().click()
+          await expect(page.locator('.mobile-more-menu')).toBeVisible()
+          await page.locator('.mobile-more-menu').getByRole('button', { name: locale === 'en' ? 'Member management' : '会员管理', exact: true }).click()
+          await expect(page.locator('.mobile-more-menu')).toBeHidden()
+        }
+        await expectNoPageOverflow(page)
+        await page.screenshot({ path: info.outputPath(`brand-console-navigation-${locale}-${width}.png`) })
+      }
+    })
     test(`platform brand navigation groups three pages (${locale})`, async ({ page }, info) => {
       const zh = locale === 'zh-CN'
       await installLayoutApi(page, locale)
@@ -20,6 +49,7 @@ export function registerPlatformBrandNavigationTests(reflow = false) {
       })
       await page.goto(origins.platform)
       await expect(page.locator('.management-console')).toBeVisible()
+      await expectNavigationStyle(page, '.sidebar .nav-item.selected')
       await expect(page.locator('.sidebar button[aria-controls="platform-brand-tabs"]')).toHaveAttribute('aria-expanded', 'false')
       await expect(page.getByTestId('platform-brand-tabs')).toHaveCount(0)
       const preset = page.viewportSize()!
@@ -86,15 +116,15 @@ export function registerPlatformBrandNavigationTests(reflow = false) {
       const openMenu = async () => {
         if (await menu.isVisible() && await menu.getAttribute('aria-expanded') === 'false') await menu.click()
       }
-      for (const label of zh ? ['人工奖励', '投注订单', '提现订单'] : ['Manual rewards', 'Bet orders', 'Withdrawals']) {
+      for (const label of zh ? ['奖励', '注单', '提现'] : ['Rewards', 'Bets', 'Withdrawals']) {
         await openMenu()
-        await page.locator('.sidebar > button').filter({ hasText: label }).click()
+        await page.locator('.sidebar').getByRole('button', { name: label, exact: true }).click()
         await expect(hint).toHaveText(hintText)
         await expect(page.locator('.content [data-testid="platform-access"]')).toHaveCount(0)
       }
       for (const [label, testId] of [[zh ? '运营' : 'Operations', 'platform-operations-tabs'], [zh ? '资金' : 'Finance', 'platform-wallet-tabs'], [zh ? '佣金' : 'Commission', 'platform-commission-secondary-nav']]) {
         await openMenu()
-        await page.locator('.sidebar > button').filter({ hasText: label }).click()
+        await page.locator('.sidebar').getByRole('button', { name: label, exact: true }).click()
         const tabs = page.getByTestId(testId).locator('button')
         for (let index = 0; index < await tabs.count(); index++) {
           await openMenu()

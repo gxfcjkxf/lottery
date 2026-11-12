@@ -48,3 +48,12 @@ describe("user withdrawal orders SDK", () => {
     }
   });
 });
+
+it('matches decimal recharge allocation receipts by exact value and keeps the original retry body', async () => {
+ const request={points:'1.50',source_allocation:[{source:'recharge' as const,state:'available' as const,points:'1.50'}]}
+ const data={...receipt,points:'1.5',source_allocation:[{...request.source_allocation[0]!,points:'1.5'}]}
+ const fetcher=vi.fn<typeof fetch>().mockResolvedValue(response(data))
+ await expect(createWithdrawalOrdersApi({fetcher}).create(request,'decimal-retry-key','a'.repeat(64))).resolves.toEqual(data)
+ expect(JSON.parse(String(fetcher.mock.calls[0]![1]!.body))).toEqual(request)
+ await expect(createWithdrawalOrdersApi({fetcher:vi.fn<typeof fetch>().mockResolvedValue(response({...data,points:'1.51',source_allocation:[{...data.source_allocation[0]!,points:'1.51'}]}))}).create(request,'decimal-retry-key','a'.repeat(64))).rejects.toBeInstanceOf(WithdrawalUnknownIntentError)
+})

@@ -68,6 +68,13 @@ describe('header available points', () => {
     expect(text(m.root)).toBe('9,007,199,254,740,993');
     expect(m.root.children[0].props['aria-label']).toBe('积分：9,007,199,254,740,993');
   });
+  it('displays fractional membership balances and snapshot updates exactly', async () => {
+    const m = mount(vi.fn<typeof fetch>().mockResolvedValue(ok(wallet('1234.56')))); await flush();
+    expect(text(m.root)).toBe('1,234.56');
+    window.dispatchEvent(new CustomEvent(WALLET_SNAPSHOT_EVENT, { detail: wallet('1234.57', 2) })); await flush();
+    expect(text(m.root)).toBe('1,234.57');
+    expect(m.pointsChange).toHaveBeenLastCalledWith(expect.objectContaining({ amount: '1,234.57' }));
+  });
   it('shows real zero, but never invents zero when loading fails', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(ok(wallet('0'))).mockRejectedValue(new Error('offline'));
     const m = mount(fetcher); await flush(); expect(text(m.root)).toContain('0');

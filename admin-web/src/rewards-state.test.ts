@@ -20,9 +20,9 @@ afterEach(() => clearAllRewardIntents());
 
 describe("reward intent state", () => {
   it("freezes exact grant and action bodies and validates decimal int64 as strings", () => {
-    const grant = freezeRewardBody("grant", { member_id: member, points: "9223372036854775807", reason: "Reviewed ✅" });
+    const grant = freezeRewardBody("grant", { member_id: member, points: "92233720368547758.07", reason: "Reviewed ✅" });
     const action = freezeRewardBody("revoke", { version: 2, reason: "Customer requested reversal" });
-    expect(grant).toEqual({ member_id: member, points: "9223372036854775807", reason: "Reviewed ✅" });
+    expect(grant).toEqual({ member_id: member, points: "92233720368547758.07", reason: "Reviewed ✅" });
     expect(action).toEqual({ version: 2, reason: "Customer requested reversal" });
     expect(Object.isFrozen(grant)).toBe(true);
     expect(Object.isFrozen(action)).toBe(true);

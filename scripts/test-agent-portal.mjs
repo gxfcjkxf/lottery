@@ -20,7 +20,7 @@ function start(command,args,options,log){
 for(const project of ['android','android-landscape','ios','ios-landscape','ios-320','desktop']){
  const file=resolve(folder,project+'.json')
  await rm(file,{force:true});await rm(file+'.stop',{force:true})
- const env={...process.env,AGENT_BROWSER_FIXTURE_FILE:file}
+ const env={...process.env,AGENT_BROWSER_FIXTURE_FILE:file,AGENT_BROWSER_PROJECT:project}
  const fixture=start(process.env.LOTTERY_GO_BIN??'go',['test','-count=1','-timeout=5m','./internal/httpapi','-run','^TestIndependentAgentBrowserFixture$'],{cwd:resolve('backend'),env},resolve(folder,project+'-fixture.log'))
  let browserCode
  try{

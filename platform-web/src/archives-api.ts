@@ -1,3 +1,5 @@
+import { isPointTotal } from '@lottery/shared'
+import { pointsMinor } from '@lottery/shared'
 import { readPlatformEnvelope } from './platform-api'
 
 import { PlatformApiError } from './platform-api'
@@ -6,7 +8,6 @@ import { REPORT_FIELDS } from './reports-api'
 const BASE = '/api/v1/platform/report-archives'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const UINT = /^(0|[1-9][0-9]*)$/
-const SINT = /^(0|-?[1-9][0-9]*)$/
 const HEX256 = /^[a-f0-9]{64}$/
 const MAX_REVISION = Number.MAX_SAFE_INTEGER
 
@@ -74,9 +75,9 @@ function timezone(v: unknown): v is string {
 }
 function sameInstant(a: unknown, b: unknown): boolean { return instant(a) !== null && instant(a) === instant(b) }
 function decimalObject(v: unknown, names: readonly string[], signed: readonly string[] = []): v is Obj {
-  return isObj(v) && exact(v, names) && names.every(k => typeof v[k] === 'string' && (signed.includes(k) ? SINT : UINT).test(v[k] as string))
+  return isObj(v) && exact(v, names) && names.every(k => typeof v[k] === 'string' && (k.endsWith('_points') ? isPointTotal(v[k],signed.includes(k)) : UINT.test(v[k] as string)))
 }
-function total(v: Obj, names: readonly string[]): bigint { return names.reduce((n, k) => n + BigInt(v[k] as string), 0n) }
+function total(v: Obj, names: readonly string[]): bigint { return names.reduce((n, k) => n + (k.endsWith('_points') ? pointsMinor(v[k] as string) : BigInt(v[k] as string)), 0n) }
 function validCalendarDay(value: string): boolean {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
   if (!m) return false
@@ -89,23 +90,23 @@ function validSnapshot(v: unknown, brand: string): v is ArchiveSnapshot {
       !decimalObject(v.withdrawals, fields.withdrawals) || !decimalObject(v.commissions, fields.commissions, ['net_points']) || !decimalObject(v.rewards, fields.rewards, ['net_points']) || !decimalObject(v.reward_orders, fields.reward_orders)) return false
   const b = v.betting
   if (total(b, ['placed_count', 'won_count', 'lost_count', 'abnormal_count', 'cancelled_count']) !== BigInt(b.order_count as string) ||
-      total(b, ['settled_stake_points', 'unfinalized_stake_points', 'abnormal_stake_points']) !== BigInt(b.stake_points as string) ||
-      BigInt(b.stake_points as string) < BigInt(b.order_count as string) || BigInt(b.correction_open_count as string) > BigInt(b.order_count as string) ||
-      (b.abnormal_count === '0') !== (b.abnormal_stake_points === '0') ||
-      BigInt(b.refund_points as string) < BigInt(b.cancelled_count as string) || BigInt(b.abnormal_stake_points as string) < BigInt(b.abnormal_count as string) ||
-      b.current_prize_points !== '0' && b.won_count === '0' || b.settled_stake_points !== '0' && BigInt(b.won_count as string) + BigInt(b.lost_count as string) === 0n) return false
+      total(b, ['settled_stake_points', 'unfinalized_stake_points', 'abnormal_stake_points']) !== pointsMinor(b.stake_points as string) ||
+      pointsMinor(b.stake_points as string) < BigInt(b.order_count as string) || BigInt(b.correction_open_count as string) > BigInt(b.order_count as string) ||
+      (b.abnormal_count === '0') !== (pointsMinor(b.abnormal_stake_points as string) === 0n) ||
+      pointsMinor(b.refund_points as string) < BigInt(b.cancelled_count as string) || pointsMinor(b.abnormal_stake_points as string) < BigInt(b.abnormal_count as string) ||
+      pointsMinor(b.current_prize_points as string) !== 0n && b.won_count === '0' || pointsMinor(b.settled_stake_points as string) !== 0n && BigInt(b.won_count as string) + BigInt(b.lost_count as string) === 0n) return false
   const wallet = v.wallet_snapshot
   if (!isObj(wallet) || !exact(wallet, ['at_snapshot', 'balances']) || !date(wallet.at_snapshot) || !sameInstant(wallet.at_snapshot, v.snapshot_at)) return false
-  if (total(wallet.balances as Obj, ['available_points', 'frozen_points', 'withdrawal_points']) !== BigInt((wallet.balances as Obj).total_points as string)) return false
+  if (total(wallet.balances as Obj, ['available_points', 'frozen_points', 'withdrawal_points']) !== pointsMinor((wallet.balances as Obj).total_points as string)) return false
   const w = v.withdrawals
   if (total(w, ['reviewing_count', 'processing_count', 'paid_count', 'rejected_count', 'failed_count', 'cancelled_count']) !== BigInt(w.order_count as string) ||
-      total(w, ['reviewing_points', 'processing_points', 'paid_points', 'rejected_points', 'failed_points', 'cancelled_points']) !== BigInt(w.requested_points as string)) return false
+      total(w, ['reviewing_points', 'processing_points', 'paid_points', 'rejected_points', 'failed_points', 'cancelled_points']) !== pointsMinor(w.requested_points as string)) return false
   const c = v.commissions
-  if (total(c, ['paid_entry_count', 'adjustment_entry_count', 'correction_entry_count']) !== BigInt(c.entry_count as string) || BigInt(c.net_points as string) !== BigInt(c.paid_points as string) + BigInt(c.adjustment_credit_points as string) - BigInt(c.adjustment_debit_points as string) + BigInt(c.correction_credit_points as string) - BigInt(c.correction_debit_points as string)) return false
+  if (total(c, ['paid_entry_count', 'adjustment_entry_count', 'correction_entry_count']) !== BigInt(c.entry_count as string) || pointsMinor(c.net_points as string) !== pointsMinor(c.paid_points as string) + pointsMinor(c.adjustment_credit_points as string) - pointsMinor(c.adjustment_debit_points as string) + pointsMinor(c.correction_credit_points as string) - pointsMinor(c.correction_debit_points as string)) return false
   const r = v.rewards
-  if (BigInt(r.grant_entry_count as string) + BigInt(r.reversal_entry_count as string) !== BigInt(r.entry_count as string) || BigInt(r.net_points as string) !== BigInt(r.grant_points as string) - BigInt(r.reversal_points as string)) return false
+  if (BigInt(r.grant_entry_count as string) + BigInt(r.reversal_entry_count as string) !== BigInt(r.entry_count as string) || pointsMinor(r.net_points as string) !== pointsMinor(r.grant_points as string) - pointsMinor(r.reversal_points as string)) return false
   const ro = v.reward_orders
-  return total(ro, ['granted_count', 'revoked_count']) === BigInt(ro.order_count as string) && total(ro, ['granted_points', 'revoked_points']) === BigInt(ro.original_points as string)
+  return total(ro, ['granted_count', 'revoked_count']) === BigInt(ro.order_count as string) && total(ro, ['granted_points', 'revoked_points']) === pointsMinor(ro.original_points as string)
 }
 function validReason(v: unknown): v is string { return typeof v === 'string' && v.trim() === v && !/[\u0000\r\n]/u.test(v) && Array.from(v).length <= 500 }
 function validRecord(v: unknown, brand: string, id?: string): v is ArchiveRecord {

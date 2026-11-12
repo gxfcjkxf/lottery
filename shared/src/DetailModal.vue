@@ -20,6 +20,13 @@ const dialog = ref<HTMLDialogElement | null>(null)
 let locked = false
 let returnFocus: HTMLElement | null = null
 
+function cancel(event: Event) {
+  // File inputs emit a bubbling cancel event when their native picker closes.
+  if (event.target !== dialog.value) return
+  event.preventDefault()
+  if (!props.closeDisabled) emit('close')
+}
+
 function unlock() {
   if (!locked) return
   openModals--
@@ -56,9 +63,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <dialog ref="dialog" class="detail-modal" :aria-label="title" aria-modal="true" @cancel.prevent="!closeDisabled && emit('close')">
+    <dialog ref="dialog" class="detail-modal" :aria-label="title" aria-modal="true" @cancel="cancel">
       <header class="modal-heading detail-modal-heading">
         <h2 :id="titleId">{{ title }}</h2>
+        <slot name="heading-extra" />
         <button type="button" class="icon-button detail-modal-close" :aria-label="closeLabel" :disabled="closeDisabled" autofocus @click="emit('close')"><SiteIcon name="close" /></button>
       </header>
       <div class="detail-modal-content"><slot /></div>
@@ -87,7 +95,7 @@ onBeforeUnmount(() => {
 .detail-modal:not([open]) { display: none; }
 .detail-modal.confirmation-dialog { width: min(680px, calc(100vw - 24px)); }
 .detail-modal.ui-form-dialog { width:min(520px,calc(100vw - 24px)); max-width:calc(100vw - 24px); }
-.detail-modal::backdrop { background: rgb(15 23 42 / 45%); backdrop-filter: blur(4px); }
+.detail-modal::backdrop { background: var(--overlay-bg); backdrop-filter: blur(4px); }
 .detail-modal-heading {
   flex: 0 0 auto;
   position: sticky;

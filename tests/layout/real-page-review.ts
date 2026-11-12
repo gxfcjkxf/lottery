@@ -30,7 +30,7 @@ export async function expectListLayout(page: Page) {
         if (pager.closest('.table-wrap,.reports-table-wrap')) issues.push(`${name}: pagination inside table scroll area`)
         if (!pager.querySelector('.table-pagination-summary') || !pager.querySelector('.table-pagination-actions')) issues.push(`${name}: incomplete pagination`)
         const arrows = pager.querySelectorAll('.table-pagination-arrow')
-        if (arrows.length !== 2 || [...arrows].some(button => !['‹', '›'].includes(button.textContent!.trim()))) issues.push(`${name}: nonstandard pagination arrows`)
+        if (arrows.length !== 2 || [...arrows].some(button => !button.querySelector('svg.site-icon') || !button.getAttribute('aria-label'))) issues.push(`${name}: nonstandard pagination arrows`)
         const table = own('.table-wrap,.reports-table-wrap').at(-1)
         if (table && (pager.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING)) issues.push(`${name}: pager before records`)
       }

@@ -307,10 +307,10 @@ func TestRewardsHTTPInsufficientRevocationIsAtomicAndNewRequestCanSucceed(t *tes
 		t.Fatal(err)
 	}
 	var delta points.Balance
-	delta[2][0] = -15
+	delta[2][0] = -1500
 	if _, err = store.Post(context.Background(), tx, points.Change{BrandID: managedBrand, MemberID: f.memberID, EntryType: "test_gift_spend", ReferenceType: "test", OperationKey: "reward-test-spend:" + orderID,
 		Reason: "consume some gift points before reversal", ActorType: "admin", ActorID: f.root, RequestID: "reward-test-gift-spend-01",
-		Delta: delta, Allocation: []points.Allocation{{Source: "gift", State: "available", Points: 15}}}); err != nil {
+		Delta: delta, Allocation: []points.Allocation{{Source: "gift", State: "available", Points: 1500}}}); err != nil {
 		_ = tx.Rollback(context.Background())
 		t.Fatal(err)
 	}
@@ -319,18 +319,18 @@ func TestRewardsHTTPInsufficientRevocationIsAtomicAndNewRequestCanSucceed(t *tes
 	}
 	pending := rewardRawCall(f.managementHTTP, "POST", rewardOrdersHTTPPath+"/"+orderID+"/revoke", "reward-pending-revoke-01", f.token, managedBrand, f.root,
 		`{"version":1,"reason":"revoke exceeds remaining gift balance"}`)
-	if pending.Code != 422 || rewardErrorCode(t,pending)!="REWARD_AVAILABLE_INSUFFICIENT" {
+	if pending.Code != 422 || rewardErrorCode(t, pending) != "REWARD_AVAILABLE_INSUFFICIENT" {
 		t.Fatalf("pending revoke should be a normal 200 response: status=%d body=%s", pending.Code, pending.Body.String())
 	}
 	var credit points.Balance
-	credit[2][0] = 15
+	credit[2][0] = 1500
 	tx, err = f.pool.Begin(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = store.Post(context.Background(), tx, points.Change{BrandID: managedBrand, MemberID: f.memberID, EntryType: "test_gift_credit", ReferenceType: "test", OperationKey: "reward-test-credit:" + orderID,
 		Reason: "restore gift points for reversal retry", ActorType: "admin", ActorID: f.root, RequestID: "reward-test-gift-credit-01",
-		Delta: credit, Allocation: []points.Allocation{{Source: "gift", State: "available", Points: 15}}}); err != nil {
+		Delta: credit, Allocation: []points.Allocation{{Source: "gift", State: "available", Points: 1500}}}); err != nil {
 		_ = tx.Rollback(context.Background())
 		t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func TestRewardsHTTPInsufficientRevocationIsAtomicAndNewRequestCanSucceed(t *tes
 	}
 	staleReceipt := rewardRawCall(f.managementHTTP, "POST", rewardOrdersHTTPPath+"/"+orderID+"/revoke", "reward-pending-revoke-01", f.token, managedBrand, f.root,
 		`{"version":1,"reason":"revoke exceeds remaining gift balance"}`)
-	if staleReceipt.Code != 422 || rewardErrorCode(t,staleReceipt)!="REWARD_AVAILABLE_INSUFFICIENT" {
+	if staleReceipt.Code != 422 || rewardErrorCode(t, staleReceipt) != "REWARD_AVAILABLE_INSUFFICIENT" {
 		t.Fatalf("same-key replay should return original pending receipt: status=%d body=%s", staleReceipt.Code, staleReceipt.Body.String())
 	}
 	currentAttempt := rewardRawCall(f.managementHTTP, "POST", rewardOrdersHTTPPath+"/"+orderID+"/revoke", "reward-current-state-replay-01", f.token, managedBrand, f.root,

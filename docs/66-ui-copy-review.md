@@ -32,7 +32,7 @@
 | 24 | 品牌后台 佣金人工修正 | 派发完成后可进行人工修正 | 说明派发未完成时无法修正的原因。 | [CommissionPaymentsManagement.vue](../admin-web/src/CommissionPaymentsManagement.vue#L377) |
 | 25 | 品牌后台 佣金更正 | 差额用于核对，不代表已授权执行。<br>新核算覆盖旧人工修正目标，差额可能补发或追回。 | 重新核算可能覆盖人工目标，并发生补发或追回。 | [CommissionCorrectionsManagement.vue](../admin-web/src/CommissionCorrectionsManagement.vue#L417) |
 | 26 | 总后台 收回品牌充值额度 | 只能收回剩余未使用的额度，已充值给会员的积分不受影响。 | 区分未使用额度与已经充值给会员的积分。 | [RechargeQuotaPanel.vue](../shared/src/RechargeQuotaPanel.vue#L89) |
-| 27 | 品牌后台 一级代理切换模式 | 请逐个填写全部下级的新比例。整条代理线从下个佣金周期统一切换，当前周期继续使用原模式和原比例；需先配置结算周期。代理状态和发展下级设置沿用当前已保存配置。 | 整条代理线同时切换，生效在下个周期，并非立即生效。 | [AgentManagement.vue](../admin-web/src/AgentManagement.vue#L367) |
+| 27 | 品牌后台 一级代理切换模式 | 修改代理模式需要重新设置下级代理佣金比例<br>整条代理线从下个佣金周期统一切换。<br>当前周期继续使用原模式和原比例。<br>需先配置结算周期。<br>代理状态和发展下级设置沿用当前已保存配置。 | 整条代理线同时切换，生效在下个周期，并非立即生效。 | [AgentManagement.vue](../admin-web/src/AgentManagement.vue#L367) |
 | 28 | 总后台 认证与风控 | 尚未接入验证服务的检查项，启用后会要求审核，并阻止新的注册或投注。 | 检查服务未接入时启用仍会阻断注册或投注，需要在启用前知道。 | [SecuritySettingsPanel.vue](../platform-web/src/SecuritySettingsPanel.vue#L121) |
 | 29 | 品牌后台 风控组件 | 真实检查服务尚未接入；已启用的政策仍会限制注册、投注和提现。 | 同类开关会限制业务；该组件的现有能力提示暂保留。 | [CompliancePolicy.vue](../admin-web/src/CompliancePolicy.vue#L103) |
 | 30 | 总后台 彩种上下架与启用 | 从用户列表隐藏，停止新投注及预约新自动期次。已有期次和注单继续开奖结算，历史记录和钱包流水保留。<br>恢复列表展示，仍按已有销售及自动开奖配置决定是否开放投注。<br>从用户列表隐藏并停止新投注。已有注单继续结算，历史记录和钱包流水保留。 | 说明是否停止新投注，以及已有注单是否继续结算。 | [PlatformLottery.vue](../shared/src/PlatformLottery.vue#L83) |

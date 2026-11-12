@@ -21,10 +21,13 @@ describe('configured stake display', () => {
     expect(configuredBetPoints(combined, five)).toBe('7')
     expect(configuredBetPoints({...combination,stake_mode:'unit_multiplier',unit_points:'4'}, {...five,points:'0',multiplier:'3'})).toBe('120')
   })
-  it('keeps integer point precision and leaves unfinished inputs unpriced', () => {
+  it('keeps exact decimal point precision and leaves invalid inputs unpriced', () => {
     const single = catalog().plays[0]!
     expect(configuredBetPoints(single, {...request,points:'9007199254740993'})).toBe('27021597764222979')
-    for (const points of ['', '0', '-1', '1.5']) expect(configuredBetPoints(single, {...request,points})).toBeNull()
+    expect(configuredBetPoints(single, {...request,points:'0.15'})).toBe('0.45')
+    expect(configuredBetPoints(single, {...request,points:'9007199254740993.25'})).toBe('27021597764222979.75')
+    expect(configuredBetPoints({...single,stake_mode:'unit_multiplier',unit_points:'0.15'}, {...request,multiplier:'1.5'})).toBeNull()
+    for (const points of ['', '0', '-1', '1.005', '01.5']) expect(configuredBetPoints(single, {...request,points})).toBeNull()
   })
 })
 

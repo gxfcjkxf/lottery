@@ -40,7 +40,6 @@ export interface CreatedMember {
   user_id: string;
   member_id: string;
   brand_id: string;
-  terms_accepted: false;
   audit_log_id: string;
 }
 

@@ -31,7 +31,7 @@ const cycle: CommissionCycleRecord = {
 };
 const run: CommissionRun = {
   id: runId, brand_id: brand, cycle_id: cycleId, generation: "9223372036854775807", evidence_epoch: "0", state: "ready",
-  calculated_count: "9007199254740993", earning_count: "1", total_points: "9223372036854775808", created_at: date,
+  calculated_count: "9007199254740993", earning_count: "1", total_points: "9223372036854775808.25", created_at: date,
 };
 const calculation: CommissionCalculation = {
   id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", brand_id: brand, cycle_id: cycleId, run_id: runId, order_id: orderId,
@@ -66,7 +66,7 @@ describe("commission cycles API", () => {
 
   it("calls all read routes with same-origin credentials, explicit brand, and echoed pagination", async () => {
     const earning = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab", brand_id: brand, cycle_id: cycleId, run_id: runId,
-      agent_id: accountId, member_id: memberId, exact_amount: { numerator: "900719925474099312347", denominator: "1000000" }, points: "900719925474099", created_at: date };
+      agent_id: accountId, member_id: memberId, exact_amount: { numerator: "900719925474099312347", denominator: "1000000" }, points: "900719925474099.31", created_at: date };
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(ok(page([cycle])))
       .mockResolvedValueOnce(ok(cycle))
@@ -295,3 +295,22 @@ describe("commission cycles API", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 });
+
+
+it('reads missing windows in the requested brand and rejects invalid candidate data', async () => {
+  const candidate = {anchor_order_id:orderId,window_from:cycle.window_from,window_to:cycle.window_to,cycle:'weekly'};
+  const data = {brand_id:brand,items:[candidate],limit:100,offset:0};
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => new Response(JSON.stringify({success:true,data}),{status:200}));
+  await expect(createCommissionCyclesApi(fetcher).candidates(brand)).resolves.toEqual(data);
+  expect(fetcher.mock.calls[0][0]).toBe('/api/v1/admin/commission-cycles/candidates?limit=100&offset=0');
+  expect(new Headers(fetcher.mock.calls[0][1]?.headers).get('X-Brand-ID')).toBe(brand);
+  for (const invalid of [{...data,brand_id:otherBrand},{...data,items:[{...candidate,cycle:'daily'}]},{...data,items:[{...candidate,window_to:candidate.window_from}]}]) {
+    const bad = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({success:true,data:invalid}),{status:200}));
+    await expect(createCommissionCyclesApi(bad).candidates(brand)).rejects.toMatchObject({code:'INVALID_RESPONSE'});
+  }
+});
+
+it('accepts decimal zero for an uncalculated cycle without accepting nonzero totals', async () => {
+ await expect(createCommissionCyclesApi(async()=>ok({...cycle,total_points:'0.00'})).read(brand,cycleId)).resolves.toMatchObject({total_points:'0.00'})
+ await expect(createCommissionCyclesApi(async()=>ok({...cycle,total_points:'0.01'})).read(brand,cycleId)).rejects.toMatchObject({code:'INVALID_RESPONSE'})
+})

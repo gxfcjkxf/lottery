@@ -1,9 +1,10 @@
+import {configuredSelectionOptionLabel} from '../../shared/src/configured-selection-groups'
 import { createCatalogI18n, configuredNumbers, configuredOptionPrices, type ConfiguredPlay, type ConfiguredSnapshot } from '@lottery/shared'
 import type { RuleCondition, RuleDefinition } from '../../shared/src/rules'
 import { playRulesCatalog } from './play-rules-catalog'
 
 type Node = Record<string, any>
-interface PlayerRule { text: string; detail?: string }
+interface PlayerRule { text: string; detail?: string; outcome?:string }
 export interface PlayerRules { instructions: string[]; prizes: PlayerRule[]; options: PlayerRule[] }
 export function describePlayRules(locale: 'en' | 'zh-CN', input: { snapshot: ConfiguredSnapshot; play: ConfiguredPlay; plate: string } | { definition: RuleDefinition }): PlayerRules {
   const { t } = createCatalogI18n(playRulesCatalog, locale)
@@ -90,7 +91,7 @@ export function describePlayRules(locale: 'en' | 'zh-CN', input: { snapshot: Con
         const outcome = d.outcomes[i]!
         const condition = [bucket.sums.length ? `${text('sums')}: ${bucket.sums.join(', ')}` : '', bucket.numbers.length ? `${text('numbers')}: ${ranges(bucket.numbers.sort((a,b) => a-b))}` : ''].filter(Boolean).join('; ')
         const amount = [outcome.outcome === 'won' ? text('decisionPrize', { odds: snapshot.prices.plates[plate]![outcome.price_key!]!, factor: outcome.prize_factor! }) : '', text('loss', { factor: outcome.loss_factor })].filter(Boolean).join('\n')
-        prizes.push({ text: `${heading} · ${text(outcome.outcome === 'push' ? 'pushOutcome' : outcome.outcome)}`, detail: `${condition}\n${amount}` })
+        prizes.push({ outcome:outcome.outcome, text: `${heading} · ${text(outcome.outcome === 'push' ? 'pushOutcome' : outcome.outcome)}`, detail: `${condition}\n${amount}` })
       }
     }
     describeIndex(d.index, text('base'))
@@ -116,4 +117,23 @@ export function describePlayRules(locale: 'en' | 'zh-CN', input: { snapshot: Con
   if (play.cap_points) prizes.push({ text: text('cap', { points: play.cap_points }) })
   const presentedOptions = options.map(option => ({ text: option.label[locale], detail: [configuredNumbers(snapshot, option).join(', '), ...configuredOptionPrices(snapshot, play, option, plate).map(price => `× ${price}`)].filter(Boolean).join(' · ') }))
   return { instructions, prizes, options: presentedOptions }
+}
+
+export function describePlayGroup(locale:'en'|'zh-CN',snapshot:ConfiguredSnapshot,group:import('../../shared/src/configured-selection-groups').ConfiguredSelectionGroup,plate:string){
+ const {t}=createCatalogI18n(playRulesCatalog,locale)
+ const entries=group.plays.map(play=>{
+  const option=snapshot.catalog.domains[play.selection.domain]!.options[0]!
+  const rules=describePlayRules(locale,{snapshot,play,plate})
+  rules.prizes=rules.prizes.filter(prize=>prize.outcome!=='lost')
+  return {id:play.id,label:configuredSelectionOptionLabel(play,option)[locale],prices:configuredOptionPrices(snapshot,play,option,plate),rules}
+ })
+ const notes:string[]=[]
+ if(group.id==='group:tailNumbers'&&group.plays.every(play=>!!play.decisions)){
+  const excluded=Array.from({length:10},(_,tail)=>tail).filter(tail=>group.plays.every(play=>[play.decisions!.index,...(play.decisions!.alternate?[play.decisions!.alternate.index]:[])].every(index=>index.every((outcome,key)=>{
+   const sum=[...String(key).padStart(snapshot.catalog.model.length,'0')].reduce((total,digit)=>total+Number(digit),0)
+   return sum%10!==tail||play.decisions!.outcomes[outcome]!.outcome==='lost'
+  }))))
+  if(excluded.length)notes.push(t('groupTailExcluded',{tails:excluded.join(', ')}))
+ }
+ return {instructions:[t('groupChoose')],entries,notes}
 }

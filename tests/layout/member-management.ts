@@ -43,7 +43,7 @@ export function registerMemberManagementTests(reflow=false){
   await expect(page.getByRole('heading',{name:zh?'会员管理':'Member management',exact:true})).toBeVisible()
   await expect(page.locator('.directory-page [data-refresh-button]')).toHaveCount(0)
   const table=page.locator('.member-directory-table'),rows=table.locator('tbody tr'),pagination=page.locator('.table-pagination')
-  await expect(rows).toHaveCount(100);await expect(pagination.locator('.table-pagination-summary')).toHaveText(zh ? '第 1 页 · 本页 100 条 · 共 101 条' : 'Page 1 · 100 records on this page · Total: 101')
+  await expect(rows).toHaveCount(100);await expect(pagination.locator('.table-pagination-summary .table-pagination-desktop')).toHaveText(zh ? '第 1 页 · 本页 100 条 · 共 101 条' : 'Page 1 · 100 records on this page · Total: 101')
   await expect(rows.first().getByRole('button',{name:'member001',exact:true})).toHaveCount(1)
   await expect(rows.first().locator('small')).toHaveCount(0)
   await expect(rows.first()).toContainText('9007199254740993')

@@ -167,7 +167,7 @@ describe("user notification API", () => {
         en: { title: "Recharge confirmed", body: "Recharge confirmed: {points} points." },
         "zh-CN": { title: "充值已确认", body: "充值已确认：{points} 积分。" },
       },
-      payload: { resource_id: resourceId, points: "9007199254740993123" },
+      payload: { resource_id: resourceId, points: "9007199254740993.12" },
       read_at: "2026-10-06T04:00:00Z",
     };
     const fetcher = vi
@@ -182,7 +182,7 @@ describe("user notification API", () => {
     const api = createNotificationApi({ fetch: fetcher });
 
     const parsed = await api.list();
-    expect(parsed.items[0].payload.points).toBe("9007199254740993123");
+    expect(parsed.items[0].payload.points).toBe("9007199254740993.12");
     expect(parsed.items[0].read_at).toBe("2026-10-06T04:00:00Z");
     for (let index = 0; index < 6; index++) {
       await expect(api.list()).rejects.toMatchObject({
@@ -201,7 +201,7 @@ describe("user notification API", () => {
         en: { title: "Prize credit recorded", body: "Historical prize: {points}." },
         "zh-CN": { title: "派奖入账记录", body: "历史奖金：{points}。" },
       },
-      payload: { resource_id: resourceId, points: "9223372036854775807" },
+      payload: { resource_id: resourceId, points: "92233720368547758.07" },
     };
     const reversed = {
       ...joined,
@@ -219,7 +219,7 @@ describe("user notification API", () => {
       { ...won, payload: { ...won.payload, points: 0 } },
       { ...won, payload: { ...won.payload, points: "0" } },
       { ...won, payload: { ...won.payload, points: "01" } },
-      { ...won, payload: { ...won.payload, points: "9223372036854775808" } },
+      { ...won, payload: { ...won.payload, points: "92233720368547758.08" } },
     ];
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(ok(page({ items: [won, reversed]  ,total_count: '2'})))
@@ -228,7 +228,7 @@ describe("user notification API", () => {
 
     const parsed = await api.list();
     expect(parsed.items.map(({ event_type, payload }) => [event_type, payload])).toEqual([
-      ["bet.order.won", { resource_id: resourceId, points: "9223372036854775807" }],
+      ["bet.order.won", { resource_id: resourceId, points: "92233720368547758.07" }],
       ["bet.order.prize_reversed", { resource_id: resourceId, points: "9007199254740993" }],
     ]);
     for (let index = 0; index < invalidItems.length; index++) {
@@ -248,14 +248,14 @@ describe("user notification API", () => {
         en: { title: "Gift event recorded", body: `Historical gift event: {points}. ${state}.` },
         "zh-CN": { title: "赠送记录", body: `历史赠送事件：{points}。${state}。` },
       },
-      payload: { resource_id: resourceId, points: "9223372036854775807" },
+      payload: { resource_id: resourceId, points: "92233720368547758.07" },
     }));
     const invalid: unknown[] = [
       { ...rows[0], event_type: "reward.order.revoked" },
       { ...rows[1], template_key: "reward.order.granted" },
       { ...rows[0], content: null },
       { ...rows[2], content: undefined },
-      ...[0, -1, 1, "0", "-1", "01", "9223372036854775808", null, undefined].map((points) => ({
+      ...[0, -1, 1, "0", "-1", "01", "92233720368547758.08", null, undefined].map((points) => ({
         ...rows[0], payload: { resource_id: resourceId, points },
       })),
       ...["actor_id", "reason", "ledger_entry_id", "member_id", "status"].map((key) => ({
@@ -271,13 +271,13 @@ describe("user notification API", () => {
         event_type: `reward.order.${state}`,
         template_key: `reward.order.${state}`,
         template_version: 1,
-        payload: { resource_id: resourceId, points: "9223372036854775807" },
+        payload: { resource_id: resourceId, points: "92233720368547758.07" },
       })),
      total_count: String((states.map((state) => ({
         event_type: `reward.order.${state}`,
         template_key: `reward.order.${state}`,
         template_version: 1,
-        payload: { resource_id: resourceId, points: "9223372036854775807" },
+        payload: { resource_id: resourceId, points: "92233720368547758.07" },
       }))).length)});
     for (let index = 0; index < invalid.length; index++) {
       await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
@@ -294,14 +294,14 @@ describe("user notification API", () => {
         en: { title: "Commission adjustment recorded", body: "Historical adjustment: {points}." },
         "zh-CN": { title: "佣金调整记录", body: "历史调整：{points}。" },
       },
-      payload: { resource_id: resourceId, points: "-9223372036854775808" },
+      payload: { resource_id: resourceId, points: "-92233720368547758.08" },
     };
-    const invalid = ["0", "-0", "+1", "01", "-01", "9223372036854775808", "-9223372036854775809"];
+    const invalid = ["0", "-0", "+1", "01", "-01", "92233720368547758.08", "-9223372036854775809"];
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(ok(page({ items: [adjusted]  ,total_count: '1'})))
       .mockImplementation(async () => ok(page({ items: [{ ...adjusted, payload: { ...adjusted.payload, points: invalid.shift() } }]  ,total_count: '1'})));
     const api = createNotificationApi({ fetch: fetcher });
-    await expect(api.list()).resolves.toMatchObject({ items: [{ payload: { points: "-9223372036854775808" } }]  ,total_count: '1'});
+    await expect(api.list()).resolves.toMatchObject({ items: [{ payload: { points: "-92233720368547758.08" } }]  ,total_count: '1'});
     for (let index = 0; index < 7; index++) {
       await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
     }
@@ -353,14 +353,14 @@ describe("user notification API", () => {
         en: { title: "Withdrawal status recorded", body: `Historical withdrawal status: ${state}. Points involved: {points}.` },
         "zh-CN": { title: "提现状态记录", body: `历史提现状态：${state}，涉及 {points} 积分。` },
       },
-      payload: { resource_id: resourceId, points: "9223372036854775807" },
+      payload: { resource_id: resourceId, points: "92233720368547758.07" },
     }));
     const invalid = [
       { ...events[0], content: null },
       { ...events[1], content: undefined },
       { ...events[2], template_version: 1, content: null },
       { ...events[2], payload: { resource_id: resourceId, points: "0" } },
-      { ...events[3], payload: { resource_id: resourceId, points: "9223372036854775808" } },
+      { ...events[3], payload: { resource_id: resourceId, points: "92233720368547758.08" } },
       { ...events[4], payload: { resource_id: resourceId, points: "1", reason: "private" } },
       { ...events[5], payload: { resource_id: resourceId, points: "1", bank_account: "private" } },
       { ...events[0], event_type: "withdrawal.order.unknown", template_key: "withdrawal.order.unknown" },
@@ -374,12 +374,12 @@ describe("user notification API", () => {
       items: states.map((state) => ({
         event_type: `withdrawal.order.${state}`,
         template_key: `withdrawal.order.${state}`,
-        payload: { resource_id: resourceId, points: "9223372036854775807" },
+        payload: { resource_id: resourceId, points: "92233720368547758.07" },
       })),
      total_count: String((states.map((state) => ({
         event_type: `withdrawal.order.${state}`,
         template_key: `withdrawal.order.${state}`,
-        payload: { resource_id: resourceId, points: "9223372036854775807" },
+        payload: { resource_id: resourceId, points: "92233720368547758.07" },
       }))).length)});
     for (let index = 0; index < 8; index++) {
       await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
@@ -396,7 +396,7 @@ describe("user notification API", () => {
         en: { title: "  Earned {points}  ".trim(), body: "Added {points} points; total {points}. Ref {resource_id}." },
         "zh-CN": { title: "到账 {points}", body: "已到账 {points} 积分，再次核对 {points}。编号 {resource_id}。" },
       },
-      payload: { resource_id: resourceId, points: "9223372036854775807" },
+      payload: { resource_id: resourceId, points: "92233720368547758.07" },
     };
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(ok(page({ items: [{ ...custom, template_version: 2 }]  ,total_count: '1'})))

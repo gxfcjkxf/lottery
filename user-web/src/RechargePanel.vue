@@ -16,6 +16,8 @@ import { computed, onUnmounted, ref, watch } from "vue";
 import { formatIntegerAmount } from "./wallet-api";
 import { useUserI18n } from './i18n';
 import { createRechargeApi, RechargeApiError, type MemberRecharge, type RechargeState } from "./recharge-api";
+const pageSize = ref(20)
+
 
 const props = defineProps<{
   brandCode?: string;
@@ -89,7 +91,7 @@ async function load(requestedOffset = offset.value, requestedState = appliedStat
   }
   loading.value = true;
   try {
-    const result = await api.value.list({ brand_id: member.brand_id, member_id: member.id }, { limit: 20, offset: requestedOffset, state: requestedState || null }, listController.signal);
+    const result = await api.value.list({ brand_id: member.brand_id, member_id: member.id }, { limit: pageSize.value, offset: requestedOffset, state: requestedState || null }, listController.signal);
     if (disposed || requestGeneration !== generation || requestScope !== scopeKey.value) return;
     page.value = result; offset.value = requestedOffset; appliedState.value = requestedState;
   } catch (cause) {
@@ -155,7 +157,7 @@ watch(scopeKey, () => {
   void load(0);
 }, { immediate: true });
 async function search() { await load(0, selectedState.value); }
-async function clearFilters() { selectedState.value = ''; await load(0, ''); }
+
 onUnmounted(() => {
   disposed = true;
   generation++;
@@ -165,11 +167,12 @@ onUnmounted(() => {
 });
 
 useOperationToast(error, value => displayPublicError(value), 'error');
+async function clearFilters() { selectedState.value = ''; await load(0, ''); }
 </script>
 
 <template>
   <section class="page-section narrow-page recharge-page">
-    <Teleport defer to="#user-page-refresh"><button type="button" v-refresh-button="loading ? labels.loading : labels.refresh" class="button button-secondary" :disabled="loading || !member" @click="withGlobalLoading(load)">{{ loading ? labels.loading : labels.refresh }}</button></Teleport>
+    <Teleport v-if="error || items.some(item => item.state === 'pending')" defer to="#user-page-refresh"><button type="button" v-refresh-button="loading ? labels.loading : labels.refresh" class="button button-secondary" :disabled="loading || !member" @click="withGlobalLoading(load)">{{ loading ? labels.loading : labels.refresh }}</button></Teleport>
     <p class="muted" role="note">{{ labels.manual }}</p>
     <div v-if="!member" class="detail-panel" role="status"><p>{{ labels.signIn }}</p><button type="button" class="button button-secondary" @click="emit('sign-in')">{{ labels.signInAction }}</button><slot name="sign-in" /></div>
     <div v-else class="user-record-list" :aria-busy="loading">
@@ -188,7 +191,7 @@ useOperationToast(error, value => displayPublicError(value), 'error');
             <small>{{ labels.created }} · {{ date(item.created_at) }}</small>
             <button type="button" class="text-button" tabindex="0" aria-haspopup="dialog" @click="withGlobalLoading(openDetail, item)">{{ labels.details }}</button>
           </article>
-          <TablePagination show-empty class="recharge-pagination" :aria-label="labels.page" :total="page?.total_count ?? '0'" :page="Math.floor(offset / 20 + 1)" :count="items.length" :locale="publicErrorI18n.locale.value" :page-size="20" :reachable-page="50_001" :previous-disabled="loading || offset === 0" :next-disabled="loading || BigInt(offset + items.length) >= BigInt(page.total_count) || offset >= 1_000_000" :previous-label="labels.previous" :next-label="labels.next" :go-to="(target: number) => load((target - 1) * 20)" />
+          <TablePagination class="recharge-pagination" :aria-label="labels.page" :total="page?.total_count ?? '0'" :page="Math.floor(offset / pageSize + 1)" :count="items.length" :locale="publicErrorI18n.locale.value" :page-size="pageSize" :reachable-page="Math.floor(1_000_000 / pageSize) + 1" :previous-disabled="loading || offset === 0" :next-disabled="loading || BigInt(offset + items.length) >= BigInt(page.total_count) || offset >= 1_000_000" :previous-label="labels.previous" :next-label="labels.next" :go-to="(target: number) => load((target - 1) * pageSize)" :change-page-size="async (size: number) => { pageSize = size; await load(0) }" :busy="loading" />
         </div>
         <div v-global-loading v-if="detailLoading" class="detail-panel" role="status">{{ labels.loading }}</div>
         <DetailModal v-if="!!detail" :title="labels.details" :close-label="labels.close" @close="detail = null">
@@ -213,4 +216,11 @@ useOperationToast(error, value => displayPublicError(value), 'error');
 .recharge-detail dl > div { display: flex; justify-content: space-between; gap: 16px; }
 .recharge-detail dt { color: var(--muted); }
 .recharge-detail dd { margin: 0; text-align: right; }
+@media (max-width:900px), (pointer:coarse) {
+  .recharge-record { grid-template-columns:minmax(0,1fr) auto; gap:4px 8px; padding-block:8px; }
+  .recharge-record > div { flex-wrap:wrap; gap:4px 8px; }
+  .recharge-record > small { grid-column:1; overflow-wrap:anywhere; }
+  .recharge-record > .text-button { grid-column:2; grid-row:1 / 4; align-self:center; }
+  .recharge-detail dl { gap:8px; margin-block:0; }
+}
 </style>

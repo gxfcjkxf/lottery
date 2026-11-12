@@ -1,3 +1,4 @@
+import { isPointTotal } from '@lottery/shared'
 import { readReportDownload } from "@lottery/shared";
 import { readAdminEnvelope } from './admin-api'
 import { copyAssociationNames } from "@lottery/shared"
@@ -75,7 +76,7 @@ function canonical(input: AttributionReportQuery): CanonicalQuery {
     agent_id: input.agent_id?.toLowerCase() ?? null, agent_scope: agentScope, join_method: input.join_method ?? null };
 }
 function totals(value: unknown): AttributionTotals {
-  if (!isRecord(value) || !exactKeys(value, FIELDS) || FIELDS.some((field) => typeof value[field] !== "string" || !UNSIGNED.test(value[field] as string))) return fail();
+  if (!isRecord(value) || !exactKeys(value, FIELDS) || FIELDS.some((field) => typeof value[field] !== "string" || !(field.endsWith("_points") ? isPointTotal(value[field]) : UNSIGNED.test(value[field] as string)))) return fail();
   return value as unknown as AttributionTotals;
 }
 function validTimezone(v: string): boolean { try { return !!v && v.length <= 100 && new Intl.DateTimeFormat("en", { timeZone: v }).format(0) !== ""; } catch { return false; } }

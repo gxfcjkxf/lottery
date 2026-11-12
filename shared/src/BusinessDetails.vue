@@ -9,7 +9,9 @@ const messages = computed(() => businessDetailsCatalog[props.locale])
 const t = (key: string) => (messages.value as Readonly<Record<string, string>>)[key]
 const object = computed(() => props.value !== null && typeof props.value === 'object' && !Array.isArray(props.value))
 // Only business fields have a display label. Internal identifiers, credentials and traces are never rendered.
-const entries = computed(() => object.value ? Object.entries(props.value as Record<string, unknown>).filter(([key, value]) => value !== undefined && t('field.' + key)) : [])
+const cashContext=computed(()=>object.value&&['CNY','USD','THB','USDT'].includes(String((props.value as Record<string,unknown>).currency)))
+const fieldLabel=(key:string)=>t('field.'+(cashContext.value&&key==='amount'?'currency_amount':cashContext.value&&key==='withdrawable'?'cash_withdrawable':cashContext.value&&key==='number'?'receiving_number':key))
+const entries = computed(() => object.value ? Object.entries(props.value as Record<string, unknown>).filter(([key, value]) => value !== undefined && fieldLabel(key)) : [])
 const list = computed(() => Array.isArray(props.value) ? props.value : [])
 function text(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—'
@@ -19,6 +21,7 @@ function text(value: unknown): string {
   if (['ratio', 'loss_ratio', 'turnover_ratio', 'loss_ratio_cap', 'turnover_ratio_cap'].includes(props.field ?? '') && /^\d+(?:\.\d+)?$/.test(value)) return new Intl.NumberFormat(props.locale, { maximumFractionDigits: 6 }).format(Number(value) * 100) + '%'
   const displayValue = props.field === 'reason' ? auditReasonLabel(value, props.locale) : value
   if (props.field === 'permissions') return permissionLabel(value, props.locale)
+  if(props.field==='mode'&&(value==='count'||value==='amount'))return t('value.rotation_'+value)
   if (t('value.' + displayValue)) return t('value.' + displayValue)
   if (/^\d{4}-\d{2}-\d{2}T/.test(displayValue)) return formatDisplayDateTime(displayValue, props.locale)
   if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(displayValue) || /^[0-9a-f]{32,}$/i.test(displayValue) || /[{}]|^[A-Z][A-Z_]{3,}$/.test(displayValue) || displayValue === '[REDACTED]') return t('unknown')
@@ -28,7 +31,7 @@ function text(value: unknown): string {
 <template>
   <dl v-if="object && entries.length" class="business-details">
     <div v-for="[key, child] in entries" :key="key" class="business-details-row">
-      <dt>{{ t('field.' + key) }}</dt><dd><BusinessDetails :value="child" :locale="locale" :field="key" /></dd>
+      <dt>{{ fieldLabel(key) }}</dt><dd><BusinessDetails :value="child" :locale="locale" :field="key" /></dd>
     </div>
   </dl>
   <p v-else-if="object || (Array.isArray(value) && !list.length)" class="business-details-empty empty-state">{{ t('empty') }}</p>

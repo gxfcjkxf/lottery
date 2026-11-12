@@ -18,7 +18,7 @@ type ValidationCase struct {
 	Name                string         `json:"name"`
 	Selection           Selection      `json:"selection"`
 	Draw                Draw           `json:"draw"`
-	Multiplier          points.Amount  `json:"multiplier"`
+	Multiplier          points.Integer `json:"multiplier"`
 	ExpectedBetPoints   *points.Amount `json:"expected_bet_points"`
 	ExpectedPrizePoints *points.Amount `json:"expected_prize_points"`
 	ExpectedWon         *bool          `json:"expected_won"`

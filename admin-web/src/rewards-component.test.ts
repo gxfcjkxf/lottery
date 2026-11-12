@@ -224,9 +224,10 @@ describe("RewardsManagement", () => {
     installFetch(); const mounted = mount(baseAccount); await flush();
     const root = findNode(mounted.container, (node) => node.tag === "article");
     expect(root?.props.class).toContain("rewards-management");
-    for (const id of ["rewards-grant-member", "rewards-grant-points", "rewards-grant-review", "rewards-list-refresh"]) {
+    for (const id of ["rewards-grant-member", "rewards-grant-points", "rewards-grant-review"]) {
       expect(byTestId(mounted.container, id)).not.toBeNull();
     }
+    expect(byTestId(mounted.container, "rewards-list-refresh")).toBeNull();
     mounted.app.unmount();
   });
 
@@ -251,7 +252,7 @@ describe("RewardsManagement", () => {
     server = installFetch({ onWrite: ({ body }) => ok(reward({ member_id: (body as { member_id: string }).member_id, points: (body as { points: string }).points }), 201) });
     const mounted = mount(baseAccount); await flush();
     setModel(byTestId(mounted.container, "rewards-grant-member"), "reward_user"); await flush();
-    setModel(byTestId(mounted.container, "rewards-grant-points"), "9223372036854775807"); await flush();
+    setModel(byTestId(mounted.container, "rewards-grant-points"), "92233720368547758.07"); await flush();
      await flush();
     click(byTestId(mounted.container, "rewards-grant-review")); await flush();
     expect(server.calls.filter((call) => call.init?.method === "POST")).toHaveLength(0);
@@ -262,7 +263,7 @@ describe("RewardsManagement", () => {
     const writes = server.calls.filter((call) => call.init?.method === "POST");
     expect(writes).toHaveLength(1);
     expect(writes[0].url).toBe("/api/v1/admin/reward-orders");
-    expect(writes[0].body).toEqual({ member_id: member, points: "9223372036854775807", reason: "" });
+    expect(writes[0].body).toEqual({ member_id: member, points: "92233720368547758.07", reason: "" });
     expect(new Headers(writes[0].init?.headers).get("X-Reward-Actor-ID")).toBe(actor);
     expect(new Headers(writes[0].init?.headers).get("Idempotency-Key")).toBeTruthy();
     expect(byTestId(mounted.container, "rewards-receipt")).not.toBeNull();
@@ -280,6 +281,7 @@ describe("RewardsManagement", () => {
     expect(textOf(mounted.container) + operationToastText()).toContain("暂未确认操作结果"); mounted.app.unmount();
 
     server.current = reward({ state: "granted", version: 1, reason: "" });
+    server.fetcher.mockImplementationOnce(async () => failure(503, "REWARD_BUSY"));
     mounted = mount(baseAccount); await flush();
     expect(textOf(mounted.container) + operationToastText()).toContain("有待确认的操作");
     const frozenBefore = RewardsState.getPendingRewardIntent({ accountId: actor, brandId: brand, operation: "grant" });
@@ -339,10 +341,10 @@ describe("RewardsManagement", () => {
       return ok(reward(body as RewardGrantBody), 201);
     } });
     let mounted = mount(baseAccount); await flush();
-    await submitGrant(mounted, "9223372036854775807");
+    await submitGrant(mounted, "92233720368547758.07");
     const scope = { accountId: actor, brandId: brand, operation: "grant" as const };
     const original = RewardsState.getPendingRewardIntent(scope)!;
-    expect(original).toMatchObject({ ...scope, body: { member_id: member, points: "9223372036854775807", reason: "" } });
+    expect(original).toMatchObject({ ...scope, body: { member_id: member, points: "92233720368547758.07", reason: "" } });
     expect(original.targetId).toBeUndefined();
     expect(Object.isFrozen(original.body)).toBe(true);
     expect(writes(server)).toHaveLength(1);
@@ -360,7 +362,7 @@ describe("RewardsManagement", () => {
     click(button(mounted.container, "使用原请求重试")); await flush();
     const review = byTestId(mounted.container, "rewards-review")!;
     for (const value of [actor, brand, member, original.key]) expect(textOf(review) + operationToastText()).not.toContain(value);
-    expect(textOf(review) + operationToastText()).toContain("9223372036854775807");
+    expect(textOf(review) + operationToastText()).toContain("92233720368547758.07");
     expect(writes(server)).toHaveLength(1);
     await confirmReview(mounted);
     expect(writes(server)).toHaveLength(2);

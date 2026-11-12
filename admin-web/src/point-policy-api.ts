@@ -1,3 +1,4 @@
+import { isPoints, pointsMinor } from '@lottery/shared'
 import { readAdminEnvelope } from './admin-api'
 
 import { AdminApiError, createIdempotencyKey } from "./admin-api";
@@ -54,7 +55,7 @@ export function canWritePointPolicy(
 }
 
 export function isCanonicalPositiveLimit(value: string): boolean {
-  return /^[1-9]\d*$/.test(value);
+  return isPoints(value) && pointsMinor(value) > 0n;
 }
 
 export function createPointPolicyKeyTracker() {

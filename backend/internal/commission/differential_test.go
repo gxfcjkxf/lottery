@@ -14,12 +14,12 @@ func TestDifferentialSameBasisKeepsExactAmountsAndTelescopes(t *testing.T) {
 		ratios []string
 		want   []ExactAmount
 	}{
-		{100, []string{"0.1", "0.06"}, []ExactAmount{{"4", "1"}, {"6", "1"}}},
-		{100, []string{"0.1", "0.06", "0.02"}, []ExactAmount{{"4", "1"}, {"4", "1"}, {"2", "1"}}},
-		{11, []string{"0.1", "0.06"}, []ExactAmount{{"11", "25"}, {"33", "50"}}},
-		{100, []string{"0.1", "0.1"}, []ExactAmount{{"0", "1"}, {"10", "1"}}},
+		{10000, []string{"0.1", "0.06"}, []ExactAmount{{"4", "1"}, {"6", "1"}}},
+		{10000, []string{"0.1", "0.06", "0.02"}, []ExactAmount{{"4", "1"}, {"4", "1"}, {"2", "1"}}},
+		{1100, []string{"0.1", "0.06"}, []ExactAmount{{"11", "25"}, {"33", "50"}}},
+		{10000, []string{"0.1", "0.1"}, []ExactAmount{{"0", "1"}, {"10", "1"}}},
 		{0, []string{"0.1", "0"}, []ExactAmount{{"0", "1"}, {"0", "1"}}},
-		{math.MaxInt64, []string{"1"}, []ExactAmount{{"9223372036854775807", "1"}}},
+		{math.MaxInt64, []string{"1"}, []ExactAmount{{"9223372036854775807", "100"}}},
 	} {
 		got, err := DifferentialSameBasis(tt.base, tt.ratios)
 		if err != nil || len(got) != len(tt.want) {
@@ -37,7 +37,7 @@ func TestDifferentialSameBasisKeepsExactAmountsAndTelescopes(t *testing.T) {
 			sum.Add(sum, r)
 		}
 		rate, _ := new(big.Rat).SetString(tt.ratios[0])
-		if sum.Cmp(new(big.Rat).Mul(new(big.Rat).SetInt64(int64(tt.base)), rate)) != 0 {
+		if sum.Cmp(new(big.Rat).Mul(big.NewRat(int64(tt.base), 100), rate)) != 0 {
 			t.Fatal("layer amounts do not telescope", got)
 		}
 	}
@@ -52,8 +52,8 @@ func TestDifferentialSameBasisRejectsMalformedOrIncreasingChain(t *testing.T) {
 		base   points.Amount
 		ratios []string
 	}{
-		{-1, []string{"0.1"}}, {1, nil}, {1, tooDeep}, {1, []string{"0.06", "0.1"}},
-		{1, []string{"0.10"}}, {1, []string{"1.01"}}, {1, []string{"-0.1"}}, {1, []string{"NaN"}},
+		{-100, []string{"0.1"}}, {100, nil}, {100, tooDeep}, {100, []string{"0.06", "0.1"}},
+		{100, []string{"0.10"}}, {100, []string{"1.01"}}, {100, []string{"-0.1"}}, {100, []string{"NaN"}},
 	} {
 		if _, err := DifferentialSameBasis(tt.base, tt.ratios); err != ErrInvalid {
 			t.Fatal(tt, err)

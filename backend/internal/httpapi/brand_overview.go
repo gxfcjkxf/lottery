@@ -54,7 +54,7 @@ SELECT jsonb_build_object(
  JOIN global_users u ON u.id=s.user_id JOIN brand_members m ON m.id=s.member_id AND m.brand_id=s.brand_id
  JOIN brands b ON b.id=s.brand_id
  WHERE s.brand_id=$1 AND a.last_seen_at>=snapshot_at-interval '5 minutes' AND s.revoked_at IS NULL AND s.expires_at>snapshot_at
- AND u.status='active' AND m.status IN ('normal','frozen') AND m.terms_accepted AND b.status<>'disabled'),
+ AND u.status='active' AND m.status IN ('normal','frozen') AND b.status<>'disabled'),
  'unsettled_points',(SELECT coalesce(sum(stake) FILTER(WHERE pending),0)::text FROM orders),
  'available_points',(SELECT coalesce(sum(points) FILTER(WHERE state='available'),0)::text FROM member_balances),
  'frozen_points',(SELECT coalesce(sum(points) FILTER(WHERE state IN ('manual_frozen','system_frozen')),0)::text FROM member_balances),

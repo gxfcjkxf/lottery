@@ -192,7 +192,7 @@ func (s Store) ListMembers(ctx context.Context, account access.Account, brandID 
  JOIN brands br ON br.id=se.brand_id
  WHERE se.member_id=bm.id AND se.brand_id=bm.brand_id AND se.user_id=bm.global_user_id
  AND sa.last_seen_at>=now()-interval '5 minutes' AND se.revoked_at IS NULL AND se.expires_at>now()
- AND gu.status='active' AND bm.status IN ('normal','frozen') AND bm.terms_accepted AND br.status<>'disabled') AS online,
+ AND gu.status='active' AND bm.status IN ('normal','frozen') AND br.status<>'disabled') AS online,
  CASE WHEN $8::boolean OR bm.brand_id=ANY($9::uuid[]) THEN
  (SELECT COALESCE(sum(pb.points),0)::text FROM point_accounts pa JOIN point_buckets pb ON pb.account_id=pa.id AND pb.brand_id=pa.brand_id
  WHERE pa.brand_id=bm.brand_id AND pa.brand_member_id=bm.id AND pb.state IN ('available','manual_frozen','system_frozen')) ELSE NULL END AS display_points

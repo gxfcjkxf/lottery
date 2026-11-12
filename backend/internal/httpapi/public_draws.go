@@ -24,18 +24,18 @@ func registerPublicDrawRoutes(mux routeRegistrar, d Dependencies) {
 			if !ok {
 				return
 			}
-			_, offset, ok := pageParams(r)
+			limit, offset, ok := pageParams(r)
 			if !ok {
 				failure(w, r, 400, "REQUEST_INVALID", "Invalid pagination")
 				return
 			}
-			for _, key := range []string{"game_id", "kind", "selected", "offset"} {
+			for _, key := range []string{"game_id", "kind", "selected", "limit", "offset"} {
 				if len(r.URL.Query()[key]) > 1 {
 					failure(w, r, 400, "REQUEST_INVALID", "Duplicate parameter")
 					return
 				}
 			}
-			out, err := betService(d).DrawArchive(r.Context(), brand.ID, r.URL.Query().Get("game_id"), r.URL.Query().Get("kind"), r.URL.Query().Get("selected"), offset)
+			out, err := betService(d).DrawArchive(r.Context(), brand.ID, r.URL.Query().Get("game_id"), r.URL.Query().Get("kind"), r.URL.Query().Get("selected"), limit, offset)
 			result, e := betError(out, err)
 			outputMutation(w, r, result, e)
 		})

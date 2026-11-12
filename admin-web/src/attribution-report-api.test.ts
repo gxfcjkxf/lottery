@@ -3,7 +3,7 @@ import type { AdminAccount } from "./admin-api";
 import { attributionReportPermissions, createAttributionReportApi, type AttributionTotals } from "./attribution-report-api";
 
 const brand = "11111111-1111-4111-8111-111111111111", actor = "22222222-2222-4222-8222-222222222222", agent = "33333333-3333-4333-8333-333333333333";
-const from = "2026-01-01T00:00:00Z", to = "2026-01-02T00:00:00Z", huge = "922337203685477580812345678901234567890";
+const from = "2026-01-01T00:00:00Z", to = "2026-01-02T00:00:00Z", huge = "922337203685477580812345678901234567890.25";
 const totals: AttributionTotals = { order_count: "1", stake_points: huge, placed_count: "0", won_count: "0", lost_count: "1", abnormal_count: "0", cancelled_count: "0", refund_points: "0", settled_stake_points: huge, unfinalized_stake_points: "0", abnormal_stake_points: "0", current_prize_points: "0", correction_open_count: "0", final_lost_stake_points: huge };
 const query = { from, to, group_by: "agent", limit: 20, offset: 0, game_id: null, member_id: null, agent_id: null, agent_scope: "direct", join_method: null };
 const payload = (overrides: Record<string, unknown> = {}) => ({ success: true, associations: { ["brand:" + brand]: { name: "Aurora" } }, request_id: "attribution-read-1", data: { brand_id: brand, snapshot_at: "2026-01-02T01:00:00Z", timezone: "Asia/Singapore", query, summary: totals, items: [{ key: agent, label: "Agent Alpha", totals }], total_groups: "1", ...overrides } });
@@ -87,3 +87,9 @@ describe("attribution report API", () => {
     const decoded = new TextDecoder().decode(file.bytes.subarray(3)); expect(decoded).toContain(name);
   });
 });
+
+it('keeps report counts integral and rejects malformed fractional attribution points', async () => {
+ for(const change of [{order_count:'1.5'},{stake_points:'0.001'},{refund_points:'-0.01'}]) {
+  await expect(createAttributionReportApi(vi.fn<typeof fetch>().mockResolvedValue(json(payload({summary:{...totals,...change}})))).report(brand,{from,to,group_by:'agent'})).rejects.toMatchObject({code:'INVALID_RESPONSE'})
+ }
+})

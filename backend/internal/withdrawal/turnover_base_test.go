@@ -10,15 +10,15 @@ import (
 )
 
 func TestTurnoverBaseUsesOnlyAvailableRechargeAndGift(t *testing.T) {
-	wallet := points.Wallet{Version: 19, RechargePoints: 1, GiftPoints: 1,
-		BySource: points.Balance{{100, 200, 300, 400}, {500, 600, 700, 800}, {50, 60, 70, 80}, {900, 1000, 1100, 1200}}}
+	wallet := points.Wallet{Version: 19, RechargePoints: 100, GiftPoints: 100,
+		BySource: points.Balance{{10000, 20000, 30000, 40000}, {50000, 60000, 70000, 80000}, {5000, 6000, 7000, 8000}, {90000, 100000, 110000, 120000}}}
 	base, err := turnoverBaseSnapshot(wallet)
-	want := TurnoverBaseSnapshot{RechargeAvailable: 100, GiftAvailable: 50, Points: 150, WalletVersion: 19}
+	want := TurnoverBaseSnapshot{RechargeAvailable: 10000, GiftAvailable: 5000, Points: 15000, WalletVersion: 19}
 	if err != nil || base != want {
 		t.Fatalf("base=%+v, error=%v, want %+v", base, err, want)
 	}
 	// Misleading summary fields do not replace the source/state buckets.
-	wallet.BySource[0][0] = 1
+	wallet.BySource[0][0] = 100
 	if base != want {
 		t.Fatal("basis snapshot changed with the wallet value")
 	}
@@ -32,13 +32,13 @@ func TestTurnoverBaseBoundaries(t *testing.T) {
 		err     error
 	}{
 		{"zero", points.Balance{}, 0, nil},
-		{"winning only", points.Balance{{}, {100}}, 0, nil},
-		{"frozen only", points.Balance{{0, 10, 20, 30}, {}, {0, 40, 50, 60}}, 0, nil},
-		{"max", points.Balance{{points.Amount(math.MaxInt64 - 1)}, {}, {1}}, points.Amount(math.MaxInt64), nil},
-		{"large exact", points.Balance{{9007199254740993}, {}, {7}}, 9007199254741000, nil},
-		{"overflow", points.Balance{{points.Amount(math.MaxInt64)}, {}, {1}}, 0, points.ErrOverflow},
-		{"negative basis", points.Balance{{-1}}, 0, points.ErrInvalid},
-		{"negative excluded bucket", points.Balance{{1}, {0, -1}}, 0, points.ErrInvalid},
+		{"winning only", points.Balance{{}, {10000}}, 0, nil},
+		{"frozen only", points.Balance{{0, 1000, 2000, 3000}, {}, {0, 4000, 5000, 6000}}, 0, nil},
+		{"max", points.Balance{{points.Amount(math.MaxInt64 - 100)}, {}, {100}}, points.Amount(math.MaxInt64), nil},
+		{"large exact", points.Balance{{900719925474099300}, {}, {700}}, 900719925474100000, nil},
+		{"overflow", points.Balance{{points.Amount(math.MaxInt64)}, {}, {100}}, 0, points.ErrOverflow},
+		{"negative basis", points.Balance{{-100}}, 0, points.ErrInvalid},
+		{"negative excluded bucket", points.Balance{{100}, {0, -100}}, 0, points.ErrInvalid},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			base, err := turnoverBaseSnapshot(points.Wallet{BySource: tc.balance})
@@ -53,7 +53,7 @@ func TestTurnoverBaseBoundaries(t *testing.T) {
 }
 
 func TestTurnoverBaseJSONPreservesLargeIntegers(t *testing.T) {
-	base := TurnoverBaseSnapshot{RechargeAvailable: 9007199254740993, GiftAvailable: 7, Points: 9007199254741000, WalletVersion: 9007199254740993}
+	base := TurnoverBaseSnapshot{RechargeAvailable: 900719925474099300, GiftAvailable: 700, Points: 900719925474100000, WalletVersion: 9007199254740993}
 	raw, err := json.Marshal(base)
 	if err != nil {
 		t.Fatal(err)

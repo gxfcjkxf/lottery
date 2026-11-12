@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"io"
-	"strconv"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -65,8 +65,8 @@ func validateCommissionEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggreg
 		!uuid.MatchString(in.TargetID) {
 		return "", Payload{}, ErrInvalid
 	}
-	amount, err := strconv.ParseInt(in.Points, 10, 64)
-	if err != nil || amount == 0 || strconv.FormatInt(amount, 10) != in.Points {
+	amount, err := points.ParseAmount(in.Points)
+	if err != nil || amount == 0 || amount.String() != in.Points {
 		return "", Payload{}, ErrInvalid
 	}
 	if kind == "commission.paid" && (amount <= 0 || in.ResourceID != aggregate || in.TargetID != aggregate) {
@@ -83,7 +83,7 @@ func validateCommissionEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggreg
 		err = tx.QueryRow(ctx, `SELECT EXISTS(
  SELECT 1 FROM commission_payment_targets t
  JOIN point_ledger_entries l ON l.id=t.ledger_entry_id AND l.brand_id=t.brand_id
- WHERE t.brand_id=$1 AND t.id=$2 AND t.state='paid' AND t.points=$5::bigint
+ WHERE t.brand_id=$1 AND t.id=$2 AND t.state='paid' AND t.points=$5::numeric
  AND t.member_id=$3 AND t.ledger_entry_id=$4
  AND l.member_id=t.member_id AND l.entry_type='commission' AND l.reference_type='commission_payment_target'
  AND l.reference_id=t.id AND l.operation_key='commission-payment:'||t.id::text AND l.actor_type='system' AND l.actor_id IS NULL
@@ -98,7 +98,7 @@ func validateCommissionEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggreg
  SELECT 1 FROM commission_adjustments a
  JOIN commission_payment_targets t ON t.brand_id=a.brand_id AND t.id=a.target_id
  JOIN point_ledger_entries l ON l.id=a.ledger_entry_id AND l.brand_id=a.brand_id
- WHERE a.brand_id=$1 AND a.id=$2 AND a.delta_points=$5::bigint AND a.delta_points<>0 AND a.target_id=$6
+ WHERE a.brand_id=$1 AND a.id=$2 AND a.delta_points=$5::numeric AND a.delta_points<>0 AND a.target_id=$6
  AND t.member_id=$3 AND a.ledger_entry_id=$4
  AND l.member_id=t.member_id AND l.entry_type='commission_adjustment' AND l.reference_type='commission_adjustment'
  AND l.reference_id=a.id AND l.operation_key='commission-adjustment:'||a.id::text AND l.actor_type='admin' AND l.actor_id=a.created_by

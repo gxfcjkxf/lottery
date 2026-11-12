@@ -10,7 +10,7 @@ import (
 func commissionAllocationExamples() map[string]any {
 	const id = "11111111-1111-4111-8111-111111111111"
 	at := time.Date(2026, 10, 9, 0, 0, 0, 123456789, time.UTC)
-	base := points.Amount(9007199254740993)
+	base := points.Amount(900719925474099300)
 	exacts, err := commission.DifferentialSameBasis(base, []string{"0.123456", "0.120001"})
 	if err != nil {
 		panic(err)

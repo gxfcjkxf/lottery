@@ -421,7 +421,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
         await expect(withdrawalPanel.locator('.saved-summary')).toHaveCount(0)
         for (const text of await page.locator('.brand-settings-panel label, .brand-settings-panel legend').allTextContents()) expect(text).not.toMatch(/品牌：|Brand:|[（()）]/)
         await tabs.getByRole('button', { name: zh ? '资金' : 'Funds', exact: true }).click()
-        await pointPanel.getByLabel(zh ? '单笔充值上限' : 'Per-recharge limit', { exact: true }).fill('50')
+        await pointPanel.getByLabel(zh ? '单笔充值上限' : 'Per-recharge limit', { exact: true }).fill('50.25')
         await pointPanel.getByRole('button', { name: zh ? '保存' : 'Save', exact: true }).click()
         await expect.poll(() => pointWrites.length).toBe(1)
         await tabs.getByRole('button', { name: zh ? '提现设置' : 'Withdrawal settings', exact: true }).click()
@@ -448,7 +448,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
         await expect(withdrawalPanel.locator('[role=alert]')).toHaveCount(0)
         await expect(withdrawalPanel.locator('#withdraw-brand-min')).toHaveValue('20')
         await tabs.getByRole('button', { name: zh ? '资金' : 'Funds', exact: true }).click()
-        await expect(pointPanel.getByLabel(zh ? '单笔充值上限' : 'Per-recharge limit', { exact: true })).toHaveValue('50')
+        await expect(pointPanel.getByLabel(zh ? '单笔充值上限' : 'Per-recharge limit', { exact: true })).toHaveValue('50.25')
         expect(withdrawalWrites).toHaveLength(2)
         expect(JSON.parse(withdrawalWrites[0].body!).points_step).toBe('10')
       } else {

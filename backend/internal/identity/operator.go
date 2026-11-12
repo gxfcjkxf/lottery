@@ -12,7 +12,6 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/attribution"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
-	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/jackc/pgx/v5"
@@ -30,13 +29,11 @@ type OperatorInput struct {
 }
 
 type AuthSettingsRecord struct {
-	InheritPlatform      bool   `json:"inherit_platform"`
-	Version              int64  `json:"version"`
-	CaptchaEnabled       bool   `json:"captcha_enabled"`
-	TelegramEnabled      bool   `json:"telegram_enabled"`
-	TelegramClientID     string `json:"telegram_client_id"`
-	PrivacyPolicyVersion string `json:"privacy_policy_version"`
-	ServiceTermsVersion  string `json:"service_terms_version"`
+	InheritPlatform  bool   `json:"inherit_platform"`
+	Version          int64  `json:"version"`
+	CaptchaEnabled   bool   `json:"captcha_enabled"`
+	TelegramEnabled  bool   `json:"telegram_enabled"`
+	TelegramClientID string `json:"telegram_client_id"`
 }
 
 type AuthSettingsInput struct {
@@ -49,22 +46,19 @@ type AuthSettingsInput struct {
 }
 
 type operatorCreated struct {
-	UserID        string `json:"user_id"`
-	MemberID      string `json:"member_id"`
-	BrandID       string `json:"brand_id"`
-	TermsAccepted bool   `json:"terms_accepted"`
-	AuditLogID    string `json:"audit_log_id"`
+	UserID     string `json:"user_id"`
+	MemberID   string `json:"member_id"`
+	BrandID    string `json:"brand_id"`
+	AuditLogID string `json:"audit_log_id"`
 }
 
 type authSettingsUpdated struct {
-	InheritPlatform      bool   `json:"inherit_platform"`
-	Version              int64  `json:"version"`
-	CaptchaEnabled       bool   `json:"captcha_enabled"`
-	TelegramEnabled      bool   `json:"telegram_enabled"`
-	TelegramClientID     string `json:"telegram_client_id"`
-	PrivacyPolicyVersion string `json:"privacy_policy_version"`
-	ServiceTermsVersion  string `json:"service_terms_version"`
-	AuditLogID           string `json:"audit_log_id"`
+	InheritPlatform  bool   `json:"inherit_platform"`
+	Version          int64  `json:"version"`
+	CaptchaEnabled   bool   `json:"captcha_enabled"`
+	TelegramEnabled  bool   `json:"telegram_enabled"`
+	TelegramClientID string `json:"telegram_client_id"`
+	AuditLogID       string `json:"audit_log_id"`
 }
 
 var telegramClientIDPattern = regexp.MustCompile(`^[1-9][0-9]*$`)
@@ -85,7 +79,8 @@ func validTelegramClientID(value string, enabled bool) bool {
 	return err == nil && n > 0 && n <= 9007199254740991
 }
 
-// OperatorCreate provisions a new global identity and a pending-consent member.
+// OperatorCreate provisions a new global identity and an immediately usable member.
+// Administrative creation does not record personal acceptance of the terms.
 // Existing global identities are intentionally never reused or modified.
 func (s *Store) OperatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID string, in OperatorInput, meta Metadata) (mutation.Result, error) {
 	return s.operatorCreate(ctx, tx, brand, operatorID, in, meta, "admin")
@@ -140,16 +135,11 @@ func (s *Store) operatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字符"), nil
 	}
 	var status string
-	var raw []byte
-	if err := tx.QueryRow(ctx, `SELECT status,auth_config FROM brands WHERE id=$1 FOR SHARE`, brand).Scan(&status, &raw); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT status FROM brands WHERE id=$1 FOR SHARE`, brand).Scan(&status); err != nil {
 		return mutation.Result{}, err
 	}
 	if status == "disabled" {
 		return mutation.Fail(409, "BRAND_DISABLED", "已停用品牌不能新增用户"), nil
-	}
-	var cfg Settings
-	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return mutation.Result{}, err
 	}
 	hash, err := s.PasswordHash(ctx, in.Password)
 	if errors.Is(err, ErrBusy) {
@@ -174,14 +164,11 @@ func (s *Store) operatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 	if actorType == "agent" {
 		joinMethod, createdBy = "agent_code", ""
 	}
-	member, err := s.createMember(ctx, tx, brand, userID, cfg.Privacy, cfg.Terms, meta, memberCreateOptions{
+	member, err := s.createMember(ctx, tx, brand, userID, meta, memberCreateOptions{
 		joinMethod: joinMethod, createdBy: createdBy, displayName: in.DisplayName,
-		notes: in.Notes, termsAccepted: false, codeKind: kind, code: code,
+		notes: in.Notes, codeKind: kind, code: code,
 	})
 	if err != nil {
-		if result, ok := compliance.Rejection(err); ok {
-			return result, nil
-		}
 		if errors.Is(attribution.DatabaseError(err), attribution.ErrUnavailable) {
 			return mutation.Fail(400, "JOIN_CODE_UNAVAILABLE", "加入码不可用，请核对当前品牌、编码及有效期"), nil
 		}
@@ -190,12 +177,12 @@ func (s *Store) operatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 	auditID, err := audit.Append(ctx, tx, audit.Record{
 		BrandID: brand, ActorType: actorType, ActorID: operatorID, Action: "user.operator_create",
 		ResourceType: "member", ResourceID: member.ID, Reason: in.Reason, RequestID: meta.RequestID, IP: meta.IP,
-		After: map[string]any{"user_id": userID, "member_id": member.ID, "terms_accepted": false},
+		After: map[string]any{"user_id": userID, "member_id": member.ID},
 	})
 	if err != nil {
 		return mutation.Result{}, err
 	}
-	return mutation.OK(201, operatorCreated{UserID: userID, MemberID: member.ID, BrandID: brand, TermsAccepted: false, AuditLogID: auditID}), nil
+	return mutation.OK(201, operatorCreated{UserID: userID, MemberID: member.ID, BrandID: brand, AuditLogID: auditID}), nil
 }
 
 // UpdateAuthSettings changes only the three public login configuration fields.
@@ -230,8 +217,6 @@ func (s *Store) UpdateAuthSettings(ctx context.Context, tx pgx.Tx, brand, operat
 	current.CaptchaEnabled = cfg.CaptchaEnabled
 	current.TelegramEnabled = cfg.TelegramEnabled
 	current.TelegramClientID = cfg.TelegramClientID
-	current.PrivacyPolicyVersion = cfg.Privacy
-	current.ServiceTermsVersion = cfg.Terms
 	if in.InheritPlatform || current.InheritPlatform {
 		var defaults []byte
 		if err = tx.QueryRow(ctx, `SELECT config FROM platform_auth_settings WHERE id=true FOR SHARE`).Scan(&defaults); err != nil {
@@ -255,7 +240,6 @@ func (s *Store) UpdateAuthSettings(ctx context.Context, tx pgx.Tx, brand, operat
 	after := AuthSettingsRecord{InheritPlatform: in.InheritPlatform,
 		Version: current.Version + 1, CaptchaEnabled: in.CaptchaEnabled,
 		TelegramEnabled: in.TelegramEnabled, TelegramClientID: in.TelegramClientID,
-		PrivacyPolicyVersion: current.PrivacyPolicyVersion, ServiceTermsVersion: current.ServiceTermsVersion,
 	}
 	if _, err = tx.Exec(ctx, `UPDATE brands SET auth_inherit_platform=$6,auth_config=jsonb_set(jsonb_set(jsonb_set(auth_config,
 		'{captcha_enabled}',to_jsonb($2::boolean),true),'{telegram_enabled}',to_jsonb($3::boolean),true),
@@ -273,6 +257,5 @@ func (s *Store) UpdateAuthSettings(ctx context.Context, tx pgx.Tx, brand, operat
 	}
 	return mutation.OK(200, authSettingsUpdated{InheritPlatform: after.InheritPlatform, Version: after.Version, CaptchaEnabled: after.CaptchaEnabled,
 		TelegramEnabled: after.TelegramEnabled, TelegramClientID: after.TelegramClientID,
-		PrivacyPolicyVersion: after.PrivacyPolicyVersion, ServiceTermsVersion: after.ServiceTermsVersion,
 		AuditLogID: auditID}), nil
 }

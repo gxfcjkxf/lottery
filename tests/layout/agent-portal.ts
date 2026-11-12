@@ -1,3 +1,4 @@
+import { expectNavigationStyle } from './navigation-style'
 import {test,expect} from '@playwright/test'
 import {readFileSync} from 'node:fs'
 import {createRequire} from 'node:module'
@@ -17,7 +18,7 @@ export function registerAgentPortalTests(reflow=false){
   const zh=locale==='zh-CN',memberId='aaaaaaaa-aaaa-4aaa-8aaa-000000000009',at='2026-10-21T00:00:00Z'
   await page.addInitScript(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(value:string)=>{const w=window as any;if(w.__copyFailure)throw Error('Denied');(w.__copiedLinks??=[]).push(value)}}})})
   await installLayoutApi(page,locale)
-  await page.route('**/api/v1/context',route=>route.fulfill({json:{success:true,data:{brand:{id:gameId,code:'layout',name:'Base brand',status:'active',default_locale:'en',timezone:'Asia/Singapore',config_version:1,theme:{...theme,display_name:'Partner Brand',logo_text:'PB',logo_url:'/icons/agent-brand.png',favicon_url:'/icons/agent-brand.png'}},available_locales:['en','zh-CN'],features:{pwa:false,real_payments:false},terms:{privacy_policy_version:'layout-1',service_terms_version:'layout-1'}}}}))
+  await page.route('**/api/v1/context',route=>route.fulfill({json:{success:true,data:{brand:{id:gameId,code:'layout',name:'Base brand',status:'active',default_locale:'en',timezone:'Asia/Singapore',config_version:1,theme:{...theme,display_name:'Partner Brand',logo_text:'PB',logo_url:'/icons/agent-brand.png',favicon_url:'/icons/agent-brand.png'}},available_locales:['en','zh-CN'],features:{pwa:false,real_payments:false},terms:{}}}}))
   await page.route('**/icons/agent-brand.png',route=>route.fulfill({contentType:'image/png',body:readFileSync('user-web/public/icons/icon-192.png')}))
   const reads:string[]=[],writes:{key:string|undefined;body:string|null}[]=[]
   const root={id:gameId,agent_account_id:gameId,brand_id:gameId,depth:1,config:{can_create_children:true,mode:'loss',ratio:'0.2',status:'active'},effective_mode:'loss',policy_version:1,version:1}
@@ -48,6 +49,7 @@ export function registerAgentPortalTests(reflow=false){
   })
   await page.goto(origins.agent)
   const shell=page.locator('.management-console');await expect(shell).toBeVisible()
+  await expectNavigationStyle(page, '.sidebar .nav-item.active')
   await expect(page).toHaveTitle(zh?'代理管理':'Agent management');await expect(page.locator('.brand-lockup b')).toHaveText('Partner Brand');await expect(page.locator('.brand-lockup img')).toHaveAttribute('src','/icons/agent-brand.png');await expect.poll(()=>page.locator('.brand-lockup img').evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBeGreaterThan(0)
   await expect(page.locator('link[rel=icon]')).toHaveCount(1);await expect(page.locator('link[data-brand-favicon]')).toHaveAttribute('href','/icons/agent-brand.png')
   const preset=page.viewportSize()!
@@ -59,9 +61,9 @@ export function registerAgentPortalTests(reflow=false){
   await expect(page.locator('.member-directory')).toContainText('member_a');await expect(page.locator('.member-directory table.console-table')).toHaveCount(1);expect(reads.some(p=>p.endsWith('/commission')||p.endsWith('/wallet')||p.endsWith('/children')||p.endsWith('/bets'))).toBe(false)
   await page.screenshot({path:info.outputPath(`agent-members-${locale}.png`)})
   await navigate('children');await expect(page.locator('.children-directory')).toBeVisible();await expect(page.locator('.children-directory td.empty-state')).toHaveAttribute('colspan','3');await expect(page.locator('.children-directory td.empty-state')).toHaveCSS('display','table-cell');await expect(page.locator('.member-directory')).toHaveCount(0)
-  await expect(visibleNav.locator('a[href="#/bets"]')).toHaveCount(0);await navigate('members');await page.locator('.member-directory .member-menu-trigger').first().click();await page.getByRole('menuitem',{name:zh?'查看注单':'View bets',exact:true}).click();await expect(page).toHaveURL(new RegExp('member='+memberId));await expect(page.locator('.member-bets')).toContainText('Game A');await expect(page.locator('.member-bets .configured-order-card').first()).toContainText(zh?'已结算':'Settled');await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`agent-bets-${locale}.png`)});await expect(page.locator('.children-directory')).toHaveCount(0)
-  await expect(page.locator('.member-bets .history-record')).toHaveCount(20);await expect(page.locator('.member-bets .configured-order-card').first()).toContainText(zh?'风险冻结积分: 200':'Reserved risk points: 200')
-  const betsPanel=page.locator('.member-bets');await betsPanel.getByRole('button',{name:zh?'下一页':'Next',exact:true}).click();await expect(betsPanel).toContainText('Second page');await expect(betsPanel.locator('.history-record')).toHaveCount(1);await expect(betsPanel.getByRole('button',{name:zh?'下一页':'Next',exact:true})).toBeDisabled();await betsPanel.getByRole('button',{name:zh?'上一页':'Previous',exact:true}).click();await expect(betsPanel.locator('.history-record')).toHaveCount(20)
+  await expect(visibleNav.locator('a[href="#/bets"]')).toHaveCount(0);await navigate('members');await page.locator('.member-directory .member-menu-trigger').first().click();await page.getByRole('menuitem',{name:zh?'查看注单':'View bets',exact:true}).click();await expect(page).toHaveURL(new RegExp('member='+memberId));await expect(page.locator('.member-bets')).toContainText('Game A');await expect(page.locator('.member-bets .history-table tbody tr').first()).toContainText(zh?'已结算':'Settled');await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`agent-bets-${locale}.png`)});await expect(page.locator('.children-directory')).toHaveCount(0)
+  await expect(page.locator('.member-bets .history-table tbody tr')).toHaveCount(20);await expect(page.locator('.member-bets .history-table tbody tr').first()).toContainText('200')
+  const betsPanel=page.locator('.member-bets');await betsPanel.getByRole('button',{name:zh?'下一页':'Next',exact:true}).click();await expect(betsPanel).toContainText('Second page');await expect(betsPanel.locator('.history-table tbody tr')).toHaveCount(1);await expect(betsPanel.getByRole('button',{name:zh?'下一页':'Next',exact:true})).toBeDisabled();await betsPanel.getByRole('button',{name:zh?'上一页':'Previous',exact:true}).click();await expect(betsPanel.locator('.history-table tbody tr')).toHaveCount(20)
   for(const width of reflow?[320,359,700,701,900,1440]:[preset.width]){if(reflow)await page.setViewportSize({width,height:preset.height});await expectNoPageOverflow(page)}if(reflow)await page.setViewportSize(preset)
   await page.reload();await expect(page.locator('.member-bets')).toContainText('member_a')
   await navigate('commission');await expect(page.locator('.commission-page thead')).toContainText(zh?'入账时间':'Posted at');await expect(page.locator('.commission-page')).toContainText('+7');await expect(page.locator('.commission-page')).toContainText('-2');await expect(page.locator('.member-bets')).toHaveCount(0)

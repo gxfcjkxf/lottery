@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -202,58 +201,7 @@ func registerWithdrawalUserRoutes(mux routeRegistrar, d Dependencies) {
 			})
 		}
 		handle("POST", "/withdrawals", func(w http.ResponseWriter, r *http.Request) {
-			if withdrawalOrdersUnavailable(w, r, d) || !withdrawalNoQuery(w, r) {
-				return
-			}
-			brand, ok := resolveBrand(w, r, d)
-			if !ok {
-				return
-			}
-			var in withdrawal.CreateRequest
-			if !decodeBody(w, r, &in) {
-				return
-			}
-			initial, ok := currentBetSession(w, r, d, brand.ID)
-			if !ok {
-				return
-			}
-			encoded, _ := json.Marshal(in)
-			expected := r.Header.Get("X-Withdrawal-Actor-Context")
-			var fresh identity.Session
-			result, err := d.Mutations.ExecuteChecked(r.Context(), brand.ID, "user:"+initial.User.ID+":"+initial.Member.ID, "withdrawal.create", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(string(encoded)), func(ctx context.Context, tx pgx.Tx) error {
-				v, e := d.Identity.AuthenticateTx(ctx, tx, brand.ID, requestToken(r, userCookieName(brand.ID)))
-				if e != nil {
-					return e
-				}
-				if v.User.ID != initial.User.ID || v.Member.ID != initial.Member.ID {
-					return identity.ErrSession
-				}
-				if expected == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(withdrawalActorContext(d, brand.ID, v))) != 1 {
-					return errWithdrawalActor
-				}
-				fresh = v
-				return nil
-			}, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
-				o, e := s.Create(ctx, tx, brand.ID, fresh.Member.ID, withdrawal.OrderInput{Points: in.Points, SourceAllocation: in.SourceAllocation, ClientKey: r.Header.Get("Idempotency-Key")}, points.Metadata{ActorType: "user", ActorID: fresh.User.ID, RequestID: requestID(r), IP: meta(r).IP})
-				// A transient period lock conflict must abort the engine transaction,
-				// not become a cached terminal 503 under this request's original key.
-				if errors.Is(e, withdrawal.ErrTurnoverBusy) {
-					return mutation.Result{}, e
-				}
-				if e != nil {
-					return withdrawalOrderResult(nil, e)
-				}
-				// Wallet/qualification waits can outlive an otherwise valid session.
-				// Reject inside the business savepoint so no reservation can commit.
-				if _, e = d.Identity.AuthenticateTx(ctx, tx, brand.ID, requestToken(r, userCookieName(brand.ID))); e != nil {
-					return withdrawalOrderResult(nil, e)
-				}
-				return mutation.OK(201, withdrawal.ToUserOrderView(withdrawal.ToOrderView(o))), nil
-			})
-			if errors.Is(err, identity.ErrSession) || errors.Is(err, errWithdrawalActor) || errors.Is(err, withdrawal.ErrTurnoverBusy) {
-				result, err = withdrawalOrderResult(nil, err)
-			}
-			outputMutation(w, r, result, err)
+			failure(w, r, 409, "CASH_EXCHANGE_REQUIRED", "Convert eligible points before requesting a currency withdrawal")
 		})
 	}
 }

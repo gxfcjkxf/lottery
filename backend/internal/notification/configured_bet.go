@@ -23,8 +23,8 @@ func validateConfiguredBetEvent(ctx context.Context, tx pgx.Tx, brand, kind, ord
 	}
 	var ok bool
 	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM configured_orders o WHERE o.brand_id=$1 AND o.id=$2 AND o.member_id=$3 AND o.period_id=$4 AND
- (($5='bet.order.placed' AND o.total_points=$6::bigint AND $7='') OR
- ($5='bet.order.won' AND o.status='settled' AND (o.result->>'prize_points')::bigint=$6::bigint AND o.payout_entry_id::text=$7 AND
+ (($5='bet.order.placed' AND o.total_points=$6::numeric AND $7='') OR
+ ($5='bet.order.won' AND o.status='settled' AND (o.result->>'prize_points')::numeric=$6::numeric AND o.payout_entry_id::text=$7 AND
  EXISTS(SELECT 1 FROM point_ledger_entries l WHERE l.id=o.payout_entry_id AND l.brand_id=o.brand_id AND l.member_id=o.member_id AND l.entry_type='prize' AND l.reference_type='configured_order' AND l.reference_id=o.id AND l.operation_key='configured-prize:'||o.id::text))))`, brand, order, in.MemberID, in.PeriodID, kind, in.Points, in.Payout).Scan(&ok)
 	if err != nil {
 		return "", p, err

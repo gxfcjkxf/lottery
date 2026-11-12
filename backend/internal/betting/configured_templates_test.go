@@ -73,7 +73,7 @@ func templateEngine(t *testing.T, name, code string, configure ...func(*rules.Co
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := rules.ConfiguredRequest{Plate: catalog.Plates[0], Points: 10, Multiplier: 1}
+	request := rules.ConfiguredRequest{Plate: catalog.Plates[0], Points: 1000, Multiplier: 1}
 	for _, p := range catalog.Plays {
 		for _, o := range catalog.Domains[p.Selection.Domain].Options {
 			if o.SourceCode == code || p.ID == code && o.ID == code {
@@ -90,7 +90,7 @@ func templateEngine(t *testing.T, name, code string, configure ...func(*rules.Co
 func templatePurchase(t *testing.T, name, code string, draw rules.Draw, prize, refund points.Amount, configure ...func(*rules.ConfiguredCatalog)) configuredFixture {
 	t.Helper()
 	engine, request := templateEngine(t, name, code, configure...)
-	return configuredFixtureFrom(t, engine.Snapshot(), []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{request}, Draw: draw, Bet: 10, Prize: prize, Refund: refund}})
+	return configuredFixtureFrom(t, engine.Snapshot(), []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{request}, Draw: draw, Bet: 1000, Prize: prize, Refund: refund}})
 }
 func fmtNumber(n int) string { return fmt.Sprintf("%02d", n) }
 
@@ -99,7 +99,7 @@ func TestConfiguredTemplatesLiveFundingAndHistoricalQuery(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			draw := rules.Draw{Digits: []int{5, 4, 7}}
 			code := "sum_16"
-			prize, refund := points.Amount(25), points.Amount(0)
+			prize, refund := points.Amount(2500), points.Amount(0)
 			if name == "mark_six" {
 				draw = rules.Draw{Regular: []int{1, 2, 3, 4, 5, 6}, Special: []int{7}}
 				code = "number_07"
@@ -112,11 +112,11 @@ func TestConfiguredTemplatesLiveFundingAndHistoricalQuery(t *testing.T) {
 				draw = rules.Draw{Digits: []int{1, 2, 9}}
 				code = "aa"
 				prize = 0
-				refund = 10
+				refund = 1000
 			}
 			c := templatePurchase(t, name, code, draw, prize, refund)
 			ctx := context.Background()
-			fundBettingWallet(t, c.f, 100, 0, 900)
+			fundBettingWallet(t, c.f, 10000, 0, 90000)
 			first, err := configuredPlace(t, c, "template-purchase", c.input)
 			if err != nil || first.Status != 201 {
 				t.Fatal(first, err)
@@ -129,14 +129,14 @@ func TestConfiguredTemplatesLiveFundingAndHistoricalQuery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			funding := points.Amount(10)
+			funding := points.Amount(1000)
 			if name == "canada_niuniu" {
-				funding = 200
-				if wallet.SystemFrozenPoints != 200 {
+				funding = 20000
+				if wallet.SystemFrozenPoints != 20000 {
 					t.Fatal("risk not reserved", wallet)
 				}
 			}
-			if wallet.AvailablePoints != 1000-funding {
+			if wallet.AvailablePoints != 100000-funding {
 				t.Fatal("funding", wallet)
 			}
 			bettingTx(t, c.f.db, func(tx pgx.Tx) error {
@@ -155,7 +155,7 @@ func TestConfiguredTemplatesLiveFundingAndHistoricalQuery(t *testing.T) {
 				t.Fatal("repeat settlement", n, err)
 			}
 			wallet, err = (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, c.f.member)
-			if err != nil || wallet.AvailablePoints != 1000-funding+prize+refund || wallet.SystemFrozenPoints != 0 {
+			if err != nil || wallet.AvailablePoints != 100000-funding+prize+refund || wallet.SystemFrozenPoints != 0 {
 				t.Fatal("settled funding", wallet, err)
 			}
 			var consistent bool
@@ -194,7 +194,7 @@ func configuredMember(t *testing.T, original configuredFixture, brand string) co
 		if _, err := tx.Exec(ctx, `INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'test-only')`, c.f.user.User.ID, "scope_"+c.f.user.User.ID); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','test-1','test-1')`, c.f.member, brand, c.f.user.User.ID); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, c.f.member, brand, c.f.user.User.ID); err != nil {
 			return err
 		}
 		account := ids.New()
@@ -221,7 +221,7 @@ func configuredMember(t *testing.T, original configuredFixture, brand string) co
 			}
 			var snap rules.ConfiguredSnapshot
 			json.Unmarshal(c.v.Snapshot, &snap)
-			_, err = c.s.WriteConfiguredSales(ctx, tx, b, brand, c.g.ID, platformlottery.ConfiguredSales{RuleID: c.v.ID, Enabled: true, Prices: snap.Prices, MinPoints: 1, MaxPoints: 100, MaxPeriodPoints: 10000, MaxUserPeriodPoints: 10000}, points.Metadata{})
+			_, err = c.s.WriteConfiguredSales(ctx, tx, b, brand, c.g.ID, platformlottery.ConfiguredSales{RuleID: c.v.ID, Enabled: true, Prices: snap.Prices, MinPoints: 100, MaxPoints: 10000, MaxPeriodPoints: 1000000, MaxUserPeriodPoints: 1000000}, points.Metadata{})
 			return err
 		})
 	}
@@ -232,23 +232,23 @@ func TestConfiguredSettlementCapsAndAggregatesAreMemberAndBrandScoped(t *testing
 	for _, mode := range []string{"cap", "aggregate"} {
 		t.Run(mode, func(t *testing.T) {
 			name, code, draw := "canada_996", "sum_16", rules.Draw{Digits: []int{5, 4, 7}}
-			configure := func(c *rules.ConfiguredCatalog) { cap := points.Amount(30); c.PeriodPrizeCap = &cap }
+			configure := func(c *rules.ConfiguredCatalog) { cap := points.Amount(3000); c.PeriodPrizeCap = &cap }
 			if mode == "aggregate" {
 				name, code, draw = "canada_42", "big", rules.Draw{Digits: []int{5, 4, 5}}
 				configure = func(c *rules.ConfiguredCatalog) {
 					for i := range c.Plays {
 						if alt := c.Plays[i].Decisions.Alternate; alt != nil {
-							alt.AtLeast = 20
+							alt.AtLeast = 2000
 						}
 					}
 				}
 			}
-			c := templatePurchase(t, name, code, draw, 25, 0, configure)
+			c := templatePurchase(t, name, code, draw, 2500, 0, configure)
 			second := configuredMember(t, c, c.f.brand)
 			foreign := configuredMember(t, c, storeTestOtherBrand)
 			ctx := context.Background()
 			for _, member := range []configuredFixture{c, second, foreign} {
-				fundBettingWallet(t, member.f, 1000)
+				fundBettingWallet(t, member.f, 100000)
 			}
 			// Account and brand setup can outlast the fixture's initial betting window.
 			// Open the period after setup so this test measures settlement scoping.
@@ -277,11 +277,11 @@ func TestConfiguredSettlementCapsAndAggregatesAreMemberAndBrandScoped(t *testing
 			}
 			for i, member := range []configuredFixture{c, second, foreign} {
 				wallet, err := (points.Store{DB: c.f.db}).Read(ctx, member.f.brand, member.f.member)
-				want := points.Amount(1015)
+				want := points.Amount(101500)
 				if i == 0 {
-					want = 1010
+					want = 101000
 					if mode == "aggregate" {
-						want = 1000
+						want = 100000
 					}
 				}
 				if err != nil || wallet.AvailablePoints != want {
@@ -293,8 +293,8 @@ func TestConfiguredSettlementCapsAndAggregatesAreMemberAndBrandScoped(t *testing
 }
 
 func TestConfiguredReserveConcurrentAdmissionsDoNotOverdraw(t *testing.T) {
-	c := templatePurchase(t, "canada_niuniu", "aa", rules.Draw{Digits: []int{1, 2, 9}}, 0, 10)
-	fundBettingWallet(t, c.f, 300)
+	c := templatePurchase(t, "canada_niuniu", "aa", rules.Draw{Digits: []int{1, 2, 9}}, 0, 1000)
+	fundBettingWallet(t, c.f, 30000)
 	results := make(chan error, 2)
 	for i := range 2 {
 		go func() {
@@ -317,7 +317,7 @@ func TestConfiguredReserveConcurrentAdmissionsDoNotOverdraw(t *testing.T) {
 		}
 	}
 	wallet, err := (points.Store{DB: c.f.db}).Read(context.Background(), c.f.brand, c.f.member)
-	if err != nil || accepted != 1 || rejected != 1 || wallet.AvailablePoints != 100 || wallet.SystemFrozenPoints != 200 {
+	if err != nil || accepted != 1 || rejected != 1 || wallet.AvailablePoints != 10000 || wallet.SystemFrozenPoints != 20000 {
 		t.Fatal("reserve overdraw", accepted, rejected, wallet, err)
 	}
 }
@@ -325,7 +325,7 @@ func TestConfiguredReserveConcurrentAdmissionsDoNotOverdraw(t *testing.T) {
 func TestConfiguredLatestImportedDrawUsesSavedRuleAttributes(t *testing.T) {
 	engine, request := templateEngine(t, "mark_six", "number_01")
 	draw := rules.Draw{Regular: []int{1, 2, 3, 4, 5, 6}, Special: []int{7}}
-	c := configuredFixtureFrom(t, engine.Snapshot(), []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{request}, Draw: draw, Bet: 10}})
+	c := configuredFixtureFrom(t, engine.Snapshot(), []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{request}, Draw: draw, Bet: 1000}})
 	ctx := context.Background()
 	// The draw predates setup; the actual import/publication happens after saving
 	// rules. No removed rule-approval audit event is created.
@@ -375,7 +375,7 @@ func TestConfiguredLatestImportedDrawUsesSavedRuleAttributes(t *testing.T) {
 		_, err := c.s.SaveConfiguredRules(ctx, tx, c.a, c.g.ID, platformlottery.ConfiguredRulesInput{ID: c.v.ID, Revision: c.v.Revision, Snapshot: nextRaw}, points.Metadata{})
 		return err
 	})
-	archive, err := c.f.service.DrawArchive(ctx, c.f.brand, c.g.ID, "configured", time.Now().Format("2006"), 0)
+	archive, err := c.f.service.DrawArchive(ctx, c.f.brand, c.g.ID, "configured", time.Now().Format("2006"), 50, 0)
 	if err != nil || len(archive.Items) != 1 || archive.Items[0].Attributes["01"] != latest.Attributes["01"] {
 		t.Fatal("latest and archive disagree", archive, err)
 	}

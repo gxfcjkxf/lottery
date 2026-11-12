@@ -3,7 +3,6 @@ package withdrawal
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/jackc/pgx/v5"
@@ -20,7 +19,7 @@ func appendOrderEvent(ctx context.Context, tx pgx.Tx, o Order) error {
 		Status     string `json:"status"`
 		Version    int64  `json:"version"`
 		AuditLogID string `json:"audit_log_id"`
-	}{o.MemberID, o.ID, strconv.FormatInt(int64(o.Points), 10), o.State, o.Version, o.AuditLogID})
+	}{o.MemberID, o.ID, o.Points.String(), o.State, o.Version, o.AuditLogID})
 	if err != nil {
 		return err
 	}

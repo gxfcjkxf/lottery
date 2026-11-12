@@ -1,3 +1,4 @@
+import { isPoints } from '@lottery/shared'
 import { readPlatformEnvelope } from './platform-api'
 
 import { PlatformApiError } from './platform-api'
@@ -147,20 +148,20 @@ function isCycle(value: unknown, brandId: string): value is Cycle {
     oneOf(value.state, ['enumerating', 'waiting', 'calculating', 'summarizing', 'ready', 'failed']) && integer(value.version, 1) && decimal(value.target_count) && typeof value.scan_complete === 'boolean' &&
     (value.current_run_id === null || uuid(value.current_run_id)) && (value.current_generation === null || decimal(value.current_generation)) &&
     (value.evidence_epoch === null || decimal(value.evidence_epoch)) && typeof value.evidence_current === 'boolean' &&
-    decimal(value.calculated_count) && decimal(value.earning_count) && decimal(value.total_points) &&
+    decimal(value.calculated_count) && decimal(value.earning_count) && isPoints(value.total_points) &&
     (value.created_by === null || uuid(value.created_by)) && oneOf(value.creation_actor_type, ['admin', 'system']) && string(value.reason) &&
     dateTime(value.created_at) && dateTime(value.updated_at) && (value.last_error_code === null || string(value.last_error_code)) && uuid(value.creation_audit_log_id)
 }
 function isEarning(value: unknown, brandId: string, cycleId: string): value is Earning {
   return object(value) && uuid(value.id) && sameBrand(value.brand_id, brandId) && value.cycle_id === cycleId && uuid(value.run_id) &&
     uuid(value.agent_id) && uuid(value.member_id) && object(value.exact_amount) && decimal(value.exact_amount.numerator) &&
-    decimal(value.exact_amount.denominator) && value.exact_amount.denominator !== '0' && decimal(value.points) && dateTime(value.created_at)
+    decimal(value.exact_amount.denominator) && value.exact_amount.denominator !== '0' && isPoints(value.points) && dateTime(value.created_at)
 }
 function isPayment(value: unknown, brandId: string): value is Payment {
   return object(value) && uuid(value.id) && sameBrand(value.brand_id, brandId) && uuid(value.cycle_id) && uuid(value.run_id) &&
     oneOf(value.state, ['awaiting_approval', 'blocked', 'paying', 'paid', 'failed', 'stale']) &&
     oneOf(value.payout_mode, ['manual', 'automatic', 'mixed', 'none']) && integer(value.version, 1) && decimal(value.evidence_epoch) &&
-    decimal(value.total_points) && decimal(value.paid_points) && decimal(value.target_count) && decimal(value.paid_count) &&
+    isPoints(value.total_points) && isPoints(value.paid_points) && decimal(value.target_count) && decimal(value.paid_count) &&
     uuid(value.creation_audit_log_id) && (value.last_error_code === null || string(value.last_error_code)) &&
     dateTime(value.created_at) && dateTime(value.updated_at)
 }
@@ -185,7 +186,7 @@ export function createPlatformCommissionApi(fetcher: typeof fetch = fetch) {
       if (filters.online) query.set('online', filters.online)
       const value = await get(`/agents?${query}`, brandId)
       if (!object(value) || !sameBrand(value.brand_id, brandId) || !Array.isArray(value.items) || value.items.length > limit || value.limit !== limit || value.offset !== offset || !decimal(value.total_count)) invalid('agent list')
-      return value.items.every(item => isAgent(item, brandId) && object(item) && string(item.username) && typeof item.online === 'boolean' && (item.display_points === null || decimal(item.display_points))) ? value as unknown as AgentPage : invalid('agent list item')
+      return value.items.every(item => isAgent(item, brandId) && object(item) && string(item.username) && typeof item.online === 'boolean' && (item.display_points === null || isPoints(item.display_points))) ? value as unknown as AgentPage : invalid('agent list item')
     },
     async agent(brandId: string, id: string): Promise<AgentNode> {
       idArg(id, 'agent')

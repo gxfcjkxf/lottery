@@ -53,7 +53,6 @@ interface BackendContext {
   }
   available_locales: ('en' | 'zh-CN')[]
   features: { pwa: boolean; real_payments: boolean }
-  terms: { privacy_policy_version: string; service_terms_version: string }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -73,7 +72,7 @@ function isStringRecord(value: unknown, keys: readonly string[]): value is Recor
 }
 
 function isBackendContext(value: unknown): value is BackendContext {
-  if (!isRecord(value) || !isRecord(value.brand) || !isRecord(value.features) || !isRecord(value.terms)) return false
+  if (!isRecord(value) || !isRecord(value.brand) || !isRecord(value.features)) return false
   const brand = value.brand
   const theme = brand.theme
   if (!isRecord(theme) || !isLocale(brand.default_locale) || !isLocale(theme.default_locale)) return false
@@ -92,7 +91,7 @@ function isBackendContext(value: unknown): value is BackendContext {
   if (!isRecord(theme.content) || !isStringRecord(theme.content.en, ['tagline', 'announcement']) || !isStringRecord(theme.content['zh-CN'], ['tagline', 'announcement'])) return false
   if (typeof brand.id !== 'string' || typeof brand.code !== 'string' || typeof brand.name !== 'string' || typeof brand.status !== 'string' || typeof brand.timezone !== 'string' || typeof brand.config_version !== 'number') return false
   if (typeof value.features.pwa !== 'boolean' || typeof value.features.real_payments !== 'boolean') return false
-  return typeof value.terms.privacy_policy_version === 'string' && typeof value.terms.service_terms_version === 'string'
+  return true
 }
 
 function normalizeLocale(value: 'en' | 'zh-CN'): Language {
@@ -140,7 +139,6 @@ function toPlatformContext(value: BackendContext): PlatformContext {
     paused: value.brand.status === 'paused',
     availableLanguages: [...theme.available_locales],
     features: value.features,
-    terms: value.terms,
     configVersion: value.brand.config_version,
   }
 }

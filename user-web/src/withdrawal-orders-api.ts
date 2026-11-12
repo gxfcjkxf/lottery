@@ -1,4 +1,4 @@
-import { readApiEnvelope } from '@lottery/shared'
+import { pointsMinor, readApiEnvelope } from '@lottery/shared'
 
 import { ApiError, createApiClient } from "@lottery/shared";
 import {
@@ -51,9 +51,9 @@ export function createWithdrawalOrdersApi(options: {
         return data;
       });
     },
-    list(offset = 0, signal?: AbortSignal): Promise<WithdrawalPage> {
-      return request(`/withdrawals?limit=20&offset=${offset}`, signal).then((data) => {
-        if (!isWithdrawalPage(data) || data.limit !== 20 || data.offset !== offset) throw new Error("Invalid server response");
+    list(offset = 0, signal?: AbortSignal, limit = 20): Promise<WithdrawalPage> {
+      return request(`/withdrawals?limit=${limit}&offset=${offset}`, signal).then((data) => {
+        if (!isWithdrawalPage(data) || data.limit !== limit || data.offset !== offset) throw new Error("Invalid server response");
         return data;
       });
     },
@@ -85,7 +85,7 @@ export function createWithdrawalOrdersApi(options: {
         const raw = await readApiEnvelope(fetched,(message,status,code)=>new ApiError(message,status,code));
         if (fetched.status !== 201) throw new WithdrawalUnknownIntentError("The server returned an unexpected creation status.");
         const data = raw.data;
-        if (!isWithdrawalOrder(data) || data.points !== body.points || data.source_allocation.length !== body.source_allocation.length || data.source_allocation.some((allocation, index) => allocation.source !== body.source_allocation[index]?.source || allocation.state !== body.source_allocation[index]?.state || allocation.points !== body.source_allocation[index]?.points) || !((data.state === "reviewing" && data.version === 1) || (data.state === "processing" && data.version === 2))) throw new WithdrawalUnknownIntentError("The server returned a receipt that does not match the submitted withdrawal intent.");
+        if (!isWithdrawalOrder(data) || pointsMinor(data.points) !== pointsMinor(body.points) || data.source_allocation.length !== body.source_allocation.length || data.source_allocation.some((allocation, index) => allocation.source !== body.source_allocation[index]?.source || allocation.state !== body.source_allocation[index]?.state || pointsMinor(allocation.points) !== pointsMinor(body.source_allocation[index]!.points)) || !((data.state === "reviewing" && data.version === 1) || (data.state === "processing" && data.version === 2))) throw new WithdrawalUnknownIntentError("The server returned a receipt that does not match the submitted withdrawal intent.");
         response = data;
       } catch (cause) {
         if (cause instanceof WithdrawalUnknownIntentError) throw cause;

@@ -34,7 +34,7 @@ func TestFirstJoinCodeSnapshotsAndDisabledSourceReplay(t *testing.T) {
 		}
 		return out
 	}
-	ownerInput := identity.RegisterInput{Username: "join_source_owner", Password: "a-test-only-password-2026", Privacy: "dev-1", Terms: "dev-1"}
+	ownerInput := identity.RegisterInput{Username: "join_source_owner", Password: "a-test-only-password-2026", }
 	ownerResult := execute(brand, "join-owner-register-001", ownerInput, func(tx pgx.Tx) (mutation.Result, error) {
 		return users.Register(ctx, tx, brand, ownerInput, identity.Metadata{Domain: "aurora.localhost"})
 	})
@@ -54,7 +54,7 @@ func TestFirstJoinCodeSnapshotsAndDisabledSourceReplay(t *testing.T) {
 	}
 	code := self.Items[0]
 	var tx pgx.Tx
-	input := identity.RegisterInput{Username: "join_source_child", Password: "a-test-only-password-2026", Privacy: "dev-1", Terms: "dev-1", ReferralCode: strings.ToLower(code.Code)}
+	input := identity.RegisterInput{Username: "join_source_child", Password: "a-test-only-password-2026", ReferralCode: strings.ToLower(code.Code)}
 	register := func(tx pgx.Tx) (mutation.Result, error) {
 		return users.Register(ctx, tx, brand, input, identity.Metadata{Domain: "aurora.localhost"})
 	}

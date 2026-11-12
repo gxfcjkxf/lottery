@@ -18,16 +18,16 @@ const admin = (method, suffix, operationId, summary, data, extra = {}) => ({
 });
 
 export const schemas = {
-  CommissionAdjustmentInput: { ...obj({ version, points: ref('NonnegativeInt64String'), reason: ref('Reason') }, ["version", "points"]), description: 'Reason must be valid UTF-8 with no leading or trailing whitespace and at most 500 characters.' },
+  CommissionAdjustmentInput: { ...obj({ version, points: ref('NonnegativePoints'), reason: ref('Reason') }, ["version", "points"]), description: 'Reason must be valid UTF-8 with no leading or trailing whitespace and at most 500 characters.' },
   CommissionPaymentTarget: obj({
     id: ref('UUID'), brand_id: ref('UUID'), payment_id: ref('UUID'), earning_id: ref('UUID'), agent_id: ref('UUID'), member_id: ref('UUID'),
-    original_points: ref('NonnegativeInt64String'), state: { type: 'string', enum: ['pending', 'paid'] }, ledger_entry_id: nullable(ref('UUID')), paid_at: nullable(ref('DateTime')),
-    adjustment_version: nullable(version), adjusted_points: nullable(ref('NonnegativeInt64String')), last_adjustment_id: nullable(ref('UUID')),
+    original_points: ref('NonnegativePoints'), state: { type: 'string', enum: ['pending', 'paid'] }, ledger_entry_id: nullable(ref('UUID')), paid_at: nullable(ref('DateTime')),
+    adjustment_version: nullable(version), adjusted_points: nullable(ref('NonnegativePoints')), last_adjustment_id: nullable(ref('UUID')),
   }),
   CommissionPaymentTargetPage: obj({ brand_id: ref('UUID'), payment_id: ref('UUID'), ...pageFields('CommissionPaymentTarget') }),
   CommissionAdjustment: obj({
     id: ref('UUID'), brand_id: ref('UUID'), target_id: ref('UUID'), payment_id: ref('UUID'), version: { ...version, minimum: 2 },
-    points_before: ref('NonnegativeInt64String'), points_after: ref('NonnegativeInt64String'), delta_points: signedAmount,
+    points_before: ref('NonnegativePoints'), points_after: ref('NonnegativePoints'), delta_points: signedAmount,
     ledger_entry_id: ref('UUID'), audit_log_id: ref('UUID'), created_by: ref('UUID'), reason: ref('Reason'),
     point_policy_version: ref('PositiveInt64String'), created_at: ref('DateTime'),
   }),

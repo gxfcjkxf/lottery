@@ -136,6 +136,14 @@ func (s Service) ActivateDrawSource(ctx context.Context, tx pgx.Tx, a access.Acc
 	if d.Revision != in.Revision {
 		return AutomationPlan{}, ErrVersionConflict
 	}
+	current, err := scanAutomation(tx.QueryRow(ctx, `SELECT `+automationPlanFields+` FROM platform_automation_settings h JOIN platform_automation_versions v USING(game_id,version) WHERE h.game_id=$1`, game))
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return AutomationPlan{}, err
+	}
+	if err == nil && current.Mapping != nil && d.Plan.Mapping != nil && current.Mapping.Schedule == "source" && d.Plan.Mapping.Schedule == "source" {
+		d.Plan.OpenBeforeSeconds = current.OpenBeforeSeconds
+		d.Plan.CloseBeforeSeconds = current.CloseBeforeSeconds
+	}
 	d.Plan.Version = in.Version
 	p, err := s.publishAutomation(ctx, tx, a, game, AutomationInput{AutomationPlan: d.Plan}, d, meta)
 	if err != nil {

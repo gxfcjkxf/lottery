@@ -20,9 +20,7 @@ test("manual recharge, freeze, original-source unfreeze and adjustment reconcile
       data: {
         username,
         password: "cash-test-only-password-2026",
-        privacy_policy_version: "dev-1",
-        service_terms_version: "dev-1",
-      },
+        },
     },
   );
   expect(registered.status()).toBe(201);

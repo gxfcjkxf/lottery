@@ -1,3 +1,4 @@
+import { isPoints } from '@lottery/shared'
 import { readPaginationTotal } from '@lottery/shared'
 import { createApiClient } from '../../shared/src/api'
 import type { ConfiguredLiveOrder } from '@lottery/shared'
@@ -10,7 +11,6 @@ export interface HistoryPage { total_count: string;
   limit: number; next_cursor: string | null
 }
 export interface HistoryScope { brand_id: string; member_id: string }
-const decimal = (value: unknown): value is string => typeof value === 'string' && /^(0|[1-9]\d*)$/.test(value)
 export async function readBettingHistory(brandCode: string | undefined, scope: HistoryScope, gameId = '', cursor: string | null = null, signal?: AbortSignal, limit = 20): Promise<HistoryPage> {
   const query = new URLSearchParams({ limit: String(limit) })
   if (gameId) query.set('game_id', gameId)
@@ -30,7 +30,7 @@ export async function readBettingHistory(brandCode: string | undefined, scope: H
       ids.has(`${item.kind}:${item.id}`)) throw new Error('Invalid betting history item')
     ids.add(`${item.kind}:${item.id}`)
     if (item.kind === 'configured') {
-      if (!item.order.snapshot || !item.order.quote || !Array.isArray(item.order.quote.lines) || !decimal(item.order.quote.bet_points)) throw new Error('Invalid configured history item')
+      if (!item.order.snapshot || !item.order.quote || !Array.isArray(item.order.quote.lines) || !isPoints(item.order.quote.bet_points)) throw new Error('Invalid configured history item')
     }
   }
   readPaginationTotal(page)

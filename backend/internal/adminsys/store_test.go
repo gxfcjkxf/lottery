@@ -34,8 +34,8 @@ func seedFixture(t *testing.T, p *pgxpool.Pool) fixture {
 		t.Fatal(err)
 	}
 	for _, v := range []struct{ id, brand string }{{f.memberA, f.brandA}, {f.memberB, f.brandB}} {
-		if _, err := p.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,display_name,notes,join_method,privacy_policy_version,service_terms_version)
-		VALUES($1,$2,$3,'Member display','private note','domain','1','1')`, v.id, v.brand, f.user); err != nil {
+		if _, err := p.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,display_name,notes,join_method)
+		VALUES($1,$2,$3,'Member display','private note','domain')`, v.id, v.brand, f.user); err != nil {
 			t.Fatal(err)
 		}
 		// One global user has one active session. Brand B starts as history.
@@ -311,10 +311,7 @@ func TestMemberDirectorySearchPresencePaginationAndWalletPermissions(t *testing.
 	if _, err = p.Exec(ctx, `INSERT INTO global_users(id,username,phone) VALUES($1,'directory_target','+123456789')`, searchUser); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = p.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,display_name,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'Member 100% loyal','domain','1','1')`, searchMember, f.brandA, searchUser); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = p.Exec(ctx, `UPDATE brand_members SET terms_accepted=true WHERE id=$1`, f.memberA); err != nil {
+	if _, err = p.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,display_name,join_method) VALUES($1,$2,$3,'Member 100% loyal','domain')`, searchMember, f.brandA, searchUser); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = p.Exec(ctx, `INSERT INTO session_activity(session_id) SELECT id FROM sessions WHERE member_id=$1 AND revoked_at IS NULL`, f.memberA); err != nil {
@@ -363,15 +360,15 @@ func TestMemberDirectorySearchPresencePaginationAndWalletPermissions(t *testing.
 		t.Fatal(err)
 	}
 	var delta points.Balance
-	delta[0][0] = 70
-	delta[1][1] = 10
-	delta[2][3] = 20
+	delta[0][0] = 7000
+	delta[1][1] = 1000
+	delta[2][3] = 2000
 	tx, err := p.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ledger := points.Store{DB: p}
-	_, err = ledger.Post(ctx, tx, points.Change{BrandID: f.brandA, MemberID: f.memberA, EntryType: "adjustment", ReferenceType: "test", OperationKey: "directory-points", ActorType: "system", RequestID: "directory-points", Delta: delta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 70}, {Source: "winning", State: "manual_frozen", Points: 10}, {Source: "gift", State: "withdrawal", Points: 20}}})
+	_, err = ledger.Post(ctx, tx, points.Change{BrandID: f.brandA, MemberID: f.memberA, EntryType: "adjustment", ReferenceType: "test", OperationKey: "directory-points", ActorType: "system", RequestID: "directory-points", Delta: delta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 7000}, {Source: "winning", State: "manual_frozen", Points: 1000}, {Source: "gift", State: "withdrawal", Points: 2000}}})
 	if err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)

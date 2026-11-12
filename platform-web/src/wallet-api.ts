@@ -1,3 +1,4 @@
+import { isPoints } from '@lottery/shared'
 import { readPaginationTotal } from '@lottery/shared'
 import { readPlatformEnvelope } from './platform-api'
 
@@ -49,7 +50,7 @@ const isUuid = (value: unknown): value is string => isText(value) && UUID.test(v
 const isDateTime = (value: unknown): value is string => isText(value) && DATE_TIME.test(value) && Number.isFinite(Date.parse(value))
 const isAllocation = (value: unknown): value is SourceAllocation => isObj(value) && exactKeys(value, ['source', 'state', 'points']) &&
   ['recharge', 'winning', 'gift', 'commission'].includes(String(value.source)) &&
-  ['available', 'manual_frozen', 'system_frozen', 'withdrawal'].includes(String(value.state)) && isText(value.points) && /^-?(0|[1-9]\d*)$/.test(value.points)
+  ['available', 'manual_frozen', 'system_frozen', 'withdrawal'].includes(String(value.state)) && isText(value.points) && isPoints(value.points,true)
 
 const ENTRY_KEYS = ['id', 'brand_id', 'account_id', 'member_id', 'entry_type', 'reference_type', 'reference_id', 'operation_key', 'before_snapshot', 'delta_snapshot', 'after_snapshot', 'source_allocation', 'reason', 'actor_type', 'actor_id', 'request_id', 'version', 'created_at'] as const
 function validLedgerEntry(value: unknown, brandId: string, memberId: string): value is LedgerEntry {

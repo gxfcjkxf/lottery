@@ -33,9 +33,9 @@ describe("commission adjustments API",()=>{
     await expect(api.createAdjustment(brand,targetId,payment,{version:1,points:"0",reason:"\ud800"},actor,"adjustment-key-01")).rejects.toBeInstanceOf(AdminApiError);
   });
   it("caps adjusted points and signed deltas at int64 without number coercion",()=>{
-    expect(validCommissionAdjustmentPoints("9223372036854775807")).toBe(true);expect(validCommissionAdjustmentPoints("9223372036854775808")).toBe(false);
-    expect(validCommissionAdjustmentDelta("18446744073709551615","0")).toBe(false);expect(validCommissionAdjustmentDelta("9223372036854775808","0")).toBe(true);
-    expect(validCommissionAdjustmentDelta("0","9223372036854775807")).toBe(true);expect(validCommissionAdjustmentDelta("9007199254740993","9007199254740988")).toBe(true);
+    expect(validCommissionAdjustmentPoints("92233720368547758.07")).toBe(true);expect(validCommissionAdjustmentPoints("92233720368547758.08")).toBe(false);
+    expect(validCommissionAdjustmentDelta("184467440737095516.15","0")).toBe(false);expect(validCommissionAdjustmentDelta("92233720368547758.08","0")).toBe(true);
+    expect(validCommissionAdjustmentDelta("0","92233720368547758.07")).toBe(true);expect(validCommissionAdjustmentDelta("9007199254740993","9007199254740988")).toBe(true);
   });
   it("validates the Go target and history page envelopes, string counts, and empty pages beyond total",async()=>{
     const targetPage={brand_id:brand,payment_id:payment,items:[],total_count:"1",limit:20,offset:8};
@@ -59,4 +59,12 @@ describe('planned payout beneficiaries',()=>{
   expect(result.items[0].target_id).toBeNull();expect(result.items[0].original_points).toBe('9007199254740993');expect(calls[0]).toContain('/beneficiaries?');expect(calls[0]).toContain('agent_id='+agent);
   row.state='paid';await expect(api.listBeneficiaries(brand,payment)).rejects.toMatchObject({code:'INVALID_RESPONSE'});
  })
+})
+
+it('matches a decimal adjustment receipt by exact value while preserving the submitted intent', async () => {
+ const data=adjustment({points_before:'2',points_after:'1.5',delta_points:'-0.5'})
+ const fetcher=vi.fn<typeof fetch>().mockResolvedValue(ok(data,201)),body={version:1,points:'1.50',reason:''}
+ await expect(createCommissionAdjustmentsApi(fetcher).createAdjustment(brand,targetId,payment,body,actor,'decimal-adjust-key')).resolves.toEqual(data)
+ expect(JSON.parse(String(fetcher.mock.calls[0]![1]!.body))).toEqual(body)
+ await expect(createCommissionAdjustmentsApi(async()=>ok({...data,points_after:'1.51',delta_points:'-0.49'},201)).createAdjustment(brand,targetId,payment,body,actor,'decimal-adjust-key')).rejects.toMatchObject({code:'INVALID_RESPONSE'})
 })

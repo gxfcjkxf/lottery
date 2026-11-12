@@ -19,11 +19,11 @@ var agentMembersSQL = `WITH scoped AS (
 	"brand_member_id=$2", "EXISTS(SELECT 1 FROM scoped WHERE scoped.id=brand_member_id)",
 	"member_id=$2", "EXISTS(SELECT 1 FROM scoped WHERE scoped.id=member_id)",
 ).Replace(memberOrderMetricsSQL) + `), page AS (
- SELECT * FROM scoped ORDER BY joined_at,id LIMIT $3 OFFSET $4
+ SELECT * FROM scoped ORDER BY (coalesce(username,'')=$5 AND $5<>'') DESC,joined_at,id LIMIT $3 OFFSET $4
 )
 SELECT jsonb_build_object(
  'scope',$6::text,'q',$5::text,
- 'items',coalesce((SELECT jsonb_agg(to_jsonb(page) ORDER BY joined_at,id) FROM page),'[]'::jsonb),
+ 'items',coalesce((SELECT jsonb_agg(to_jsonb(page) ORDER BY (coalesce(username,'')=$5 AND $5<>'') DESC,joined_at,id) FROM page),'[]'::jsonb),
  'total_count',(SELECT count(*)::text FROM scoped),'limit',$3::int,'offset',$4::int,
  'summary',jsonb_build_object(
   'member_count',(SELECT count(*)::text FROM scoped),

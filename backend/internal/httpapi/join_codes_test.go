@@ -328,11 +328,9 @@ func TestAuthHTTPJoinCodeRegistrationReplayAndIsolation(t *testing.T) {
 		t.Fatal(self)
 	}
 	code := self.Items[0]
-	privacyVersion, termsVersion := currentAuthTerms(t, f.managementHTTP, "/api/v1/context")
 
 	registerBody := map[string]any{
 		"username": "join_auth_success", "password": "join-code-auth-password-2026",
-		"privacy_policy_version": privacyVersion, "service_terms_version": termsVersion,
 		"referral_code": lowerJoinCode(code.Code),
 	}
 	registered := f.call("POST", "/api/v1/auth/register", "auth-join-code-register-001", "", managedBrand, registerBody)
@@ -407,10 +405,8 @@ func TestAuthHTTPJoinCodeRegistrationReplayAndIsolation(t *testing.T) {
 	if err := f.pool.QueryRow(ctx, `SELECT code FROM brands WHERE id=$1`, pointsBrandB).Scan(&otherBrandCode); err != nil {
 		t.Fatal(err)
 	}
-	foreignPrivacyVersion, foreignTermsVersion := currentAuthTerms(t, f.managementHTTP, "/api/v1/b/"+otherBrandCode+"/context")
 	foreignBody := map[string]any{
 		"username": "join_auth_crossbrand", "password": "join-code-auth-password-2026",
-		"privacy_policy_version": foreignPrivacyVersion, "service_terms_version": foreignTermsVersion,
 		"referral_code": code.Code,
 	}
 	foreign := f.call("POST", "/api/v1/b/"+otherBrandCode+"/auth/register", "auth-join-code-crossbrand-001", "", pointsBrandB, foreignBody)
@@ -429,7 +425,6 @@ func TestAuthHTTPJoinCodeRegistrationReplayAndIsolation(t *testing.T) {
 	}
 	failedBody := map[string]any{
 		"username": "join_auth_disabled", "password": "join-code-auth-password-2026",
-		"privacy_policy_version": privacyVersion, "service_terms_version": termsVersion,
 		"referral_code": code.Code,
 	}
 	countsBefore := registrationResidueCounts(t, f.managementHTTP, "join_auth_disabled")
@@ -460,7 +455,7 @@ func TestAuthHTTPJoinCodeRegistrationReplayAndIsolation(t *testing.T) {
 		t.Fatalf("existing member without code status=%d body=%s", loggedIn.Code, loggedIn.Body.String())
 	}
 
-	duplicateRaw := `{"username":"join_auth_duplicate","password":"join-code-auth-password-2026","privacy_policy_version":"dev-1","service_terms_version":"dev-1","referral_code":"` + code.Code + `","referral_code":"` + code.Code + `"}`
+	duplicateRaw := `{"username":"join_auth_duplicate","password":"join-code-auth-password-2026","referral_code":"` + code.Code + `","referral_code":"` + code.Code + `"}`
 	duplicate := f.rawCall("POST", "/api/v1/auth/register", "auth-join-code-duplicate-001", "", managedBrand, duplicateRaw)
 	if duplicate.Code != 400 {
 		t.Fatalf("duplicate code selector status=%d body=%s", duplicate.Code, duplicate.Body.String())
@@ -468,28 +463,6 @@ func TestAuthHTTPJoinCodeRegistrationReplayAndIsolation(t *testing.T) {
 	assertNoRegistrationResidue(t, f.managementHTTP, "join_auth_duplicate")
 }
 
-func currentAuthTerms(t *testing.T, f managementHTTP, path string) (string, string) {
-	t.Helper()
-	response := f.call("GET", path, "", "", "", nil)
-	if response.Code != 200 {
-		t.Fatalf("read current auth terms at %s status=%d body=%s", path, response.Code, response.Body.String())
-	}
-	var envelope struct {
-		Data struct {
-			Terms struct {
-				Privacy string `json:"privacy_policy_version"`
-				Service string `json:"service_terms_version"`
-			} `json:"terms"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
-		t.Fatal(err)
-	}
-	if envelope.Data.Terms.Privacy == "" || envelope.Data.Terms.Service == "" {
-		t.Fatalf("missing current auth terms at %s: %s", path, response.Body.String())
-	}
-	return envelope.Data.Terms.Privacy, envelope.Data.Terms.Service
-}
 
 func lowerJoinCode(code string) string {
 	return strings.ToLower(code)

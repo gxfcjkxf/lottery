@@ -42,13 +42,16 @@ import {
   getPendingCommissionPaymentIntent, hideCommissionPaymentIntentsForScope, listPendingCommissionPaymentIntents, markCommissionPaymentIntentConflict, setPendingCommissionPaymentIntent,
   type CommissionPaymentIntentScope, type PendingCommissionPaymentIntent,
 } from "./commissionPayments-state";
+const historyPageSize = ref(20)
+const orderPageSize = ref(20)
+
 
 const props = defineProps<{ account: AdminAccount; brandId: string; brandStatus?: string; initialCycleId?: string; cycleId?: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void; (event: "writing-change", value: boolean): void; (event: "open-cycle", cycleId: string): void }>();
 const { t, message, locale } = useAdminI18n();
 const operationLabel = (operation: PendingCommissionPaymentIntent['operation']) => t({ policy: 'admin.copy.2288349a', approve: 'admin.copy.c176586a', retry: 'admin.copy.ce7fd4f3' }[operation] as Parameters<typeof t>[0]);
 const api = createCommissionPaymentsApi(fetch, props.account.id);
-const PAGE_SIZE = 20;
+
 const fromDraft=ref(''), toDraft=ref(''), agentDraft=ref(''), cycleDraft=ref(''), queue=ref('');
 const committedFilter=ref<CommissionListQuery>({});
 const searched=ref(true), detailTab=ref<'summary'|'targets'|'adjustments'|'paymentHistory'>('summary');
@@ -58,7 +61,7 @@ const historyColumns=computed(()=>[{key:'operation',label:t('admin.commission.ui
 async function loadHistory(offset=0){
  const row=detail.value;if(!row||!rights.value.view)return;
  const ticket=++historyTicket,captured=scopeStamp.value,session=commissionPaymentSessionGeneration();historyBusy.value=true;historyError.value='';
- try{const result=await api.history(props.brandId,row.id,20,offset);if(alive&&ticket===historyTicket&&captured===scopeStamp.value&&detail.value?.id===row.id&&session===commissionPaymentSessionGeneration())historyPage.value=result}
+ try{const result=await api.history(props.brandId,row.id,historyPageSize.value,offset);if(alive&&ticket===historyTicket&&captured===scopeStamp.value&&detail.value?.id===row.id&&session===commissionPaymentSessionGeneration())historyPage.value=result}
  catch(cause){if(alive&&ticket===historyTicket&&captured===scopeStamp.value&&detail.value?.id===row.id){sessionExpired(cause,captured,session);historyError.value=readFailure(cause)}}
  finally{if(ticket===historyTicket)historyBusy.value=false}
 }
@@ -77,7 +80,7 @@ async function applyFilters() {
   searched.value=true; closeDetails(); await loadList(0);
  } catch { listError.value=t('admin.commission.ui.dateError'); }
 }
-async function resetFilters(){agentDraftSearchPending.value=false;accountSearchReset.value++;fromDraft.value=toDraft.value=agentDraft.value=cycleDraft.value='';queue.value=props.cycleId?'':rights.value.approve?'awaiting_approval':'';await applyFilters()}
+
 async function chooseQueue(value:string){queue.value=value;await applyFilters()}
 function dirtyFilters(){listTicket++;paymentReadTicket++;page.value=null;loadingList.value=false;searched.value=false}
 
@@ -177,7 +180,7 @@ async function loadList(nextOffset = offset.value, preserveConflictReview = fals
   const ticket = ++listTicket, captured = scopeStamp.value, session = commissionPaymentSessionGeneration();
   loadingList.value = true; listError.value = "";
   try {
-    const fresh = await api.list(props.brandId, PAGE_SIZE, nextOffset, committedFilter.value);
+    const fresh = await api.list(props.brandId, orderPageSize.value, nextOffset, committedFilter.value);
     if (!current(ticket, "list", captured, session, readTicket)) return;
     if (props.cycleId && fresh.items.some(item => item.cycle_id !== props.cycleId)) throw new AdminApiError("Unexpected commission cycle", 502, "INVALID_RESPONSE");
     page.value = fresh;
@@ -336,7 +339,7 @@ useOperationToast(() => writeError.value, value => displayPublicError(value), 'e
      <label><PlatformTemporalInput :label="t('admin.commission.ui.from')" :placeholder="t('admin.commission.ui.from')" v-model="fromDraft" type="date" :locale="locale" /></label><label><PlatformTemporalInput :label="t('admin.commission.ui.to')" :placeholder="t('admin.commission.ui.to')" v-model="toDraft" type="date" :locale="locale" /></label>
      <label v-if="!cycleId"><FilterAssociationSelect v-model="cycleDraft" :brand-id="brandId" surface="admin" resource="commission" kind="cycle" :label="t('admin.commission.ui.cycle')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" /></label>
      <label><FilterAssociationSearch v-model="agentDraft" v-model:pending="agentDraftSearchPending" :reset-key="accountSearchReset" :brand-id="brandId" surface="admin" resource="commission" kind="agent" :label="t('admin.commission.ui.agent')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" /></label>
-     <div class="commission-actions ui-form-actions"><button class="button button-primary" type="submit" :disabled="agentDraftSearchPending || loadingList">{{ t('admin.commission.ui.query') }}</button><button class="button" type="button" @click="withGlobalLoading(resetFilters)">{{ t('admin.commission.ui.reset') }}</button></div>
+     <div class="commission-actions ui-form-actions"><button class="button button-primary" type="submit" :disabled="agentDraftSearchPending || loadingList">{{ t('admin.commission.ui.query') }}</button></div>
     </form></template>
     <p v-if="!searched" class="commission-note">{{ t('admin.commission.ui.filtersChanged') }}</p>
     <p v-if="listError" class="commission-warning" role="alert">{{ t('admin.commission.ui.readFailed') }} <button :disabled="agentDraftSearchPending" v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(applyFilters)">{{ t('admin.commission.ui.retryRead') }}</button></p>
@@ -347,7 +350,7 @@ useOperationToast(() => writeError.value, value => displayPublicError(value), 'e
      <template #mode="{entry}">{{ modeLabel(entry.payout_mode) }}</template><template #planned="{entry}">{{ entry.total_points }}</template><template #paid="{entry}">{{ entry.paid_points }}</template><template #progress="{entry}">{{ entry.paid_count }} / {{ entry.target_count }}</template><template #updated="{entry}">{{ formatDate(entry.updated_at) }}</template>
      <template #actions="{entry}"><MemberActionsMenu :id="'CommissionPaymentsManagement-'+entry.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" class="button" @click="withGlobalLoading(loadDetail,entry.id)">{{ t('admin.commission.ui.view') }}</button></MemberActionsMenu></template>
     </ManagementTable>
-    <template #pagination><TablePagination :show-empty="Boolean(page)" v-if="page" class="commission-pager" :total="page.total_count" :page="Math.floor(page.offset / PAGE_SIZE + 1)" :count="page.items.length" :locale="associationLocale" :page-size="PAGE_SIZE" :previous-disabled="loadingList || !hasPrevious" :next-disabled="loadingList || !hasNext" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadList((target - 1) * PAGE_SIZE)" /></template></ManagementList>
+    <template #pagination><TablePagination v-if="page" class="commission-pager" :total="page.total_count" :page="Math.floor(page.offset / orderPageSize + 1)" :count="page.items.length" :locale="associationLocale" :page-size="orderPageSize" :previous-disabled="loadingList || !hasPrevious" :next-disabled="loadingList || !hasNext" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadList((target - 1) * orderPageSize)" :change-page-size="async (size: number) => { orderPageSize = size; await loadList(0) }" /></template></ManagementList>
    </template>
    <section v-if="selected || detail || loadingDetail || detailError" class="commission-detail">
     <header class="console-page-heading commission-heading"><div class="commission-actions"><button class="button" @click="closeDetails">{{ t('admin.commission.ui.back') }}</button><h1 v-if="!cycleId" class="console-page-title">{{ t('admin.copy.61a05916') }}</h1></div><button v-if="detail" class="button" @click="emit('open-cycle',detail.cycle_id)">{{ t('admin.commission.ui.openCycle') }}</button></header>
@@ -358,7 +361,7 @@ useOperationToast(() => writeError.value, value => displayPublicError(value), 'e
      <p v-if="detail.last_error_code" class="commission-warning">{{ displayPublicError(publicErrorMessage({code:detail.last_error_code})) }}</p>
      <p v-if="policy && !policy.enabled" class="commission-warning">{{ t('admin.commission.ui.policyOff') }}</p>
      <p v-if="policyError" class="commission-warning" role="alert">{{ displayPublicError(policyError) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadPolicy)">{{ t('admin.commission.ui.retryRead') }}</button></p>
-     <header class="console-page-heading"><div class="commission-actions console-page-actions"><button v-if="detail.state==='awaiting_approval' && rights.approve" data-testid="commission-payment-approve" class="button button-primary" :disabled="!canApprove" @click="openReview('approve')">{{ t('admin.copy.c176586a') }}</button><button v-if="detail.state==='failed' && rights.retry" data-testid="commission-payment-retry" class="button button-primary" :disabled="!canRetry" @click="openReview('retry')">{{ t('admin.copy.ce7fd4f3') }}</button><button v-refresh-button="t('admin.copy.894e2a7d')" class="button" :disabled="loadingDetail" @click="withGlobalLoading(loadDetail,detail.id)">{{ t('admin.copy.894e2a7d') }}</button></div></header>
+     <header class="console-page-heading"><div class="commission-actions console-page-actions"><button v-if="detail.state==='awaiting_approval' && rights.approve" data-testid="commission-payment-approve" class="button button-primary" :disabled="!canApprove" @click="openReview('approve')">{{ t('admin.copy.c176586a') }}</button><button v-if="detail.state==='failed' && rights.retry" data-testid="commission-payment-retry" class="button button-primary" :disabled="!canRetry" @click="openReview('retry')">{{ t('admin.copy.ce7fd4f3') }}</button><button v-if="detailError || ['awaiting_approval','paying'].includes(detail.state)" v-refresh-button="t('admin.copy.894e2a7d')" class="button" :disabled="loadingDetail" @click="withGlobalLoading(loadDetail,detail.id)">{{ t('admin.copy.894e2a7d') }}</button></div></header>
      <nav class="commission-tabs" role="tablist"><button v-for="tab in (['summary','targets','adjustments','paymentHistory'] as const)" :key="tab" class="button" role="tab" :aria-selected="detailTab===tab" @click="withGlobalLoading(openDetailTab,tab)">{{ t(adminKey('admin.commission.ui.'+tab)) }}</button></nav>
      <section v-if="detailTab==='summary'" class="commission-detail" role="tabpanel">
       <dl class="commission-metrics"><div><dt>{{ t('admin.commission.ui.planned') }}</dt><dd>{{ detail.total_points }}</dd></div><div><dt>{{ t('admin.commission.ui.paid') }}</dt><dd>{{ detail.paid_points }}</dd></div><div><dt>{{ t('admin.commission.ui.progress') }}</dt><dd>{{ detail.paid_count }} / {{ detail.target_count }}</dd></div></dl>
@@ -370,7 +373,7 @@ useOperationToast(() => writeError.value, value => displayPublicError(value), 'e
      <ManagementList embedded v-if="detailTab==='paymentHistory'" class="commission-detail"><p v-if="historyError" class="commission-warning">{{ displayPublicError(historyError) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadHistory)">{{ t('admin.commission.ui.retryRead') }}</button></p>
       <ManagementTable :entries="historyPage?.items??[]" :columns="historyColumns" :empty="!!historyPage&&!historyPage.items.length" :empty-label="t('admin.commission.ui.empty')"><template #operation="{entry}">{{ t(adminKey('admin.commission.ui.'+entry.operation)) }}</template><template #actor="{entry}"><AssociationName v-if="entry.actor_type==='admin'&&entry.actor_id" :record="entry" kind="actor" :id="entry.actor_id" :locale="locale" /><span v-else>{{ t('admin.commission.ui.system') }}</span></template><template #state="{entry}">{{ entry.state ? stateLabel(entry.state) : '—' }}</template><template #time="{entry}">{{ formatDate(entry.created_at) }}</template></ManagementTable>
 
-     <template #pagination><TablePagination :show-empty="Boolean(historyPage)" v-if="historyPage" class="commission-pager" :total="historyPage.total_count" :page="Math.floor(historyPage.offset / 20 + 1)" :count="historyPage.items.length" :locale="associationLocale" :page-size="20" :previous-disabled="historyBusy||historyPage.offset===0" :next-disabled="historyBusy||BigInt(historyPage.offset+20)>=BigInt(historyPage.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadHistory((target - 1) * 20)" /></template></ManagementList>
+     <template #pagination><TablePagination v-if="historyPage" class="commission-pager" :total="historyPage.total_count" :page="Math.floor(historyPage.offset / historyPageSize + 1)" :count="historyPage.items.length" :locale="associationLocale" :page-size="historyPageSize" :previous-disabled="historyBusy||historyPage.offset===0" :next-disabled="historyBusy||BigInt(historyPage.offset+historyPageSize)>=BigInt(historyPage.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadHistory((target - 1) * historyPageSize)" :change-page-size="async (size: number) => { historyPageSize = size; await loadHistory(0) }" :busy="historyBusy" /></template></ManagementList>
 
     </template>
    </section>

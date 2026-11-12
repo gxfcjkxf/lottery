@@ -50,7 +50,7 @@ test('workbench displays real scoped financial data, explicit gaps, and clears s
   await expect(card('Commissions').locator('.badge')).toHaveText(commissions.status === 'ready' ? 'Ready' : 'Unavailable')
   if (commissions.status === 'ready') {
     const fields = [
-      ['discovery_pending_count','Discovery pending (including future checks)'],['discovery_failed_count','Discovery failed'],
+      ['discovery_pending_count','Discovery pending'],['discovery_failed_count','Discovery failed'],
       ['cycle_processing_count','Cycles enumerating, calculating, or summarizing'],['cycle_waiting_count','Cycles waiting'],
       ['cycle_ready_count','Cycles ready (current evidence)'],['cycle_stale_count','Cycles ready (stale evidence)'],['cycle_failed_count','Cycles failed'],
       ['payment_awaiting_approval_count','Payments awaiting approval'],['payment_processing_count','Payments processing'],['payment_blocked_count','Payments blocked'],['payment_failed_count','Payments failed'],

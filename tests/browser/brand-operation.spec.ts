@@ -47,7 +47,7 @@ test("Harbor operation pause survives a dropped acknowledgment, records once, an
   const username = `brandop_${unique().replaceAll("-", "").slice(0, 12)}`;
   const password = `BrandOp-${unique()}-test`;
   const contextResponse = await page.request.get(`${api}/b/harbor/context`);
-  const authContext = await envelope<{ terms: { privacy_policy_version: string; service_terms_version: string }; auth?: { captcha_enabled?: boolean } }>(contextResponse, "GET Harbor public context");
+  const authContext = await envelope<{ auth?: { captcha_enabled?: boolean } }>(contextResponse, "GET Harbor public context");
   let captcha: { captcha_id: string; captcha_answer: string } | Record<string, never> = {};
   if (authContext.auth?.captcha_enabled) {
     const challenge = await envelope<{ id: string; svg: string }>(await page.request.get(`${api}/b/harbor/auth/challenge`), "GET registration CAPTCHA");
@@ -56,7 +56,7 @@ test("Harbor operation pause survives a dropped acknowledgment, records once, an
   }
   const registration = await page.request.post(`${api}/b/harbor/auth/register`, {
     headers: { Origin: "http://localhost:5173", "Idempotency-Key": unique() },
-    data: { username, password, ...authContext.terms, ...captcha },
+    data: { username, password, ...captcha },
   });
   const registrationText = await registration.text();
   expect(registration.status(), `Harbor member registration: ${registrationText}`).toBe(201);

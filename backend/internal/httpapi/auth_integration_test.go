@@ -35,7 +35,7 @@ func TestPersistentAuthBrandMembershipAndReplay(t *testing.T) {
 		h.ServeHTTP(w, r)
 		return w
 	}
-	input := map[string]string{"username": "alice_test", "password": "a-test-password-123", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"}
+	input := map[string]string{"username": "alice_test", "password": "a-test-password-123", }
 	r := call("POST", "/api/v1/auth/register", "register-0001", "", input)
 	if r.Code != 201 {
 		t.Fatal(r.Code, r.Body.String())
@@ -67,11 +67,6 @@ func TestPersistentAuthBrandMembershipAndReplay(t *testing.T) {
 		t.Fatal("cross-brand token accepted", r.Code)
 	}
 	login := map[string]string{"identifier": "alice_test", "password": "a-test-password-123"}
-	if r := call("POST", "/api/v1/b/harbor/auth/login", "login-newbrand-001", "", login); r.Code != 409 {
-		t.Fatal("joined without terms", r.Code, r.Body.String())
-	}
-	login["privacy_policy_version"] = "dev-1"
-	login["service_terms_version"] = "dev-1"
 	r = call("POST", "/api/v1/b/harbor/auth/login", "login-newbrand-002", "", login)
 	if r.Code != 200 {
 		t.Fatal(r.Code, r.Body.String())

@@ -112,7 +112,7 @@ func grantBootstrapAdmin(ctx context.Context, tx pgx.Tx, admin, brandID string, 
 func bootstrapPermissions(super, canDeletePlatformAdmin bool) []string {
 	permissions := []string{"overview.view.brand", "user.view.brand", "user.write.brand", "user.kick.brand", "user.password_reset.brand", "audit.view.brand", "brand.view.brand", "user.create.brand", "role.view.brand", "role.write.brand", "role.delete.brand", "admin.view.brand", "admin.write.brand", "auth_config.view.brand", "auth_config.write.brand", "wallet.view.brand", "wallet.freeze.brand", "wallet.adjust.brand", "recharge.view.brand", "recharge.write.brand", "point_policy.view.brand", "point_policy.write.brand", "join_code.view.brand", "join_code.write.brand"}
 	permissions = append(permissions, "brand_operation.view.brand", "brand_operation.write.brand")
-	permissions = append(permissions, "brand_presentation.view.brand", "brand_presentation.write.brand")
+	permissions = append(permissions, "brand_presentation.view.brand", "brand_presentation.write.brand", "announcement.view.brand", "announcement.write.brand", "announcement.publish.brand")
 	permissions = append(permissions, "report_betting.export.brand", "report_ledger.export.brand")
 	permissions = append(permissions, "audit.export.brand")
 	permissions = append(permissions, "report_commission.view.brand", "report_commission.export.brand")
@@ -120,7 +120,6 @@ func bootstrapPermissions(super, canDeletePlatformAdmin bool) []string {
 	permissions = append(permissions, "report_attribution.view.brand", "report_attribution.export.brand")
 	permissions = append(permissions, "report_archive.view.brand", "report_archive.create.brand", "report_archive.download.brand")
 	permissions = append(permissions, "report_archive_policy.write.brand", "report_archive_task.retry.brand")
-	permissions = append(permissions, "compliance_policy.view.brand", "compliance_policy.write.brand", "compliance_check.view.brand", "compliance_check.run.brand")
 	if super {
 		permissions = []string{"user.view.platform", "audit.view.platform", "brand.view.platform", "role.view.platform", "role.write.platform", "admin.view.platform", "admin.write.platform", "auth_config.view.platform", "auth_config.write.platform", "wallet.view.platform", "wallet.repair.platform", "wallet.reconcile.platform", "recharge.view.platform", "point_policy.view.platform"}
 		permissions = append(permissions, "role.delete.platform", "recharge_quota.write.platform")
@@ -138,13 +137,12 @@ func bootstrapPermissions(super, canDeletePlatformAdmin bool) []string {
 		if canDeletePlatformAdmin {
 			permissions = append(permissions, "admin.delete.platform")
 		}
-		permissions = append(permissions, "compliance_policy.view.platform", "compliance_policy.write.platform", "compliance_check.view.platform", "compliance_check.run.platform")
 		permissions = append(permissions, "report_betting.export.platform", "report_ledger.export.platform")
 		permissions = append(permissions, "report_commission.view.platform", "report_commission.export.platform")
 		permissions = append(permissions, "report_reward.view.platform", "report_reward.export.platform")
 		permissions = append(permissions, "report_attribution.view.platform", "report_attribution.export.platform")
 		permissions = append(permissions, "report_archive.view.platform", "report_archive.download.platform")
-		permissions = append(permissions, "notification_template.view.platform", "notification_template.write.platform")
+		permissions = append(permissions, "notification_template.view.platform", "notification_template.write.platform", "announcement.view.platform", "announcement.write.platform", "announcement.publish.platform")
 		permissions = append(permissions, "game.view.platform", "rule.view.platform")
 		permissions = append(permissions, "schedule.view.platform", "period.view.platform")
 		permissions = append(permissions, "draw_source.view.platform", "draw.view.platform")

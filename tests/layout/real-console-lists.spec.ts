@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { gameId, origins, theme, installLayoutApi, openPlatformBrandList } from './fixture'
 import { selectControl } from '../select-control'
-import { expectRealEntry, reviewRealPage } from './real-page-review'
+import { expectRealEntry, expectListLayout, reviewRealPage } from './real-page-review'
 import { overviewFixture } from './platform-overview'
 import { REPORT_FIELDS } from '../../platform-web/src/reports-api'
 
@@ -67,18 +67,24 @@ for (const surface of ['brand', 'platform'] as const) for (const locale of ['en'
       const list = page.locator('.management-list').filter({ visible: true }).first()
       await expect(list, label).toBeVisible()
       if (query && !reads.includes(endpoint)) await list.locator('button[type=submit]').click()
-      await expect.poll(() => reads.some(path => path.split('?')[0] === endpoint), { message: `${label}: real page did not read ${endpoint}` }).toBe(true)
+      await expect.poll(() => {
+        expect(errors, `${label}: application runtime errors`).toEqual([])
+        return reads.some(path => path.split('?')[0] === endpoint)
+      }, { message: `${label}: real page did not read ${endpoint}` }).toBe(true)
       await expect(list.locator('table').filter({visible:true}),label).toHaveCount(1)
       await expect(list.locator('table').filter({visible:true}).locator('thead'), label).toHaveCount(1)
       await expect(list.locator('td.empty-state').filter({visible:true}),label).toHaveCount(1)
-      await expect(list.locator('.table-pagination'), label).toBeVisible()
-      await expect(list.locator('.table-pagination-summary')).toContainText(zh ? '共 0 条' : 'Total: 0')
+      await expect(list.locator('.table-pagination'), label).toHaveCount(0)
       await reviewRealPage(page, info, `${surface}-${label}-${locale}`)
       if(surface==='brand' && ['/users','/accounts','/roles','/reward-orders'].includes(endpoint)){
         const selector=endpoint==='/users'?'button[aria-controls=member-create-form]':endpoint==='/reward-orders'?'[data-testid=rewards-grant-open]':'.button-primary'
         const create=list.locator('.management-list-toolbar > .console-page-actions').locator(selector)
         await expect(create).toHaveCount(1);await expect(create).toBeEnabled();await create.click()
-        const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();await expect(dialog.locator('input').first()).toBeVisible();await dialog.locator('.detail-modal-close').click();await expect(dialog).toHaveCount(0)
+        const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();await expect(dialog.locator('input').first()).toBeVisible()
+        if(endpoint==='/users')await expect(dialog.locator('textarea').locator('..')).toHaveText(zh?'内部备注':'Internal notes')
+        await expectListLayout(page)
+        await page.screenshot({path:info.outputPath(`${surface}-${endpoint.slice(1)}-create-${locale}.png`),fullPage:true})
+        await dialog.locator('.detail-modal-close').click();await expect(dialog).toHaveCount(0)
       }
     }
     if (surface === 'brand') {
@@ -104,7 +110,7 @@ for (const surface of ['brand', 'platform'] as const) for (const locale of ['en'
         if(['betting','ledger'].includes(tab))await page.getByRole('button',{name:zh?'今天':'Today',exact:true}).click()
         await review('report-'+tab,'/reports/'+endpoint,true)
       }
-      await page.locator('#report-tab-betting').click();await selectControl(page.locator('.management-list').filter({visible:true}).getByRole('combobox').last(),'agent');await review('report-attribution','/reports/attribution',true)
+      await page.locator('#report-tab-betting').click();await selectControl(page.getByRole('combobox',{name:zh?'分组':'Group by',exact:true}),'agent');await review('report-attribution','/reports/attribution',true)
     } else {
       await openPlatformBrandList(page, locale)
       const row = page.getByTestId('platform-brand-list').locator('tbody tr').first()

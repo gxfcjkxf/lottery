@@ -24,7 +24,7 @@ for(const locale of ['en','zh-CN'] as const)test(`platform audit reasons (${loca
  await page.getByTestId('platform-operations-tabs').getByRole('button',{name:locale==='zh-CN'?'审计日志':'Audit log',exact:true}).click()
  const pagination=page.getByTestId('platform-audit-pages')
  await expect(pagination).toHaveClass(/table-pagination/)
- await expect(pagination.locator('.table-pagination-summary')).toHaveText(locale==='zh-CN'?'第 1 页 · 本页 3 条 · 共 3 条':'Page 1 · 3 records on this page · Total: 3')
+ await expect(pagination.locator('.table-pagination-summary .table-pagination-desktop')).toHaveText(locale==='zh-CN'?'第 1 页 · 本页 3 条 · 共 3 条':'Page 1 · 3 records on this page · Total: 3')
  await expect(pagination.locator('..')).toHaveClass('panel')
  const reasons=page.locator('.reason-cell')
  await expect(reasons).toHaveCount(3)

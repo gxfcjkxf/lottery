@@ -28,14 +28,15 @@ test('agent management uses design primitives that are also used by the existing
 test('account dialogs, order records and ledger tables are actually shared with existing apps', () => {
   for(const app of ['admin-web','platform-web','agent-web']) {
     const source=read(`${app}/src/App.vue`)
-    for(const component of ['AccountProfileDialog','ChangePasswordDialog']) {
+    for(const component of app==='agent-web'?['ChangePasswordDialog']:['AccountProfileDialog','ChangePasswordDialog']) {
       assert.ok(source.includes(`@lottery/shared/${component}.vue`))
       assert.ok(source.includes(`<${component}`))
     }
     assert.doesNotMatch(source, /<DetailModal[^>]+class="console-account-dialog"/)
   }
-  assert.ok(read('user-web/src/BettingHistory.vue').includes('./BettingHistoryTable.vue'))
-  assert.ok(read('agent-web/src/pages/MemberBetsPage.vue').includes('@lottery/shared/OrderHistoryRecord.vue'))
+  assert.match(read('agent-web/src/App.vue'), /<section[^>]+page==='profile'[^>]*><SummaryFacts/ )
+  assert.ok(read('user-web/src/BettingHistory.vue').includes('@lottery/shared/BettingHistoryTable.vue'))
+  assert.ok(read('agent-web/src/pages/MemberBetsPage.vue').includes('@lottery/shared/BettingHistoryTable.vue'))
   for(const file of ['platform-web/src/WalletPanel.vue','agent-web/src/pages/CommissionPage.vue']) assert.ok(read(file).includes('@lottery/shared/ManagementTable.vue'))
   const dialog=read('shared/src/ChangePasswordDialog.vue')
   assert.match(dialog,/v-write-guard="busy"/)
@@ -153,7 +154,7 @@ test('global loading status directives cannot hide lists or tables with business
   const walk = dir => readdirSync(new URL('../../' + dir, import.meta.url), { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? walk(dir + '/' + entry.name) : [dir + '/' + entry.name])
   const containsRows = node => node.type === 1 && (
     node.props.some(prop => prop.type === 7 && prop.name === 'for') ||
-    ['table', 'ManagementTable', 'OrderHistoryRecord'].includes(node.tag)
+    ['table', 'ManagementTable', 'OrderHistoryRecord', 'BettingHistoryTable'].includes(node.tag)
   ) || (node.children ?? []).some(containsRows)
   const inspect = (node, file) => {
     if (node.type === 1 && node.props.some(prop => prop.type === 7 && prop.name === 'global-loading')) {

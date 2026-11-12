@@ -1,3 +1,4 @@
+import { applyPointsPrecision } from './openapi-points.mjs';
 import { readFile,writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -36,7 +37,10 @@ modules.push(await import("./openapi-betting-history.mjs"));
 modules.push(await import("./openapi-association-names.mjs"));
 modules.push(await import("./openapi-filter-options.mjs"));
 modules.push(await import("./openapi-agent-portal.mjs"));
+modules.push(await import("./openapi-brand-contacts.mjs"));
+modules.push(await import("./openapi-cash.mjs"));
+modules.push(await import("./openapi-announcements.mjs"));
 const result=spawnSync(process.env.LOTTERY_GO_BIN??"go",["run","-buildvcs=false","./cmd/route-inventory"],{cwd:resolve(root,"backend"),encoding:"utf8",env:{...process.env,CGO_ENABLED:"0"},maxBuffer:8*1024*1024});
 if(result.error||result.status!==0)throw new Error(`Cannot inspect real routes: ${result.error?.message??result.stderr}`);
-const routes=JSON.parse(result.stdout),doc=composeDocument(modules,routes),text=JSON.stringify(doc,null,2)+"\n",destination=resolve(root,"docs/openapi.json");
+const routes=JSON.parse(result.stdout),doc=applyPointsPrecision(composeDocument(modules,routes)),text=JSON.stringify(doc,null,2)+"\n",destination=resolve(root,"docs/openapi.json");
 if(process.argv.includes("--check")){const current=await readFile(destination,"utf8");if(current!==text)throw new Error("docs/openapi.json is stale; run pnpm api:generate");console.log(`OpenAPI current: ${documentedRoutes(doc).length} registered operations, ${Object.keys(doc.components.schemas).length} schemas`)}else{await writeFile(destination,text);console.log(`Generated ${destination}: ${documentedRoutes(doc).length} registered operations`)}

@@ -11,8 +11,8 @@ const bool = { type: "boolean" };
 const uuid = ref("UUID");
 const dateTime = ref("DateTime");
 const reason = ref("Reason");
-const amount = ref("NonnegativeInt64String");
-const positiveAmount = ref("PositiveInt64String");
+const amount = ref("NonnegativePoints");
+const positiveAmount = ref("PositivePoints");
 const notificationTemplateKeys = [
   "bet.order.abnormal", "bet.order.cancelled", "bet.order.judged_cancelled", "bet.order.placed",
   "bet.order.prize_reversed", "bet.order.won", "commission.adjusted", "commission.corrected", "commission.paid",
@@ -101,7 +101,7 @@ const RuleTier = obj({
 const RuleTierInput = obj({ code: str, condition: ref("LotteryRuleCondition"), odds: str, exclusive: bool, cap_points: nullable(positiveAmount) }, ["code", "condition", "odds"]);
 const RuleSelectionRuleInput = obj({ mode: str, regular_count: int, special_count: int, exclude_count: int,
   attribute_groups: nullable(arr(str)), feature_choices: nullable({ type: "object", additionalProperties: nullable(arr(int)) }) }, ["mode"]);
-const RuleLimitsInput = obj({ max_combinations: int, max_multiplier: positiveAmount, max_bet_points: nullable(positiveAmount) }, ["max_combinations", "max_multiplier"]);
+const RuleLimitsInput = obj({ max_combinations: int, max_multiplier: ref("PositiveInt64String"), max_bet_points: nullable(positiveAmount) }, ["max_combinations", "max_multiplier"]);
 const RuleDefinition = obj({
   schema_version: int, model: ref("LotteryRuleModel"),
   selection: obj({ mode: str, regular_count: int, special_count: int, exclude_count: int,
@@ -109,7 +109,7 @@ const RuleDefinition = obj({
   number_attributes: nullable({ type: "object", additionalProperties: { type: "object", additionalProperties: nullable(arr(int)) } }),
   unit_points: positiveAmount, prize_tiers: arr(ref("LotteryRuleTier")), mixed_tier_policy: str,
   cap_points: nullable(positiveAmount), rounding: str, rounding_scope: str,
-  limits: obj({ max_combinations: int, max_multiplier: positiveAmount, max_bet_points: nullable(positiveAmount) }),
+  limits: obj({ max_combinations: int, max_multiplier: ref("PositiveInt64String"), max_bet_points: nullable(positiveAmount) }),
 });
 const RuleDefinitionInput = obj({
   schema_version: { type: "integer", const: 1 }, model: ref("LotteryRuleModelInput"),
@@ -118,13 +118,13 @@ const RuleDefinitionInput = obj({
   cap_points: nullable(positiveAmount), rounding: { type: "string", const: "half_up" },
   rounding_scope: { type: "string", enum: ["order", "line", "tier"] }, limits: ref("LotteryRuleLimitsInput"),
 }, ["schema_version", "model", "selection", "unit_points", "prize_tiers", "rounding", "rounding_scope", "limits"]);
-const SimulationInput = obj({ definition: ref("LotteryRuleDefinitionInput"), selection: ref("LotteryRuleSelectionInput"), draw: ref("LotteryRuleDrawInput"), multiplier: positiveAmount });
+const SimulationInput = obj({ definition: ref("LotteryRuleDefinitionInput"), selection: ref("LotteryRuleSelectionInput"), draw: ref("LotteryRuleDrawInput"), multiplier: ref("PositiveInt64String") });
 const RuleTrace = obj({ op: str, field: str, actual: int, matched: bool, children: arr(ref("LotteryRuleTrace")) }, ["op", "actual", "matched"]);
 const RuleTierHit = obj({ code: str, exclusive: bool, matched: bool, selected: bool, raw_points: str, capped_points: str, points: str, trace: ref("LotteryRuleTrace") });
 const RuleLine = obj({ selection: ref("LotteryRuleSelection"), hits: arr(ref("LotteryRuleTierHit")), points: str });
-const SimulationResult = obj({ won: bool, normalized: ref("LotteryRuleSelection"), combination_count: int, multiplier: amount, bet_points: amount, prize_points: amount, raw_prize_points: str, capped_prize_points: str, lines: arr(ref("LotteryRuleLine")), warnings: arr(str) });
-const ValidationCase = obj({ name: str, selection: ref("LotteryRuleSelection"), draw: ref("LotteryRuleDraw"), multiplier: positiveAmount, expected_bet_points: nullable(amount), expected_prize_points: nullable(amount), expected_won: nullable(bool) }, ["name", "selection", "draw", "multiplier", "expected_bet_points", "expected_prize_points", "expected_won"]);
-const ValidationCaseInput = obj({ name: str, selection: ref("LotteryRuleSelectionInput"), draw: ref("LotteryRuleDrawInput"), multiplier: positiveAmount, expected_bet_points: nullable(amount), expected_prize_points: nullable(amount), expected_won: nullable(bool) }, ["name", "selection", "draw", "multiplier", "expected_bet_points", "expected_prize_points", "expected_won"]);
+const SimulationResult = obj({ won: bool, normalized: ref("LotteryRuleSelection"), combination_count: int, multiplier: ref("PositiveInt64String"), bet_points: amount, prize_points: amount, raw_prize_points: str, capped_prize_points: str, lines: arr(ref("LotteryRuleLine")), warnings: arr(str) });
+const ValidationCase = obj({ name: str, selection: ref("LotteryRuleSelection"), draw: ref("LotteryRuleDraw"), multiplier: ref("PositiveInt64String"), expected_bet_points: nullable(amount), expected_prize_points: nullable(amount), expected_won: nullable(bool) }, ["name", "selection", "draw", "multiplier", "expected_bet_points", "expected_prize_points", "expected_won"]);
+const ValidationCaseInput = obj({ name: str, selection: ref("LotteryRuleSelectionInput"), draw: ref("LotteryRuleDrawInput"), multiplier: ref("PositiveInt64String"), expected_bet_points: nullable(amount), expected_prize_points: nullable(amount), expected_won: nullable(bool) }, ["name", "selection", "draw", "multiplier", "expected_bet_points", "expected_prize_points", "expected_won"]);
 const ValidationCaseReport = obj({ name: str, input: ref("LotteryValidationCase"), expected_bet_points: amount, actual_bet_points: amount, expected_prize_points: amount, actual_prize_points: amount, expected_won: bool, actual_won: bool, matched: bool, simulation: ref("LotterySimulationResult") });
 const ValidationReport = obj({
   definition_hash: str, passed: bool, cases: arr(ref("LotteryValidationCaseReport")), warnings: arr(str),
@@ -160,15 +160,15 @@ const CatalogGame = obj({ id: uuid, code: str, name: str, model: ref("LotteryRul
 const CatalogPlay = obj({ id: uuid, game_id: uuid, code: str, name: str, rule_version_id: uuid, definition_hash: str, definition: ref("LotteryRuleDefinition") });
 const BetPeriod = obj({ id: uuid, game_id: uuid, period_no: str, status: str, bet_start_at: dateTime, bet_end_at: dateTime, draw_at: dateTime, draw_result_id: str }, ["id", "game_id", "period_no", "status", "bet_start_at", "bet_end_at", "draw_at"]);
 const Catalog = obj({ game: ref("LotteryCatalogGame"), plays: arr(ref("LotteryCatalogPlay")), period: nullable(ref("LotteryBetPeriod")), server_time: dateTime, brand_status: str, policy: ref("LotteryEffectivePolicy"), policy_versions: ref("LotteryPolicyVersions") });
-const BetInput = obj({ period_id: uuid, play_id: uuid, rule_version_id: uuid, selection: ref("LotteryRuleSelectionInput"), multiplier: positiveAmount, policy_versions: nullable(ref("LotteryPolicyVersions")), actor_context: str }, ["period_id", "play_id", "rule_version_id", "selection", "multiplier"]);
-const BetQuote = obj({ normalized: ref("LotteryRuleSelection"), expanded_bets: arr(ref("LotteryRuleSelection")), combination_count: int, unit_points: amount, multiplier: amount, bet_points: amount, period_id: uuid, play_id: uuid, rule_version_id: uuid, definition_hash: str, policy: ref("LotteryEffectivePolicy"), policy_versions: ref("LotteryPolicyVersions"), period: ref("LotteryBetPeriod") });
+const BetInput = obj({ period_id: uuid, play_id: uuid, rule_version_id: uuid, selection: ref("LotteryRuleSelectionInput"), multiplier: ref("PositiveInt64String"), policy_versions: nullable(ref("LotteryPolicyVersions")), actor_context: str }, ["period_id", "play_id", "rule_version_id", "selection", "multiplier"]);
+const BetQuote = obj({ normalized: ref("LotteryRuleSelection"), expanded_bets: arr(ref("LotteryRuleSelection")), combination_count: int, unit_points: amount, multiplier: ref("PositiveInt64String"), bet_points: amount, period_id: uuid, play_id: uuid, rule_version_id: uuid, definition_hash: str, policy: ref("LotteryEffectivePolicy"), policy_versions: ref("LotteryPolicyVersions"), period: ref("LotteryBetPeriod") });
 const Allocation = obj({ source: str, state: str, points: amount });
 const BetOrder = obj({
   id: uuid, brand_id: uuid, global_user_id: uuid, brand_member_id: uuid, account_id: uuid,
   game_id: uuid, period_id: uuid, period_no: { type: 'string', description: 'Human-readable period number included in order list responses.' }, play_id: uuid, rule_version_id: uuid, definition_hash: str,
   definition_snapshot: ref("LotteryRuleDefinition"), status: str, version: int, selection_raw: ref("LotteryRuleSelection"),
   selection_normalized: ref("LotteryRuleSelection"), expanded_bets: arr(ref("LotteryRuleSelection")), unit_points: amount,
-  combination_count: int, multiplier: amount, total_points: amount, deduction_allocation: arr(ref("LotteryPointAllocation")),
+  combination_count: int, multiplier: ref("PositiveInt64String"), total_points: amount, deduction_allocation: arr(ref("LotteryPointAllocation")),
   policy_snapshot: ref("LotteryEffectivePolicy"), policy_versions: ref("LotteryPolicyVersions"), debit_entry_id: uuid,
   refund_entry_id: str, client_key: str, placed_at: dateTime, cancelled_at: dateTime, cancel_reason: str,
   settlement_calculation_id: nullable(uuid), payout_entry_id: nullable(uuid), prize_points: amount, settled_at: dateTime,
@@ -188,21 +188,8 @@ const withdrawalNotificationKeys = notificationTemplateKeys.filter(key => key.st
 const rewardNotificationKeys = notificationTemplateKeys.filter(key => key.startsWith("reward.order."));
 const drawNotificationKeys = ["draw.result.published", "draw.result.corrected"];
 const positiveNotificationKeys = notificationTemplateKeys.filter(key => key !== "member.joined" && key !== "commission.adjusted" && key !== "commission.corrected" && !drawNotificationKeys.includes(key));
-const int64Upper = "9223372036854775807";
-const int64Alternatives = (limit) => {
-  const alternatives = [`[1-9][0-9]{0,${limit.length - 2}}`, limit];
-  for (let i = 0; i < limit.length; i++) {
-    const floor = i === 0 ? 1 : 0, ceiling = Number(limit[i]) - 1;
-    if (ceiling < floor) continue;
-    const digit = ceiling === floor ? String(floor) : `[${floor}-${ceiling}]`;
-    alternatives.push(limit.slice(0, i) + digit + `[0-9]{${limit.length - i - 1}}`);
-  }
-  return alternatives;
-};
-const positiveInt64Alternatives = int64Alternatives(int64Upper);
-const negativeInt64Alternatives = int64Alternatives("9223372036854775808");
-const withdrawalNotificationPoints = { type:"string", pattern:`^(?:${positiveInt64Alternatives.join("|")})$`, description:"Canonical positive int64 points; at most 9223372036854775807." };
-const adjustedCommissionPoints = { type:"string", pattern:`^(?:${positiveInt64Alternatives.join("|")}|-(?:${negativeInt64Alternatives.join("|")}))$`, description:"Canonical signed nonzero int64 points; at most 9223372036854775807 or as low as -9223372036854775808." };
+const withdrawalNotificationPoints = ref("PositivePoints");
+const adjustedCommissionPoints = { ...ref("Points"), not: { enum: ["0","0.0","0.00","-0","-0.0","-0.00"] } };
 const drawNumber = { type:"integer", minimum:0, maximum:1_000_000 };
 const drawNumbers = { type:"array", maxItems:10, items:drawNumber };
 const drawDigits = { type:"array", maxItems:10, items:{ type:"integer", minimum:0, maximum:9 } };
@@ -224,7 +211,7 @@ const drawNoticePayload = previousDrawID => obj({
 const publishedDrawPayload = drawNoticePayload({ type:"null" });
 const correctedDrawPayload = drawNoticePayload(uuid);
 const SettlementJob = obj({ id: uuid, brand_id: uuid, game_id: uuid, period_id: uuid, draw_result_id: uuid, period_version: int, policy_version: int, mode: str, state: str, version: int, target_count: int, created_by: uuid, approved_by: nullable(uuid), reason, created_at: dateTime, completed_at: nullable(dateTime), last_error_code: nullable(str), pending_count: int, ready_count: int, paid_count: int, excluded_count: int, failed_count: int, prize_points: amount, paid_points: amount, can_retry: bool, generation: int, previous_job_id: nullable(uuid), correction_id: nullable(uuid), current: bool });
-const SettlementPreview = obj({ context: ref("LotterySettlementContext"), outcome: str, error_code: nullable(str), calculation: nullable(obj({ won: bool, combination_count: int, multiplier: amount, bet_points: amount, prize_points: amount, raw_prize_points: str, capped_prize_points: str })), lines: arr(ref("LotteryRuleLine")) });
+const SettlementPreview = obj({ context: ref("LotterySettlementContext"), outcome: str, error_code: nullable(str), calculation: nullable(obj({ won: bool, combination_count: int, multiplier: ref("PositiveInt64String"), bet_points: amount, prize_points: amount, raw_prize_points: str, capped_prize_points: str })), lines: arr(ref("LotteryRuleLine")) });
 const Correction = obj({ id: uuid, brand_id: uuid, game_id: uuid, period_id: uuid, previous_draw_result_id: uuid, draw_result_id: uuid, result: ref("LotteryRuleDraw"), period_version: int, previous_job_id: nullable(uuid), new_job_id: nullable(uuid), policy_version: nullable(int), mode: nullable(str), state: str, version: int, target_count: int, created_by: uuid, reason, created_at: dateTime, completed_at: nullable(dateTime), last_error_code: nullable(str), pending_count: int, reversed_count: int, unchanged_count: int, excluded_count: int, failed_count: int, reverse_points: amount, reversed_points: amount, can_retry: bool, new_job_state: nullable(str), new_job_version: nullable(int), new_job_error_code: nullable(str) });
 const CancelJob = obj({ id: uuid, brand_id: uuid, game_id: uuid, period_id: uuid, period_version: int, mode: str, cause: str, state: str, version: int, reason, created_by: uuid, created_at: dateTime, completed_at: nullable(dateTime), last_error_code: str, total_count: int, pending_count: int, refunded_count: int, already_refunded_count: int, failed_count: int });
 const Notification = {
@@ -355,10 +342,10 @@ Object.assign(schemas, {
   LotteryCatalogPlaysPage: obj({ items: arr(ref("LotteryCatalogPlay")) }),
   LotteryCurrentPeriod: obj({ period: nullable(ref("LotteryBetPeriod")), server_time: dateTime, brand_status: str }),
   LotteryPublicDrawDetail: obj({ item: ref("LotteryPublicDraw"), server_time: dateTime, brand_status: str }),
-  LotteryBetPreviewWithActor: obj({ normalized: ref("LotteryRuleSelection"), expanded_bets: arr(ref("LotteryRuleSelection")), combination_count: int, unit_points: amount, multiplier: amount, bet_points: amount, period_id: uuid, play_id: uuid, rule_version_id: uuid, definition_hash: str, policy: ref("LotteryEffectivePolicy"), policy_versions: ref("LotteryPolicyVersions"), period: ref("LotteryBetPeriod"), actor_context: str }),
+  LotteryBetPreviewWithActor: obj({ normalized: ref("LotteryRuleSelection"), expanded_bets: arr(ref("LotteryRuleSelection")), combination_count: int, unit_points: amount, multiplier: ref("PositiveInt64String"), bet_points: amount, period_id: uuid, play_id: uuid, rule_version_id: uuid, definition_hash: str, policy: ref("LotteryEffectivePolicy"), policy_versions: ref("LotteryPolicyVersions"), period: ref("LotteryBetPeriod"), actor_context: str }),
   LotteryBetOrderItems: obj({ items: arr(ref("LotteryBetOrder")) }),
-  LotteryNotificationPage: obj({ brand_id: uuid, member_id: uuid, items: arr(ref("LotteryNotification")), unread_count: amount, limit: int, offset: int }),
-  LotteryNotificationReadReceipt: obj({ brand_id: uuid, member_id: uuid, ids: arr(uuid), changed: int, unread_count: amount }),
+  LotteryNotificationPage: obj({ brand_id: uuid, member_id: uuid, items: arr(ref("LotteryNotification")), unread_count: ref("NonnegativeInt64String"), limit: int, offset: int }),
+  LotteryNotificationReadReceipt: obj({ brand_id: uuid, member_id: uuid, ids: arr(uuid), changed: int, unread_count: ref("NonnegativeInt64String") }),
 });
 
 addHistoryReadHeaders(operations);

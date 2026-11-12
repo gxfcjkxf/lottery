@@ -15,16 +15,16 @@ func withdrawalExamples() map[string]any {
 	cycleFromAt := now.Add(-24 * time.Hour)
 	order := withdrawal.Order{
 		ID: id, BrandID: id, MemberID: id, AccountID: id,
-		Points: 8, State: "reviewing", Version: 1,
-		SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 8}},
+		Points: 800, State: "reviewing", Version: 1,
+		SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 800}},
 		CycleFromAt:      &cycleFromAt, CycleFromVersion: 1, ReserveVersion: 1,
 		ReserveEntryID: id, CreatedAt: now, UpdatedAt: now,
 		DecisionReason: "awaiting review", AuditLogID: id,
 	}
 	view := withdrawal.ToOrderView(order)
-	availability := withdrawal.AvailabilityView{PointsStep: 1, SourceBalances: []points.Allocation{},
+	availability := withdrawal.AvailabilityView{PointsStep: 100, SourceBalances: []points.Allocation{},
 		BrandID: id, MemberID: id, PolicyEnabled: true, EligibilityConfigured: true,
-		CanApply: true, ReasonCode: "AVAILABLE", MinPoints: 1,
+		CanApply: true, ReasonCode: "AVAILABLE", MinPoints: 100,
 		AllowedSources: []string{"recharge", "winning", "gift"}, RealPayments: false,
 		ActorContext: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	}
@@ -37,7 +37,7 @@ func withdrawalExamples() map[string]any {
 	}
 	return map[string]any{
 		"WithdrawalOrderExample":        view,
-		"WithdrawalOrderPageExample":    withdrawal.OrderPage{BrandID: id, Items: []withdrawal.OrderView{view}, Limit: 20, Offset: 0, HasMore: false},
+		"WithdrawalOrderPageExample":    withdrawal.OrderPage{BrandID: id, TotalCount: "1", Items: []withdrawal.OrderView{view}, Limit: 20, Offset: 0, HasMore: false},
 		"WithdrawalHistoryExample":      history,
 		"WithdrawalAvailabilityExample": availability,
 	}

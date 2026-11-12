@@ -27,6 +27,29 @@ describe('brand overview API', () => {
     await expect(createBrandOverviewApi(fetcher).read('')).rejects.toMatchObject({ code: 'REQUEST_INVALID' })
     expect(fetcher).not.toHaveBeenCalled()
   })
+  it('accepts exact decimal totals while keeping counts integral', () => {
+    const data = fixture()
+    Object.assign(data, { unsettled_points: '9007199254740993.25', available_points: '100.00', frozen_points: '0.50', withdrawal_points: '5.01', yesterday_same_time_stake: '60.25' })
+    Object.assign(data.days[0]!, { stake_points: '9007199254740993.25', net_points: '-30.75', refund_points: '0.25' })
+
+    expect(validateOverview(data, brand)).toBe(data)
+    for (const key of ['total_members', 'online_members', 'withdrawal_count'] as const) {
+      expect(() => validateOverview({ ...data, [key]: '1.5' }, brand)).toThrow()
+    }
+    for (const key of ['unsettled_points', 'available_points', 'frozen_points', 'withdrawal_points', 'yesterday_same_time_stake'] as const) {
+      for (const invalid of ['-0.01', '1.001', '01.25', '1e2', 'NaN']) {
+        expect(() => validateOverview({ ...data, [key]: invalid }, brand)).toThrow()
+      }
+    }
+    for (const key of ['order_count', 'bettor_count', 'new_members'] as const) {
+      const malformed = { ...data, days: data.days.map(day => ({ ...day, [key]: '1.5' })) }
+      expect(() => validateOverview(malformed, brand)).toThrow()
+    }
+    for (const [key, invalid] of [['stake_points', '-1.5'], ['refund_points', '1.001'], ['net_points', '-0.00']] as const) {
+      const malformed = { ...data, days: data.days.map(day => ({ ...day, [key]: invalid })) }
+      expect(() => validateOverview(malformed, brand)).toThrow()
+    }
+  })
   it('rejects malformed counts and incomplete days', () => {
     expect(() => validateOverview({ ...fixture(), online_members: 0 }, brand)).toThrow()
     expect(() => validateOverview({ ...fixture(), days: [] }, brand)).toThrow()

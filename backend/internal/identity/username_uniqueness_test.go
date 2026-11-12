@@ -31,7 +31,7 @@ func TestUsernameUniquenessAcrossBrandsAndCreationPaths(t *testing.T) {
 		return result
 	}
 	registered := run(operatorTestBrand, "first-registration", func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
-		return s.Register(ctx, tx, operatorTestBrand, RegisterInput{Username: "TEST", Password: "test-password", Privacy: "dev-1", Terms: "dev-1"}, meta)
+		return s.Register(ctx, tx, operatorTestBrand, RegisterInput{Username: "TEST", Password: "test-password", }, meta)
 	})
 	if registered.Status != 201 {
 		t.Fatalf("register: %+v", registered)
@@ -42,7 +42,7 @@ func TestUsernameUniquenessAcrossBrandsAndCreationPaths(t *testing.T) {
 				key := brand + name + path
 				result := run(brand, key, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
 					if path == "register" {
-						return s.Register(ctx, tx, brand, RegisterInput{Username: name, Password: "other-password", Privacy: "dev-1", Terms: "dev-1"}, meta)
+						return s.Register(ctx, tx, brand, RegisterInput{Username: name, Password: "other-password", }, meta)
 					}
 					return s.OperatorCreate(ctx, tx, brand, admin, OperatorInput{Username: name, Password: "other-password"}, meta)
 				})

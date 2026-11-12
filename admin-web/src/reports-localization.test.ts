@@ -122,7 +122,7 @@ describe("populated reports", () => {
 
 
 describe("merged betting filters", () => {
-  it("keeps agent/source filters on pagination and exports the committed query", async () => {
+  it("keeps agent/source filters on pagination without exposing export", async () => {
     vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
     const fetcher = vi.fn<typeof fetch>(async () => new Response("", { status: 503 }));
     vi.stubGlobal("fetch", fetcher);
@@ -148,8 +148,8 @@ describe("merged betting filters", () => {
     const results=nodes(root).find(n=>String(n.props.class).includes("management-list")&&n.children.some(child=>nodes(child).some(node=>node.props.id==="betting-results")))!;
     clickHostButton(button(results,"下一页"));await flush();
     expect(report).toHaveBeenLastCalledWith(brand,expect.objectContaining({agent_id:agent,group_by:"member",offset:20}));
-    clickHostButton(button(root,"导出完整 CSV"));await flush();
-    expect(exportCsv).toHaveBeenCalledWith(brand,expect.objectContaining({agent_id:agent,group_by:"member"}));
+    expect(nodes(root).some(n=>n.tag==="button"&&text(n)==="导出完整 CSV")).toBe(false);
+    expect(exportCsv).not.toHaveBeenCalled();
     expect(text(root)).not.toContain("归因报表");expect(text(root)).not.toContain("周期核对");
     const basicReads=fetcher.mock.calls.filter(call=>String(call[0]).includes('/reports/betting?')).length;
     report.mockRejectedValueOnce(new AdminApi.AdminApiError("Unavailable",503));

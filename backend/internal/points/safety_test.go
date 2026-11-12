@@ -23,7 +23,7 @@ func addSafetyMember(t *testing.T, p *pgxpool.Pool) string {
 		args []any
 	}{
 		{"INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'test-only-hash')", []any{userID, "safety_" + strings.ReplaceAll(userID, "-", "")}},
-		{"INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')", []any{memberID, testBrand, userID}},
+		{"INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')", []any{memberID, testBrand, userID}},
 		{"INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)", []any{accountID, testBrand, memberID}},
 		{"INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift','commission']) s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) t ON CONFLICT(brand_id,account_id,source,state) DO NOTHING", []any{testBrand, accountID}},
 	}
@@ -43,8 +43,8 @@ func TestPostRejectsAllocationThatClaimsAnotherSource(t *testing.T) {
 	p, s, member := fixture(t)
 	ctx := context.Background()
 	var delta Balance
-	delta[0][0] = 9
-	c := change(member, "fake-source-allocation", delta, []Allocation{{Source: "winning", State: "available", Points: 9}})
+	delta[0][0] = 900
+	c := change(member, "fake-source-allocation", delta, []Allocation{{Source: "winning", State: "available", Points: 900}})
 	tx, err := p.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -70,8 +70,8 @@ func TestConcurrentSameOperationKeyProducesOneLedgerAndAudit(t *testing.T) {
 	p, s, member := fixture(t)
 	ctx := context.Background()
 	var delta Balance
-	delta[0][0] = 17
-	base := change(member, "safety-same-operation", delta, []Allocation{{Source: "recharge", State: "available", Points: 17}})
+	delta[0][0] = 1700
+	base := change(member, "safety-same-operation", delta, []Allocation{{Source: "recharge", State: "available", Points: 1700}})
 	const workers = 20
 	var wg sync.WaitGroup
 	idsOut := make(chan string, workers)
@@ -137,11 +137,11 @@ func TestCrossAccountConcurrentOperationKeyMapsUniqueRaceToConflict(t *testing.T
 	memberB := addSafetyMember(t, p)
 	ctx := context.Background()
 	var deltaA, deltaB Balance
-	deltaA[0][0] = 11
-	deltaB[0][0] = 13
+	deltaA[0][0] = 1100
+	deltaB[0][0] = 1300
 	key := "safety-cross-account-key"
-	cA := change(memberA, key, deltaA, []Allocation{{Source: "recharge", State: "available", Points: 11}})
-	cB := change(memberB, key, deltaB, []Allocation{{Source: "recharge", State: "available", Points: 13}})
+	cA := change(memberA, key, deltaA, []Allocation{{Source: "recharge", State: "available", Points: 1100}})
+	cB := change(memberB, key, deltaB, []Allocation{{Source: "recharge", State: "available", Points: 1300}})
 	txA, err := p.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -279,8 +279,8 @@ func TestLedgerMaxInt64BoundaryRejectsAggregateOverflow(t *testing.T) {
 		t.Fatalf("MaxInt64 credit did not persist exactly: wallet=%+v err=%v", before, err)
 	}
 	var delta Balance
-	delta[2][0] = 1
-	c := change(member, "safety-maxint64-plus-one", delta, []Allocation{{Source: "gift", State: "available", Points: 1}})
+	delta[2][0] = 100
+	c := change(member, "safety-maxint64-plus-one", delta, []Allocation{{Source: "gift", State: "available", Points: 100}})
 	tx, err := p.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -299,13 +299,13 @@ func TestLedgerMaxInt64BoundaryRejectsAggregateOverflow(t *testing.T) {
 func TestSystemFreezeAndWithdrawalRoundTripTotals(t *testing.T) {
 	p, s, member := fixture(t)
 	ctx := context.Background()
-	credit(t, p, s, member, 0, 40)
-	credit(t, p, s, member, 2, 10)
+	credit(t, p, s, member, 0, 4000)
+	credit(t, p, s, member, 2, 1000)
 	initial, err := s.Read(ctx, testBrand, member)
-	if err != nil || initial.DisplayPoints != 50 {
+	if err != nil || initial.DisplayPoints != 5000 {
 		t.Fatalf("initial wallet=%+v err=%v", initial, err)
 	}
-	freezeAlloc, err := initial.BySource.Allocate(20, "available")
+	freezeAlloc, err := initial.BySource.Allocate(2000, "available")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,10 +317,10 @@ func TestSystemFreezeAndWithdrawalRoundTripTotals(t *testing.T) {
 	freeze.EntryType = "freeze"
 	freezeEntry := post(t, p, s, freeze)
 	withdrawWallet, err := s.Read(ctx, testBrand, member)
-	if err != nil || withdrawWallet.AvailablePoints != 30 || withdrawWallet.SystemFrozenPoints != 20 || withdrawWallet.ManualFrozenPoints != 0 || withdrawWallet.FrozenPoints != 20 || withdrawWallet.DisplayPoints != 50 || withdrawWallet.WithdrawalPoints != 0 {
+	if err != nil || withdrawWallet.AvailablePoints != 3000 || withdrawWallet.SystemFrozenPoints != 2000 || withdrawWallet.ManualFrozenPoints != 0 || withdrawWallet.FrozenPoints != 2000 || withdrawWallet.DisplayPoints != 5000 || withdrawWallet.WithdrawalPoints != 0 {
 		t.Fatalf("system-frozen wallet totals=%+v err=%v", withdrawWallet, err)
 	}
-	withdrawAlloc, err := withdrawWallet.BySource.Allocate(7, "system_frozen")
+	withdrawAlloc, err := withdrawWallet.BySource.Allocate(700, "system_frozen")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +336,7 @@ func TestSystemFreezeAndWithdrawalRoundTripTotals(t *testing.T) {
 		t.Fatal(err)
 	}
 	rechargeTotal, err := inWithdrawal.BySource.SourceTotal(0)
-	if err != nil || inWithdrawal.SystemFrozenPoints != 13 || inWithdrawal.WithdrawalPoints != 7 || inWithdrawal.FrozenPoints != 13 || inWithdrawal.DisplayPoints != 43 || rechargeTotal != 40 {
+	if err != nil || inWithdrawal.SystemFrozenPoints != 1300 || inWithdrawal.WithdrawalPoints != 700 || inWithdrawal.FrozenPoints != 1300 || inWithdrawal.DisplayPoints != 4300 || rechargeTotal != 4000 {
 		t.Fatalf("withdrawal wallet totals=%+v err=%v", inWithdrawal, err)
 	}
 	tx, err := p.Begin(ctx)
@@ -351,7 +351,7 @@ func TestSystemFreezeAndWithdrawalRoundTripTotals(t *testing.T) {
 		t.Fatal(err)
 	}
 	backFromWithdrawal, err := s.Read(ctx, testBrand, member)
-	if err != nil || backFromWithdrawal.BySource != withdrawWallet.BySource || backFromWithdrawal.DisplayPoints != 50 || backFromWithdrawal.WithdrawalPoints != 0 {
+	if err != nil || backFromWithdrawal.BySource != withdrawWallet.BySource || backFromWithdrawal.DisplayPoints != 5000 || backFromWithdrawal.WithdrawalPoints != 0 {
 		t.Fatalf("withdrawal reversal failed to restore: wallet=%+v err=%v", backFromWithdrawal, err)
 	}
 	tx, err = p.Begin(ctx)
@@ -366,7 +366,7 @@ func TestSystemFreezeAndWithdrawalRoundTripTotals(t *testing.T) {
 		t.Fatal(err)
 	}
 	restored, err := s.Read(ctx, testBrand, member)
-	if err != nil || restored.BySource != initial.BySource || restored.DisplayPoints != 50 || restored.FrozenPoints != 0 || restored.WithdrawalPoints != 0 {
+	if err != nil || restored.BySource != initial.BySource || restored.DisplayPoints != 5000 || restored.FrozenPoints != 0 || restored.WithdrawalPoints != 0 {
 		t.Fatalf("system freeze round trip failed: wallet=%+v err=%v", restored, err)
 	}
 }

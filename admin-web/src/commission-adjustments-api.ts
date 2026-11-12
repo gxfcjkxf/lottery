@@ -1,3 +1,4 @@
+import { pointsMinor, isPoints } from '@lottery/shared'
 import { commissionListParams, type CommissionListQuery } from './commission-list-query'
 import { readAdminEnvelope } from './admin-api'
 
@@ -8,7 +9,6 @@ const PAYMENTS = "/api/v1/admin/commission-payments";
 const TARGETS = "/api/v1/admin/commission-payment-targets";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const UINT = /^(?:0|[1-9][0-9]*)$/;
-const SINT = /^(?:[1-9][0-9]*|-[1-9][0-9]*|0)$/;
 const DATE = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?(?:Z|[+-]\d\d:\d\d)$/;
 const I64_MAX = 9223372036854775807n;
 const I64_MIN = -9223372036854775808n;
@@ -36,7 +36,6 @@ function obj(v: unknown): v is Obj { return !!v && typeof v === "object" && !Arr
 function keys(v: Obj, expected: string[]) { return Object.keys(v).length === expected.length && expected.every((k) => Object.hasOwn(v, k)); }
 function uuid(v: unknown): v is string { return typeof v === "string" && UUID.test(v); }
 function uint(v: unknown): v is string { return typeof v === "string" && UINT.test(v) && BigInt(v) <= I64_MAX; }
-function sint(v: unknown): v is string { return typeof v === "string" && SINT.test(v) && BigInt(v) >= I64_MIN && BigInt(v) <= I64_MAX; }
 function safeVersion(v: unknown): v is number { return Number.isSafeInteger(v) && Number(v) >= 1; }
 function date(v: unknown): v is string { return typeof v === "string" && DATE.test(v) && Number.isFinite(Date.parse(v)); }
 export function validCommissionAdjustmentReason(v: unknown): v is string {
@@ -44,23 +43,23 @@ export function validCommissionAdjustmentReason(v: unknown): v is string {
   for (let i = 0; i < v.length; i++) { const c = v.charCodeAt(i); if (c >= 0xd800 && c <= 0xdbff) { const n = v.charCodeAt(++i); if (!(n >= 0xdc00 && n <= 0xdfff)) return false; } else if (c >= 0xdc00 && c <= 0xdfff) return false; }
   return true;
 }
-export function validCommissionAdjustmentPoints(v: unknown): v is string { return uint(v) && BigInt(v) <= I64_MAX; }
+export function validCommissionAdjustmentPoints(v: unknown): v is string { return isPoints(v); }
 export function validCommissionAdjustmentDelta(before: string, after: string): boolean {
-  try { const delta = BigInt(after) - BigInt(before); return delta !== 0n && delta >= I64_MIN && delta <= I64_MAX; } catch { return false; }
+  try { const delta = pointsMinor(after) - pointsMinor(before); return delta !== 0n && delta >= I64_MIN && delta <= I64_MAX; } catch { return false; }
 }
 function invalid(): never { throw new AdminApiError("佣金更正输入无效。", 0, "INVALID_INPUT"); }
 function malformed(): never { throw new AdminApiError("佣金更正响应格式无效。", 502, "INVALID_RESPONSE"); }
 function target(v: unknown, brand: string, paymentId: string): v is CommissionAdjustmentTarget {
   const fields = ["id","brand_id","payment_id","earning_id","agent_id","member_id","original_points","state","ledger_entry_id","paid_at","adjustment_version","adjusted_points","last_adjustment_id"];
-  if (!obj(v) || !keys(v, fields) || !uuid(v.id) || v.brand_id !== brand || v.payment_id !== paymentId || !uuid(v.earning_id) || !uuid(v.agent_id) || !uuid(v.member_id) || !uint(v.original_points) || !["pending","paid"].includes(String(v.state))) return false;
-  if (!(v.ledger_entry_id === null || uuid(v.ledger_entry_id)) || !(v.paid_at === null || date(v.paid_at)) || !(v.adjustment_version === null || safeVersion(v.adjustment_version)) || !(v.adjusted_points === null || uint(v.adjusted_points)) || !(v.last_adjustment_id === null || uuid(v.last_adjustment_id))) return false;
+  if (!obj(v) || !keys(v, fields) || !uuid(v.id) || v.brand_id !== brand || v.payment_id !== paymentId || !uuid(v.earning_id) || !uuid(v.agent_id) || !uuid(v.member_id) || !isPoints(v.original_points) || !["pending","paid"].includes(String(v.state))) return false;
+  if (!(v.ledger_entry_id === null || uuid(v.ledger_entry_id)) || !(v.paid_at === null || date(v.paid_at)) || !(v.adjustment_version === null || safeVersion(v.adjustment_version)) || !(v.adjusted_points === null || isPoints(v.adjusted_points)) || !(v.last_adjustment_id === null || uuid(v.last_adjustment_id))) return false;
   return v.state === "pending" ? v.ledger_entry_id === null && v.paid_at === null && v.adjustment_version === null && v.adjusted_points === null && v.last_adjustment_id === null
-    : safeVersion(v.adjustment_version) && v.adjusted_points !== null && v.adjustment_version >= 1 && (v.adjustment_version !== 1 || v.adjusted_points === v.original_points && v.last_adjustment_id === null) && (v.adjustment_version === 1 || uuid(v.last_adjustment_id)) && date(v.paid_at) && (v.original_points !== "0" ? uuid(v.ledger_entry_id) : v.ledger_entry_id === null);
+    : safeVersion(v.adjustment_version) && v.adjusted_points !== null && v.adjustment_version >= 1 && (v.adjustment_version !== 1 || pointsMinor(v.adjusted_points) === pointsMinor(v.original_points) && v.last_adjustment_id === null) && (v.adjustment_version === 1 || uuid(v.last_adjustment_id)) && date(v.paid_at) && (pointsMinor(v.original_points) !== 0n ? uuid(v.ledger_entry_id) : v.ledger_entry_id === null);
 }
 function adjustment(v: unknown, brand: string, targetId: string, paymentId: string): v is CommissionAdjustment {
   const fields = ["id","brand_id","target_id","payment_id","version","points_before","points_after","delta_points","ledger_entry_id","audit_log_id","created_by","reason","point_policy_version","created_at"];
-  if (!obj(v) || !keys(v, fields) || !uuid(v.id) || v.brand_id !== brand || v.target_id !== targetId || v.payment_id !== paymentId || !safeVersion(v.version) || v.version < 2 || !uint(v.points_before) || !uint(v.points_after) || !sint(v.delta_points) || !uuid(v.ledger_entry_id) || !uuid(v.audit_log_id) || !uuid(v.created_by) || !validCommissionAdjustmentReason(v.reason) || !uint(v.point_policy_version) || v.point_policy_version === "0" || BigInt(v.point_policy_version) > I64_MAX || !date(v.created_at)) return false;
-  return BigInt(v.points_after) - BigInt(v.points_before) === BigInt(v.delta_points) && v.delta_points !== "0";
+  if (!obj(v) || !keys(v, fields) || !uuid(v.id) || v.brand_id !== brand || v.target_id !== targetId || v.payment_id !== paymentId || !safeVersion(v.version) || v.version < 2 || !isPoints(v.points_before) || !isPoints(v.points_after) || !isPoints(v.delta_points, true) || !uuid(v.ledger_entry_id) || !uuid(v.audit_log_id) || !uuid(v.created_by) || !validCommissionAdjustmentReason(v.reason) || !uint(v.point_policy_version) || v.point_policy_version === "0" || BigInt(v.point_policy_version) > I64_MAX || !date(v.created_at)) return false;
+  return pointsMinor(v.points_after) - pointsMinor(v.points_before) === pointsMinor(v.delta_points) && pointsMinor(v.delta_points) !== 0n;
 }
 function validPage<T>(v: unknown, brand: string, parentField: "payment_id" | "target_id", parentId: string, limit: number, offset: number, validate: (x: unknown) => x is T): boolean {
   const shape = ["brand_id",parentField,"items","total_count","limit","offset"];
@@ -95,8 +94,8 @@ export function createCommissionAdjustmentsApi(fetcher: typeof fetch = fetch) {
       const data=await request(brand,`${PAYMENTS}/${encodeURIComponent(paymentId)}/beneficiaries?${query}`);
       if(!validPage(data,brand,'payment_id',paymentId,limit,offset,(row):row is CommissionPaymentBeneficiary=>
         obj(row)&&keys(row,['id','brand_id','payment_id','agent_id','member_id','target_id','original_points','adjusted_points','state','paid_at'])&&
-        uuid(row.id)&&row.brand_id===brand&&row.payment_id===paymentId&&uuid(row.agent_id)&&uuid(row.member_id)&&uint(row.original_points)&&
-        (row.target_id===null||uuid(row.target_id))&&(row.adjusted_points===null||uint(row.adjusted_points))&&
+        uuid(row.id)&&row.brand_id===brand&&row.payment_id===paymentId&&uuid(row.agent_id)&&uuid(row.member_id)&&isPoints(row.original_points)&&
+        (row.target_id===null||uuid(row.target_id))&&(row.adjusted_points===null||isPoints(row.adjusted_points))&&
         (row.state==='pending'||row.state==='paid')&&(row.paid_at===null||date(row.paid_at))&&
         (row.state!=='paid'||row.target_id!==null)&& (row.target_id!==null||(row.paid_at===null&&row.adjusted_points===null))
       ))malformed();return data as CommissionPaymentBeneficiaryPage;
@@ -114,7 +113,7 @@ export function createCommissionAdjustmentsApi(fetcher: typeof fetch = fetch) {
     async createAdjustment(brand: string, targetId: string, paymentId: string, body: Readonly<CommissionAdjustmentBody>, actorId: string, key: string): Promise<CommissionAdjustment> {
       if (!uuid(brand) || !uuid(targetId) || !uuid(paymentId) || !uuid(actorId) || !/^[A-Za-z0-9._:-]{8,128}$/.test(key) || !obj(body) || !keys(body,["version","points","reason"]) || !safeVersion(body.version) || body.version >= Number.MAX_SAFE_INTEGER || !validCommissionAdjustmentPoints(body.points) || !validCommissionAdjustmentReason(body.reason)) invalid();
       const data = await request(brand, `${TARGETS}/${encodeURIComponent(targetId)}/adjustments`, "POST", body, actorId, key);
-      if (!adjustment(data, brand, targetId, paymentId) || data.version !== body.version + 1 || data.points_after !== body.points || data.created_by !== actorId) malformed(); return data;
+      if (!adjustment(data, brand, targetId, paymentId) || data.version !== body.version + 1 || pointsMinor(data.points_after) !== pointsMinor(body.points) || data.created_by !== actorId) malformed(); return data;
     },
   };
 }

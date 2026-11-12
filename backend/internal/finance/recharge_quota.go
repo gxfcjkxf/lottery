@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"math"
-	"strconv"
 	"time"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
@@ -27,6 +26,8 @@ type RechargeQuotaEntry struct {
 	BeforeAvailable string    `json:"before_available"`
 	AfterAvailable  string    `json:"after_available"`
 	RechargeOrderID *string   `json:"recharge_order_id"`
+	MemberID        *string   `json:"member_id"`
+	MemberAccount   *string   `json:"member_account"`
 	ActorName       string    `json:"actor_name"`
 	CreatedAt       time.Time `json:"created_at"`
 }
@@ -46,7 +47,14 @@ func (s Service) ListRechargeQuotaEntries(ctx context.Context, brand string, lim
 	if !financeUUIDPattern.MatchString(brand) || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
 		return nil, points.ErrInvalid
 	}
-	rows, err := s.DB.Query(ctx, `SELECT e.id::text,e.brand_id::text,e.kind,e.points::text,e.before_available::text,e.after_available::text,e.recharge_order_id::text,a.username,e.created_at FROM brand_recharge_quota_entries e JOIN admin_accounts a ON a.id=e.actor_id WHERE e.brand_id=$1 ORDER BY e.created_at DESC,e.id DESC LIMIT $2 OFFSET $3`, brand, limit, offset)
+	rows, err := s.DB.Query(ctx, `SELECT e.id::text,e.brand_id::text,e.kind,e.points::text,e.before_available::text,e.after_available::text,e.recharge_order_id::text,m.id::text,COALESCE(u.username,u.phone,u.telegram_user_id),a.username,e.created_at
+ FROM brand_recharge_quota_entries e
+ JOIN admin_accounts a ON a.id=e.actor_id
+ LEFT JOIN recharge_orders r ON e.kind='manual_recharge' AND r.brand_id=e.brand_id AND r.id=e.recharge_order_id
+ LEFT JOIN point_ledger_entries l ON e.kind='manual_adjustment' AND l.brand_id=e.brand_id AND l.id=e.id
+ LEFT JOIN brand_members m ON m.brand_id=e.brand_id AND m.id=CASE e.kind WHEN 'manual_recharge' THEN r.member_id WHEN 'manual_adjustment' THEN l.member_id END
+ LEFT JOIN global_users u ON u.id=m.global_user_id
+ WHERE e.brand_id=$1 ORDER BY e.created_at DESC,e.id DESC LIMIT $2 OFFSET $3`, brand, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +62,7 @@ func (s Service) ListRechargeQuotaEntries(ctx context.Context, brand string, lim
 	out := []RechargeQuotaEntry{}
 	for rows.Next() {
 		var e RechargeQuotaEntry
-		if err = rows.Scan(&e.ID, &e.BrandID, &e.Kind, &e.Points, &e.BeforeAvailable, &e.AfterAvailable, &e.RechargeOrderID, &e.ActorName, &e.CreatedAt); err != nil {
+		if err = rows.Scan(&e.ID, &e.BrandID, &e.Kind, &e.Points, &e.BeforeAvailable, &e.AfterAvailable, &e.RechargeOrderID, &e.MemberID, &e.MemberAccount, &e.ActorName, &e.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -79,21 +87,21 @@ func (s Service) GrantRechargeQuota(ctx context.Context, tx pgx.Tx, brand string
 	if _, err = tx.Exec(ctx, `INSERT INTO brand_recharge_quotas(brand_id) VALUES($1) ON CONFLICT DO NOTHING`, brand); err != nil {
 		return RechargeQuota{}, err
 	}
-	var before int64
+	var before points.Amount
 	if err = tx.QueryRow(ctx, `SELECT available FROM brand_recharge_quotas WHERE brand_id=$1 FOR UPDATE`, brand).Scan(&before); err != nil {
 		return RechargeQuota{}, err
 	}
-	if before > math.MaxInt64-int64(amount) {
+	if before > points.Amount(math.MaxInt64)-amount {
 		return RechargeQuota{}, points.ErrOverflow
 	}
-	after := before + int64(amount)
+	after := before + amount
 	if _, err = tx.Exec(ctx, `UPDATE brand_recharge_quotas SET available=$2 WHERE brand_id=$1`, brand, after); err != nil {
 		return RechargeQuota{}, err
 	}
-	if err = appendQuotaEntry(ctx, tx, ids.New(), brand, "grant", "", int64(amount), before, after, meta); err != nil {
+	if err = appendQuotaEntry(ctx, tx, ids.New(), brand, "grant", "", amount, before, after, meta); err != nil {
 		return RechargeQuota{}, err
 	}
-	return RechargeQuota{BrandID: brand, Available: strconv.FormatInt(after, 10)}, nil
+	return RechargeQuota{BrandID: brand, Available: after.String()}, nil
 }
 
 // ReclaimRechargeQuota returns only unused quota to the platform. The same row
@@ -110,37 +118,37 @@ func (s Service) ReclaimRechargeQuota(ctx context.Context, tx pgx.Tx, brand stri
 	if err != nil {
 		return RechargeQuota{}, err
 	}
-	var after int64
-	err = tx.QueryRow(ctx, `UPDATE brand_recharge_quotas SET available=available-$2 WHERE brand_id=$1 AND available >= $2 RETURNING available`, brand, int64(amount)).Scan(&after)
+	var after points.Amount
+	err = tx.QueryRow(ctx, `UPDATE brand_recharge_quotas SET available=available-$2 WHERE brand_id=$1 AND available >= $2 RETURNING available`, brand, amount).Scan(&after)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return RechargeQuota{}, ErrRechargeQuota
 	}
 	if err != nil {
 		return RechargeQuota{}, err
 	}
-	if err = appendQuotaEntry(ctx, tx, ids.New(), brand, "reclaim", "", int64(amount), after+int64(amount), after, meta); err != nil {
+	if err = appendQuotaEntry(ctx, tx, ids.New(), brand, "reclaim", "", amount, after+amount, after, meta); err != nil {
 		return RechargeQuota{}, err
 	}
-	return RechargeQuota{BrandID: brand, Available: strconv.FormatInt(after, 10)}, nil
+	return RechargeQuota{BrandID: brand, Available: after.String()}, nil
 }
 
 func (s Service) consumeRechargeQuota(ctx context.Context, tx pgx.Tx, brand, order string, amount points.Amount, meta points.Metadata) error {
-	var after int64
-	err := tx.QueryRow(ctx, `UPDATE brand_recharge_quotas SET available=available-$2 WHERE brand_id=$1 AND available >= $2 RETURNING available`, brand, int64(amount)).Scan(&after)
+	var after points.Amount
+	err := tx.QueryRow(ctx, `UPDATE brand_recharge_quotas SET available=available-$2 WHERE brand_id=$1 AND available >= $2 RETURNING available`, brand, amount).Scan(&after)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrRechargeQuota
 	}
 	if err != nil {
 		return err
 	}
-	return appendQuotaEntry(ctx, tx, ids.New(), brand, "manual_recharge", order, int64(amount), after+int64(amount), after, meta)
+	return appendQuotaEntry(ctx, tx, ids.New(), brand, "manual_recharge", order, amount, after+amount, after, meta)
 }
-func appendQuotaEntry(ctx context.Context, tx pgx.Tx, id, brand, kind, order string, amount, before, after int64, meta points.Metadata) error {
+func appendQuotaEntry(ctx context.Context, tx pgx.Tx, id, brand, kind, order string, amount, before, after points.Amount, meta points.Metadata) error {
 	_, err := tx.Exec(ctx, `INSERT INTO brand_recharge_quota_entries(id,brand_id,kind,points,before_available,after_available,recharge_order_id,actor_id) VALUES($1,$2,$3,$4,$5,$6,nullif($7,'')::uuid,$8)`, id, brand, kind, amount, before, after, order, meta.ActorID)
 	if err != nil {
 		return err
 	}
-	_, err = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: meta.ActorType, ActorID: meta.ActorID, Action: "finance.recharge_quota." + kind, ResourceType: "recharge_quota_entry", ResourceID: id, RequestID: meta.RequestID, IP: meta.IP, Before: map[string]any{"available": strconv.FormatInt(before, 10)}, After: map[string]any{"available": strconv.FormatInt(after, 10), "points": strconv.FormatInt(amount, 10), "recharge_order_id": order}})
+	_, err = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: meta.ActorType, ActorID: meta.ActorID, Action: "finance.recharge_quota." + kind, ResourceType: "recharge_quota_entry", ResourceID: id, RequestID: meta.RequestID, IP: meta.IP, Before: map[string]any{"available": before.String()}, After: map[string]any{"available": after.String(), "points": amount.String(), "recharge_order_id": order}})
 	return err
 }
 
@@ -158,7 +166,7 @@ func (s Service) PostManualAdjustment(ctx context.Context, tx pgx.Tx, change poi
 	if amount <= 0 {
 		return s.Points.Post(ctx, tx, change)
 	}
-	var available int64
+	var available points.Amount
 	err = tx.QueryRow(ctx, `SELECT available FROM brand_recharge_quotas WHERE brand_id=$1 FOR UPDATE`, change.BrandID).Scan(&available)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return points.Entry{}, ErrRechargeQuota
@@ -177,13 +185,13 @@ func (s Service) PostManualAdjustment(ctx context.Context, tx pgx.Tx, change poi
 	if recorded {
 		return entry, nil
 	}
-	if available < int64(amount) {
+	if available < amount {
 		return points.Entry{}, ErrRechargeQuota
 	}
-	after := available - int64(amount)
+	after := available - amount
 	if _, err = tx.Exec(ctx, `UPDATE brand_recharge_quotas SET available=$2 WHERE brand_id=$1`, change.BrandID, after); err != nil {
 		return points.Entry{}, err
 	}
-	err = appendQuotaEntry(ctx, tx, entry.ID, change.BrandID, "manual_adjustment", "", int64(amount), available, after, points.Metadata{ActorType: change.ActorType, ActorID: change.ActorID, RequestID: change.RequestID, IP: change.IP})
+	err = appendQuotaEntry(ctx, tx, entry.ID, change.BrandID, "manual_adjustment", "", amount, available, after, points.Metadata{ActorType: change.ActorType, ActorID: change.ActorID, RequestID: change.RequestID, IP: change.IP})
 	return entry, err
 }

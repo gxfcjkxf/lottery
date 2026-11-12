@@ -223,7 +223,7 @@ useOperationToast(() => notice.value, value => display(value), 'success');
           >{{ t('admin.copy.48b813d8') }}
           <input
             v-model.trim="draft.max_balance_points"
-            inputmode="numeric"
+            inputmode="decimal"
             autocomplete="off"
             :placeholder="t('admin.copy.bd97fa74')"
           />
@@ -232,7 +232,7 @@ useOperationToast(() => notice.value, value => display(value), 'success');
           >{{ t('admin.copy.17cf892f') }}
           <input
             v-model.trim="draft.max_recharge_points"
-            inputmode="numeric"
+            inputmode="decimal"
             autocomplete="off"
             :placeholder="t('admin.copy.bd97fa74')"
           />
@@ -241,7 +241,7 @@ useOperationToast(() => notice.value, value => display(value), 'success');
           >{{ t('admin.copy.09ef0918') }}
           <input
             v-model.trim="draft.max_adjustment_points"
-            inputmode="numeric"
+            inputmode="decimal"
             autocomplete="off"
             :placeholder="t('admin.copy.bd97fa74')"
           />

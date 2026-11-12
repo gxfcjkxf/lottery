@@ -106,13 +106,10 @@ useOperationToast(() => saved.value, () => t('admin.copy.bdfd5d02'), 'success');
       <div class="layout">
         <form v-write-guard="busy" novalidate v-inline-validation class="form am-form ui-form" @submit.prevent="withGlobalLoading(submit)">
 
-          <AccountCreateFields v-model:account="username" v-model:password="password" :account-label="t('admin.copy.0db32fa9')" :password-label="t('admin.copy.87c404b9')" :account-required="false" :password-characters="true"><template #password-help>{{t('admin.copy.0b3f5d69')}} {{passwordCharacters}} {{t('admin.copy.4c60451d')}}</template></AccountCreateFields>
+          <AccountCreateFields v-model:account="username" v-model:password="password" :account-label="t('admin.copy.0db32fa9')" :password-label="t('admin.copy.87c404b9')" :account-required="false" :password-characters="true" />
           <p class="hint">{{formValidationText('identityRequired')}}</p>
           <MemberDetailsFields v-model:phone="phone" :phone-label="t('admin.copy.009f2b26')" :phone-maxlength="32" />
-          <label
-            >{{ t('admin.copy.0fafad85') }} <span>{{ t('admin.copy.fca11f17') }}</span
-            ><textarea v-model.trim="notes" rows="3" maxlength="1000" />
-          </label>
+          <label>{{ t('admin.copy.0fafad85') }}<textarea v-model.trim="notes" rows="3" maxlength="1000" /></label>
 
           <WriteFormActions
             :submit-label="busy ? t('admin.copy.764449bc') : t('admin.copy.67b6db56')"
@@ -157,9 +154,9 @@ useOperationToast(() => saved.value, () => t('admin.copy.bdfd5d02'), 'success');
 }
 .brand {
   border-radius: 20px;
-  background: #f1f3f8;
+  background: #f4f6f4;
   padding: 7px 11px;
-  color: #626b7c;
+  color: #374151;
   font-size: var(--body-font-size);
   overflow-wrap: anywhere;
 }

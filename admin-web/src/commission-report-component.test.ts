@@ -1,3 +1,4 @@
+import { DetailModalTestComponent } from "./detail-modal-test-helper";
 import {ManagementListTestComponent,MemberActionsMenuTestComponent,clickHostButton} from "./management-list-test-helper"
 import { SelectControlTestComponent } from './select-control-test-helper'
 import * as CommissionQueryForTest from './commission-list-query';
@@ -31,7 +32,7 @@ const renderer = createRenderer<Node, Node>({
 function component(): Component {
   const source = readFileSync(new URL("./CommissionReport.vue", import.meta.url), "utf8"), descriptor = parse(source, { filename: "CommissionReport.vue" }).descriptor;
   const javascript = ts.transpileModule(compileScript(descriptor, { id: "commission-report-test", inlineTemplate: true }).content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = {"@lottery/shared/ManagementList.vue":ManagementListTestComponent,"@lottery/shared/MemberActionsMenu.vue":MemberActionsMenuTestComponent, "@lottery/shared/SelectControl.vue": SelectControlTestComponent, "./SelectControl.vue": SelectControlTestComponent, "./commission-list-query": CommissionQueryForTest, "@lottery/shared/FilterAssociationSearch.vue": { props: ["modelValue", "label"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { value: p.modelValue, "aria-label": p.label, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared/FilterAssociationSelect.vue": { props: ["modelValue", "label"], setup: (p: any, { emit }: any) => () => temporalTestH("select-control", { value: p.modelValue, "aria-label": p.label, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) },  "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared": {...DisplayShared, vInlineValidation: {}, vRefreshButton: {}, vGlobalLoading: {}},  vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commission-report-api": CommissionReportApi, "./member-lookup": { lookupAdminMember: async () => { throw new Error("Member lookup failed"); } } };
+  const modules: Record<string, unknown> = {"@lottery/shared/DetailModal.vue":DetailModalTestComponent,"@lottery/shared/ManagementList.vue":ManagementListTestComponent,"@lottery/shared/MemberActionsMenu.vue":MemberActionsMenuTestComponent, "@lottery/shared/SelectControl.vue": SelectControlTestComponent, "./SelectControl.vue": SelectControlTestComponent, "./commission-list-query": CommissionQueryForTest, "@lottery/shared/FilterAssociationSearch.vue": { props: ["modelValue", "label"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { value: p.modelValue, "aria-label": p.label, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared/FilterAssociationSelect.vue": { props: ["modelValue", "label"], setup: (p: any, { emit }: any) => () => temporalTestH("select-control", { value: p.modelValue, "aria-label": p.label, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) },  "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared": {...DisplayShared, vInlineValidation: {}, vRefreshButton: {}, vGlobalLoading: {}},  vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commission-report-api": CommissionReportApi, "./member-lookup": { lookupAdminMember: async () => { throw new Error("Member lookup failed"); } } };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
   return new Function("__modules", body.replace(/^import\s+["'][^"']+\.css["'];?\s*$/gm, "").replace(/^import\s+["'][^"']+\.css["'];?\s*$/gm, "").replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
@@ -49,12 +50,11 @@ function mount() {
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe("CommissionReport real Vue component", () => {
-  it("renders exact large values, exports committed filters, and discards late responses after scope change", async () => {
-    const calls: string[] = []; let resolveFirst!: (value: Response) => void, first = true, exportStatus = 503;
+  it("renders exact large values, and discards late responses after scope change", async () => {
+    const calls: string[] = []; let resolveFirst!: (value: Response) => void, first = true;
     const slow = new Promise<Response>((resolve) => { resolveFirst = resolve; });
     const fetcher = vi.fn<typeof fetch>(async (input) => {
       const url = String(input); calls.push(url);
-      if (url.includes(".csv?")) return new Response(JSON.stringify({ success: false, error: { code: exportStatus === 401 ? "SESSION_EXPIRED" : "SERVICE_UNAVAILABLE", message: "Request unavailable" } }), { status: exportStatus, headers: { "content-type": "application/json" } });
       if (first) { first = false; return slow; }
       const q = new URL(url, "http://local").searchParams;
       return new Response(JSON.stringify(payload({ from: q.get("from"), to: q.get("to"), group_by: q.get("group_by"), limit: Number(q.get("limit")), offset: Number(q.get("offset")), agent_id: q.get("agent_id"), member_id: q.get("member_id"), cycle_id: q.get("cycle_id") })), { status: 200 });
@@ -67,22 +67,19 @@ describe("CommissionReport real Vue component", () => {
     expect(text(mounted.root) + operationToastText()).not.toContain(huge);
     click(testId(mounted.root, "commission-report-query")); await flush();
     expect(text(mounted.root) + operationToastText()).toContain("922,337,203,685,477,580,812,345,678,901,234,567,890");
+    clickHostButton(find(mounted.root,n=>n.tag==="button"&&text(n)==="查看全部指标"));await flush();
     expect(text(mounted.root) + operationToastText()).toContain("更正笔数"); expect(text(mounted.root) + operationToastText()).toContain("更正补发积分"); expect(text(mounted.root) + operationToastText()).toContain("更正追回积分");
     mounted.i18n.setLocale("en"); await flush();
     expect(text(mounted.root) + operationToastText()).toContain("Correction entries"); expect(text(mounted.root) + operationToastText()).toContain("Correction credits"); expect(text(mounted.root) + operationToastText()).toContain("Correction debits");
     expect(testId(mounted.root, "commission-report-summary")).not.toBeNull();
     expect(testId(mounted.root, "commission-report-group")).not.toBeNull();
     const datetime = find(mounted.root, (n) => n.tag === "input" && n.props.type === "date"); expect(datetime).not.toBeNull();
-    click(testId(mounted.root, "commission-report-export")); await flush();
-    const readUrl = new URL(calls.filter((url) => !url.includes(".csv?" )).at(-1)!, "http://local"), exportUrl = new URL(calls.at(-1)!, "http://local");
-    expect(exportUrl.searchParams.get("from")).toBe(readUrl.searchParams.get("from"));
-    expect(text(mounted.root) + operationToastText()).toContain("This service is temporarily unavailable. Please try again later.");
-    expect(text(mounted.root) + operationToastText()).not.toContain("Request failed (503)");
+    expect(testId(mounted.root, "commission-report-export")).toBeNull();
     (datetime!.props["onUpdate:modelValue"] as ((value: string) => void))("2020-01-01"); await flush();
     expect(testId(mounted.root, "commission-report-summary")).not.toBeNull();
     (datetime!.props["onUpdate:modelValue"] as ((value: string) => void))("2026-10-01"); await flush();
+    fetcher.mockResolvedValueOnce(new Response(JSON.stringify({success:false,error:{code:"AUTH_UNAUTHENTICATED",message:"expired"}}),{status:401}));
     click(testId(mounted.root, "commission-report-query")); await flush();
-    exportStatus = 401; click(testId(mounted.root, "commission-report-export")); await flush();
     expect(mounted.emitted).toContain("session-invalid");
     expect(testId(mounted.root, "commission-report-summary")).toBeNull();
     mounted.app.unmount();

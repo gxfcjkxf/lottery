@@ -5,8 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/gxfcjkxf/lottery/backend/internal/access"
-	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -14,9 +12,9 @@ import (
 
 func TestWithdrawalDatabaseRejectsRewritingFactsOrUnwitnessedStates(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 25}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 2500}}
 	f.fund(t, allocation)
-	order := createOrder(t, f, 25, "database-order-original", allocation)
+	order := createOrder(t, f, 2500, "database-order-original", allocation)
 	cases := []struct {
 		name, sql string
 		args      []any
@@ -50,49 +48,20 @@ func TestWithdrawalDatabaseRejectsRewritingFactsOrUnwitnessedStates(t *testing.T
 		})
 	}
 	current, err := f.service.Read(context.Background(), orderTestBrand, order.ID)
-	if err != nil || current.Version != 1 || current.State != "reviewing" || current.Points != 25 {
+	if err != nil || current.Version != 1 || current.State != "reviewing" || current.Points != 2500 {
 		t.Fatalf("rejected tampering changed order: %+v err=%v", current, err)
 	}
 	wallet, err := f.points.Read(context.Background(), orderTestBrand, f.member)
-	if err != nil || wallet.AvailablePoints != 0 || wallet.WithdrawalPoints != 25 {
+	if err != nil || wallet.AvailablePoints != 0 || wallet.WithdrawalPoints != 2500 {
 		t.Fatalf("rejected tampering changed funds: %+v err=%v", wallet, err)
-	}
-}
-
-func TestWithdrawalConfiguredComplianceCannotBeBypassedByEligibilityChecker(t *testing.T) {
-	f := newOrderIntegrationFixture(t, true, true)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 25}}
-	f.fund(t, allocation)
-	ctx := context.Background()
-	actor := f.super
-	actor.Roles = append([]access.Role(nil), actor.Roles...)
-	actor.Roles = append(actor.Roles, access.Role{Permissions: []access.Permission{{Resource: "compliance_policy", Action: "write", Scope: access.ScopePlatform}}})
-	tx, err := f.db.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback(ctx)
-	_, err = (compliance.Service{DB: f.db}).Update(ctx, tx, orderTestBrand, actor, compliance.Input{Version: 1, Config: compliance.Config{IdentityEnabled: true, AllowedCountries: []string{}}, Reason: "require verified identity adapter"}, points.Metadata{ActorType: "admin", ActorID: actor.ID, RequestID: ids.New()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = tx.Commit(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = createOrderResult(f, OrderInput{Points: 25, SourceAllocation: allocation, ClientKey: "compliance-disabled-adapter"}); !errors.Is(err, ErrIneligible) {
-		t.Fatalf("trusted turnover checker bypassed missing identity verification: %v", err)
-	}
-	wallet, err := f.points.Read(ctx, orderTestBrand, f.member)
-	if err != nil || wallet.AvailablePoints != 25 || wallet.WithdrawalPoints != 0 {
-		t.Fatalf("blocked request reserved funds: %+v err=%v", wallet, err)
 	}
 }
 
 func TestWithdrawalFreshPermissionRevocationAlsoBlocksReceiptReplay(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 25}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 2500}}
 	f.fund(t, allocation)
-	order := createOrder(t, f, 25, "fresh-revocation-original", allocation)
+	order := createOrder(t, f, 2500, "fresh-revocation-original", allocation)
 	input := ActionInput{Version: 1, ClientKey: "fresh-revocation-approve", Reason: "single reviewer approves"}
 	meta := points.Metadata{ActorType: "admin", ActorID: f.admin.ID, RequestID: ids.New()}
 	if _, err := orderAction(t, f, order.ID, "approve", input.ClientKey, f.admin, input, meta); err != nil {
@@ -115,18 +84,18 @@ func TestWithdrawalFreshPermissionRevocationAlsoBlocksReceiptReplay(t *testing.T
 
 func TestWithdrawalAuditFailureRollsBackReservationAndOriginalSourceRelease(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 30}, {Source: "gift", State: "available", Points: 20}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 3000}, {Source: "gift", State: "available", Points: 2000}}
 	f.fund(t, allocation)
 	ctx := context.Background()
 	if _, err := f.db.Exec(ctx, `CREATE FUNCTION reject_withdrawal_test_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action IN('withdrawal.reviewing','withdrawal.rejected') THEN RAISE EXCEPTION 'injected withdrawal audit failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_withdrawal_test_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_withdrawal_test_audit()`); err != nil {
 		t.Fatal(err)
 	}
-	input := OrderInput{Points: 50, SourceAllocation: allocation, ClientKey: "audited-create-original"}
+	input := OrderInput{Points: 5000, SourceAllocation: allocation, ClientKey: "audited-create-original"}
 	if _, err := createOrderResult(f, input); err == nil {
 		t.Fatal("reservation survived failed mandatory audit")
 	}
 	wallet, err := f.points.Read(ctx, orderTestBrand, f.member)
-	if err != nil || wallet.AvailablePoints != 50 || wallet.WithdrawalPoints != 0 {
+	if err != nil || wallet.AvailablePoints != 5000 || wallet.WithdrawalPoints != 0 {
 		t.Fatalf("failed create audit changed wallet: %+v err=%v", wallet, err)
 	}
 	var count int
@@ -149,7 +118,7 @@ func TestWithdrawalAuditFailureRollsBackReservationAndOriginalSourceRelease(t *t
 		t.Fatal("release survived failed mandatory audit")
 	}
 	wallet, err = f.points.Read(ctx, orderTestBrand, f.member)
-	if err != nil || wallet.AvailablePoints != 0 || wallet.WithdrawalPoints != 50 {
+	if err != nil || wallet.AvailablePoints != 0 || wallet.WithdrawalPoints != 5000 {
 		t.Fatalf("failed release audit changed wallet: %+v err=%v", wallet, err)
 	}
 	current, err := f.service.Read(ctx, orderTestBrand, order.ID)
@@ -163,7 +132,7 @@ func TestWithdrawalAuditFailureRollsBackReservationAndOriginalSourceRelease(t *t
 		t.Fatal(err)
 	}
 	wallet, err = f.points.Read(ctx, orderTestBrand, f.member)
-	if err != nil || wallet.BySource[0][0] != 30 || wallet.BySource[2][0] != 20 || wallet.WithdrawalPoints != 0 {
+	if err != nil || wallet.BySource[0][0] != 3000 || wallet.BySource[2][0] != 2000 || wallet.WithdrawalPoints != 0 {
 		t.Fatalf("explicit retry failed original-source return: %+v (%v)", wallet, err)
 	}
 }

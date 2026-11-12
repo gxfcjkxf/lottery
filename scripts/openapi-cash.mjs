@@ -1,0 +1,337 @@
+const ref = (name) => ({ $ref: `#/components/schemas/${name}` });
+const text = { type: "string" };
+const decimal = {
+  type: "string",
+  pattern: "^(0|[1-9][0-9]*)(\\.[0-9]{1,6})?$",
+};
+const object = (properties, required = Object.keys(properties)) => ({
+  type: "object",
+  properties,
+  required,
+  additionalProperties: false,
+});
+const list = (items) => ({ type: "array", items });
+const currency = { type: "string", enum: ["CNY", "USD", "THB", "USDT"] };
+const version = { type: "integer", minimum: 0 };
+export const schemas = {
+  CashRule: object({
+    currency,
+    rate: text,
+    deposit_min: decimal,
+    deposit_max: decimal,
+    withdrawal_min: decimal,
+    withdrawal_max: decimal,
+    fee: decimal,
+    mode: { type: "string", enum: ["count", "amount"] },
+    threshold: decimal,
+    enabled: { type: "boolean" },
+  }),
+  CashConfig: object({
+    version,
+    rules: { ...list(ref("CashRule")), minItems: 4, maxItems: 4 },
+  }),
+  CashDestination: object({
+    id: text,
+    currency,
+    channel: { type: "string", enum: ["bank", "TRON/TRC20"] },
+    holder: text,
+    institution: text,
+    number: text,
+    enabled: { type: "boolean" },
+    version,
+  }),
+  CashBalance: object({
+    currency,
+    deposited: decimal,
+    withdrawable: decimal,
+    reserved: decimal,
+  }),
+  CashOrder: object({
+    automatic:{type:'boolean'},credited_at:text,sender:text,
+    id: ref("UUID"),
+    brand_id: ref("UUID"),
+    member_id: ref("UUID"),
+    member_account: text,
+    kind: {
+      type: "string",
+      enum: ["deposit", "to_points", "from_points", "withdrawal"],
+    },
+    currency,
+    amount: decimal,
+    requested_amount: decimal,
+    points: ref("Points"),
+    fee: decimal,
+    rate: text,
+    state: {
+      type: "string",
+      enum: [
+        "pending",
+        "submitted",
+        "confirmed",
+        "cancelled",
+        "expired",
+        "completed",
+        "reviewing",
+        "processing",
+        "paid",
+        "rejected",
+        "failed",
+      ],
+    },
+    version,
+    destination: object({
+      id: text,
+      currency: text,
+      channel: text,
+      holder: text,
+      institution: text,
+      number: text,
+      enabled: { type: "boolean" },
+      version,
+    }),
+    proof: text,
+    reference: text,
+    created_at: ref("DateTime"),
+    expires_at: text,
+  }),
+  CashInput: object(
+    {
+      currency,
+      amount: decimal,
+      fee: decimal,
+      destination_version: version,
+      rate: text,
+      direction: { type: "string", enum: ["to_points", "from_points"] },
+      destination_id: ref("UUID"),
+      version,
+      proof: { type: "string", maxLength: 500 },
+      reference: { type: "string", maxLength: 200 },
+    },
+    [],
+  ),
+  CashOrderPage: object({
+    items: list(ref("CashOrder")),
+    total_count: { type: "string", pattern: "^(0|[1-9][0-9]*)$" },
+  }),
+  CashState: object({
+    auto_usdt:{type:"boolean"},
+    actor_context: { type: "string", pattern: "^[a-f0-9]{64}$" },
+    brand_id: ref("UUID"),
+    member_id: ref("UUID"),
+    balances: list(ref("CashBalance")),
+    destinations: list(ref("CashDestination")),
+    platform: ref("CashConfig"),
+    brand: ref("CashConfig"),
+  }),
+};
+const pagination = [
+  {
+    name: "kind",
+    in: "query",
+    schema: {
+      type: "string",
+      enum: ["deposit", "withdrawal", "to_points", "from_points"],
+    },
+  },
+  {
+    name: "limit",
+    in: "query",
+    schema: { type: "integer", minimum: 1, maximum: 100, default: 50 },
+  },
+  {
+    name: "offset",
+    in: "query",
+    schema: { type: "integer", minimum: 0, maximum: 1000000, default: 0 },
+  },
+];
+const params = [
+  { name: "id", in: "path", required: true, schema: ref("UUID") },
+  { name: "action", in: "path", required: true, schema: { type: "string" } },
+];
+const description =
+  "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.";
+export const operations = [
+  ...["", "/orders"].map((suffix) => ({
+    method:"GET", path:"/api/v1/agent/cash"+suffix,
+    operationId:suffix ? "agentCashOrders" : "agentCashWallet",
+    summary:suffix ? "Read own agent currency records" : "Read own agent currency balances",
+    tag:"finance",auth:"agent",data:ref(suffix ? "CashOrderPage" : "CashState"),
+    parameters:suffix ? pagination : [],
+    description:"Independent agent session only. Account and brand come from the session. Deposit, exchange and withdrawal records are available; no member or account selector is accepted. "+description,
+  })),
+  ...["deposits", "orders/{id}/{action}", "exchanges", "withdrawals", "destinations"].map((name,i)=>({
+    method:"POST",path:"/api/v1/agent/cash/"+name,
+    operationId:["agentCashDepositCreate","agentCashDepositAction","agentCashExchange","agentCashWithdraw","agentCashSaveDestination"][i],
+    summary:["Create own agent deposit","Submit or cancel own agent order","Exchange own agent points and currency","Withdraw own agent currency","Save own agent payment destination"][i],
+    tag:"finance",auth:"agent",idempotency:true,requestBody:ref(i===4?"CashDestination":"CashInput"),data:ref(i===4?"CashDestination":"CashOrder"),
+    parameters:[{name:"X-Cash-Actor-Context",in:"header",required:true,schema:{type:"string",pattern:"^[a-f0-9]{64}$"}},...(i===1?params:[])],
+    description:"Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. "+description,
+  })),
+  {
+    method: "GET",
+    path: "/api/v1/cash",
+    operationId: "myCurrencyWallet",
+    summary: "Read currency balances and withdrawal destinations",
+    tag: "finance",
+    auth: "user",
+    data: ref("CashState"),
+    description,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/cash/orders",
+    operationId: "myCurrencyOrders",
+    summary: "Read currency transaction history",
+    tag: "finance",
+    auth: "user",
+    parameters: pagination,
+    data: ref("CashOrderPage"),
+    description,
+  },
+  ...[
+    "deposits",
+    "exchanges",
+    "withdrawals",
+    "destinations",
+    "orders/{id}/{action}",
+  ].map((name, i) => ({
+    method: "POST",
+    path: "/api/v1/cash/" + name,
+    operationId: "myCurrencyWrite" + i,
+    summary: [
+      "Create a deposit and pin a collection account",
+      "Convert currency and points",
+      "Reserve withdrawable currency for payout",
+      "Save withdrawal destination",
+      "Submit payment evidence or cancel an unpaid request",
+    ][i],
+    tag: "finance",
+    auth: "user",
+    idempotency: true,
+    requestBody: ref(name === "destinations" ? "CashDestination" : "CashInput"),
+    data: ref(name === "destinations" ? "CashDestination" : "CashOrder"),
+    parameters: [
+      {
+        name: "X-Cash-Actor-Context",
+        in: "header",
+        required: true,
+        schema: { type: "string", pattern: "^[a-f0-9]{64}$" },
+      },
+      ...(i === 4 ? params : []),
+    ],
+    description,
+  })),
+  ...["admin", "platform"].map((scope) => ({
+    method: "GET",
+    path: `/api/v1/${scope}/cash/balances/{memberID}`,
+    operationId: scope + "CashMemberBalances",
+    summary: "Read member currency balances",
+    tag: "finance",
+    auth: "admin",
+    brandHeader: true,
+    permissions: [`wallet.view.${scope === "admin" ? "brand" : "platform"}`],
+    parameters: [
+      { name: "memberID", in: "path", required: true, schema: ref("UUID") },
+    ],
+    data: list(ref("CashBalance")),
+    description,
+  })),
+  ...["admin", "platform"].flatMap((scope) => [
+    {
+      method: "GET",
+      path: `/api/v1/${scope}/cash/config`,
+      operationId: scope + "CashConfig",
+      summary: "Read currency settings",
+      tag: "finance",
+      auth: "admin",
+      brandHeader: scope === "admin",
+      permissions: [
+        scope === "admin"
+          ? "point_policy.view.brand"
+          : "platform_settings.view.platform",
+      ],
+      data: ref("CashConfig"),
+      description,
+    },
+    {
+      method: "PUT",
+      path: `/api/v1/${scope}/cash/config`,
+      operationId: scope + "CashConfigSave",
+      summary: "Save currency settings",
+      tag: "finance",
+      auth: "admin",
+      brandHeader: scope === "admin",
+      permissions: [
+        scope === "admin"
+          ? "point_policy.write.brand"
+          : "platform_settings.write.platform",
+      ],
+      idempotency: true,
+      requestBody: ref("CashConfig"),
+      data: ref("CashConfig"),
+      description,
+    },
+    {
+      method: "GET",
+      path: `/api/v1/${scope}/cash/orders`,
+      operationId: scope + "CashOrders",
+      summary: "Read brand currency orders",
+      tag: "finance",
+      auth: "admin",
+      brandHeader: true,
+      parameters: pagination,
+      permissions: [
+        `recharge.view.${scope === "admin" ? "brand" : "platform"}`,
+        `withdrawal.view.${scope === "admin" ? "brand" : "platform"}`,
+      ],
+      data: ref("CashOrderPage"),
+      description:
+        "Requires the matching view permission for the requested kind. " +
+        description,
+    },
+    {
+      method: "GET",
+      path: `/api/v1/${scope}/cash/destinations`,
+      operationId: scope + "CashDestinations",
+      summary: "Read brand collection accounts",
+      tag: "finance",
+      auth: "admin",
+      brandHeader: true,
+      permissions: [
+        `point_policy.view.${scope === "admin" ? "brand" : "platform"}`,
+      ],
+      data: list(ref("CashDestination")),
+      description,
+    },
+  ]),
+  {
+    method: "POST",
+    path: "/api/v1/admin/cash/destinations",
+    operationId: "brandCashDestinationSave",
+    summary: "Save a brand collection account",
+    tag: "finance",
+    auth: "admin",
+    brandHeader: true,
+    permissions: ["point_policy.write.brand"],
+    idempotency: true,
+    requestBody: ref("CashDestination"),
+    data: ref("CashDestination"),
+    description,
+  },
+  {
+    method: "POST",
+    path: "/api/v1/admin/cash/orders/{id}/{action}",
+    operationId: "brandCashOrderAdvance",
+    summary: "Verify a deposit or process a currency payout",
+    tag: "finance",
+    auth: "admin",
+    brandHeader: true,
+    idempotency: true,
+    parameters: params,
+    requestBody: ref("CashInput"),
+    data: ref("CashOrder"),
+    description:
+      "Requires the exact recharge confirm/cancel or withdrawal approve/reject/fail/mark_paid grant. Processing withdrawals cannot be cancelled; failure requires verification that no external payment was made. " +
+      description,
+  },
+];

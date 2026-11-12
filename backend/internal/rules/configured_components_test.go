@@ -37,7 +37,7 @@ func TestConfiguredNewPlayOnlyNeedsConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := ConfiguredRequest{PlayID: "never_seen_before", Options: []string{"choice"}, Plate: "new_plate", Points: 3, Multiplier: 1}
+	request := ConfiguredRequest{PlayID: "never_seen_before", Options: []string{"choice"}, Plate: "new_plate", Points: 300, Multiplier: 1}
 	q, err := e.Prepare(context.Background(), []ConfiguredRequest{request})
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestConfiguredNewPlayOnlyNeedsConfiguration(t *testing.T) {
 		number        int
 		outcome       string
 		prize, refund points.Amount
-	}{{7, "won", 8, 0}, {8, "lost", 0, 0}, {49, "push", 0, 3}} {
+	}{{7, "won", 750, 0}, {8, "lost", 0, 0}, {49, "push", 0, 300}} {
 		d := Draw{Regular: []int{1, 3, v.number, 4, 5, 6}, Special: []int{2}}
 		out, err := e.Settle(context.Background(), q, d)
 		if err != nil || out.Lines[0].Outcome != v.outcome || out.PrizePoints != v.prize || out.RefundPoints != v.refund {
@@ -112,7 +112,7 @@ func TestConfiguredTypedMetricsAndCounting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	q, err := e.Prepare(context.Background(), []ConfiguredRequest{{PlayID: play.ID, Options: []string{"first", "second"}, Plate: "new_plate", Points: 1, Multiplier: 1}})
+	q, err := e.Prepare(context.Background(), []ConfiguredRequest{{PlayID: play.ID, Options: []string{"first", "second"}, Plate: "new_plate", Points: 100, Multiplier: 1}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestConfiguredStrictDefinitionsAndPrices(t *testing.T) {
 func TestConfiguredRuntimeRejectionsAndBudget(t *testing.T) {
 	c, b, p, e, _ := configuredFixture(t)
 	sources := configuredSources(c)
-	r := configuredRequestForSource(t, c, sources["linked_2"], []int{1, 2}, "A", 1)
+	r := configuredRequestForSource(t, c, sources["linked_2"], []int{1, 2}, "A", 100)
 	for _, change := range []func(*ConfiguredRequest){
 		func(r *ConfiguredRequest) { r.Options = []string{"1", "1"} }, func(r *ConfiguredRequest) { r.Options = []string{"0", "1"} }, func(r *ConfiguredRequest) { r.Options = []string{"1"} }, func(r *ConfiguredRequest) { r.PlayID = "unknown" }, func(r *ConfiguredRequest) { r.Plate = "C" }, func(r *ConfiguredRequest) { r.Points = 0 }, func(r *ConfiguredRequest) { r.Multiplier = 0 },
 	} {
@@ -205,11 +205,11 @@ func TestConfiguredRuntimeRejectionsAndBudget(t *testing.T) {
 	if _, err := e.Prepare(context.Background(), []ConfiguredRequest{r, r}); err == nil {
 		t.Fatal("duplicate batch line")
 	}
-	r = configuredRequestForSource(t, c, sources["linked_4"], []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, "A", 1)
+	r = configuredRequestForSource(t, c, sources["linked_4"], []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, "A", 100)
 	if _, err := e.Prepare(context.Background(), []ConfiguredRequest{r}); !errors.Is(err, ErrLimit) {
 		t.Fatal("1001 combinations", err)
 	}
-	r = configuredRequestForSource(t, c, sources["parlay"], []int{100, 200}, "A", 1)
+	r = configuredRequestForSource(t, c, sources["parlay"], []int{100, 200}, "A", 100)
 	r.Options = []string{"position_attribute_1_big", "position_attribute_1_odd"}
 	if _, err := e.Prepare(context.Background(), []ConfiguredRequest{r}); err == nil {
 		t.Fatal("two legs on one position")
@@ -232,7 +232,7 @@ func TestConfiguredRuntimeRejectionsAndBudget(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := ee.Prepare(context.Background(), []ConfiguredRequest{{PlayID: "never_seen_before", Options: []string{"choice"}, Plate: "new_plate", Points: 1, Multiplier: 1}}); err == nil {
+		if _, err := ee.Prepare(context.Background(), []ConfiguredRequest{{PlayID: "never_seen_before", Options: []string{"choice"}, Plate: "new_plate", Points: 100, Multiplier: 1}}); err == nil {
 			t.Fatal("ambiguous pricing", matches)
 		}
 	}
@@ -252,7 +252,7 @@ func TestConfiguredRoundingAndTiersReuseExistingEngine(t *testing.T) {
 				play.PushWhen = nil
 				play.Selection.Max = 2
 				play.StakeMode = "unit_multiplier"
-				play.UnitPoints = 1
+				play.UnitPoints = 100
 				play.MaxMultiplier = 10
 				play.RoundingScope = scope
 				d := c.Domains["novel_domain"]
@@ -264,7 +264,7 @@ func TestConfiguredRoundingAndTiersReuseExistingEngine(t *testing.T) {
 					play.MixedPolicy = policy
 				}
 				if useCap {
-					cap := points.Amount(1)
+					cap := points.Amount(100)
 					play.Cap = &cap
 				}
 				p.Plates["new_plate"] = map[string]string{"a": "0.49", "b": "0.51"}
@@ -282,7 +282,7 @@ func TestConfiguredRoundingAndTiersReuseExistingEngine(t *testing.T) {
 					t.Fatal(err)
 				}
 				always := Condition{Op: "between", Field: "special_match", Min: configuredInt(0), Max: configuredInt(1)}
-				legacy := Definition{SchemaVersion: 1, Model: c.Model, Selection: SelectionRule{Mode: "numbers", SpecialCount: 1}, UnitPoints: 1, PrizeTiers: []Tier{{Code: "a", Condition: always, Odds: "0.49", Exclusive: play.Tiers[0].Exclusive}, {Code: "b", Condition: always, Odds: "0.51", Exclusive: play.Tiers[1].Exclusive}}, MixedTierPolicy: play.MixedPolicy, CapPoints: play.Cap, Rounding: "half_up", RoundingScope: scope, Limits: Limits{MaxCombinations: 1000, MaxMultiplier: 10}}
+				legacy := Definition{SchemaVersion: 1, Model: c.Model, Selection: SelectionRule{Mode: "numbers", SpecialCount: 1}, UnitPoints: 100, PrizeTiers: []Tier{{Code: "a", Condition: always, Odds: "0.49", Exclusive: play.Tiers[0].Exclusive}, {Code: "b", Condition: always, Odds: "0.51", Exclusive: play.Tiers[1].Exclusive}}, MixedTierPolicy: play.MixedPolicy, CapPoints: play.Cap, Rounding: "half_up", RoundingScope: scope, Limits: Limits{MaxCombinations: 1000, MaxMultiplier: 10}}
 				want, err := Simulate(SimulationInput{Definition: legacy, Selection: Selection{Special: []int{7, 8}}, Draw: draw, Multiplier: 1})
 				if err != nil {
 					t.Fatal(err)
@@ -327,7 +327,7 @@ func TestConfiguredLimitsCapsAndPriceCeilings(t *testing.T) {
 		t.Fatal("aggregate maximum prize overflow", err)
 	}
 	// Total cap precedes overflow checks, including sums bigger than int64.
-	cap := points.Amount(5)
+	cap := points.Amount(500)
 	c.Plays[0].Cap = &cap
 	p.Plates["new_plate"]["custom_price"] = "1000"
 	e, err = NewConfiguredEngine(c, b, p)
@@ -339,7 +339,7 @@ func TestConfiguredLimitsCapsAndPriceCeilings(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err := e.Settle(context.Background(), q, Draw{Regular: []int{1, 2, 3, 4, 5, 6}, Special: []int{7}})
-	if err != nil || out.PrizePoints != 5 {
+	if err != nil || out.PrizePoints != 500 {
 		t.Fatal("cap before overflow", out, err)
 	}
 	if err := e.CheckPriceCeilings(p); err != nil {
@@ -378,13 +378,13 @@ func TestConfiguredLimitsCapsAndPriceCeilings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request = ConfiguredRequest{PlayID: c.Plays[0].ID, Options: []string{"choice"}, Plate: "new_plate", Points: 1, Multiplier: 1}
+	request = ConfiguredRequest{PlayID: c.Plays[0].ID, Options: []string{"choice"}, Plate: "new_plate", Points: 100, Multiplier: 1}
 	q, err = e.Prepare(context.Background(), []ConfiguredRequest{request})
 	if err != nil {
 		t.Fatal(err)
 	}
 	out, err = e.Settle(context.Background(), q, Draw{Regular: []int{1, 2, 49, 4, 5, 6}, Special: []int{7}})
-	if err != nil || out.RefundPoints != 1 {
+	if err != nil || out.RefundPoints != 100 {
 		t.Fatal("push before mapping match", err)
 	}
 }
@@ -395,7 +395,7 @@ func TestConfiguredConcurrentEvaluation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	q, err := e.Prepare(context.Background(), []ConfiguredRequest{{PlayID: c.Plays[0].ID, Options: []string{"choice"}, Plate: "new_plate", Points: 3, Multiplier: 1}})
+	q, err := e.Prepare(context.Background(), []ConfiguredRequest{{PlayID: c.Plays[0].ID, Options: []string{"choice"}, Plate: "new_plate", Points: 300, Multiplier: 1}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +409,7 @@ func TestConfiguredConcurrentEvaluation(t *testing.T) {
 					results <- err
 					return
 				}
-				if out.PrizePoints != 8 {
+				if out.PrizePoints != 750 {
 					results <- fmt.Errorf("unexpected prize %d", out.PrizePoints)
 					return
 				}

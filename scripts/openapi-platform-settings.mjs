@@ -1,5 +1,5 @@
 const ref = name => ({ $ref: `#/components/schemas/${name}` });
-const fields = { version: ref('PositiveInteger'), display_name: { type: 'string' }, logo_text: { type: 'string' }, logo_url: { type: 'string' }, timezone: { type: 'string' }, date_format: { enum: ['YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY'] }, time_format: { enum: ['HH:mm:ss', 'hh:mm:ss A'] } };
+const fields = { theme: { enum: ['jade', 'vermilion', 'ocean', 'obsidian'] }, version: ref('PositiveInteger'), display_name: { type: 'string' }, logo_text: { type: 'string' }, logo_url: { type: 'string' }, timezone: { type: 'string' }, date_format: { enum: ['YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY'] }, time_format: { enum: ['HH:mm:ss', 'hh:mm:ss A'] } };
 export const schemas = {
   PlatformCommissionPolicyInput: {type:'object',properties:{version:ref('PositiveInteger'),config:ref('CommissionPolicyConfig'),payouts_enabled:{type:'boolean'},reason:ref('Reason')},required:['version','config','payouts_enabled'],additionalProperties:false},
   PlatformCommissionPolicy: {type:'object',properties:{version:ref('PositiveInteger'),config:ref('CommissionPolicyConfig'),payouts_enabled:{type:'boolean'}},required:['version','config','payouts_enabled'],additionalProperties:false},

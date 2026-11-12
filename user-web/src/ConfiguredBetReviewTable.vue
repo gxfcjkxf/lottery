@@ -27,7 +27,7 @@ const rows = computed(() => props.lines.map(line => ({
 .bet-review-table th{background:var(--canvas);color:var(--muted);font-weight:600}
 .bet-review-table td{font-variant-numeric:tabular-nums}.bet-review-table td:nth-child(3){white-space:nowrap}
 .bet-review-table :is(th,td):nth-child(n+2){text-align:right}
-.bet-review-table :is(th,td):first-child{padding-left:0}.bet-review-table :is(th,td):last-child{padding-right:0}
+
 .bet-review-price{display:block}.bet-review-price-label{display:block;overflow-wrap:anywhere}.bet-review-price-value{white-space:nowrap;overflow-wrap:normal;word-break:normal}.bet-review-price+.bet-review-price{margin-top:4px}
-@media(max-width:620px){.bet-review-table th,.bet-review-table td{padding-inline:8px}.bet-review-table :is(th,td):first-child{padding-left:0}.bet-review-table :is(th,td):last-child{padding-right:0}}
+@media(max-width:620px){.bet-review-table th,.bet-review-table td{padding-inline:8px}}
 </style>

@@ -1,47 +1,75 @@
 :root {
+  /* 100% Pure-Code SVG Textures (Zero external raster assets, zero blue-purple) */
+  --lottery-art: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3CradialGradient id='j' cx='18%25' cy='10%25' r='65%25'%3E%3Cstop offset='0%25' stop-color='%2310B981' stop-opacity='0.12'/%3E%3Cstop offset='65%25' stop-color='%23059669' stop-opacity='0.03'/%3E%3Cstop offset='100%25' stop-color='%23F7F8F7' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='g' cx='85%25' cy='16%25' r='55%25'%3E%3Cstop offset='0%25' stop-color='%23F59E0B' stop-opacity='0.10'/%3E%3Cstop offset='100%25' stop-color='%23F7F8F7' stop-opacity='0'/%3E%3C/radialGradient%3E%3Cpattern id='p' width='28' height='28' patternUnits='userSpaceOnUse'%3E%3Cpath d='M28 0H0V28' fill='none' stroke='%23111827' stroke-opacity='0.045' stroke-width='1'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='640' height='360' fill='%23F7F8F7'/%3E%3Crect width='640' height='360' fill='url(%23p)'/%3E%3Crect width='640' height='360' fill='url(%23j)'/%3E%3Crect width='640' height='360' fill='url(%23g)'/%3E%3C/svg%3E");
+  --lottery-art-obsidian: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3CradialGradient id='oj' cx='22%25' cy='16%25' r='62%25'%3E%3Cstop offset='0%25' stop-color='%2310B981' stop-opacity='0.32'/%3E%3Cstop offset='55%25' stop-color='%23059669' stop-opacity='0.08'/%3E%3Cstop offset='100%25' stop-color='%23090D16' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='og' cx='84%25' cy='78%25' r='52%25'%3E%3Cstop offset='0%25' stop-color='%23F59E0B' stop-opacity='0.22'/%3E%3Cstop offset='60%25' stop-color='%23B45309' stop-opacity='0.06'/%3E%3Cstop offset='100%25' stop-color='%23090D16' stop-opacity='0'/%3E%3C/radialGradient%3E%3Cpattern id='op' width='28' height='28' patternUnits='userSpaceOnUse'%3E%3Cpath d='M28 0H0V28' fill='none' stroke='%23FFFFFF' stroke-opacity='0.04' stroke-width='1'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='640' height='360' fill='%23090D16'/%3E%3Crect width='640' height='360' fill='url(%23op)'/%3E%3Crect width='640' height='360' fill='url(%23oj)'/%3E%3Crect width='640' height='360' fill='url(%23og)'/%3E%3Cpath d='M-40 245 C 140 165, 340 295, 680 120' fill='none' stroke='%2334D399' stroke-opacity='0.18' stroke-width='1.5'/%3E%3Cpath d='M-40 275 C 160 195, 360 320, 680 155' fill='none' stroke='%23FBBF24' stroke-opacity='0.14' stroke-width='1'/%3E%3C/svg%3E");
+  --lottery-art-carbon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3CradialGradient id='cg' cx='76%25' cy='20%25' r='60%25'%3E%3Cstop offset='0%25' stop-color='%23F59E0B' stop-opacity='0.18'/%3E%3Cstop offset='100%25' stop-color='%230B0F14' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='cj' cx='16%25' cy='84%25' r='56%25'%3E%3Cstop offset='0%25' stop-color='%2310B981' stop-opacity='0.16'/%3E%3Cstop offset='100%25' stop-color='%230B0F14' stop-opacity='0'/%3E%3C/radialGradient%3E%3Cpattern id='cp' width='32' height='32' patternUnits='userSpaceOnUse'%3E%3Cpath d='M32 0H0V32' fill='none' stroke='%2394A3B8' stroke-opacity='0.07' stroke-width='1'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='640' height='360' fill='%230B0F14'/%3E%3Crect width='640' height='360' fill='url(%23cp)'/%3E%3Crect width='640' height='360' fill='url(%23cg)'/%3E%3Crect width='640' height='360' fill='url(%23cj)'/%3E%3Ccircle cx='500' cy='84' r='108' fill='none' stroke='%23F59E0B' stroke-opacity='0.16' stroke-width='1'/%3E%3Ccircle cx='500' cy='84' r='62' fill='none' stroke='%2310B981' stroke-opacity='0.20' stroke-width='1'/%3E%3C/svg%3E");
+
+  /* Luminous Ledger 2026 Palette Tokens */
+  --ll-obsidian-canvas: #090d16;
+  --ll-obsidian-surface: rgba(15, 23, 34, 0.78);
+  --ll-obsidian-border: rgba(255, 255, 255, 0.10);
+  --ll-jade: #10b981;
+  --ll-jade-bright: #34d399;
+  --ll-forest-jade: #059669;
+  --ll-forest-jade-dark: #047857;
+  --ll-gold: #f59e0b;
+  --ll-gold-bright: #fbbf24;
+  --ll-alabaster: #f7f8f7;
+  --ll-hairline: #e4e6e3;
+  --ll-charcoal: #111827;
+  --ll-carbon: #0b0f14;
+  --ll-ocean: #0ea5e9;
+
   --body-font-size: 14px;
-  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --on-primary: #ffffff;
+  --slider-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpath d='m8 5 7 7-7 7'/%3E%3C/svg%3E");
+  --empty-state-illustration: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='40' viewBox='0 0 48 40' fill='none'%3E%3Crect x='13' y='7' width='23' height='28' rx='4' stroke='%2364748b' stroke-width='1.5'/%3E%3Cpath d='M19 15h11M19 21h11M19 27h6M9 11v19' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  --overlay-bg: rgb(15 23 42 / 45%);
+  --table-cell-padding-inline: 8px;
+  --font-family: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --brand-primary: #059669;
   --brand-accent: #f59e0b;
   --brand-success: #10b981;
   --brand-warning: #f59e0b;
-  --brand-danger: #ef4444;
-  --ink: #0f172a;
+  --brand-danger: #f43f5e;
+  --ink: #111827;
   --muted: #64748b;
-  --line: #e2e8f0;
-  --canvas: #f8fafc;
+  --line: #e4e6e3;
+  --canvas: #f7f8f7;
   --surface: #ffffff;
   --primary: #059669;
   --primary-dark: #047857;
+  --navigation-bg: #0b0f14;
   --primary-light: #ecfdf5;
   --primary-ring: color-mix(in srgb, var(--primary) 22%, transparent);
   --accent: #f59e0b;
   --accent-light: #fffbeb;
   --success: #10b981;
   --warning: #f59e0b;
-  --info: #2563eb;
-  --info-bg: #dbeafe;
-  --info-text: #1d4ed8;
-  --danger: #ef4444;
-  --danger-bg: #fef2f2;
-  --danger-text: #b91c1c;
+  --info: #0ea5e9;
+  --info-bg: #e0f2fe;
+  --info-text: #0369a1;
+  --danger: #f43f5e;
+  --danger-bg: #fff1f2;
+  --danger-text: #be123c;
   --success-bg: #ecfdf5;
   --success-text: #047857;
   --warning-bg: #fffbeb;
   --warning-text: #b45309;
-  --ink-secondary: #334155;
+  --ink-secondary: #374151;
   --muted-light: #94a3b8;
-  --line-subtle: #f1f5f9;
-  --table-header-bg: var(--line-subtle);
+  --line-subtle: #f1f3f1;
+  --table-header-bg: #f4f6f4;
   --surface-card: var(--surface);
   --radius-sm: 8px;
   --radius: 16px;
   --radius-lg: 20px;
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 5%);
-  --shadow-md: 0 10px 15px -3px rgb(0 0 0 / 7%), 0 4px 6px -4px rgb(0 0 0 / 3%);
-  --shadow-lg: 0 20px 25px -5px rgb(0 0 0 / 9%), 0 8px 10px -6px rgb(0 0 0 / 4%);
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05), 0 12px 24px -4px rgba(15, 23, 42, 0.06);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --shadow-sm: 0 1px 2px rgba(15, 23, 20, 0.04);
+  --shadow-md: 0 10px 15px -3px rgba(15, 23, 20, 0.06), 0 4px 6px -4px rgba(15, 23, 20, 0.03);
+  --shadow-lg: 0 20px 25px -5px rgba(15, 23, 20, 0.08), 0 8px 10px -6px rgba(15, 23, 20, 0.04);
+  --shadow: 0 4px 6px -1px rgba(15, 23, 20, 0.04), 0 2px 4px -2px rgba(15, 23, 20, 0.04), 0 12px 24px -4px rgba(17, 24, 39, 0.05);
+  font-family: var(--font-family);
   color: var(--ink);
   background: var(--canvas);
   font-synthesis: none;
@@ -52,12 +80,27 @@
 
 * { box-sizing: border-box; }
 small { font-size: inherit; }
+
+/* Decorative pure-SVG architectural mist stays outside business data surfaces. */
+#app :is(.management-console .topbar, .workspace-topbar) {
+  background-image: linear-gradient(90deg, var(--surface) 15%, color-mix(in srgb, var(--surface) 86%, transparent) 68%, color-mix(in srgb, var(--surface) 92%, transparent)), var(--lottery-art);
+  background-size: auto, cover;
+  background-position: center, center;
+  background-repeat: no-repeat;
+}
+
+#app :is(.management-console .sidebar, .workspace-sidebar) {
+  background-image: linear-gradient(var(--surface) 40%, color-mix(in srgb, var(--surface) 92%, transparent)), var(--lottery-art);
+  background-size: auto, cover;
+  background-position: center, center;
+  background-repeat: no-repeat;
+}
 body { margin: 0; min-width: 320px; min-height: 100dvh; }
 button, input, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 a { color: inherit; }
-::selection { background: #d1fae5; color: #065f46; }
+::selection { background: var(--primary); color: var(--on-primary); }
 
 /* Keep motion preferences consistent in every application, including consoles. */
 @media (prefers-reduced-motion: reduce) {
@@ -68,7 +111,6 @@ a { color: inherit; }
     animation-iteration-count: 1 !important;
   }
 }
-
 
 /* One header treatment for all four apps, including dialogs and sticky columns.
    Body row headings and responsive field labels keep their existing appearance. */

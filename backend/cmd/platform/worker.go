@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandops"
+	"github.com/gxfcjkxf/lottery/backend/internal/cash"
 	"github.com/gxfcjkxf/lottery/backend/internal/commission"
 	"github.com/gxfcjkxf/lottery/backend/internal/hkjccalendar"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
@@ -31,6 +32,7 @@ func observedWork(ctx context.Context, component string, work func(context.Conte
 }
 
 func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger) error {
+
 	calendarCtx, stopCalendar := context.WithCancel(ctx)
 	calendarDone := make(chan struct{})
 	go func() {
@@ -92,6 +94,30 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 		}
 	}()
 	defer func() { stopPause(); <-pauseDone }()
+	usdtCtx, stopUSDT := context.WithCancel(ctx)
+	usdtDone := make(chan struct{})
+	go func() {
+		defer close(usdtDone)
+		scanner := cash.USDTScanner{DB: db, Source: cash.NewTronSource()}
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			run, cancel := context.WithTimeout(usdtCtx, 45*time.Second)
+			n, err := observedWork(run, "usdt_deposit", scanner.Tick)
+			cancel()
+			if err != nil && usdtCtx.Err() == nil {
+				logger.Error("USDT deposit scan failed", "error", err)
+			} else if n > 0 {
+				logger.Info("USDT deposits credited", "orders", n)
+			}
+			select {
+			case <-usdtCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	defer func() { stopUSDT(); <-usdtDone }()
 	logger.Info("configured betting worker started")
 	<-ctx.Done()
 	return nil

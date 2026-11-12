@@ -124,3 +124,9 @@ describe("member recharge read API", () => {
     await expect(unexpectedSuccessStatus.list(scope)).rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 502 });
   });
 });
+
+it('accepts fractional recharge amounts without accepting fractional versions', () => {
+  expect(isMemberRecharge({...confirmed, points:'0.01'})).toBe(true)
+  expect(isMemberRecharge({...confirmed, points:'9007199254740993.25'})).toBe(true)
+  for (const change of [{points:'0.001'},{points:'-0.01'},{points:'0.00'},{points:'92233720368547758.08'},{version:'1.5'}]) expect(isMemberRecharge({...confirmed,...change})).toBe(false)
+})

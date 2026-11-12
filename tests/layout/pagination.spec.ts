@@ -1,14 +1,24 @@
 import { expect, test } from '@playwright/test'
 import { resolve } from 'node:path'
 import { selectControl } from '../select-control'
-const origin='http://127.0.0.1:15473', id='aaaaaaaa-aaaa-4aaa-8aaa-000000000001'
+const origin=`http://127.0.0.1:${process.env.LOTTERY_LAYOUT_PORT_BASE ?? 15273}`, id='aaaaaaaa-aaaa-4aaa-8aaa-000000000001'
 test('compact pagination offers page sizes without overflow', async ({page}, info) => {
   await page.route('**/__pagination?*', route => route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import C from'/@fs${resolve('tests/layout/PaginationHarness.vue')}';createApp(C).mount('#app')</script></html>`}))
   await page.goto(`${origin}/__pagination?kind=compact&locale=zh`)
   const nav = page.getByRole('navigation')
-  await selectControl(nav.getByRole('combobox'), '50')
-  await expect(nav.getByRole('combobox')).toContainText('50 条/页')
-  if (page.viewportSize()!.width <= 640) { await expect(nav.locator('.table-pagination-jump')).toBeHidden(); await expect(nav.locator('.table-pagination-page:visible')).toHaveCount(1) }
+  const mobile = page.viewportSize()!.width <= 640 || await page.evaluate(() => matchMedia('(hover:none) and (pointer:coarse)').matches)
+  if (mobile) {
+   await expect(nav.getByRole('combobox')).toBeHidden()
+   await expect(nav.locator('.table-pagination-jump')).toBeHidden()
+   await expect(nav.locator('.table-pagination-page:visible')).toHaveCount(1)
+   await expect(nav.locator('.table-pagination-summary')).toHaveText('共 731', {useInnerText:true})
+   await expect(nav.getByRole('button',{name:'首页',exact:true})).toBeDisabled()
+   await nav.getByRole('button',{name:'尾页',exact:true}).click()
+   await expect(nav.getByRole('button',{name:'尾页',exact:true})).toBeDisabled()
+  } else {
+   await selectControl(nav.getByRole('combobox'), '50')
+   await expect(nav.getByRole('combobox')).toContainText('50 条/页')
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
   await page.screenshot({path:info.outputPath('compact.png')})
 })
@@ -27,7 +37,7 @@ for(const locale of ['zh','en']) for(const kind of ['draw','recharges']) {
    const data=kind==='draw'?{
     total_count:'100',game_id:url.searchParams.get('game_id'),game_name:'Mark Six',mark_six:true,timezone:'Asia/Singapore',daily:false,choices:['2026'],selected:'2026',has_more:offset===0,
     items:Array.from({length:50},(_,i)=>({period_no:`2026-${offset+i+1}`,result:{regular:[1,2,3,4,5,6],special:[7],digits:[]},drawn_at:'2026-10-27T00:00:00Z',draw_date:'2026-10-27',regular_order:[1,2,3,4,5,6],attributes:Object.fromEntries([1,2,3,4,5,6,7].map(n=>[String(n).padStart(2,'0'),{wave:'red',zodiac:'rat',element:'wood'}]))}))
-   }:{total_count:'100',items:Array.from({length:offset?50:51},(_,i)=>({id:`aaaaaaaa-aaaa-4aaa-8aaa-${String(offset+i+1).padStart(12,'0')}`,brand_id:brand,member_id:id,member_username:`member-${offset+i+1}`,account_id:id,points:'100',state:'pending',method:'manual',proof_reference:'',remark:'',created_by:id,created_by_name:'Tester',confirmed_by_name:'',version:1,created_at:'2026-10-27T00:00:00Z'}))}
+   }:{total_count:'100',items:Array.from({length:50},(_,i)=>({id:`aaaaaaaa-aaaa-4aaa-8aaa-${String(offset+i+1).padStart(12,'0')}`,brand_id:brand,member_id:id,member_username:`member-${offset+i+1}`,account_id:id,points:'100',state:'pending',method:'manual',proof_reference:'',remark:'',created_by:id,created_by_name:'Tester',confirmed_by_name:'',version:1,created_at:'2026-10-27T00:00:00Z'}))}
    await route.fulfill({json:{success:true,data}})
   })
   await page.route('**/__pagination?*',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import C from'/@fs${resolve('tests/layout/PaginationHarness.vue')}';createApp(C).mount('#app')</script></html>`}))
@@ -57,7 +67,7 @@ for(const locale of ['zh','en']) for(const kind of ['draw','recharges']) {
    await expect(rows.first()).toContainText(kind==='draw'?`2026-${wanted}`:`member-${wanted}`)
   }
   // A failed read ends loading and never pretends that a new page succeeded.
-  fail=true;const failedRead=started;await next.click();await expect.poll(()=>started).toBeGreaterThan(failedRead);await expect(overlay).toBeHidden();if(kind==='draw')await expect(rows).toHaveCount(0);else await expect(next).toBeEnabled()
+  fail=true;const failedRead=started;await next.click();await expect.poll(()=>started).toBeGreaterThan(failedRead);await expect(overlay).toBeHidden();await expect(rows).toHaveCount(50);await expect(next).toBeEnabled()
   // Changing identity must remove every old row before the next response.
   fail=false;blocked=true;gate=new Promise(resolve=>{release=resolve})
   try{
@@ -75,17 +85,28 @@ for (const locale of ['zh', 'en']) test(`shared numbered pagination and empty st
   const nav = page.getByRole('navigation')
   const pageButton = (number: number) => nav.getByRole('button', {name: locale === 'zh' ? `第 ${number} 页` : `Page ${number}`, exact:true})
   const current = nav.locator('[aria-current="page"]')
-  await expect(current).toHaveText('1')
-  await expect(nav.getByRole('button', {name:locale === 'zh' ? '上一页' : 'Previous page', exact:true})).toBeDisabled()
-  await pageButton(2).click(); await expect(current).toHaveText('2')
-  await pageButton(15).click(); await expect(current).toHaveText('15')
-  await expect(nav).toContainText(locale === 'zh' ? '本页 31 条' : '31 records on this page')
-  await expect(nav.getByRole('button', {name:locale === 'zh' ? '下一页' : 'Next page', exact:true})).toBeDisabled()
-  const input = nav.getByRole('textbox')
-  await input.fill('16'); await expect(nav.getByRole('button', {name:'GO',exact:true})).toBeDisabled()
-  await input.fill('7'); await input.press('Enter'); await expect(current).toHaveText('7')
-  await expect(input).toHaveValue('')
-  await expect(nav).toContainText(locale === 'zh' ? '50 条/页' : '50 / page')
+  const mobile = page.viewportSize()!.width <= 640 || await page.evaluate(() => matchMedia('(hover:none) and (pointer:coarse)').matches)
+  const currentPage = (number: number) => expect(current).toHaveAttribute('aria-label', locale==='zh'?`第 ${number} 页`:`Page ${number}`)
+  await currentPage(1)
+  const previous = nav.getByRole('button', {name:locale === 'zh' ? '上一页' : 'Previous page', exact:true})
+  await expect(previous).toBeDisabled()
+  if (mobile) {
+   await nav.locator('.table-pagination-arrow').last().click(); await currentPage(2)
+   await nav.getByRole('button',{name:locale==='zh'?'尾页':'Last',exact:true}).click(); await currentPage(15)
+   await expect(nav.locator('.table-pagination-summary')).toHaveText(locale==='zh'?'共 731':'Total: 731',{useInnerText:true})
+   await expect(nav.locator('.table-pagination-jump')).toBeHidden()
+   await nav.getByRole('button',{name:locale==='zh'?'首页':'First',exact:true}).click(); await currentPage(1)
+  } else {
+   await pageButton(2).click(); await currentPage(2)
+   await pageButton(15).click(); await currentPage(15)
+   await expect(nav).toContainText(locale === 'zh' ? '本页 31 条' : '31 records on this page')
+   await expect(nav.getByRole('button', {name:locale === 'zh' ? '下一页' : 'Next page', exact:true})).toBeDisabled()
+   const input = nav.getByRole('textbox')
+   await input.fill('16'); await expect(nav.getByRole('button', {name:'GO',exact:true})).toBeDisabled()
+   await input.fill('7'); await input.press('Enter'); await currentPage(7)
+   await expect(input).toHaveValue('')
+   await expect(nav).toContainText(locale === 'zh' ? '50 条/页' : '50 / page')
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
   await page.screenshot({path:info.outputPath('numbered-pagination.png')})
   await page.locator('#empty-list').click(); await expect(nav).toHaveCount(0)

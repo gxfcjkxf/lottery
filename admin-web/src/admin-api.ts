@@ -1,3 +1,4 @@
+import { isPoints } from '@lottery/shared'
 import { readApiEnvelope, readApiRejection } from '@lottery/shared'
 
 import { notifySessionReplaced } from '@lottery/shared'
@@ -158,7 +159,7 @@ export function createAdminApi(fetcher: FetchLike = fetch) {
       if (filters.online) query.set("online", filters.online);
       const result = await request<{ items: Member[]; limit: number; offset: number; total_count: string }>(`/api/v1/admin/users?${query}`, { brandId });
       if (!Array.isArray(result.items) || result.limit !== limit || result.offset !== offset || typeof result.total_count !== 'string' || !/^(0|[1-9]\d*)$/.test(result.total_count) ||
-          result.items.some(item => item.brand_id !== brandId || typeof item.online !== 'boolean' || !(item.display_points === null || typeof item.display_points === 'string' && /^(0|[1-9]\d*)$/.test(item.display_points)))) {
+          result.items.some(item => item.brand_id !== brandId || typeof item.online !== 'boolean' || !(item.display_points === null || typeof item.display_points === 'string' && isPoints(item.display_points)))) {
         throw new AdminApiError('Invalid member page', 502, 'INVALID_RESPONSE');
       }
       return result;

@@ -29,12 +29,12 @@ for(const locale of ['en','zh-CN'] as const){
    const rows=page.locator(rowSelector),pager=page.locator('.table-pagination'),next=pager.locator('.table-pagination-arrow').last()
    await expect(rows).toHaveCount(size)
    blocked=true;gate=new Promise(r=>{release=r});fail=true
-   try{await next.click();await expect(page.locator('.global-loading-overlay')).toBeVisible();await expect(rows).toHaveCount(size);await expect(pager.locator('[aria-current=page]')).toHaveText('1');await expect(next).toBeDisabled()}finally{blocked=false;release()}
-   await expect(page.locator('.global-loading-overlay')).toBeHidden();await expect(rows).toHaveCount(size);await expect(pager.locator('[aria-current=page]')).toHaveText('1')
-   await next.click();await expect(rows).toHaveCount(1);await expect(pager.locator('[aria-current=page]')).toHaveText('2');await expect(next).toBeDisabled()
+   try{await next.click();await expect(page.locator('.global-loading-overlay')).toBeVisible();await expect(rows).toHaveCount(size);await expect(pager.locator('[aria-current=page]')).toHaveAttribute('aria-label', /^(?:Page 1|第 1 页)$/);await expect(next).toBeDisabled()}finally{blocked=false;release()}
+   await expect(page.locator('.global-loading-overlay')).toBeHidden();await expect(rows).toHaveCount(size);await expect(pager.locator('[aria-current=page]')).toHaveAttribute('aria-label', /^(?:Page 1|第 1 页)$/)
+   await next.click();await expect(rows).toHaveCount(1);await expect(pager.locator('[aria-current=page]')).toHaveAttribute('aria-label', /^(?:Page 2|第 2 页)$/);await expect(next).toBeDisabled()
    if(path==='/recharge'){
     const n=reads.length;await selectControl(page.getByRole('combobox'), 'confirmed');expect(reads.length).toBe(n)
-    await page.locator('.ui-filter-bar button[type=submit]').click();await expect(rows).toHaveCount(20);await expect(pager.locator('[aria-current=page]')).toHaveText('1');expect(reads.at(-1)!.searchParams.get('state')).toBe('confirmed')
+    await page.locator('.ui-filter-bar button[type=submit]').click();await expect(rows).toHaveCount(20);await expect(pager.locator('[aria-current=page]')).toHaveAttribute('aria-label', /^(?:Page 1|第 1 页)$/);expect(reads.at(-1)!.searchParams.get('state')).toBe('confirmed')
     await page.locator('.ui-filter-bar button[type=button]').filter({hasText:locale==='en'?/^Clear$/:/^清空$/}).click();await expect.poll(()=>reads.at(-1)!.searchParams.get('state')).toBeNull()
    }
    empty=true;await page.goto(origins.user+path);await expect(page.locator('.empty-state')).toBeVisible();await expect(pager).toContainText(locale==='en'?'Total: 0':'共 0 条')
@@ -53,8 +53,8 @@ for(const locale of ['en','zh-CN'] as const){
    return route.fulfill({json:{success:true,data:{brand_id:gameId,items,total_count:empty?'0':'21',limit:20,offset,has_more:!empty&&offset===0}}})
   })
   await page.goto(origins.user+'/withdraw');const rows=page.locator('.withdrawal-order'),pager=page.locator('.withdrawal-records .table-pagination'),next=pager.locator('.table-pagination-arrow').last()
-  await expect(rows).toHaveCount(20);fail=true;await next.click();await expect(page.locator('.global-loading-overlay')).toBeHidden();await expect(rows).toHaveCount(20);await expect(pager.locator('[aria-current=page]')).toHaveText('1')
-  await next.click();await expect(rows).toHaveCount(1);await expect(pager.locator('[aria-current=page]')).toHaveText('2');await expect(next).toBeDisabled();expect(offsets).toEqual([0,20,20])
+  await expect(rows).toHaveCount(20);fail=true;await next.click();await expect(page.locator('.global-loading-overlay')).toBeHidden();await expect(rows).toHaveCount(20);await expect(pager.locator('[aria-current=page]')).toHaveAttribute('aria-label', /^(?:Page 1|第 1 页)$/)
+  await next.click();await expect(rows).toHaveCount(1);await expect(pager.locator('[aria-current=page]')).toHaveAttribute('aria-label', /^(?:Page 2|第 2 页)$/);await expect(next).toBeDisabled();expect(offsets).toEqual([0,20,20])
   empty=true;await page.goto(origins.user+'/withdraw');await expect(page.locator('.withdrawal-records .empty-state')).toBeVisible();await expect(pager).toContainText(locale==='en'?'Total: 0':'共 0 条');await expectRealEntry(page,'user');await expectListLayout(page);await page.screenshot({path:info.outputPath(`withdraw-empty-${locale}.png`),fullPage:true})
  })
 }

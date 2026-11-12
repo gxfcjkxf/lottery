@@ -34,8 +34,8 @@ test('commission adjustment contract exposes two reads and one actor-bound write
 
 test('adjustment schemas are closed and preserve exact point values', () => {
   for (const name of Object.keys(schemas)) assert.equal(schemas[name].additionalProperties, false, `${name} must be closed`);
-  assert.equal(schemas.CommissionAdjustmentInput.properties.points.$ref, '#/components/schemas/NonnegativeInt64String');
-  assert.equal(schemas.CommissionAdjustment.properties.points_before.$ref, '#/components/schemas/NonnegativeInt64String');
+  assert.equal(schemas.CommissionAdjustmentInput.properties.points.$ref, '#/components/schemas/NonnegativePoints');
+  assert.equal(schemas.CommissionAdjustment.properties.points_before.$ref, '#/components/schemas/NonnegativePoints');
   assert.equal(schemas.CommissionAdjustment.properties.point_policy_version.$ref, '#/components/schemas/PositiveInt64String');
   assert.deepEqual(schemas.CommissionAdjustment.properties.delta_points.allOf[1], { not: { const: '0' } });
   assert.ok(!Object.keys(schemas.CommissionPaymentTarget.properties).some(name => /account|wallet|rule|bucket/i.test(name)));

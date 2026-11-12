@@ -52,7 +52,7 @@ for (const locale of ['en', 'zh-CN'] as const) test(`an open page survives repla
   await page.route('**/api/**', route => {
     const path = new URL(route.request().url()).pathname
     const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
-    if (path === '/api/v1/display-settings') return reply({ timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' })
+    if (path === '/api/v1/display-settings') return reply({ theme:'jade',timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' })
     if (path === '/api/v1/admin/auth/config') return reply({ captcha_enabled: false })
     if (path === '/api/v1/admin/auth/login') {
       expect(route.request().method()).toBe('POST')

@@ -59,7 +59,7 @@ func TestRewardReportsUsePostingFactsAndIndependentCurrentOrderCohort(t *testing
 		args []any
 	}{
 		{`INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'report-reward-test')`, []any{userID, "reward_report_" + userID[:8]}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'operator','1','1')`, []any{memberID, rewardReportTestBrand, userID}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'operator')`, []any{memberID, rewardReportTestBrand, userID}},
 		{`INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,$2,'report-reward-test')`, []any{adminID, "reward_report_admin_" + adminID[:8]}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{accountID, rewardReportTestBrand, memberID}},
 		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift','commission']) s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) t ON CONFLICT DO NOTHING`, []any{rewardReportTestBrand, accountID}},
@@ -82,7 +82,7 @@ func TestRewardReportsUsePostingFactsAndIndependentCurrentOrderCohort(t *testing
 		args []any
 	}{
 		{`INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'foreign-reward-report-test')`, []any{foreignUser, "foreign_reward_" + foreignUser}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'operator','1','1')`, []any{foreignMember, rewardReportOtherBrand, foreignUser}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'operator')`, []any{foreignMember, rewardReportOtherBrand, foreignUser}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{foreignAccount, rewardReportOtherBrand, foreignMember}},
 		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift','commission']) s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) t ON CONFLICT DO NOTHING`, []any{rewardReportOtherBrand, foreignAccount}},
 	} {
@@ -94,7 +94,7 @@ func TestRewardReportsUsePostingFactsAndIndependentCurrentOrderCohort(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreignOrder, err := service.GrantTx(ctx, foreignTx, rewardReportOtherBrand, actor, rewards.GrantInput{MemberID: foreignMember, Points: 23, Reason: "foreign scope fixture"}, points.Metadata{ActorType: "admin", ActorID: adminID, RequestID: ids.New()})
+	foreignOrder, err := service.GrantTx(ctx, foreignTx, rewardReportOtherBrand, actor, rewards.GrantInput{MemberID: foreignMember, Points: 2300, Reason: "foreign scope fixture"}, points.Metadata{ActorType: "admin", ActorID: adminID, RequestID: ids.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestRewardReportsUsePostingFactsAndIndependentCurrentOrderCohort(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	order, err := service.GrantTx(ctx, tx, rewardReportTestBrand, actor, rewards.GrantInput{MemberID: memberID, Points: 37, Reason: "report fixture grant"}, points.Metadata{ActorType: "admin", ActorID: adminID, RequestID: ids.New()})
+	order, err := service.GrantTx(ctx, tx, rewardReportTestBrand, actor, rewards.GrantInput{MemberID: memberID, Points: 3700, Reason: "report fixture grant"}, points.Metadata{ActorType: "admin", ActorID: adminID, RequestID: ids.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,12 +140,12 @@ func TestRewardReportsUsePostingFactsAndIndependentCurrentOrderCohort(t *testing
 	// in the same points window and touches the same gift/recharge wallet.
 	store := points.Store{DB: db}
 	var unrelatedDelta points.Balance
-	unrelatedDelta[0][0] = 13
+	unrelatedDelta[0][0] = 1300
 	tx, err = db.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = store.Post(ctx, tx, points.Change{BrandID: rewardReportTestBrand, MemberID: memberID, EntryType: "adjustment", ReferenceType: "manual", OperationKey: "reward-report-unrelated:" + ids.New(), Reason: "unrelated report fixture credit", ActorType: "system", RequestID: ids.New(), Delta: unrelatedDelta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 13}}})
+	_, err = store.Post(ctx, tx, points.Change{BrandID: rewardReportTestBrand, MemberID: memberID, EntryType: "adjustment", ReferenceType: "manual", OperationKey: "reward-report-unrelated:" + ids.New(), Reason: "unrelated report fixture credit", ActorType: "system", RequestID: ids.New(), Delta: unrelatedDelta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 1300}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,14 +276,14 @@ func TestRewardReportsUsePostingFactsAndIndependentCurrentOrderCohort(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	pendingOrder, err := service.GrantTx(ctx, tx, rewardReportTestBrand, actor, rewards.GrantInput{MemberID: memberID, Points: 11, Reason: "report fixture pending grant"}, points.Metadata{ActorType: "admin", ActorID: adminID, RequestID: ids.New()})
+	pendingOrder, err := service.GrantTx(ctx, tx, rewardReportTestBrand, actor, rewards.GrantInput{MemberID: memberID, Points: 1100, Reason: "report fixture pending grant"}, points.Metadata{ActorType: "admin", ActorID: adminID, RequestID: ids.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err = tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	allocation := []points.Allocation{{Source: "gift", State: "available", Points: 11}}
+	allocation := []points.Allocation{{Source: "gift", State: "available", Points: 1100}}
 	move, err := points.AllocationDelta(allocation, "available", "manual_frozen")
 	if err != nil {
 		t.Fatal(err)
@@ -303,9 +303,11 @@ func TestRewardReportsUsePostingFactsAndIndependentCurrentOrderCohort(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
- _,err=service.RevokeTx(ctx,tx,rewardReportTestBrand,pendingOrder.ID,actor,rewards.ActionInput{Version:1,Reason:"insufficient original gift"},points.Metadata{ActorType:"admin",ActorID:adminID,RequestID:ids.New()})
- if !errors.Is(err,points.ErrInsufficient){t.Fatalf("expected insufficient gift, got %v",err)}
- _=tx.Rollback(ctx)
+	_, err = service.RevokeTx(ctx, tx, rewardReportTestBrand, pendingOrder.ID, actor, rewards.ActionInput{Version: 1, Reason: "insufficient original gift"}, points.Metadata{ActorType: "admin", ActorID: adminID, RequestID: ids.New()})
+	if !errors.Is(err, points.ErrInsufficient) {
+		t.Fatalf("expected insufficient gift, got %v", err)
+	}
+	_ = tx.Rollback(ctx)
 
 	var pendingCreated time.Time
 	if err = db.QueryRow(ctx, `SELECT created_at FROM reward_orders WHERE id=$1`, pendingOrder.ID).Scan(&pendingCreated); err != nil {
@@ -349,7 +351,7 @@ func TestRewardReportsUsePostingFactsAndIndependentCurrentOrderCohort(t *testing
 			args []any
 		}{
 			{`INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'reward-max-report-test')`, []any{newUser, "reward_max_" + newUser}},
-			{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'operator','1','1')`, []any{newMember, rewardReportTestBrand, newUser}},
+			{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'operator')`, []any{newMember, rewardReportTestBrand, newUser}},
 			{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{newAccount, rewardReportTestBrand, newMember}},
 			{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift','commission']) s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) t ON CONFLICT DO NOTHING`, []any{rewardReportTestBrand, newAccount}},
 		} {

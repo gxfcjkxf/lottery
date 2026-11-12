@@ -3,11 +3,13 @@ package points
 
 import (
 	"bytes"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 )
@@ -18,41 +20,89 @@ var (
 	ErrOverflow     = errors.New("points integer overflow")
 )
 
-// Amount is an exact signed integer point amount. JSON represents it as a
-// decimal string so JavaScript clients never round large values.
+// Amount stores hundredths of a point; JSON and SQL use decimal point strings.
 type Amount int64
 
+const Scale Amount = 100
+
 func ParseAmount(value string) (Amount, error) {
-	if value == "" || value == "-0" || strings.HasPrefix(value, "+") {
+	if value == "" || strings.HasPrefix(value, "+") {
 		return 0, ErrInvalid
 	}
-	start := 0
-	if value[0] == '-' {
-		start = 1
-		if len(value) == 1 {
+	negative := strings.HasPrefix(value, "-")
+	raw := strings.TrimPrefix(value, "-")
+	parts := strings.Split(raw, ".")
+	if len(parts) > 2 || parts[0] == "" || (len(parts[0]) > 1 && parts[0][0] == '0') {
+		return 0, ErrInvalid
+	}
+	for _, part := range parts {
+		if part == "" {
 			return 0, ErrInvalid
 		}
+		for _, c := range part {
+			if c < '0' || c > '9' {
+				return 0, ErrInvalid
+			}
+		}
 	}
-	if value[start] == '0' && len(value)-start != 1 {
-		return 0, ErrInvalid
-	}
-	for i := start; i < len(value); i++ {
-		if value[i] < '0' || value[i] > '9' {
+	fraction := "00"
+	if len(parts) == 2 {
+		if len(parts[1]) > 2 {
 			return 0, ErrInvalid
 		}
+		fraction = (parts[1] + "00")[:2]
 	}
-	n, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		if errors.Is(err, strconv.ErrRange) {
-			return 0, ErrOverflow
-		}
+	n, ok := new(big.Int).SetString(parts[0]+fraction, 10)
+	if !ok {
 		return 0, ErrInvalid
 	}
-	return Amount(n), nil
+	if negative {
+		if n.Sign() == 0 {
+			return 0, ErrInvalid
+		}
+		n.Neg(n)
+	}
+	if !n.IsInt64() {
+		return 0, ErrOverflow
+	}
+	return Amount(n.Int64()), nil
 }
 
-func (a Amount) MarshalJSON() ([]byte, error) {
-	return json.Marshal(strconv.FormatInt(int64(a), 10))
+func (a Amount) String() string {
+	n := big.NewInt(int64(a))
+	negative := n.Sign() < 0
+	n.Abs(n)
+	whole, remainder := new(big.Int), new(big.Int)
+	whole.QuoRem(n, big.NewInt(100), remainder)
+	value := whole.String()
+	if remainder.Sign() != 0 {
+		value += "." + strings.TrimRight(fmt.Sprintf("%02d", remainder.Int64()), "0")
+	}
+	if negative {
+		value = "-" + value
+	}
+	return value
+}
+func (a Amount) MarshalJSON() ([]byte, error) { return json.Marshal(a.String()) }
+func (a Amount) Value() (driver.Value, error) { return a.String(), nil }
+func (a *Amount) Scan(value any) error {
+	var raw string
+	switch v := value.(type) {
+	case string:
+		raw = v
+	case []byte:
+		raw = string(v)
+	case int64:
+		raw = strconv.FormatInt(v, 10)
+	default:
+		return ErrInvalid
+	}
+	parsed, err := ParseAmount(raw)
+	if err != nil {
+		return err
+	}
+	*a = parsed
+	return nil
 }
 
 func (a *Amount) UnmarshalJSON(data []byte) error {

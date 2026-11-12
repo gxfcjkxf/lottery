@@ -21,9 +21,9 @@ async function save() {
   <DetailModal class="console-account-dialog ui-form-dialog" :title="title" :close-label="closeLabel" :close-disabled="busy || frozen" @close="!busy && !frozen && $emit('close')">
     <form v-write-guard="busy" novalidate v-inline-validation class="login-entry__form ui-form" @submit.prevent="withGlobalLoading(save)">
       <fieldset class="am-form" :disabled="busy || frozen">
-        <label class="login-entry__field">{{ currentLabel }}<input v-model="current" class="field" type="password" autocomplete="current-password" required /></label>
-        <label class="login-entry__field">{{ newLabel }}<input v-model="next" :aria-label="newLabel" :aria-describedby="helpId" class="field" type="password" autocomplete="new-password" required data-min-characters="6" data-max-characters="30" /><small :id="helpId">{{formValidationText('passwordHelp')}}</small></label>
-        <label class="login-entry__field">{{ confirmLabel }}<input v-model="confirmation" class="field" type="password" autocomplete="new-password" required :aria-invalid="mismatch || undefined" /></label>
+        <label class="login-entry__field ui-field-row"><span>{{ currentLabel }}</span><input v-model="current" class="field" type="password" autocomplete="current-password" required /></label>
+        <label class="login-entry__field ui-field-row"><span>{{ newLabel }}</span><input v-model="next" :aria-label="newLabel" :aria-describedby="helpId" class="field" type="password" autocomplete="new-password" required data-min-characters="6" data-max-characters="30" /><small :id="helpId">{{formValidationText('passwordHelp')}}</small></label>
+        <label class="login-entry__field ui-field-row"><span>{{ confirmLabel }}</span><input v-model="confirmation" class="field" type="password" autocomplete="new-password" required :aria-invalid="mismatch || undefined" /></label>
       </fieldset>
       <slot />
       <p v-if="mismatch" class="form-error" role="alert">{{formValidationText('passwordMismatch')}}</p>

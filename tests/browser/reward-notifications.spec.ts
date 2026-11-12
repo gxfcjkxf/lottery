@@ -16,7 +16,7 @@ test('real reward inbox preserves grant and reversal facts and exact read receip
  const write=async<T>(path:string,body:unknown,actor?:string)=>data<T>(await page.request.post(admin+path,{headers:{Origin:origin,'X-Brand-ID':brand,'Idempotency-Key':crypto.randomUUID(),...(actor?{'X-Reward-Actor-ID':actor}:{})},data:body}),path==='/reward-orders'?201:200);
  await data(await page.request.post(admin+'/auth/login',{headers:{Origin:origin,'Idempotency-Key':crypto.randomUUID()},data:{identifier:'reward_s22_operator',password:process.env.TEST_REWARD_ADMIN_PASSWORD}}));
  const {account}=await get<{account:{id:string}}>('/me');
- const registered=await data<{member:{id:string}}>(await page.request.post(user+'/auth/register',{headers:{Origin:userOrigin,'Idempotency-Key':crypto.randomUUID()},data:{username:`rwmsg_${info.project.name}_${crypto.randomUUID().replaceAll('-','').slice(0,6)}`,password:'owned-reward-notification-user-2026',privacy_policy_version:'dev-1',service_terms_version:'dev-1'}}),201);
+ const registered=await data<{member:{id:string}}>(await page.request.post(user+'/auth/register',{headers:{Origin:userOrigin,'Idempotency-Key':crypto.randomUUID()},data:{username:`rwmsg_${info.project.name}_${crypto.randomUUID().replaceAll('-','').slice(0,6)}`,password:'owned-reward-notification-user-2026',}}),201);
  const member=registered.member.id;
  const order=await write<{id:string}>('/reward-orders',{member_id:member,points:'40',reason:'private browser reward grant reason'},account.id);
  const hold=await write<{id:string}>(`/wallets/${member}/freeze`,{points:'40',reason:'private browser hold reason'});

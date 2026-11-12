@@ -102,7 +102,7 @@ func TestCycleReadDTOKeepsLargeCountsAsStringsAndOmitsInternals(t *testing.T) {
 	if !strings.Contains(text, `"target_count":"9007199254740993"`) || strings.Contains(text, "cursor") || strings.Contains(text, "rule_snapshot") {
 		t.Fatalf("cycle JSON has unsafe count or internal field: %s", text)
 	}
-	earningRaw, err := json.Marshal(Earning{ExactAmount: ExactAmount{Numerator: "1", Denominator: "3"}, Points: points.Amount(7)})
+	earningRaw, err := json.Marshal(Earning{ExactAmount: ExactAmount{Numerator: "1", Denominator: "3"}, Points: points.Amount(700)})
 	if err != nil {
 		t.Fatal(err)
 	}

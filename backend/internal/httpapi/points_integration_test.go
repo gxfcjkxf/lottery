@@ -50,7 +50,7 @@ func pointsFixture(t *testing.T) pointsHTTPFixture {
 	}
 	managedData(t, created, &member)
 	login := f.call("POST", "/api/v1/auth/login", "points-user-login-001", "", managedBrand,
-		map[string]string{"identifier": "points_member", "password": "points-member-password-2026", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"})
+		map[string]string{"identifier": "points_member", "password": "points-member-password-2026", })
 	if login.Code != 200 {
 		t.Fatal(login.Code, login.Body.String())
 	}
@@ -154,7 +154,7 @@ func TestPointsHTTPRechargeWalletFreezeAdjustAndIsolation(t *testing.T) {
 		t.Fatalf("duplicate confirmation wrote %d ledger entries err=%v", count, err)
 	}
 	wallet = pointWallet(t, f)
-	if wallet.BySource[0][0] != 250 || wallet.RechargePoints != 250 || wallet.AvailablePoints != 250 || wallet.DisplayPoints != 250 {
+	if wallet.BySource[0][0] != 25000 || wallet.RechargePoints != 25000 || wallet.AvailablePoints != 25000 || wallet.DisplayPoints != 25000 {
 		t.Fatalf("recharge did not credit exact available bucket: %+v", wallet)
 	}
 	ledger := f.call("GET", "/api/v1/admin/wallets/"+f.memberID+"/ledger", "", f.token, managedBrand, nil)
@@ -165,7 +165,7 @@ func TestPointsHTTPRechargeWalletFreezeAdjustAndIsolation(t *testing.T) {
 		t.Fatal(ledger.Code, ledger.Body.String())
 	}
 	managedData(t, ledger, &ledgerResult)
-	if len(ledgerResult.Items) != 1 || ledgerResult.Items[0].Before[0][0] != 0 || ledgerResult.Items[0].Delta[0][0] != 250 || ledgerResult.Items[0].After[0][0] != 250 {
+	if len(ledgerResult.Items) != 1 || ledgerResult.Items[0].Before[0][0] != 0 || ledgerResult.Items[0].Delta[0][0] != 25000 || ledgerResult.Items[0].After[0][0] != 25000 {
 		t.Fatalf("recharge ledger snapshots incorrect: %+v", ledgerResult.Items)
 	}
 
@@ -181,7 +181,7 @@ func TestPointsHTTPRechargeWalletFreezeAdjustAndIsolation(t *testing.T) {
 	var frozen points.Entry
 	managedData(t, freeze, &frozen)
 	wallet = pointWallet(t, f)
-	if wallet.BySource[0][0] != 180 || wallet.BySource[0][1] != 70 || wallet.AvailablePoints != 180 || wallet.ManualFrozenPoints != 70 || wallet.FrozenPoints != 70 || wallet.DisplayPoints != 250 || wallet.RechargePoints != 180 {
+	if wallet.BySource[0][0] != 18000 || wallet.BySource[0][1] != 7000 || wallet.AvailablePoints != 18000 || wallet.ManualFrozenPoints != 7000 || wallet.FrozenPoints != 7000 || wallet.DisplayPoints != 25000 || wallet.RechargePoints != 18000 {
 		t.Fatalf("freeze did not preserve source and summary buckets: %+v", wallet)
 	}
 	unfreezePath := "/api/v1/admin/wallets/" + f.memberID + "/unfreeze"
@@ -191,14 +191,14 @@ func TestPointsHTTPRechargeWalletFreezeAdjustAndIsolation(t *testing.T) {
 	}
 	var reversed points.Entry
 	managedData(t, unfreeze, &reversed)
-	if reversed.ReversalOf != frozen.ID || reversed.Delta[0][0] != 70 || reversed.Delta[0][1] != -70 {
+	if reversed.ReversalOf != frozen.ID || reversed.Delta[0][0] != 7000 || reversed.Delta[0][1] != -7000 {
 		t.Fatalf("unfreeze did not reverse exact original allocation: %+v", reversed)
 	}
 	if retry := f.call("POST", unfreezePath, "points-unfreeze-002", f.token, managedBrand, map[string]string{"entry_id": frozen.ID, "reason": "duplicate clear"}); retry.Code != 409 {
 		t.Fatalf("duplicate unfreeze status=%d body=%s, want 409", retry.Code, retry.Body.String())
 	}
 	wallet = pointWallet(t, f)
-	if wallet.BySource[0][0] != 250 || wallet.BySource[0][1] != 0 || wallet.DisplayPoints != 250 {
+	if wallet.BySource[0][0] != 25000 || wallet.BySource[0][1] != 0 || wallet.DisplayPoints != 25000 {
 		t.Fatalf("unfreeze did not restore original wallet: %+v", wallet)
 	}
 
@@ -213,7 +213,7 @@ func TestPointsHTTPRechargeWalletFreezeAdjustAndIsolation(t *testing.T) {
 		t.Fatal(r.Code, r.Body.String())
 	}
 	wallet = pointWallet(t, f)
-	if wallet.GiftPoints != 0 || wallet.BySource[2][0] != 0 || wallet.DisplayPoints != 250 {
+	if wallet.GiftPoints != 0 || wallet.BySource[2][0] != 0 || wallet.DisplayPoints != 25000 {
 		t.Fatalf("gift adjustments violated floor or source totals: %+v", wallet)
 	}
 
@@ -294,7 +294,7 @@ func TestPointsHTTPConcurrentRechargeConfirmationsSerializeWithoutDoubleCredit(t
 		t.Fatalf("concurrent recharge ledger count=%d err=%v, want 9", count, err)
 	}
 	wallet := pointWallet(t, pointsHTTPFixture{managementHTTP: f.managementHTTP, memberID: f.memberID, userToken: f.userToken})
-	if wallet.RechargePoints != 35 || wallet.DisplayPoints != 35 {
+	if wallet.RechargePoints != 3500 || wallet.DisplayPoints != 3500 {
 		t.Fatalf("different-order confirmations did not all credit account: %+v", wallet)
 	}
 }

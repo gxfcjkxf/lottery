@@ -1,19 +1,16 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import DetailModal from './DetailModal.vue'
+import { computed, ref, watch } from 'vue'
 import SelectControl from './SelectControl.vue'
 import { createCatalogI18n } from './localization'
 import { configuredRuleCatalog } from './configured-rule-catalog'
 import { configuredOptionPriceKeys, type ConfiguredSnapshot } from './configured-rules'
-const props = defineProps<{ snapshot: ConfiguredSnapshot; modelValue: ConfiguredSnapshot['prices']; locale: 'en' | 'zh-CN'; disabled: boolean }>()
-const emit = defineEmits<{ 'update:modelValue': [value: ConfiguredSnapshot['prices']]; close: [] }>()
+const props = defineProps<{ snapshot: ConfiguredSnapshot; modelValue: ConfiguredSnapshot['prices']; locale: 'en' | 'zh-CN'; disabled: boolean; locked: boolean }>()
+const emit = defineEmits<{ 'update:modelValue': [value: ConfiguredSnapshot['prices']] }>()
 const i18n = createCatalogI18n(configuredRuleCatalog, props.locale)
 watch(() => props.locale, value => i18n.setLocale(value))
 const t = i18n.t
 const draft = ref<ConfiguredSnapshot['prices']>(JSON.parse(JSON.stringify(props.modelValue)))
 const batchOdds = ref('')
-const submitButton = ref<HTMLButtonElement | null>(null)
-onMounted(async () => { await nextTick(); submitButton.value?.focus({ preventScroll: true }) })
 const plate = ref(props.snapshot.catalog.plates[0]!)
 const playId = ref(props.snapshot.catalog.plays[0]!.id)
 const rows = computed(() => {
@@ -30,18 +27,15 @@ const rows = computed(() => {
 })
 function edit(key: string, value: string) {
   draft.value.plates[plate.value] = { ...draft.value.plates[plate.value], [key]: value }
+  emit('update:modelValue', JSON.parse(JSON.stringify(draft.value)))
 }
 function applyBatch() {
   for (const row of rows.value) edit(row.key, batchOdds.value)
 }
-function submit() {
-  emit('update:modelValue', draft.value)
-  emit('close')
-}
 watch([plate, playId], () => { batchOdds.value = '' })
 </script>
 <template>
-  <DetailModal class="configured-odds-modal" :title="t('salesOdds')" :close-label="t('closeEditor')" @close="emit('close')">
+  <fieldset class="configured-odds-editor" :disabled="locked">
     <div class="configured-odds-filters">
       <label>{{ t('plate') }}<SelectControl v-model="plate" :label="t('plate')" :options="snapshot.catalog.plates.map(value => ({ value, label: value }))" /></label>
       <label>{{ t('play') }}<SelectControl v-model="playId" :label="t('play')" :options="snapshot.catalog.plays.map(play => ({ value: play.id, label: play.label[locale] }))" /></label>
@@ -53,21 +47,18 @@ watch([plate, playId], () => { batchOdds.value = '' })
     <fieldset :disabled="disabled" class="configured-odds-fields">
       <label v-for="row in rows" :key="row.key"><span>{{ row.label }}</span><input inputmode="decimal" :value="draft.plates[plate]?.[row.key]" @input="edit(row.key, ($event.target as HTMLInputElement).value)" /></label>
     </fieldset>
-    <template v-if="!disabled" #footer>
-      <button ref="submitButton" type="button" class="button button-primary" @click="submit">{{ t('submitOdds') }}</button>
-    </template>
-  </DetailModal>
+  </fieldset>
 </template>
 <style scoped>
-.configured-odds-modal.detail-modal{width:min(760px,calc(100vw - 24px));max-width:calc(100vw - 24px)}
-:global(#app .configured-odds-modal input[inputmode="decimal"]){--input-width:88px}
+.configured-odds-editor{border:0;padding:0;margin:0;min-width:0}
+:global(#app .configured-odds-editor input[inputmode="decimal"]){--input-width:88px}
 .configured-odds-filters{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:16px}
 .configured-odds-filters label{display:flex;flex-direction:row;align-items:center;gap:8px;max-width:100%}
 .configured-odds-filters :deep(.select-control){min-width:0;max-width:100%}
 .configured-odds-batch{display:flex;flex-direction:row;align-items:center;gap:8px;max-width:100%}
 .configured-odds-batch input{width:88px;min-width:0;box-sizing:border-box}
 .configured-odds-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;border:0;padding:0;margin:0;min-width:0}
-.configured-odds-modal label{min-width:0;font-size:var(--body-font-size);overflow-wrap:anywhere}
+.configured-odds-editor label{min-width:0;font-size:var(--body-font-size);overflow-wrap:anywhere}
 .configured-odds-fields label{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px}
 .configured-odds-fields input{width:88px;max-width:55%;min-width:0;box-sizing:border-box;flex-shrink:0}
 @media(max-width:620px){.configured-odds-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}

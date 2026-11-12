@@ -16,6 +16,8 @@ import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-
 import { brandDomainsPermissions, createBrandDomainsApi, isCanonicalBrandDomain, type BrandDomain, type BrandDomainsRecord } from "./brand-domains-api";
 import { brandDomainsSessionGeneration, classifyBrandDomainsFailure, clearAllPendingBrandDomainsWrites, clearBrandDomainsDraft, clearPendingBrandDomainsWrite, createBrandDomainsRequestGuard, getBrandDomainsDraft, getPendingBrandDomainsWrite, retainPendingBrandDomainsWrite, setBrandDomainsDraft, setPendingBrandDomainsWrite, type PendingBrandDomainsWrite } from "./brand-domains-state";
 import { useAdminI18n } from "./i18n";
+const pageSize = ref(50)
+
 
 const props = defineProps<{ account: AdminAccount; brandId: string; brandStatus?: string }>();
 const { t, message, display, locale } = useAdminI18n();
@@ -26,9 +28,9 @@ const permissions = computed(() => brandDomainsPermissions(props.account, props.
 const scope = () => ({ accountId: props.account.id, brandId: props.brandId });
 const record = ref<BrandDomainsRecord | null>(null);
 const domainPage = ref(1)
-const domainRows = computed(() => record.value?.domains.slice((domainPage.value - 1) * 50, domainPage.value * 50) ?? [])
+const domainRows = computed(() => record.value?.domains.slice((domainPage.value - 1) * pageSize.value, domainPage.value * pageSize.value) ?? [])
 watch(() => props.brandId, () => { domainPage.value = 1 })
-watch(() => record.value?.domains.length, count => { domainPage.value = Math.min(domainPage.value, Math.max(1, Math.ceil((count ?? 0) / 50))) })
+watch(() => record.value?.domains.length, count => { domainPage.value = Math.min(domainPage.value, Math.max(1, Math.ceil((count ?? 0) / pageSize.value))) })
 const pending = ref<PendingBrandDomainsWrite | null>(null);
 const operation = ref<"add" | "edit">("add"), domainId = ref<string | undefined>();
 const formOpen = ref(false);
@@ -213,7 +215,7 @@ useOperationToast(() => notice.value, value => display(value), 'success');
       </form>
       </DetailModal>
     </template>
-    <template v-if="record && permissions.view" #pagination><TablePagination :show-empty="!loading && !readFailed" :total="String(record.domains.length)" :count="domainRows.length" :page="domainPage" :page-size="50" :locale="locale" :previous-disabled="loading || busy || Boolean(pending) || domainPage===1" :next-disabled="loading || busy || Boolean(pending) || domainPage*50>=record.domains.length" :go-to="async target => { domainPage=target }" /></template>
+    <template v-if="record && permissions.view" #pagination><TablePagination :total="String(record.domains.length)" :count="domainRows.length" :page="domainPage" :page-size="pageSize" :locale="locale" :previous-disabled="loading || busy || Boolean(pending) || domainPage===1" :next-disabled="loading || busy || Boolean(pending) || domainPage*pageSize>=record.domains.length" :go-to="async target => { domainPage=target }" :change-page-size="async (size: number) => { pageSize = size; domainPage = 1; await loadRecord() }" :busy="loading || busy" /></template>
   </ManagementList>
 </template>
 

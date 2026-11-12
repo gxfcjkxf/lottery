@@ -90,8 +90,7 @@ func TestTelegramHTTPDoesNotShareOneAccountQuotaAcrossUsers(t *testing.T) {
 		}
 		response = call("POST", "/api/v1/auth/telegram", fmt.Sprintf("local-tg-login-%03d", i), identity.TelegramInput{
 			IDToken:     unsigned + "." + base64.RawURLEncoding.EncodeToString(signature),
-			ChallengeID: challenge.Data.ID, Nonce: challenge.Data.Nonce, Privacy: "dev-1", Terms: "dev-1",
-		})
+			ChallengeID: challenge.Data.ID, Nonce: challenge.Data.Nonce, })
 		if response.Code != 200 {
 			t.Fatalf("unrelated Telegram user %d was blocked: status %d", i, response.Code)
 		}

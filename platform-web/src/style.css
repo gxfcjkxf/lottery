@@ -1,41 +1,53 @@
 :root {
   --surface: var(--bg-surface);
+  --canvas: var(--bg-app);
   --ink: var(--text-main);
+  --ink-secondary: #374151;
   --line: var(--border-light);
+  --line-subtle: var(--border-subtle);
+  --table-header-bg: #f8faf8;
   --muted: var(--text-muted);
-  --radius: 16px;
+  --muted-light: var(--text-dim);
+  --radius: 12px;
 
-  --bg-app: #f8fafc;
+  --bg-app: #f7f8f7;
   --bg-surface: #ffffff;
-  --bg-subtle: #f1f5f9;
-  --bg-hover: #f8fafc;
-  --border-light: #e2e8f0;
-  --border-subtle: #f1f5f9;
+  --bg-subtle: #f1f3f1;
+  --bg-hover: #f4f7f5;
+  --border-light: #e4e6e3;
+  --border-subtle: #eff1ee;
   --border-focus: var(--primary);
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-  --text-dim: #94a3b8;
+  --text-main: #111827;
+  --text-muted: #6b7280;
+  --text-dim: #9ca3af;
   --primary: #059669;
   --primary-hover: #047857;
+  --primary-dark: #047857;
   --primary-light: #ecfdf5;
+  --primary-ring: rgba(5, 150, 105, 0.2);
   --primary-text: #047857;
+  --accent: #f59e0b;
+  --accent-light: #fffbeb;
   --success: #10b981;
   --success-bg: #ecfdf5;
   --success-text: #047857;
   --warning: #f59e0b;
   --warning-bg: #fffbeb;
   --warning-text: #b45309;
-  --danger: #ef4444;
-  --danger-bg: #fef2f2;
-  --danger-text: #b91c1c;
-  --danger-border: #fecaca;
-  --danger-hover-bg: #fee2e2;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --danger: #f43f5e;
+  --danger-bg: #fff1f2;
+  --danger-text: #be123c;
+  --danger-border: #fecdd3;
+  --danger-hover-bg: #ffe4e6;
+  --info: #0ea5e9;
+  --info-bg: #f0f9ff;
+  --info-text: #0369a1;
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 20, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 20, 0.06), 0 2px 4px -2px rgba(15, 23, 20, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 20, 0.08), 0 4px 6px -4px rgba(15, 23, 20, 0.04);
   --radius-sm: 8px;
   --radius-md: var(--radius);
-  --radius-lg: 20px;
+  --radius-lg: 16px;
 }
 
 * { box-sizing: border-box; }
@@ -549,7 +561,7 @@ button:disabled {
 
 .wallet-query input:focus, .brand-form input:focus, .brand-form textarea:focus {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.18);
   background: #ffffff;
 }
 
@@ -921,7 +933,7 @@ td small {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: #f8fafc;
+  background: #f7f8f7;
 }
 
 .loading-card {

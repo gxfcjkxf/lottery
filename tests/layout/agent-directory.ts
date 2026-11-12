@@ -42,7 +42,7 @@ export function registerAgentDirectoryTests(reflow = false) {
    await item.click()
   }
   const table = page.locator('.agent-directory-table'), rows = table.locator('tbody tr'), pagination = page.locator('.table-pagination')
-  await expect(rows).toHaveCount(size); await expect(pagination.locator('.table-pagination-summary')).toHaveText(zh ? `第 1 页 · 本页 ${size} 条 · 共 ${size + 1} 条` : `Page 1 · ${size} records on this page · Total: ${size + 1}`); await expect(rows.first()).toContainText('9007199254740993')
+  await expect(rows).toHaveCount(size); await expect(pagination.locator('.table-pagination-summary .table-pagination-desktop')).toHaveText(zh ? `第 1 页 · 本页 ${size} 条 · 共 ${size + 1} 条` : `Page 1 · ${size} records on this page · Total: ${size + 1}`); await expect(rows.first()).toContainText('9007199254740993')
   await expect(rows.first().getByRole('button', { name: 'agent001', exact: true })).toHaveCount(1)
   await expect(page.locator('.member-filters [data-refresh-button]')).toHaveCount(0)
   if (!platform) {

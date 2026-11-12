@@ -123,7 +123,7 @@ func (e *ConfiguredEngine) settleDecision(p ConfiguredPlay, line ConfiguredQuote
 		}
 		price.Mul(price, factor)
 		price.Mul(price, big.NewRat(int64(line.Stake), 1))
-		out.Raw = price.RatString()
+		out.Raw = rawPointsText(price)
 		out.Prize, err = exactPoints(price, nil)
 		if err != nil {
 			return out, err

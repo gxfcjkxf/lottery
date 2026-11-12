@@ -27,12 +27,21 @@ test('all management consoles and their business components use shared list tabl
 test('all management consoles use the shared modal shell',()=>check((node,path,errors)=>{
  if(node.tag==='dialog'||node.props.some(prop=>prop.name==='role'&&prop.value?.content==='dialog'))errors.push(`${path}:${node.loc.start.line}`)
 }))
+function isSequenceNavigation(node,parents){
+ return parents.some(parent=>isComponent(parent,'DetailModal')) && parents.some(parent=>parent.props?.some(prop=>prop.name==='data-sequence-navigation')) && node.props.some(prop=>prop.type===7&&prop.name==='on'&&prop.arg?.content==='click'&&/withGlobalLoading\(move,\s*-?1\)/.test(prop.exp?.content??''))
+}
+test('sequential dialog actions do not exempt ordinary record pagination',()=>{
+ const inspect=source=>{let result=false;const root=parse(`<template>${source}</template>`).descriptor.template.ast;walk(root,(node,parents)=>{if(node.tag==='button')result=isSequenceNavigation(node,parents)});return result}
+ assert.equal(inspect('<DetailModal><div data-sequence-navigation><button @click="withGlobalLoading(move,1)"/></div></DetailModal>'),true)
+ assert.equal(inspect('<div data-sequence-navigation><button @click="withGlobalLoading(move,1)"/></div>'),false)
+ assert.equal(inspect('<DetailModal><div data-sequence-navigation><button @click="withGlobalLoading(load,page+1)"/></div></DetailModal>'),false)
+})
 const paginationFiles=['admin-web','platform-web','user-web','agent-web','shared'].flatMap(dir=>readdirSync(`${dir}/src`,{recursive:true}).filter(name=>name.endsWith('.vue')).map(name=>`${dir}/src/${name}`))
 test('pagination buttons use the shared component, including footers and button-only controls',()=>check((node,path,errors,parents)=>{
  if(node.tag!=='button')return
  const label=node.children.map(child=>child.loc.source).join('')
  const pageLabel=/dbe7a5d7|2e9c9e7a|ee97c955|admin\.withdrawal\.(previous|next)|\b(previousPage|nextPage|previousLabel|nextLabel)\b|\.(previous|next)\s*}}|t\(['"](previous|next|previousOrders|nextOrders)['"]\)/.test(label)
- if(pageLabel&&!parents.some(parent=>['TablePagination','PaginationControls'].includes(parent.tag)))errors.push(`${path}:${node.loc.start.line}`)
+ if(pageLabel&&!isSequenceNavigation(node,parents)&&!parents.some(parent=>['TablePagination','PaginationControls'].includes(parent.tag)))errors.push(`${path}:${node.loc.start.line}`)
 },paginationFiles))
 
 test('all pagination summaries are generated centrally from page, record count and locale',()=>check((node,path,errors)=>{

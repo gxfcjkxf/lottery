@@ -17,21 +17,21 @@ func TestBases(t *testing.T) {
 		want    Basis
 		wantErr bool
 	}{
-		{name: "lost", status: "lost", stake: 25, want: Basis{TurnoverPoints: 25, LossPoints: 25}},
-		{name: "won", status: "won", stake: 25, prize: 30, want: Basis{TurnoverPoints: 25}},
-		{name: "won tie", status: "won", stake: 25, prize: 25, want: Basis{TurnoverPoints: 25}},
-		{name: "won below stake", status: "won", stake: 25, prize: 10, want: Basis{TurnoverPoints: 25}},
-		{name: "won zero prize", status: "won", stake: 25, want: Basis{TurnoverPoints: 25}},
+		{name: "lost", status: "lost", stake: 2500, want: Basis{TurnoverPoints: 2500, LossPoints: 2500}},
+		{name: "won", status: "won", stake: 2500, prize: 3000, want: Basis{TurnoverPoints: 2500}},
+		{name: "won tie", status: "won", stake: 2500, prize: 2500, want: Basis{TurnoverPoints: 2500}},
+		{name: "won below stake", status: "won", stake: 2500, prize: 1000, want: Basis{TurnoverPoints: 2500}},
+		{name: "won zero prize", status: "won", stake: 2500, want: Basis{TurnoverPoints: 2500}},
 		{name: "zero stake", status: "lost", stake: 0, wantErr: true},
-		{name: "negative stake", status: "won", stake: -1, wantErr: true},
-		{name: "negative prize", status: "won", stake: 1, prize: -1, wantErr: true},
-		{name: "lost with positive prize", status: "lost", stake: 1, prize: 1, wantErr: true},
-		{name: "unknown status", status: "mystery", stake: 1, wantErr: true},
-		{name: "pending", status: "pending", stake: 1, wantErr: true},
-		{name: "cancelled", status: "cancelled", stake: 1, wantErr: true},
-		{name: "abnormal", status: "abnormal", stake: 1, wantErr: true},
-		{name: "invalid", status: "invalid", stake: 1, wantErr: true},
-		{name: "empty status", stake: 1, wantErr: true},
+		{name: "negative stake", status: "won", stake: -100, wantErr: true},
+		{name: "negative prize", status: "won", stake: 100, prize: -100, wantErr: true},
+		{name: "lost with positive prize", status: "lost", stake: 100, prize: 100, wantErr: true},
+		{name: "unknown status", status: "mystery", stake: 100, wantErr: true},
+		{name: "pending", status: "pending", stake: 100, wantErr: true},
+		{name: "cancelled", status: "cancelled", stake: 100, wantErr: true},
+		{name: "abnormal", status: "abnormal", stake: 100, wantErr: true},
+		{name: "invalid", status: "invalid", stake: 100, wantErr: true},
+		{name: "empty status", stake: 100, wantErr: true},
 		{name: "large won", status: "won", stake: points.Amount(1<<53 + 1), prize: points.Amount(math.MaxInt64), want: Basis{TurnoverPoints: points.Amount(1<<53 + 1)}},
 		{name: "max stake lost", status: "lost", stake: points.Amount(math.MaxInt64), want: Basis{TurnoverPoints: points.Amount(math.MaxInt64), LossPoints: points.Amount(math.MaxInt64)}},
 	}
@@ -64,7 +64,7 @@ func TestBasisJSONPreservesExactAmounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
-	const expected = `{"turnover_points":"9223372036854775807","loss_points":"9007199254740993"}`
+	const expected = `{"turnover_points":"92233720368547758.07","loss_points":"90071992547409.93"}`
 	if string(data) != expected {
 		t.Fatalf("json.Marshal() = %s, want %s", data, expected)
 	}

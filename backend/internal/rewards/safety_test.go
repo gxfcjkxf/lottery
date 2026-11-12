@@ -42,7 +42,7 @@ func TestRewardMaxInt64AndCurrentBalanceLimit(t *testing.T) {
 	})
 	t.Run("failed over-cap grant leaves no business evidence", func(t *testing.T) {
 		f := newRewardFixture(t)
-		cap := points.Amount(10)
+		cap := points.Amount(1000)
 		tx := rewardTx(t, f.db)
 		if _, err := f.points.UpdatePolicy(context.Background(), tx, f.brand, points.PolicyInput{Version: 1, MaxBalancePoints: &cap, Reason: "owned reward balance cap"}, rewardMeta(f.admin)); err != nil {
 			t.Fatal(err)
@@ -50,7 +50,7 @@ func TestRewardMaxInt64AndCurrentBalanceLimit(t *testing.T) {
 		rewardCommit(t, tx)
 		before := rewardEvidence(t, f)
 		tx = rewardTx(t, f.db)
-		_, err := f.service.GrantTx(context.Background(), tx, f.brand, f.actor, GrantInput{MemberID: f.member, Points: 11, Reason: "reject over cap"}, rewardMeta(f.admin))
+		_, err := f.service.GrantTx(context.Background(), tx, f.brand, f.actor, GrantInput{MemberID: f.member, Points: 1100, Reason: "reject over cap"}, rewardMeta(f.admin))
 		_ = tx.Rollback(context.Background())
 		if !errors.Is(err, points.ErrPolicyLimit) || rewardEvidence(t, f) != before {
 			t.Fatalf("over cap reward err=%v or business evidence changed", err)
@@ -60,7 +60,7 @@ func TestRewardMaxInt64AndCurrentBalanceLimit(t *testing.T) {
 
 func TestRewardFullGenericReverseAndStandaloneCreditCannotBypassBusiness(t *testing.T) {
 	f := newRewardFixture(t)
-	o := rewardGrant(t, f, 25)
+	o := rewardGrant(t, f, 2500)
 	before := rewardEvidence(t, f)
 	tx := rewardTx(t, f.db)
 	_, err := f.points.Reverse(context.Background(), tx, f.brand, f.member, o.GrantLedgerEntryID, "reward-bypass:"+ids.New(), "generic full reverse is not approval", rewardMeta(f.admin))
@@ -70,10 +70,10 @@ func TestRewardFullGenericReverseAndStandaloneCreditCannotBypassBusiness(t *test
 	}
 	tx = rewardTx(t, f.db)
 	var delta points.Balance
-	delta[2][0] = 5
+	delta[2][0] = 500
 	_, err = f.points.Post(context.Background(), tx, points.Change{BrandID: f.brand, MemberID: f.member, EntryType: "reward_grant", ReferenceType: "reward_order", ReferenceID: ids.New(),
 		OperationKey: "reward-bypass:" + ids.New(), Reason: "business-less reward grant", ActorType: "admin", ActorID: f.admin, RequestID: ids.New(),
-		Delta: delta, Allocation: []points.Allocation{{Source: "gift", State: "available", Points: 5}}})
+		Delta: delta, Allocation: []points.Allocation{{Source: "gift", State: "available", Points: 500}}})
 	_ = tx.Rollback(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "reward posting requires current explicit business action") {
 		t.Fatalf("business-less reward grant bypass=%v", err)
@@ -85,7 +85,7 @@ func TestRewardFullGenericReverseAndStandaloneCreditCannotBypassBusiness(t *test
 
 func TestRetiredRewardPendingStateIsRejectedEvenWithMatchingAudit(t *testing.T) {
 	f := newRewardFixture(t)
-	o := rewardGrant(t, f, 25)
+	o := rewardGrant(t, f, 2500)
 	before := rewardEvidence(t, f)
 	tx := rewardTx(t, f.db)
 	actionID := ids.New()
@@ -110,7 +110,7 @@ func TestRewardOrphanGrantCannotCommit(t *testing.T) {
 	before := rewardEvidence(t, f)
 	tx := rewardTx(t, f.db)
 	id, actionID := ids.New(), ids.New()
-	log, err := actionAudit(context.Background(), tx, f.brand, id, actionID, "grant", "granted", 1, nil, "orphan matching audit", f.actor, rewardMeta(f.admin), map[string]any{"member_id": f.member, "points": points.Amount(10)})
+	log, err := actionAudit(context.Background(), tx, f.brand, id, actionID, "grant", "granted", 1, nil, "orphan matching audit", f.actor, rewardMeta(f.admin), map[string]any{"member_id": f.member, "points": points.Amount(1000)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestRewardOrphanGrantCannotCommit(t *testing.T) {
 
 func TestRewardReadPagesAreBrandScopedAndStrict(t *testing.T) {
 	f := newRewardFixture(t)
-	o := rewardGrant(t, f, 5)
+	o := rewardGrant(t, f, 500)
 	before := rewardEvidence(t, f)
 	tx, err := f.db.BeginTx(context.Background(), pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
@@ -166,7 +166,7 @@ func TestRewardCreditGuardRejectsWrongSourceAmountActorOrKey(t *testing.T) {
 			tx := rewardTx(t, f.db)
 			id, actionID := ids.New(), ids.New()
 			reason := "guarded grant identity"
-			log, err := actionAudit(context.Background(), tx, f.brand, id, actionID, "grant", "granted", 1, nil, reason, f.actor, rewardMeta(f.admin), map[string]any{"member_id": f.member, "points": points.Amount(25)})
+			log, err := actionAudit(context.Background(), tx, f.brand, id, actionID, "grant", "granted", 1, nil, reason, f.actor, rewardMeta(f.admin), map[string]any{"member_id": f.member, "points": points.Amount(2500)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -176,13 +176,13 @@ func TestRewardCreditGuardRejectsWrongSourceAmountActorOrKey(t *testing.T) {
 			if err = insertAction(context.Background(), tx, f.brand, id, actionID, "grant", "granted", 1, nil, f.admin, reason, log); err != nil {
 				t.Fatal(err)
 			}
-			amount, source, sourceIndex := points.Amount(25), "gift", 2
+			amount, source, sourceIndex := points.Amount(2500), "gift", 2
 			actorType, actorID, key := "admin", f.admin, "reward-grant:"+id
 			switch mode {
 			case "source":
 				source, sourceIndex = "winning", 1
 			case "amount":
-				amount = 26
+				amount = 2600
 			case "actor":
 				actorType, actorID = "system", ""
 			case "key":
@@ -211,7 +211,7 @@ func TestRewardStaleActorCannotWriteAfterDatabasePromotesItToSuperAdmin(t *testi
 	}
 	before := rewardEvidence(t, f)
 	tx := rewardTx(t, f.db)
-	_, err := f.service.GrantTx(context.Background(), tx, f.brand, f.actor, GrantInput{MemberID: f.member, Points: 25, Reason: "stale actor must not grant"}, rewardMeta(f.admin))
+	_, err := f.service.GrantTx(context.Background(), tx, f.brand, f.actor, GrantInput{MemberID: f.member, Points: 2500, Reason: "stale actor must not grant"}, rewardMeta(f.admin))
 	_ = tx.Rollback(context.Background())
 	if !errors.Is(err, ErrDenied) || rewardEvidence(t, f) != before {
 		t.Fatalf("stale ordinary actor over real super-admin identity err=%v or evidence changed", err)
@@ -220,7 +220,7 @@ func TestRewardStaleActorCannotWriteAfterDatabasePromotesItToSuperAdmin(t *testi
 	// also use the real account flag rather than trust the claimed actor role.
 	tx = rewardTx(t, f.db)
 	id, actionID := ids.New(), ids.New()
-	log, err := actionAudit(context.Background(), tx, f.brand, id, actionID, "grant", "granted", 1, nil, "super SQL bypass", f.actor, rewardMeta(f.admin), map[string]any{"member_id": f.member, "points": points.Amount(25)})
+	log, err := actionAudit(context.Background(), tx, f.brand, id, actionID, "grant", "granted", 1, nil, "super SQL bypass", f.actor, rewardMeta(f.admin), map[string]any{"member_id": f.member, "points": points.Amount(2500)})
 	if err != nil {
 		t.Fatal(err)
 	}

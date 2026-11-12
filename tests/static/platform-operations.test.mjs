@@ -17,29 +17,25 @@ test('archive queries remain scoped reads and notification templates retain expl
   assert.match(app, /<NotificationsPanel/);
 });
 
-test('archive original file is verified before download and reports capture-time balances', () => {
-  const client = read('platform-web/src/archives-api.ts');
+test('archive snapshots show capture-time balances without a file download entry in phase one', () => {
   const panel = read('platform-web/src/ArchivesPanel.vue');
   const catalog = read('platform-web/src/i18n-catalog.ts');
-  assert.match(client, /crypto\.subtle\.digest\('SHA-256'/);
-  assert.match(client, /snapshotsMatch\(payload, selectedRecord.snapshot\)/);
-  assert.match(client, /return \{ bytes, filename/);
-  assert.ok(panel.indexOf('await api.download') < panel.indexOf('URL.createObjectURL'));
+  assert.match(panel, /<ArchiveReport/);
   assert.match(panel, /brand !== props.brandId/);
   assert.match(panel, /onBeforeUnmount/);
   assert.match(catalog, /not balances at the end of the report window/);
-  assert.doesNotMatch(panel, /v-html|Number\(.*points|parseFloat/);
+  assert.doesNotMatch(panel, /api\.download|URL\.createObjectURL|\.download\s*=|v-html|Number\(.*points|parseFloat/);
 });
 
 test('notification content stays plaintext and page sentinels do not invent total counts', () => {
   const panel = read('platform-web/src/NotificationsPanel.vue');
   assert.doesNotMatch(panel, /v-html|total_count|totalCount/);
-  assert.match(panel, /api.deliveries\(brandId, 51, offset\)/);
+  assert.match(panel, /api.deliveries\(brandId, pageSize.value, offset\)/);
   const templates = read('platform-web/src/NotificationTemplatesPanel.vue');
   assert.doesNotMatch(templates, /loadHistory|api\.history|v-html/);
-  assert.match(panel, /rows\.items\.slice\(0, 50\)/);
+  assert.match(panel, /\[rows.items, readPaginationTotal\(rows\)\]/);
   assert.match(panel, /readPaginationTotal\(rows\)/);
-  assert.match(panel, /deliveryMore\.value = rows\.items\.length > 50/);
+  assert.match(panel, /deliveryMore\.value = BigInt\(offset \+ rows.items.length\) < BigInt\(deliveryTotal.value\)/);
   assert.match(templates, /template-languages/);
   assert.match(panel, /onBeforeUnmount/);
 });

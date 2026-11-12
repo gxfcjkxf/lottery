@@ -14,7 +14,6 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/brandregistry"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandskin"
 	"github.com/gxfcjkxf/lottery/backend/internal/commission"
-	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
@@ -31,19 +30,11 @@ func main() {
 	if err := notification.ValidateContent("recharge.confirmed", noticeContent); err != nil {
 		log.Fatal(err)
 	}
-	noticePoints := "9223372036854775807"
+	noticePoints := "92233720368547758.07"
 	noticeAuditID := id
-	complianceConfig := compliance.DefaultConfig()
-	complianceConfig.IdentityEnabled = true
-	complianceResult, complianceChecks, err := compliance.Evaluate(complianceConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
-	complianceDecision := compliance.Decision{ID: id, BrandID: id, PolicyVersion: 2, Config: complianceConfig, Operation: "betting", Decision: complianceResult, Checks: complianceChecks, AdapterMode: "stub", CreatedBy: id, Reason: "explicit stub check", AuditLogID: id, CreatedAt: now}
-	gateRecord := compliance.GateRecord{ID: id, BrandID: id, PolicyVersion: 2, Config: complianceConfig, Operation: "registration", Action: "register", Decision: complianceResult, Checks: complianceChecks, AdapterMode: "stub", ActorType: "anonymous", RequestID: id, AuditLogID: id, CreatedAt: now}
 	match := 1
 	in := rules.SimulationInput{
-		Definition: rules.Definition{SchemaVersion: 1, Model: rules.Model{Type: "X_PLUS_Y", RegularPool: rules.Pool{Min: 1, Max: 49}, SpecialPool: rules.Pool{Min: 1, Max: 49}, RegularCount: 6, SpecialCount: 1}, Selection: rules.SelectionRule{Mode: "numbers", SpecialCount: 1}, UnitPoints: 1, PrizeTiers: []rules.Tier{{Code: "SPECIAL_MATCH", Condition: rules.Condition{Op: "equals", Field: "special_match", Value: &match}, Odds: "35", Exclusive: true}}, Rounding: "half_up", RoundingScope: "order", Limits: rules.Limits{MaxCombinations: 100, MaxMultiplier: 10}},
+		Definition: rules.Definition{SchemaVersion: 1, Model: rules.Model{Type: "X_PLUS_Y", RegularPool: rules.Pool{Min: 1, Max: 49}, SpecialPool: rules.Pool{Min: 1, Max: 49}, RegularCount: 6, SpecialCount: 1}, Selection: rules.SelectionRule{Mode: "numbers", SpecialCount: 1}, UnitPoints: 100, PrizeTiers: []rules.Tier{{Code: "SPECIAL_MATCH", Condition: rules.Condition{Op: "equals", Field: "special_match", Value: &match}, Odds: "35", Exclusive: true}}, Rounding: "half_up", RoundingScope: "order", Limits: rules.Limits{MaxCombinations: 100, MaxMultiplier: 10}},
 		Selection:  rules.Selection{Special: []int{7, 19, 31, 43}}, Draw: rules.Draw{Regular: []int{1, 2, 3, 4, 5, 6}, Special: []int{7}}, Multiplier: 2,
 	}
 	out, err := rules.Simulate(in)
@@ -92,12 +83,12 @@ func main() {
 		log.Fatal(err)
 	}
 	before := points.Balance{}
-	before[0][0] = 100
+	before[0][0] = 10000
 	delta := points.Balance{}
 	delta[0][0] = -8
 	after := points.Balance{}
-	after[0][0] = 92
-	entry := points.Entry{ID: id, BrandID: id, AccountID: id, MemberID: id, EntryType: "bet", ReferenceType: "order", ReferenceID: id, OperationKey: "contract-example", Reason: "contract example", ActorType: "user", ActorID: id, RequestID: "contract-example", Version: 2, Before: before, Delta: delta, After: after, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 8}}, CreatedAt: now}
+	after[0][0] = 9200
+	entry := points.Entry{ID: id, BrandID: id, AccountID: id, MemberID: id, EntryType: "bet", ReferenceType: "order", ReferenceID: id, OperationKey: "contract-example", Reason: "contract example", ActorType: "user", ActorID: id, RequestID: "contract-example", Version: 2, Before: before, Delta: delta, After: after, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 800}}, CreatedAt: now}
 	presentationConfig := brandskin.Config{}
 	presentationEffective, err := brandskin.Resolve("Example", presentationConfig)
 	if err != nil {
@@ -124,22 +115,13 @@ func main() {
 		"AdminBrandPresentationRevision":   brandskin.Revision{ID: id, BrandID: id, Version: 2, Config: presentationConfig, Effective: presentationEffective, ChangedBy: id, Reason: "contract example", AuditLogID: id, CreatedAt: now},
 		"AdminBrandOperation":              brandops.Record{BrandID: id, Version: 2, Name: "Example", Status: "paused", UpdatedAt: now, AuditLogID: id},
 		"AdminBrandCreationInput":          brandregistry.Input{Code: "example_brand", Name: "Example", DefaultLocale: "en", Timezone: "UTC", Reason: "explicit creation"},
-		"ComplianceConfig":                 complianceConfig,
-		"ComplianceGateRecord":             gateRecord,
-		"ComplianceGatesPage":              compliance.GatePage{BrandID: id, Items: []compliance.GateRecord{gateRecord}, Limit: 20, Offset: 0, TotalCount: "1"},
-		"CompliancePolicyInput":            compliance.Input{Version: 1, Config: complianceConfig, Reason: "configure future check"},
-		"CompliancePolicy":                 compliance.Policy{BrandID: id, Version: 2, Config: complianceConfig, UpdatedAt: now, AuditLogID: id},
-		"ComplianceCheckInput":             compliance.CheckInput{Version: 2, Operation: "betting", Reason: "explicit stub check"},
-		"ComplianceDecision":               complianceDecision,
-		"ComplianceHistoryPage":            compliance.HistoryPage{BrandID: id, Items: []compliance.Revision{{ID: id, BrandID: id, Version: 1, Config: compliance.DefaultConfig(), Reason: "Initial disabled", CreatedAt: now}}, Limit: 20, Offset: 0, TotalCount: "1"},
-		"ComplianceDecisionPage":           compliance.DecisionPage{BrandID: id, Items: []compliance.Decision{complianceDecision}, Limit: 20, Offset: 0, TotalCount: "1"},
 		"AdminBrandCreationReceipt":        brandregistry.Receipt{ID: id, Code: "example_brand", Name: "Example", DefaultLocale: "en", Timezone: "UTC", Status: "paused", Version: 1, CreatedAt: now, AuditLogID: id},
 		"AdminBrandOperationRevision":      brandops.Revision{ID: id, BrandID: id, Version: 2, PreviousStatus: "active", Status: "paused", ChangedBy: id, Reason: "contract example", AuditLogID: id, CreatedAt: now},
 		"FinanceAgentCreateInput":          agentInput, "FinanceWithdrawalGameConfig": gameWithdrawal,
 		"IdentityUser":   identity.User{ID: id, Status: "normal"},
 		"IdentityMember": identity.Member{ID: id, BrandID: id, Status: "normal", JoinedAt: now},
 		"FinanceBalance": before, "FinanceDeltaBalance": delta, "FinanceEntry": entry,
-		"FinanceWallet":          points.Wallet{AccountID: id, BrandID: id, MemberID: id, Version: 2, DisplayPoints: 92, AvailablePoints: 92, RechargePoints: 92, BySource: after},
+		"FinanceWallet":          points.Wallet{AccountID: id, BrandID: id, MemberID: id, Version: 2, DisplayPoints: 9200, AvailablePoints: 9200, RechargePoints: 9200, BySource: after},
 		"FinanceReportBalances":  reporting.Balances{AccountCount: "2", AvailablePoints: "18000000000000000000", FrozenPoints: "0", WithdrawalPoints: "0", TotalPoints: "18000000000000000000"},
 		"FinanceLedgerTotals":    reporting.LedgerTotals{EntryCount: "2", NetPoints: "-18000000000000000000", RechargePoints: "0", PrizeCreditPoints: "0", PrizeReversalPoints: "18000000000000000000", RefundPoints: "0"},
 		"CommissionReport":       reporting.CommissionReport{BrandID: id, SnapshotAt: now, Timezone: "UTC", Query: reporting.CommissionQuery{From: now.Add(-24 * time.Hour), To: now, GroupBy: "day", Limit: 20}, Summary: reporting.CommissionTotals{EntryCount: "0", PaidEntryCount: "0", PaidPoints: "0", AdjustmentEntryCount: "0", AdjustmentCreditPoints: "0", AdjustmentDebitPoints: "0", CorrectionEntryCount: "0", CorrectionCreditPoints: "0", CorrectionDebitPoints: "0", NetPoints: "0"}, Items: []reporting.Group[reporting.CommissionTotals]{}, TotalGroups: "0"},
@@ -185,11 +167,11 @@ func main() {
 	values["correction_policy"] = commission.CorrectionExecutionPolicy{BrandID: id, Version: 1, Enabled: false, UpdatedAt: stamp}
 	values["correction_policy_updated"] = commission.CorrectionExecutionPolicy{BrandID: id, Version: 2, Enabled: true, AuditLogID: id, UpdatedAt: stamp}
 	values["correction_plan"] = commission.CorrectionPlan{ID: id, BrandID: id, CycleID: id, PaymentID: id, RunID: id, State: "ready", PayoutMode: "mixed", Version: 3, EvidenceEpoch: "9223372036854775807", BeforePoints: "100", CalculatedPoints: "100", CreditPoints: &credit, DebitPoints: &debit, NetPoints: &net, TargetCount: "2", PlannedCount: "2", CreationAuditLogID: id, LastAuditLogID: id, CreatedAt: stamp, UpdatedAt: stamp}
-	values["correction_plan_target"] = commission.CorrectionPlanTarget{ID: id, BrandID: id, PlanID: id, AgentID: id, MemberID: id, EarningID: func() *string { v := id; return &v }(), PointsBefore: 0, PointsAfter: 100, DeltaPoints: 100, CreationAuditLogID: id, CreatedAt: stamp}
+	values["correction_plan_target"] = commission.CorrectionPlanTarget{ID: id, BrandID: id, PlanID: id, AgentID: id, MemberID: id, EarningID: func() *string { v := id; return &v }(), PointsBefore: 0, PointsAfter: 10000, DeltaPoints: 10000, CreationAuditLogID: id, CreatedAt: stamp}
 	values["correction_execution"] = commission.CorrectionExecution{ID: id, BrandID: id, CycleID: id, PlanID: id, RunID: id, PayoutMode: "mixed", State: "awaiting_approval", Version: 1, PlanVersion: 3, EvidenceEpoch: "9223372036854775807", CreditPoints: "100", DebitPoints: "100", NetPoints: "0", AppliedCreditPoints: "0", AppliedDebitPoints: "0", TargetCount: "2", AppliedCount: "0", CreationAuditLogID: id, LastAuditLogID: id, CreatedAt: stamp, UpdatedAt: stamp}
 	financialVersion := int64(1)
 	ledger, targetAudit := id, id
-	values["correction_execution_target"] = commission.CorrectionExecutionTarget{ID: id, BrandID: id, ExecutionID: id, PlanTargetID: id, AgentID: id, MemberID: id, PointsBefore: 100, PointsAfter: 0, DeltaPoints: -100, State: "applied", LedgerEntryID: &ledger, AuditLogID: &targetAudit, FinancialVersion: &financialVersion, CreatedAt: stamp, AppliedAt: &stamp}
+	values["correction_execution_target"] = commission.CorrectionExecutionTarget{ID: id, BrandID: id, ExecutionID: id, PlanTargetID: id, AgentID: id, MemberID: id, PointsBefore: 10000, PointsAfter: 0, DeltaPoints: -10000, State: "applied", LedgerEntryID: &ledger, AuditLogID: &targetAudit, FinancialVersion: &financialVersion, CreatedAt: stamp, AppliedAt: &stamp}
 	if err := json.NewEncoder(os.Stdout).Encode(values); err != nil {
 		log.Fatal(err)
 	}

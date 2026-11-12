@@ -110,7 +110,7 @@ func loadBuckets(ctx context.Context, q query, brand, account string) (Balance, 
 	defer rows.Close()
 	for rows.Next() {
 		var source, state string
-		var amount int64
+		var amount Amount
 		if err = rows.Scan(&source, &state, &amount); err != nil {
 			return b, err
 		}
@@ -224,7 +224,7 @@ func validChange(c Change) bool {
 	if !uuidPattern.MatchString(c.BrandID) || !uuidPattern.MatchString(c.MemberID) || !operationPattern.MatchString(c.OperationKey) || !operationPattern.MatchString(c.EntryType) || !operationPattern.MatchString(c.ReferenceType) || utf8.RuneCountInString(c.Reason) > 500 || !utf8.ValidString(c.Reason) || len(c.RequestID) == 0 || len(c.RequestID) > 80 {
 		return false
 	}
-	if c.ActorType != "user" && c.ActorType != "admin" && c.ActorType != "system" {
+	if c.ActorType != "user" && c.ActorType != "admin" && c.ActorType != "system" && c.ActorType != "agent" {
 		return false
 	}
 	if c.ActorID != "" && !uuidPattern.MatchString(c.ActorID) {
@@ -408,7 +408,7 @@ func (s Store) Post(ctx context.Context, tx pgx.Tx, c Change) (Entry, error) {
 			if c.Delta[si][ti] == 0 {
 				continue
 			}
-			tag, e2 := tx.Exec(ctx, `UPDATE point_buckets SET points=$4 WHERE brand_id=$1 AND account_id=$2 AND source=$3 AND state=$5`, c.BrandID, account, source, int64(after[si][ti]), state)
+			tag, e2 := tx.Exec(ctx, `UPDATE point_buckets SET points=$4 WHERE brand_id=$1 AND account_id=$2 AND source=$3 AND state=$5`, c.BrandID, account, source, after[si][ti], state)
 			if e2 != nil {
 				return Entry{}, e2
 			}

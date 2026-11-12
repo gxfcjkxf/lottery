@@ -1,3 +1,4 @@
+import { isPointTotal, pointsMinor } from '@lottery/shared'
 import { commissionListParams, type CommissionListQuery } from './commission-list-query'
 import { readAdminEnvelope } from './admin-api'
 
@@ -64,14 +65,14 @@ function validPayment(value: unknown, brand: string): value is CommissionPayment
   if (!validUuid(value.id) || value.brand_id !== brand || !validUuid(value.brand_id) || !validUuid(value.cycle_id) || !validUuid(value.run_id) ||
     !["awaiting_approval", "paying", "paid", "failed", "stale", "blocked"].includes(value.state) ||
     !["manual", "automatic", "mixed", "none"].includes(value.payout_mode) || !validVersion(value.version) ||
-    !validDecimal(value.evidence_epoch) || !validDecimal(value.total_points) || !validDecimal(value.paid_points) ||
+    !validDecimal(value.evidence_epoch) || !isPointTotal(value.total_points) || !isPointTotal(value.paid_points) ||
     !validDecimal(value.target_count) || !validDecimal(value.paid_count) || BigInt(value.paid_count) > BigInt(value.target_count) ||
-    BigInt(value.paid_points) > BigInt(value.total_points) || !validUuid(value.creation_audit_log_id) ||
+    pointsMinor(value.paid_points) > pointsMinor(value.total_points) || !validUuid(value.creation_audit_log_id) ||
     !(value.last_error_code === null || (typeof value.last_error_code === "string" && value.last_error_code.length > 0 && value.last_error_code.length <= 200)) ||
     !validDate(value.created_at) || !validDate(value.updated_at) || Date.parse(value.updated_at) < Date.parse(value.created_at)) return false;
   if ((value.state === "failed" || value.state === "blocked") !== (typeof value.last_error_code === "string")) return false;
-  if (value.state === "paid" && (value.paid_count !== value.target_count || value.paid_points !== value.total_points)) return false;
-  if (value.state === "awaiting_approval" && (!(["manual", "mixed"] as unknown[]).includes(value.payout_mode) || value.paid_count !== "0" || value.paid_points !== "0")) return false;
+  if (value.state === "paid" && (value.paid_count !== value.target_count || pointsMinor(value.paid_points) !== pointsMinor(value.total_points))) return false;
+  if (value.state === "awaiting_approval" && (!(["manual", "mixed"] as unknown[]).includes(value.payout_mode) || value.paid_count !== "0" || pointsMinor(value.paid_points) !== 0n)) return false;
   return true;
 }
 function validPage(value: unknown, brand: string, limit: number, offset: number): value is CommissionPaymentPage {

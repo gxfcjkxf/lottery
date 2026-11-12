@@ -53,7 +53,7 @@ func fixture(t *testing.T) (Service, string, string) {
 		if i == 1 {
 			b = other
 		}
-		if _, e := db.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, m, b, user); e != nil {
+		if _, e := db.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, m, b, user); e != nil {
 			t.Fatal(e)
 		}
 	}

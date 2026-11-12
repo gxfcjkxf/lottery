@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { nextTick } from 'vue'
 const filterReset = ref(0)
 
 import ManagementList from "@lottery/shared/ManagementList.vue"
@@ -29,6 +28,8 @@ import { PlatformApiError } from './platform-api'
 import { createPlatformWithdrawalApi } from './withdrawal-api'
 import FilterAssociationSearch from "@lottery/shared/FilterAssociationSearch.vue"
 import { formatPlatformDateTime, type PlatformDisplaySettings } from './platform-format'
+const pageSize = ref(50)
+
 
 const props = defineProps<{ brandId: string; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings; initialState?: WithdrawalState }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
@@ -49,7 +50,7 @@ const more = ref(false)
 const loading = ref(false)
 const error = ref<string | import("@lottery/shared").LocalizedMessage>("")
 let generation = 0
-async function clearFilters() { filterReset.value++; memberDraft.value = ''; stateDraft.value = ''; await nextTick(); await load(0, '', ''); }
+
 async function submitMemberQuery() {
   if (memberSearchPending.value) return
   try {
@@ -76,7 +77,7 @@ async function load(nextOffset = 0, member = activeMember.value, state = activeS
   if (!brandId) { loading.value = false; return }
   loading.value = true
   try {
-    const page = await api.list(brandId, { limit: 50, offset: nextOffset, ...(member ? { memberId: member } : {}), ...(state ? { state } : {}) })
+    const page = await api.list(brandId, { limit: pageSize.value, offset: nextOffset, ...(member ? { memberId: member } : {}), ...(state ? { state } : {}) })
     if (request !== generation || props.brandId !== brandId) return
     [rows.value,totalCount.value] = [page.items,readPaginationTotal(page)]; offset.value = page.offset; more.value = page.has_more
     activeMember.value = member; activeState.value = state
@@ -125,7 +126,7 @@ useOperationToast(error, value => displayPublicError(value), 'error');
         <SelectControl v-model="stateDraft" :label="copy.state" :disabled="loading || !brandId" :options="[{ value: '', label: (String(copy.all)).trim() }, ...((states).map((state) => ({ value: state, label: (String(labels[state])).trim() })))]" />
       </label>
       <button class="button button-primary" :disabled="loading || !brandId || memberSearchPending">{{ copy.query }}</button>
-      <button type="button" class="button button-secondary" :disabled="loading || !brandId" @click="withGlobalLoading(clearFilters)">{{ ui('admin.copy.b089734d') }}</button>
+
     </form></template>
 
     <section class="reward-detail console-stack"><div class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ copy.order }}</th><th>{{ copy.points }}</th><th><BusinessDetails :value="copy.state" :locale="associationLocale" /></th><th>{{ copy.created }}</th></tr></thead><tbody>
@@ -145,5 +146,5 @@ useOperationToast(error, value => displayPublicError(value), 'error');
       <div v-if="history" class="table-wrap" data-testid="platform-withdrawal-history"><table class="console-table console-responsive-table"><thead><tr><th>{{ copy.from }}</th><th>{{ copy.to }}</th><th>{{ copy.actor }}</th><th>{{ copy.reason }}</th><th>{{ copy.created }}</th></tr></thead><tbody><tr v-for="item in history.items" :key="item.id"><td :data-label="copy.from">{{ item.from_state ? labels[item.from_state] : '—' }}</td><td :data-label="copy.to">{{ labels[item.to_state] }}</td><td :data-label="copy.actor"><BusinessDetails :value="item.actor_type" :locale="associationLocale" /></td><td :data-label="copy.reason">{{ auditReasonLabel(item.reason, associationLocale) }}</td><td :data-label="copy.created">{{ formatPlatformDateTime(item.created_at, props.displaySettings, props.locale) }}</td></tr></tbody></table></div>
     </section>
 </DetailModal>
-  <template #pagination><TablePagination :show-empty="!loading && !error" :total="totalCount" :page="Math.floor(offset / 50 + 1)" :count="rows.length" :locale="locale" data-testid="platform-withdrawal-pages" :page-size="50" :previous-disabled="loading || offset === 0 || !brandId" :next-disabled="loading || !more" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => load((target - 1) * 50)" /></template></ManagementList>
+  <template #pagination><TablePagination :total="totalCount" :page="Math.floor(offset / pageSize + 1)" :count="rows.length" :locale="locale" data-testid="platform-withdrawal-pages" :page-size="pageSize" :previous-disabled="loading || offset === 0 || !brandId" :next-disabled="loading || !more" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => load((target - 1) * pageSize)" :change-page-size="async (size: number) => { pageSize = size; await load(0) }" :busy="loading" /></template></ManagementList>
 </template>

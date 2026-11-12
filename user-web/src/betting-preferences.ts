@@ -1,27 +1,9 @@
+import { isPoints, pointsMinor } from '@lottery/shared'
 import {createApiClient,type ApiClientOptions} from '../../shared/src/api'
-export interface BettingPreferences { lastPoints: string }
-const bettingPreferencesKey = (brandId: string, memberId: string) => `lottery:betting-preferences:${brandId}:${memberId}`
-
 export function validBetAmount(value: string): boolean {
-  return /^[1-9]\d*$/.test(value) && BigInt(value) <= 9223372036854775807n
+  return isPoints(value) && pointsMinor(value) > 0n
 }
-export function validQuickAmount(value:string):boolean{return validBetAmount(value)&&value.length<=6}
-function validate(value: unknown): asserts value is BettingPreferences {
-  const prefs = value as BettingPreferences | null
-  if (!prefs || typeof prefs.lastPoints !== 'string' || (prefs.lastPoints !== '' && !validBetAmount(prefs.lastPoints))) throw new Error('Invalid betting preferences')
-}
-export function readBettingPreferences(storage: Pick<Storage,'getItem'>, brandId: string, memberId: string): BettingPreferences {
-  const raw = storage.getItem(bettingPreferencesKey(brandId, memberId))
-  if (raw === null) return {lastPoints: ''}
-  const value: unknown = JSON.parse(raw)
-  validate(value)
-  return value
-}
-export function writeBettingPreferences(storage: Pick<Storage,'setItem'>, brandId: string, memberId: string, value: BettingPreferences) {
-  validate(value)
-  storage.setItem(bettingPreferencesKey(brandId, memberId), JSON.stringify(value))
-}
-
+export function validQuickAmount(value:string):boolean{return /^[1-9]\d{0,5}$/.test(value)}
 export function createQuickAmountsApi(options:ApiClientOptions={}) {
  const client=createApiClient(options)
  const path=(options.brandCode?`/api/v1/b/${encodeURIComponent(options.brandCode)}`:'/api/v1')+'/me/betting-preferences'

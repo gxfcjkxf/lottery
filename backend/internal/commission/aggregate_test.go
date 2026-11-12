@@ -18,11 +18,11 @@ func TestAggregateRoundsWholeSumOnce(t *testing.T) {
 		whole points.Amount
 	}{
 		{"empty", nil, ExactAmount{"0", "1"}, 0},
-		{"three tenths twice", []ExactAmount{{"3", "10"}, {"3", "10"}}, ExactAmount{"3", "5"}, 1},
-		{"four tenths three times", []ExactAmount{{"2", "5"}, {"2", "5"}, {"2", "5"}}, ExactAmount{"6", "5"}, 1},
-		{"thirds sum to one", []ExactAmount{{"1", "3"}, {"2", "3"}}, ExactAmount{"1", "1"}, 1},
-		{"half rounds up", []ExactAmount{{"1", "2"}}, ExactAmount{"1", "2"}, 1},
-		{"below half rounds down", []ExactAmount{{"49", "100"}}, ExactAmount{"49", "100"}, 0},
+		{"three tenths twice", []ExactAmount{{"3", "10"}, {"3", "10"}}, ExactAmount{"3", "5"}, 60},
+		{"four tenths three times", []ExactAmount{{"2", "5"}, {"2", "5"}, {"2", "5"}}, ExactAmount{"6", "5"}, 120},
+		{"thirds sum to one", []ExactAmount{{"1", "3"}, {"2", "3"}}, ExactAmount{"1", "1"}, 100},
+		{"half rounds up", []ExactAmount{{"1", "2"}}, ExactAmount{"1", "2"}, 50},
+		{"below half rounds down", []ExactAmount{{"49", "100"}}, ExactAmount{"49", "100"}, 49},
 		{"zero", []ExactAmount{{"0", "1"}}, ExactAmount{"0", "1"}, 0},
 	}
 	for _, tt := range tests {
@@ -56,7 +56,7 @@ func TestAggregateCanonicalFractionsAndLargeIntegers(t *testing.T) {
 	large.Add(large, big.NewInt(1))
 	gotExact, gotWhole, err := Aggregate([]ExactAmount{{large.String(), "1"}, {"1", "1"}})
 	want := new(big.Int).Add(large, big.NewInt(1)).String()
-	if err != nil || gotExact != (ExactAmount{want, "1"}) || gotWhole != points.Amount(1<<53+2) {
+	if err != nil || gotExact != (ExactAmount{want, "1"}) || gotWhole != points.Amount((1<<53+2)*100) {
 		t.Fatalf("large exact sum = (%v, %v, %v)", gotExact, gotWhole, err)
 	}
 
@@ -81,7 +81,7 @@ func TestAggregateRejectsNoncanonicalFractions(t *testing.T) {
 }
 
 func TestAggregateInt64Boundaries(t *testing.T) {
-	max := ExactAmount{big.NewInt(math.MaxInt64).String(), "1"}
+	max := ExactAmount{big.NewInt(math.MaxInt64).String(), "100"}
 	for _, tt := range []struct {
 		name    string
 		items   []ExactAmount
@@ -89,7 +89,7 @@ func TestAggregateInt64Boundaries(t *testing.T) {
 		wantErr error
 	}{
 		{"max", []ExactAmount{max}, points.Amount(math.MaxInt64), nil},
-		{"max plus less than half", []ExactAmount{max, {"49", "100"}}, points.Amount(math.MaxInt64), nil},
+		{"max plus less than half", []ExactAmount{max, {"49", "10000"}}, points.Amount(math.MaxInt64), nil},
 		{"max plus half", []ExactAmount{max, {"1", "2"}}, 0, points.ErrOverflow},
 		{"rounded beyond max", []ExactAmount{max, {"51", "100"}}, 0, points.ErrOverflow},
 	} {

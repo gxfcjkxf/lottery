@@ -169,7 +169,7 @@ func TestNotificationTemplateHTTPRealRegistrationGetsImmutableCurrentCopy(t *tes
 	mustStatus(t, r, 200)
 	var updated notification.Template
 	managedData(t, r, &updated)
-	registered := f.call("POST", "/api/v1/auth/register", "template-user-new-002", "", managedBrand, map[string]any{"username": "template_notification_user", "password": "template-notification-pass", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"})
+	registered := f.call("POST", "/api/v1/auth/register", "template-user-new-002", "", managedBrand, map[string]any{"username": "template_notification_user", "password": "template-notification-pass", })
 	mustStatus(t, registered, 201)
 	var auth identity.Authentication
 	managedData(t, registered, &auth)

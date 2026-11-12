@@ -1,6 +1,7 @@
 export * from './api'
 export * from './captcha-refresh'
 export * from './form-validation'
+export * from './input-normalization'
 export * from './global-loading'
 export * from './refresh-button'
 export * from './archive-report'

@@ -5,14 +5,14 @@ const doc = JSON.parse(readFileSync(new URL('../../docs/openapi.json', import.me
 test('commission cycle APIs are exact, primary, audited and do not advertise payouts', () => {
   const routes = Object.entries(doc.paths).filter(([p]) => /^\/api\/v1\/admin\/commission-cycles(?:\/|$)/.test(p)).flatMap(([p,v]) => Object.keys(v).map(m => `${m.toUpperCase()} ${p}`));
   assert.deepEqual(routes.sort(), [
-    'GET /api/v1/admin/commission-cycles', 'POST /api/v1/admin/commission-cycles', 'GET /api/v1/admin/commission-cycles/{id}',
+    'GET /api/v1/admin/commission-cycles/candidates', 'GET /api/v1/admin/commission-cycles', 'POST /api/v1/admin/commission-cycles', 'GET /api/v1/admin/commission-cycles/{id}',
     'GET /api/v1/admin/commission-cycles/{id}/earnings', 'POST /api/v1/admin/commission-cycles/{id}/retry',
     'GET /api/v1/admin/commission-cycles/{id}/runs', 'GET /api/v1/admin/commission-cycles/{id}/runs/{runID}/calculations',
     'GET /api/v1/admin/commission-cycles/{id}/runs/{runID}/earnings', 'GET /api/v1/admin/commission-cycles/{id}/runs/{runID}/allocations',
   ].sort());
   const platformReads = Object.entries(doc.paths).filter(([p]) => /^\/api\/v1\/platform\/commission-cycles(?:\/|$)/.test(p)).flatMap(([p,v]) => Object.keys(v).map(m => `${m.toUpperCase()} ${p}`));
   assert.deepEqual(platformReads.sort(), [
-    'GET /api/v1/platform/commission-cycles', 'GET /api/v1/platform/commission-cycles/{id}',
+    'GET /api/v1/platform/commission-cycles/candidates', 'GET /api/v1/platform/commission-cycles', 'GET /api/v1/platform/commission-cycles/{id}',
     'GET /api/v1/platform/commission-cycles/{id}/earnings', 'GET /api/v1/platform/commission-cycles/{id}/runs',
     'GET /api/v1/platform/commission-cycles/{id}/runs/{runID}/calculations',
     'GET /api/v1/platform/commission-cycles/{id}/runs/{runID}/earnings',

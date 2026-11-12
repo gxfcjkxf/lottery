@@ -17,7 +17,7 @@ export function registerBrandSettingsTests(reflow = false) {
         available_locales: ['en', 'zh-CN'], content: { en: { tagline: '', announcement: '' }, 'zh-CN': { tagline: '', announcement: '' } } }
       let presentation = { brand_id: gameId, version: 4, status: 'active', base_name: 'Aurora', config: Object.fromEntries(Object.keys(effective).map(key => [key, null])), effective, updated_at: at, audit_log_id: gameId }
       let policy = { brand_id: gameId, version: 4, config: { age_enabled: false, minimum_age: null, region_enabled: false, allowed_countries: [], identity_enabled: false, account_risk_enabled: false, betting_risk_enabled: false, exclusion_enabled: false, responsible_gambling_enabled: false }, updated_at: at, audit_log_id: gameId }
-      const auth = { version: 4, captcha_enabled: false, telegram_enabled: false, telegram_client_id: '', privacy_policy_version: 'terms-1', service_terms_version: 'terms-1' }
+      const auth = { version: 4, captcha_enabled: false, telegram_enabled: false, telegram_client_id: '', }
       const attempts: { path: string; body: string | null; key: string | undefined }[] = []
       let loseReceipt = true
       const receipts = new Map<string, typeof presentation>()
@@ -93,7 +93,7 @@ export function registerBrandSettingsTests(reflow = false) {
       expect(actions.buttons).toHaveLength(2)
       if (actions.width >= actions.buttons[0].width + actions.buttons[1].width + 8) expect(actions.buttons[0].top).toBe(actions.buttons[1].top)
 
-      await expect(tabs).toHaveCount(6)
+      await expect(tabs).toHaveCount(7)
       await expect(display.locator('.inherit-toggle')).toHaveCount(0)
       await expect(display.locator('details')).not.toHaveAttribute('open')
       await display.locator('details summary').click()
@@ -122,7 +122,7 @@ export function registerBrandSettingsTests(reflow = false) {
       expect(attempts).toHaveLength(2)
       expect(attempts[0].key).not.toBe(attempts[1].key)
       await dismissToasts()
-      await expect(tabs).toHaveCount(6)
+      await expect(tabs).toHaveCount(7)
       await expect(tabs.filter({hasText:zh?'域名':'Domains'})).toHaveCount(0)
       expect(requests.some(request => request.includes('brand-domains'))).toBe(false)
       expect(requests.some(request => /auth-settings|compliance/.test(request))).toBe(false)

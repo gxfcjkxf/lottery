@@ -1,0 +1,20 @@
+[Unit]
+Description=Lottery Canada28 JND28 source adapter
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lottery
+Group=lottery
+ExecStart=/usr/bin/python3 /opt/lottery/feeds/canada28-feed.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

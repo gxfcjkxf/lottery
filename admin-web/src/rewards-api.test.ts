@@ -169,3 +169,11 @@ it("retains authorized member names on validated reward reads", async () => {
   expect(associationLabel(result.items[0], "member", member, "zh-CN")).toBe("reward_user");
   expect(Object.keys(result.items[0])).not.toContain("associations");
 });
+
+it('compares reward grant receipts by exact decimal value while preserving the request body', async () => {
+ const body={member_id:member,points:'0.50',reason:''},data=order({points:'0.5',reason:''})
+ const fetcher=vi.fn<typeof fetch>().mockResolvedValue(ok(data,201))
+ await expect(createRewardsApi(fetcher,actor).create(brand,body,'reward-decimal-key')).resolves.toEqual(data)
+ expect(JSON.parse(String(fetcher.mock.calls[0]![1]!.body))).toEqual(body)
+ await expect(createRewardsApi(async()=>ok(order({points:'0.51'}),201),actor).create(brand,body,'reward-decimal-key')).rejects.toMatchObject({code:'INVALID_RESPONSE'})
+})

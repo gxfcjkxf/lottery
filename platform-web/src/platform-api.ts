@@ -1,3 +1,5 @@
+import { type ThemeId, themeIds } from '@lottery/shared/theme'
+import { isPoints } from '@lottery/shared'
 import { readPaginationTotal } from '@lottery/shared'
 import { readApiEnvelope } from '@lottery/shared'
 
@@ -11,7 +13,7 @@ export interface PlatformCommissionPolicy {
  version: number
  config: { enabled: boolean; payout_mode: 'manual' | 'automatic'; calendar: null | { timezone: string; cycle: 'weekly' | 'monthly'; boundary_time: string; weekday: number | null; month_day: number | null; short_month: '' | 'last_day' | 'skip' } }
 }
-export interface PlatformSettings { version: number; display_name: string; logo_text: string; logo_url: string; timezone: string; date_format: 'YYYY-MM-DD' | 'DD/MM/YYYY' | 'MM/DD/YYYY'; time_format: 'HH:mm:ss' | 'hh:mm:ss A'; updated_at: string; audit_log_id?: string }
+export interface PlatformSettings { theme: ThemeId; version: number; display_name: string; logo_text: string; logo_url: string; timezone: string; date_format: 'YYYY-MM-DD' | 'DD/MM/YYYY' | 'MM/DD/YYYY'; time_format: 'HH:mm:ss' | 'hh:mm:ss A'; updated_at: string; audit_log_id?: string }
 export type PlatformPresentation = Pick<PlatformSettings, 'display_name' | 'logo_text' | 'logo_url'>
 export interface BrandCreateInput { code: string; name: string; default_locale: 'en' | 'zh-CN'; timezone: string; reason?: string }
 interface BrandCreateReceipt extends Pick<PlatformBrand, 'id' | 'code' | 'name' | 'status'> { status: 'paused'; default_locale: 'en' | 'zh-CN'; timezone: string; version: 1; created_at: string; audit_log_id: string }
@@ -51,10 +53,10 @@ function isPlatformCommissionPolicy(value: unknown): value is PlatformCommission
  return cal.cycle==='weekly' ? Number.isInteger(cal.weekday) && Number(cal.weekday)>=0 && Number(cal.weekday)<=6 && cal.month_day===null && cal.short_month==='' : cal.cycle==='monthly' && cal.weekday===null && Number.isInteger(cal.month_day) && Number(cal.month_day)>=1 && Number(cal.month_day)<=31 && ['last_day','skip'].includes(String(cal.short_month))
 }
 function isBrand(v: unknown): v is PlatformBrand {
-  return isObj(v) && exactKeys(v, ['id', 'code', 'name', 'status', 'member_count', 'agent_count', 'recharge_quota_available', 'created_at']) && text(v.id) && text(v.code) && text(v.name) && text(v.status) && text(v.member_count) && /^(0|[1-9]\d*)$/.test(v.member_count) && text(v.agent_count) && /^(0|[1-9]\d*)$/.test(v.agent_count) && (v.recharge_quota_available === null || text(v.recharge_quota_available) && /^(0|[1-9]\d*)$/.test(v.recharge_quota_available) && BigInt(v.recharge_quota_available)<=9223372036854775807n) && dateTime(v.created_at)
+  return isObj(v) && exactKeys(v, ['id', 'code', 'name', 'status', 'member_count', 'agent_count', 'recharge_quota_available', 'created_at']) && text(v.id) && text(v.code) && text(v.name) && text(v.status) && text(v.member_count) && /^(0|[1-9]\d*)$/.test(v.member_count) && text(v.agent_count) && /^(0|[1-9]\d*)$/.test(v.agent_count) && (v.recharge_quota_available === null || isPoints(v.recharge_quota_available)) && dateTime(v.created_at)
 }
 function isMember(v: unknown): v is PlatformMember {
-  return isObj(v) && exactKeys(v, ['id', 'global_user_id', 'username', 'phone', 'display_name', 'notes', 'status', 'joined_at', 'brand_id', 'tags', 'online', 'display_points']) && text(v.id) && text(v.global_user_id) && text(v.username) && text(v.phone) && text(v.display_name) && text(v.notes) && text(v.status) && dateTime(v.joined_at) && text(v.brand_id) && stringArray(v.tags) && typeof v.online === 'boolean' && (v.display_points === null || text(v.display_points) && /^(0|[1-9]\d*)$/.test(v.display_points))
+  return isObj(v) && exactKeys(v, ['id', 'global_user_id', 'username', 'phone', 'display_name', 'notes', 'status', 'joined_at', 'brand_id', 'tags', 'online', 'display_points']) && text(v.id) && text(v.global_user_id) && text(v.username) && text(v.phone) && text(v.display_name) && text(v.notes) && text(v.status) && dateTime(v.joined_at) && text(v.brand_id) && stringArray(v.tags) && typeof v.online === 'boolean' && (v.display_points === null || text(v.display_points) && isPoints(v.display_points))
 }
 function isAudit(v: unknown): v is PlatformAudit {
   return isObj(v) && exactKeys(v, ['id', 'brand_id', 'action', 'actor_type', 'actor_id', 'actor_username', 'resource_type', 'resource_id', 'reason', 'request_id', 'created_at', 'ip_address', 'before_json', 'after_json']) && text(v.id) && (v.brand_id === null || text(v.brand_id)) && text(v.action) && text(v.actor_type) && text(v.actor_id) && text(v.actor_username) && text(v.resource_type) && text(v.resource_id) && text(v.reason) && text(v.request_id) && dateTime(v.created_at) && text(v.ip_address) && 'before_json' in v && 'after_json' in v
@@ -167,8 +169,8 @@ export function createPlatformApi(fetcher: typeof fetch = fetch) {
 }
 
 function isPlatformSettings(v: unknown): v is PlatformSettings {
-  return isObj(v) && (exactKeys(v, ['version', 'display_name', 'logo_text', 'logo_url', 'timezone', 'date_format', 'time_format', 'updated_at']) || exactKeys(v, ['version', 'display_name', 'logo_text', 'logo_url', 'timezone', 'date_format', 'time_format', 'updated_at', 'audit_log_id'])) &&
-    typeof v.version === 'number' && Number.isSafeInteger(v.version) && v.version > 0 && text(v.display_name) && text(v.logo_text) && text(v.logo_url) && text(v.timezone) && ['YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY'].includes(String(v.date_format)) && ['HH:mm:ss', 'hh:mm:ss A'].includes(String(v.time_format)) && dateTime(v.updated_at) && (!('audit_log_id' in v) || text(v.audit_log_id))
+  return isObj(v) && (exactKeys(v, ['version', 'display_name', 'logo_text', 'logo_url', 'timezone', 'date_format', 'time_format', 'theme', 'updated_at']) || exactKeys(v, ['version', 'display_name', 'logo_text', 'logo_url', 'timezone', 'date_format', 'time_format', 'theme', 'updated_at', 'audit_log_id'])) &&
+    themeIds.includes(v.theme as ThemeId) && typeof v.version === 'number' && Number.isSafeInteger(v.version) && v.version > 0 && text(v.display_name) && text(v.logo_text) && text(v.logo_url) && text(v.timezone) && ['YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY'].includes(String(v.date_format)) && ['HH:mm:ss', 'hh:mm:ss A'].includes(String(v.time_format)) && dateTime(v.updated_at) && (!('audit_log_id' in v) || text(v.audit_log_id))
 }
 
 export function freezeBrandCreateRequest(input: BrandCreateInput, key: string = crypto.randomUUID()): FrozenBrandCreateRequest {

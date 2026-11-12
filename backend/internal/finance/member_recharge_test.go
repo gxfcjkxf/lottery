@@ -27,9 +27,9 @@ func TestMemberRechargeProjectionExactPrivateAndReadOnly(t *testing.T) {
 		commitFinanceTx(t, tx)
 		return v
 	}
-	pending := create(9007199254740993)
-	confirmed := create(7)
-	cancelled := create(11)
+	pending := create(900719925474099300)
+	confirmed := create(700)
+	cancelled := create(1100)
 	tx := financeTx(t, f.pool)
 	var e error
 	confirmed, e = f.service.ConfirmRecharge(ctx, tx, f.brandID, confirmed.ID, confirmed.Version, "private-confirmation", financeMeta(f.adminID))
@@ -153,7 +153,7 @@ func TestMemberRechargeStableOrderingAndForeignRecordIsolation(t *testing.T) {
 	tx := financeTx(t, f.pool)
 	var orderedIDs []string
 	for i := 0; i < 4; i++ {
-		r, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 1, "private", "private", "same-transaction ordering", financeMeta(f.adminID))
+		r, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 100, "private", "private", "same-transaction ordering", financeMeta(f.adminID))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,14 +165,14 @@ func TestMemberRechargeStableOrderingAndForeignRecordIsolation(t *testing.T) {
 	if _, err := f.pool.Exec(ctx, `INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'not-a-login-secret');`, foreignUser, "foreign_finance_"+foreignUser); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.pool.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,display_name,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'Other member','operator','1','1')`, foreignMember, f.brandID, foreignUser); err != nil {
+	if _, err := f.pool.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,display_name,join_method) VALUES($1,$2,$3,'Other member','operator')`, foreignMember, f.brandID, foreignUser); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.pool.Exec(ctx, `INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, foreignAccount, f.brandID, foreignMember); err != nil {
 		t.Fatal(err)
 	}
 	tx = financeTx(t, f.pool)
-	foreign, err := f.service.CreateRecharge(ctx, tx, f.brandID, foreignMember, 3, "foreign proof", "foreign remark", "foreign fixture", financeMeta(f.adminID))
+	foreign, err := f.service.CreateRecharge(ctx, tx, f.brandID, foreignMember, 300, "foreign proof", "foreign remark", "foreign fixture", financeMeta(f.adminID))
 	if err != nil {
 		t.Fatal(err)
 	}

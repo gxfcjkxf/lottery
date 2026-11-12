@@ -1,3 +1,4 @@
+import { pointsMinor, isPoints } from './points'
 export interface WithdrawalQualification {
   brand_id: string;
   member_id: string;
@@ -81,7 +82,7 @@ function compareDateTimes(left: string, right: string): number {
 export function isWithdrawalQualification(value: unknown): value is WithdrawalQualification {
   if (!record(value) || !exactKeys(value)) return false;
   if (![value.brand_id, value.member_id, value.account_id].every((item) => typeof item === "string" && UUID.test(item))) return false;
-  if (!int64Decimal(value.base_points) || !decimal(value.valid_points) || !decimal(value.valid_order_count) ||
+  if (!isPoints(value.base_points) || !isPoints(value.valid_points) || !decimal(value.valid_order_count) ||
       !decimal(value.credit_numerator) || !decimal(value.credit_denominator) || BigInt(value.credit_denominator) === 0n ||
       typeof value.meets_turnover !== "boolean" ||
       !(value.cycle_from_at === null || dateTime(value.cycle_from_at)) ||
@@ -89,5 +90,5 @@ export function isWithdrawalQualification(value: unknown): value is WithdrawalQu
   if ((value.cycle_from_at === null) !== (BigInt(value.cycle_from_version) === 0n)) return false;
   if (BigInt(value.cycle_from_version) > BigInt(value.cutoff_version)) return false;
   if (value.cycle_from_at !== null && compareDateTimes(value.cycle_from_at, value.cutoff_at) > 0) return false;
-  return (BigInt(value.credit_numerator) >= BigInt(value.base_points) * BigInt(value.credit_denominator)) === value.meets_turnover;
+  return (BigInt(value.credit_numerator) * 100n >= pointsMinor(value.base_points) * BigInt(value.credit_denominator)) === value.meets_turnover;
 }

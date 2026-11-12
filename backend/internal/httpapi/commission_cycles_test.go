@@ -87,3 +87,20 @@ func TestCommissionCyclesHTTPDetailAndCreateNotFoundAndClosedBodies(t *testing.T
 		"anchor_order_id": missing, "reason": "query is forbidden",
 	}), 400)
 }
+
+func TestCommissionCycleCandidatesHTTPAuthorization(t *testing.T) {
+	f := managedFixture(t)
+	path := commissionCyclesPath + "/candidates?limit=100&offset=0"
+	mustStatus(t, f.call("GET", path, "", "", managedBrand, nil), 401)
+	mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 403)
+	grantCommissionCycle(t, f, "view")
+	response := f.call("GET", path, "", f.token, managedBrand, nil)
+	mustStatus(t, response, 200)
+	var page commission.CycleCandidatePage
+	managedData(t, response, &page)
+	if page.BrandID != managedBrand || page.Items == nil || len(page.Items) != 0 || page.Limit != 100 {
+		t.Fatalf("unexpected page %+v", page)
+	}
+	mustStatus(t, f.call("GET", path, "", f.token, pointsBrandB, nil), 403)
+	mustStatus(t, f.call("GET", commissionCyclesPath+"/candidates?other=1", "", f.token, managedBrand, nil), 400)
+}

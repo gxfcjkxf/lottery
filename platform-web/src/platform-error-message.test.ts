@@ -26,8 +26,8 @@ describe('platform error localization', () => {
   })
   it('localizes a replacement notice in both supported languages', () => {
     const error = new PlatformApiError('server text', 401, 'AUTH_SESSION_REPLACED')
-    expect(platformErrorMessage(error, 'en')).toBe('A new sign-in has ended this session. Please sign in again.')
-    expect(platformErrorMessage(error, 'zh-CN')).toBe('账号有新的登录，当前会话已失效，请重新登录。')
+    expect(platformErrorMessage(error, 'en')).toBe('Your account was signed in elsewhere. If this wasn’t you, sign in again and change your password.')
+    expect(platformErrorMessage(error, 'zh-CN')).toBe('账号在别处登录,如果不是本人行为,请重新登录后修改密码.')
   })
   it('reports unknown failures without displaying codes or server prose', () => {
     expect(platformErrorMessage(new PlatformApiError('后端消息', 409, 'NEW_ERROR'), 'en')).toBe('The data or status has changed. Refresh and review the latest information before continuing.')

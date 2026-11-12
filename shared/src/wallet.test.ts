@@ -24,6 +24,16 @@ describe("four-source wallet contract", () => {
     expect(isWalletDTO({ ...current, extra: "not closed" })).toBe(false);
   });
 
+  it("reconciles fractional winning points exactly", () => {
+    const by_source = structuredClone(current.by_source);
+    by_source.recharge.available = "1.01";
+    by_source.winning.available = "2.02";
+    const wallet = { ...current, by_source, recharge_points: "1.01", winning_points: "2.02", available_points: "3.03", display_points: "3.03" };
+    expect(isWalletDTO(wallet)).toBe(true);
+    expect(isWalletDTO({ ...wallet, available_points: "3.04" })).toBe(false);
+    expect(isWalletDTO({ ...wallet, winning_points: "2.021" })).toBe(false);
+  });
+
   it("accepts only current sixteen-bucket snapshots", () => {
     const old = buckets(["recharge", "winning", "gift"]);
     expect(normalizeSourceBuckets(old)).toBeNull();

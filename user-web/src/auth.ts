@@ -1,11 +1,10 @@
 import { ApiError } from "../../shared/src/api";
 import {
-  isBrandJoinRequired,
   type AuthProfile,
   type AuthSession,
 } from "../../shared/src/auth";
 
-export { ApiError, isBrandJoinRequired };
+export { ApiError };
 export type { AuthProfile, AuthSession };
 
 export function normalizeIdentifier(value: string): {

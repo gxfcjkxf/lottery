@@ -31,7 +31,7 @@ export const schemas = {
   },
   CommissionPaymentHistoryRecord:obj({id:ref('UUID'),actor_type:{type:'string',enum:['admin','system']},actor_id:nullable(ref('UUID')),operation:{type:'string',enum:['create','approve','retry','post','complete','invalidate','fail','adjustment']},state:nullable({type:'string',enum:['awaiting_approval','paying','paid','failed','stale','blocked']}),created_at:ref('DateTime')}),
   CommissionPaymentHistoryPage:obj({brand_id:ref('UUID'),payment_id:ref('UUID'),...pageFields('CommissionPaymentHistoryRecord')}),
-  CommissionPaymentBeneficiary: obj({id:ref('UUID'),brand_id:ref('UUID'),payment_id:ref('UUID'),agent_id:ref('UUID'),member_id:ref('UUID'),target_id:nullable(ref('UUID')),original_points:ref('NonnegativeInt64String'),adjusted_points:nullable(ref('NonnegativeInt64String')),state:{type:'string',enum:['pending','paid']},paid_at:nullable(ref('DateTime'))}),
+  CommissionPaymentBeneficiary: obj({id:ref('UUID'),brand_id:ref('UUID'),payment_id:ref('UUID'),agent_id:ref('UUID'),member_id:ref('UUID'),target_id:nullable(ref('UUID')),original_points:ref('NonnegativePoints'),adjusted_points:nullable(ref('NonnegativePoints')),state:{type:'string',enum:['pending','paid']},paid_at:nullable(ref('DateTime'))}),
   CommissionPaymentBeneficiaryPage:obj({brand_id:ref('UUID'),payment_id:ref('UUID'),...pageFields('CommissionPaymentBeneficiary')}),
   CommissionPaymentPage: obj({ brand_id: ref('UUID'), ...pageFields('CommissionPayment') }),
   CommissionPaymentAction: obj({ version, reason: ref('Reason') }, ["version"]),

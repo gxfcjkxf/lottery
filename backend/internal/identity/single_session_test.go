@@ -193,7 +193,7 @@ func TestSingleSessionReplacementAcrossBrands(t *testing.T) {
 	if _, err = tx.Exec(ctx, `SELECT id FROM global_users WHERE id=$1 FOR UPDATE`, f.user); err != nil {
 		t.Fatal(err)
 	}
-	member, err := s.joinCode(ctx, tx, operatorTestOtherBrand, f.user, "dev-1", "dev-1", "", "", Metadata{})
+	member, err := s.joinCode(ctx, tx, operatorTestOtherBrand, f.user, "", "", Metadata{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -29,7 +29,7 @@ func TestMarkSixOutcomesAndRounding(t *testing.T) {
 		stake         points.Amount
 		odds, outcome string
 		want          points.Amount
-	}{{10, "48.99", "won", 490}, {1, "1.5", "won", 2}, {10, "1.98", "push", 10}, {10, "1.98", "lost", 0}} {
+	}{{1000, "48.99", "won", 48990}, {100, "1.5", "won", 150}, {1000, "1.98", "push", 1000}, {1000, "1.98", "lost", 0}} {
 		got, e := MarkSixPayout(v.stake, v.odds, v.outcome)
 		if e != nil || got != v.want {
 			t.Fatalf("%+v: %v %v", v, got, e)

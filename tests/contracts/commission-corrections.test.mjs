@@ -103,8 +103,8 @@ test('correction schemas are closed and the exact request and numeric contracts 
   assert.equal(schemas.CommissionCorrectionPlanTarget.properties.financial_version.anyOf[0].minimum, 1);
   assert.equal(schemas.CommissionCorrectionExecutionTarget.properties.financial_version.anyOf[0].minimum, 1);
   assert.deepEqual(schemas.CommissionCorrectionExecution.properties.approval_actor_type.anyOf[0].enum, ['admin', 'system']);
-  assert.equal(schemas.CommissionCorrectionPlanTarget.properties.delta_points.$ref, '#/components/schemas/Int64String');
-  assert.equal(schemas.CommissionCorrectionExecutionTarget.properties.delta_points.$ref, '#/components/schemas/Int64String');
+  assert.equal(schemas.CommissionCorrectionPlanTarget.properties.delta_points.$ref, '#/components/schemas/Points');
+  assert.equal(schemas.CommissionCorrectionExecutionTarget.properties.delta_points.$ref, '#/components/schemas/Points');
   for (const [name, fields] of Object.entries({
     CommissionCorrectionPlan: ['before_points', 'calculated_points', 'credit_points', 'debit_points'],
     CommissionCorrectionExecution: ['credit_points', 'debit_points', 'applied_credit_points', 'applied_debit_points'],

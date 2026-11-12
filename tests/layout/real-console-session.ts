@@ -6,9 +6,9 @@ import { selectControl } from '../select-control'
 // providers and CSS are always loaded from the application's real entry point.
 export async function installConsoleSession(page: Page, surface: 'brand' | 'platform', locale: 'en' | 'zh-CN', brandId: string, grants: string[], accountId = '22222222-2222-4222-8222-222222222222', initialSettings: Record<string,unknown> = {}) {
   const scope = surface === 'brand' ? 'admin' : 'platform'
-  const settings = { version: 1, display_name: 'Review platform', logo_text: 'R', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', updated_at: '2026-11-02T00:00:00Z', ...initialSettings }
+  const settings = { theme: 'jade', version: 1, display_name: 'Review platform', logo_text: 'R', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', updated_at: '2026-11-02T00:00:00Z', ...initialSettings }
   const replies: Record<string, unknown> = {
-    '/api/v1/display-settings': {timezone:settings.timezone,date_format:settings.date_format,time_format:settings.time_format},
+    '/api/v1/display-settings': {theme:settings.theme,timezone:settings.timezone,date_format:settings.date_format,time_format:settings.time_format},
     [`/api/v1/${scope}/me`]: { account: { id: accountId, username: 'real_page_reviewer', super_admin: surface === 'platform', brand_ids: [brandId], permissions: [], permissions_by_brand: { [brandId]: grants }, platform_permissions: grants } },
     [`/api/v1/${scope}/brands`]: { items: [{ id: brandId, name: 'Aurora', code: 'aurora', status: 'active', member_count: '0', agent_count: '0', recharge_quota_available: '0', created_at: settings.updated_at }], total_count: '1' },
     '/api/v1/platform/presentation': { display_name: settings.display_name, logo_text: settings.logo_text, logo_url: '' },

@@ -75,17 +75,18 @@ registerBrandOperationLayoutTests(true)
 import { registerMemberDeleteTests } from './member-delete'
 registerMemberDeleteTests(true)
 
-test('half-screen menu keeps language, refresh and close inline at 320px',async({page})=>{
+test('half-screen menu keeps language and close inline at 320px without refresh',async({page})=>{
  await installLayoutApi(page,'zh-CN');await installOrdersLayoutApi(page)
  await page.setViewportSize({width:320,height:568})
  await page.goto(`${origins.user}/wallet`);await expect(page.locator('.wallet-links')).toBeVisible()
  await page.locator('.workspace-topbar').getByRole('button',{name:'菜单',exact:true}).click()
- const menu=page.locator('.workspace-menu'),language=menu.locator('.locale-picker__trigger'),refresh=menu.locator('#user-page-refresh button'),close=menu.locator('.workspace-menu-close')
+ const menu=page.locator('.workspace-menu'),language=menu.locator('.locale-picker__trigger'),close=menu.locator('.workspace-menu-close')
+ await expect(menu.locator('#user-page-refresh button')).toHaveCount(0)
  await expect.poll(()=>menu.evaluate(el=>Math.abs(el.getBoundingClientRect().left))).toBeLessThan(1)
- for(const control of [language,refresh,close]) await expectInsideViewport(control)
- const boxes=await Promise.all([language,refresh,close].map(control=>control.boundingBox()))
+ for(const control of [language,close]) await expectInsideViewport(control)
+ const boxes=await Promise.all([language,close].map(control=>control.boundingBox()))
  for(const box of boxes){expect(box!.width).toBeGreaterThanOrEqual(44);expect(box!.y).toBeCloseTo(boxes[0]!.y,0)}
- expect(boxes[2]!.x+boxes[2]!.width).toBeLessThanOrEqual(160)
+ expect(boxes[1]!.x+boxes[1]!.width).toBeLessThanOrEqual(160)
  await language.click()
  const list=menu.locator('.locale-picker__list');await expectInsideViewport(list)
  const bounds=(await list.boundingBox())!

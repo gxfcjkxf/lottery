@@ -26,9 +26,9 @@ func TestAutomaticReferralBackfillConcurrencyAuditAndBrandIsolation(t *testing.T
 	}{
 		{`INSERT INTO global_users(id,username)VALUES($1,'automatic_referral_owner')`, []any{user}},
 		{`INSERT INTO global_users(id,username)VALUES($1,'existing_referral_owner')`, []any{existingMember}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, []any{member, brand, user}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, []any{foreign, other, user}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, []any{existingMember, brand, existingMember}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, []any{member, brand, user}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, []any{foreign, other, user}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, []any{existingMember, brand, existingMember}},
 		{`INSERT INTO admin_accounts(id,username,password_hash)VALUES($1,'automatic_referral_admin','unused')`, []any{admin}},
 	} {
 		if _, err := db.Exec(ctx, q.sql, q.args...); err != nil {
@@ -170,7 +170,7 @@ func TestAutomaticReferralRegistrationAndAuditFailureRollBackTogether(t *testing
 			return identity.Authentication{}, err
 		}
 		defer tx.Rollback(ctx)
-		out, err := store.Register(ctx, tx, brand, identity.RegisterInput{Username: name, Password: "referral-test-password", Privacy: "dev-1", Terms: "dev-1"}, identity.Metadata{})
+		out, err := store.Register(ctx, tx, brand, identity.RegisterInput{Username: name, Password: "referral-test-password", }, identity.Metadata{})
 		if err != nil {
 			return identity.Authentication{}, err
 		}

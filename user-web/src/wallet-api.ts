@@ -1,3 +1,4 @@
+import { formatPoints,isPoints } from '@lottery/shared'
 import { readPaginationTotal } from '@lottery/shared'
 import { readApiEnvelope } from '@lottery/shared'
 
@@ -34,6 +35,7 @@ export interface LedgerEntry {
   reversal_of?: string;
   version: number;
   created_at: string;
+  agent_transfer?:{agent_id:string;agent_account:string|null;amount:string;created_at:string};
 }
 
 export class WalletApiError extends Error {
@@ -52,11 +54,7 @@ export function walletBasePath(brandCode?: string): string {
 }
 
 export function formatIntegerAmount(value: string): string {
-  if (!/^-?\d+$/.test(value)) return value;
-  const negative = value.startsWith("-");
-  const digits = negative ? value.slice(1) : value;
-  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${negative ? "−" : ""}${grouped}`;
+  return formatPoints(value).replace(/^-/, '−');
 }
 
 export function createWalletApi(
@@ -104,6 +102,7 @@ export function createWalletApi(
       if (!value || typeof value !== "object" || Array.isArray(value) || !Array.isArray((value as { items?: unknown }).items))
         throw new WalletApiError("The server returned an invalid wallet ledger response.", 502, "INVALID_RESPONSE");
       const items = (value as { items: unknown[] }).items.map((entry) => normalizeLedgerSnapshots(entry) as LedgerEntry | null);
+      if(items.some(entry=>{if(!entry||entry.entry_type!=="agent_transfer_credit")return false;const transfer=entry.agent_transfer;return !transfer||typeof transfer.agent_id!=="string"||(transfer.agent_account!==null&&typeof transfer.agent_account!=="string")||!isPoints(transfer.amount)||!Number.isFinite(Date.parse(transfer.created_at))}))throw new WalletApiError("Invalid agent transfer receipt",502,"INVALID_RESPONSE");
       if (items.some((entry) => entry === null)) throw new WalletApiError("The server returned an invalid wallet ledger snapshot.", 502, "INVALID_RESPONSE");
       return { items: items as LedgerEntry[], total_count: readPaginationTotal(value) };
     },

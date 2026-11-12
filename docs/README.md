@@ -22,6 +22,8 @@
 
 ## 文档索引
 
+- [67-multi-currency-wallet.md](67-multi-currency-wallet.md)：多币种钱包、积分兑换、品牌收款轮转、提现与本地迁移验证。
+
 - [65-unified-configured-betting.md](65-unified-configured-betting.md)：当前唯一投注／结算链路、资金保护、数据库收敛与验证记录。
 - [64-betting-points-simplification.md](64-betting-points-simplification.md)：结算预览、批量对账修复及奖励待追缴的精简。
 

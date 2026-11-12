@@ -49,7 +49,7 @@ func TestNotificationHTTPRealProducersScopeCheckedReplayAndNoMoneyWrites(t *test
 		}
 	}
 	// A same-brand different user cannot mark someone else's notification.
-	input := map[string]string{"username": "other_notify", "password": "notification-password-123", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"}
+	input := map[string]string{"username": "other_notify", "password": "notification-password-123", }
 	registered := f.call("POST", "/api/v1/auth/register", "notification-user-register", "", managedBrand, input)
 	mustStatus(t, registered, 201)
 	var auth identity.Authentication

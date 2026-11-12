@@ -9,7 +9,7 @@ test("withdrawal report schema preserves exact current-state projection",()=>{
   const totals=schemas.WithdrawalReportTotals;
   assert.equal(totals.additionalProperties,false);
   assert.deepEqual(Object.keys(totals.properties),["order_count","requested_points","reviewing_count","reviewing_points","processing_count","processing_points","paid_count","paid_points","rejected_count","rejected_points","failed_count","failed_points","cancelled_count","cancelled_points"]);
-  for(const field of Object.values(totals.properties))assert.match(field.pattern,/^\^\(0\|\[1-9\]\[0-9\]\*\)\$$/);
+  for(const [key,field] of Object.entries(totals.properties)){assert.ok(new RegExp(field.pattern).test(key.endsWith('_points')?'1.25':'1'));assert.equal(new RegExp(field.pattern).test('1.234'),false);}
   assert.deepEqual(schemas.WithdrawalReportGroup.properties.totals,{$ref:"#/components/schemas/WithdrawalReportTotals"});
   assert.equal(schemas.WithdrawalReport.properties.query.properties.game_id.type,"null");
   assert.deepEqual(schemas.WithdrawalReport.properties.query.properties.group_by.enum,["day","member","state"]);

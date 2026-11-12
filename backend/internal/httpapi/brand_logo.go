@@ -59,7 +59,7 @@ func registerBrandLogoRoutes(mux routeRegistrar, d Dependencies) {
 	})
 }
 
-func registerBrandLogoUpload(handle func(string, string, http.HandlerFunc), d Dependencies) {
+func registerBrandLogoUpload(handle func(string, string, http.HandlerFunc), d Dependencies, platform bool) {
 	handle("GET", "/brand-presentation/defaults", func(w http.ResponseWriter, r *http.Request) {
 		a, brand, ok := presentationActor(w, r, d, "view")
 		if !ok {
@@ -84,75 +84,80 @@ func registerBrandLogoUpload(handle func(string, string, http.HandlerFunc), d De
 			respond(w, r, 200, defaults)
 		}
 	})
-	handle("POST", "/brand-presentation/logo", func(w http.ResponseWriter, r *http.Request) {
-		actor, brand, ok := presentationActor(w, r, d, "write")
-		if !ok {
-			return
+	for _, upload := range []struct{ path, action string }{{"/brand-presentation/logo", "brand_presentation.logo.upload"}, {"/brand-contacts/image", "brand_contacts.image.upload"}} {
+		if platform && upload.path == "/brand-contacts/image" {
+			continue
 		}
-		if r.URL.RawQuery != "" {
-			failure(w, r, 400, "REQUEST_INVALID", "此接口不接受查询参数")
-			return
-		}
-		content, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
-		cfg, format, imageErr := image.DecodeConfig(bytes.NewReader(content))
-		media, ext := "image/png", "png"
-		if format == "jpeg" {
-			media, ext = "image/jpeg", "jpg"
-		}
-		if err != nil || imageErr != nil || (format != "png" && format != "jpeg") || r.Header.Get("Content-Type") != media || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 4096 || cfg.Height > 4096 {
-			failure(w, r, 400, "BRAND_LOGO_INVALID", "图片须为不超过1MB、4096像素的PNG或JPG")
-			return
-		}
-		// Decode the complete raster, not just its header, before publishing bytes.
-		if _, _, err = image.Decode(bytes.NewReader(content)); err != nil {
-			failure(w, r, 400, "BRAND_LOGO_INVALID", "图片无效")
-			return
-		}
-		tx, err := d.Admins.DB.Begin(r.Context())
-		if err != nil {
-			failure(w, r, 503, "SERVICE_UNAVAILABLE", "无法保存素材")
-			return
-		}
-		defer tx.Rollback(r.Context())
-		fresh, err := freshAdmin(r.Context(), tx, r, d, actor, false)
-		if errors.Is(err, adminsys.ErrDenied) || errors.Is(err, identity.ErrSession) {
-			failure(w, r, 401, "AUTH_SESSION_REVOKED", "管理会话已变化")
-			return
-		}
-		if err != nil {
-			failure(w, r, 503, "SERVICE_UNAVAILABLE", "无法核对素材权限")
-			return
-		}
-		if !brandskin.Allowed(fresh, brand, "write") {
-			rejectAdmin(w, r, d, fresh, brand, "brand_presentation.write")
-			return
-		}
-		var status string
-		if err = tx.QueryRow(r.Context(), `SELECT status FROM brands WHERE id=$1 FOR SHARE`, brand).Scan(&status); errors.Is(err, pgx.ErrNoRows) {
-			failure(w, r, 404, "BRAND_PRESENTATION_NOT_FOUND", "品牌不存在")
-			return
-		} else if err != nil {
-			failure(w, r, 503, "SERVICE_UNAVAILABLE", "无法核对品牌状态")
-			return
-		}
-		if status == "disabled" {
-			failure(w, r, 409, "BRAND_PRESENTATION_STATE_CONFLICT", "停用品牌展示设置只读")
-			return
-		}
-		digest := sha256.Sum256(append([]byte(brand+":"), content...))
-		id := hex.EncodeToString(digest[:])
-		url := "/api/v1/brand-assets/" + id + "." + ext
-		inserted, err := tx.Exec(r.Context(), `INSERT INTO brand_logo_assets(id,brand_id,media_type,content) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, id, brand, media, content)
-		if err == nil && inserted.RowsAffected() == 1 {
-			_, err = audit.Append(r.Context(), tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: fresh.ID, Action: "brand_presentation.logo.upload", ResourceType: "brand", ResourceID: brand, RequestID: requestID(r), IP: meta(r).IP, After: map[string]string{"url": url}})
-		}
-		if err == nil {
-			err = tx.Commit(r.Context())
-		}
-		if err != nil {
-			failure(w, r, 503, "SERVICE_UNAVAILABLE", "无法保存素材")
-			return
-		}
-		respond(w, r, 200, map[string]string{"url": url})
-	})
+		handle("POST", upload.path, func(w http.ResponseWriter, r *http.Request) {
+			actor, brand, ok := presentationActor(w, r, d, "write")
+			if !ok {
+				return
+			}
+			if r.URL.RawQuery != "" {
+				failure(w, r, 400, "REQUEST_INVALID", "此接口不接受查询参数")
+				return
+			}
+			content, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+			cfg, format, imageErr := image.DecodeConfig(bytes.NewReader(content))
+			media, ext := "image/png", "png"
+			if format == "jpeg" {
+				media, ext = "image/jpeg", "jpg"
+			}
+			if err != nil || imageErr != nil || (format != "png" && format != "jpeg") || r.Header.Get("Content-Type") != media || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 4096 || cfg.Height > 4096 {
+				failure(w, r, 400, "BRAND_LOGO_INVALID", "图片须为不超过1MB、4096像素的PNG或JPG")
+				return
+			}
+			// Decode the complete raster, not just its header, before publishing bytes.
+			if _, _, err = image.Decode(bytes.NewReader(content)); err != nil {
+				failure(w, r, 400, "BRAND_LOGO_INVALID", "图片无效")
+				return
+			}
+			tx, err := d.Admins.DB.Begin(r.Context())
+			if err != nil {
+				failure(w, r, 503, "SERVICE_UNAVAILABLE", "无法保存素材")
+				return
+			}
+			defer tx.Rollback(r.Context())
+			fresh, err := freshAdmin(r.Context(), tx, r, d, actor, false)
+			if errors.Is(err, adminsys.ErrDenied) || errors.Is(err, identity.ErrSession) {
+				failure(w, r, 401, "AUTH_SESSION_REVOKED", "管理会话已变化")
+				return
+			}
+			if err != nil {
+				failure(w, r, 503, "SERVICE_UNAVAILABLE", "无法核对素材权限")
+				return
+			}
+			if !brandskin.Allowed(fresh, brand, "write") {
+				rejectAdmin(w, r, d, fresh, brand, "brand_presentation.write")
+				return
+			}
+			var status string
+			if err = tx.QueryRow(r.Context(), `SELECT status FROM brands WHERE id=$1 FOR SHARE`, brand).Scan(&status); errors.Is(err, pgx.ErrNoRows) {
+				failure(w, r, 404, "BRAND_PRESENTATION_NOT_FOUND", "品牌不存在")
+				return
+			} else if err != nil {
+				failure(w, r, 503, "SERVICE_UNAVAILABLE", "无法核对品牌状态")
+				return
+			}
+			if status == "disabled" {
+				failure(w, r, 409, "BRAND_PRESENTATION_STATE_CONFLICT", "停用品牌展示设置只读")
+				return
+			}
+			digest := sha256.Sum256(append([]byte(brand+":"), content...))
+			id := hex.EncodeToString(digest[:])
+			url := "/api/v1/brand-assets/" + id + "." + ext
+			inserted, err := tx.Exec(r.Context(), `INSERT INTO brand_logo_assets(id,brand_id,media_type,content) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, id, brand, media, content)
+			if err == nil && inserted.RowsAffected() == 1 {
+				_, err = audit.Append(r.Context(), tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: fresh.ID, Action: upload.action, ResourceType: "brand", ResourceID: brand, RequestID: requestID(r), IP: meta(r).IP, After: map[string]string{"url": url}})
+			}
+			if err == nil {
+				err = tx.Commit(r.Context())
+			}
+			if err != nil {
+				failure(w, r, 503, "SERVICE_UNAVAILABLE", "无法保存素材")
+				return
+			}
+			respond(w, r, 200, map[string]string{"url": url})
+		})
+	}
 }

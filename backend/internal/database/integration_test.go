@@ -132,7 +132,7 @@ func TestBrandForeignKeysAndAppendOnly(t *testing.T) {
 	if _, err := p.Exec(ctx, "INSERT INTO global_users(id,username) VALUES($1,'test_member')", user); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','1','1')`, member, a, user); err != nil {
+	if _, err := p.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, member, a, user); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.Exec(ctx, "INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)", account, b, member); err == nil {

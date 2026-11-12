@@ -51,6 +51,7 @@ func ledgerKey(d Dependencies, r *http.Request, a access.Account, member, kind s
 	return kind + ":" + d.Mutations.Fingerprint(a.ID+":"+member+":"+r.Header.Get("Idempotency-Key"))
 }
 func registerPointRoutes(mux routeRegistrar, d Dependencies) {
+	registerCashUser(mux, d)
 	registerMemberSummary(mux, d)
 	registerBettingPreferences(mux, d)
 	registerRechargeUserRoutes(mux, d)
@@ -98,7 +99,11 @@ func registerPointRoutes(mux routeRegistrar, d Dependencies) {
 				items, err := s.List(ctx, b.ID, v.View.Member.ID, limit, offset)
 				var data map[string]any
 				if err == nil {
-					data, err = countedItems(ctx, d.Admins.DB, items, `SELECT count(*)::text FROM point_ledger_entries WHERE brand_id=$1 AND member_id=$2`, b.ID, v.View.Member.ID)
+					var enriched []userLedgerEntry
+					enriched, err = userLedgerEntries(ctx, d.Admins.DB, b.ID, v.View.Member.ID, items)
+					if err == nil {
+						data, err = countedItems(ctx, d.Admins.DB, enriched, `SELECT count(*)::text FROM point_ledger_entries WHERE brand_id=$1 AND member_id=$2`, b.ID, v.View.Member.ID)
+					}
 				}
 				pointOutput(w, r, data, err)
 			})

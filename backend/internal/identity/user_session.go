@@ -43,10 +43,10 @@ func (s *Store) AuthenticateTx(ctx context.Context, tx pgx.Tx, brand, token stri
 		return v, ErrSession
 	}
 
-	err = tx.QueryRow(ctx, `SELECT id::text,coalesce(username,''),coalesce(phone,''),
+	err = tx.QueryRow(ctx, `SELECT id::text,coalesce(username,''),coalesce(phone,''),coalesce(wechat,''),coalesce(telegram,''),coalesce(whatsapp,''),
 		coalesce(telegram_user_id,''),status
 		FROM global_users WHERE id::text=$1 FOR SHARE`, userID).
-		Scan(&v.User.ID, &v.User.Username, &v.User.Phone, &v.User.TelegramID, &v.User.Status)
+		Scan(&v.User.ID, &v.User.Username, &v.User.Phone, &v.User.Wechat, &v.User.Telegram, &v.User.Whatsapp, &v.User.TelegramID, &v.User.Status)
 	if err == pgx.ErrNoRows {
 		return v, ErrSession
 	}
@@ -58,12 +58,11 @@ func (s *Store) AuthenticateTx(ctx context.Context, tx pgx.Tx, brand, token stri
 	}
 
 	var memberUserID string
-	var termsAccepted bool
 	err = tx.QueryRow(ctx, `SELECT id::text,brand_id::text,global_user_id::text,status,
-		display_name,joined_at,terms_accepted
+		display_name,joined_at
 		FROM brand_members WHERE id::text=$1 FOR SHARE`, memberID).
 		Scan(&v.Member.ID, &v.Member.BrandID, &memberUserID, &v.Member.Status,
-			&v.Member.DisplayName, &v.Member.JoinedAt, &termsAccepted)
+			&v.Member.DisplayName, &v.Member.JoinedAt)
 	if err == pgx.ErrNoRows {
 		return v, ErrSession
 	}
@@ -71,7 +70,7 @@ func (s *Store) AuthenticateTx(ctx context.Context, tx pgx.Tx, brand, token stri
 		return v, err
 	}
 	if v.Member.ID != memberID || v.Member.BrandID != brandID || memberUserID != userID ||
-		(v.Member.Status != "normal" && v.Member.Status != "frozen") || !termsAccepted {
+		(v.Member.Status != "normal" && v.Member.Status != "frozen") {
 		return v, ErrSession
 	}
 

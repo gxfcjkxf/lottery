@@ -358,7 +358,7 @@ func TestBootstrapCatalogAndScopedGrantCoverage(t *testing.T) {
 	}
 }
 
-func TestBootstrapFinancialAndComplianceGrants(t *testing.T) {
+func TestBootstrapFinancialGrantsAndRemovedCompliance(t *testing.T) {
 	brand := make(map[string]bool)
 	for _, key := range bootstrapPermissions(false, false) {
 		brand[key] = true
@@ -372,7 +372,7 @@ func TestBootstrapFinancialAndComplianceGrants(t *testing.T) {
 	for _, key := range bootstrapPermissions(true, false) {
 		platform[key] = true
 	}
-	for _, key := range []string{"compliance_policy.write.platform", "compliance_check.run.platform", "recharge_quota.write.platform"} {
+	for _, key := range []string{"recharge_quota.write.platform"} {
 		if !platform[key] {
 			t.Errorf("platform bootstrap missing %s", key)
 		}
@@ -380,6 +380,11 @@ func TestBootstrapFinancialAndComplianceGrants(t *testing.T) {
 	for key := range platform {
 		if strings.HasPrefix(key, "withdrawal.") && key != "withdrawal.view.platform" {
 			t.Errorf("platform received brand financial operation %s", key)
+		}
+	}
+	for _, key := range []string{"compliance_policy.write.platform", "compliance_check.run.platform"} {
+		if platform[key] {
+			t.Errorf("removed compliance permission was granted: %s", key)
 		}
 	}
 	if platform["admin.delete.platform"] {

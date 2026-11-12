@@ -51,7 +51,7 @@ test.beforeEach(() => {
   );
 });
 
-test("operator creates real member; user personally accepts current brand terms", async ({
+test("operator creates real member; user logs in directly", async ({
   page,
   context,
 }, info) => {
@@ -68,7 +68,6 @@ test("operator creates real member; user personally accepts current brand terms"
     .getByRole("button", { name: "创建成员", exact: true })
     .click();
   await expect(provision.getByRole("status")).toContainText("成员已创建");
-  await expect(provision.getByRole("status")).toContainText("条款已接受: 否");
   await expect(provision.getByLabel(/初始密码/)).toHaveValue("");
   await fits(page);
   const user = await context.newPage();
@@ -78,9 +77,6 @@ test("operator creates real member; user personally accepts current brand terms"
     .getByLabel("Password", { exact: true })
     .fill("member-test-only-password-2026");
   await user.getByRole("button", { name: /^Log in$/ }).click();
-  await expect(user.locator(".join-terms")).toBeVisible();
-  await user.locator(".join-terms input[type=checkbox]").check();
-  await user.getByRole("button", { name: /^Accept and join brand/ }).click();
   await expect(user).toHaveURL(/\/$/);
   await user.goto(new URL("/account", user.url()).href);
   await expect(user.getByLabel("Account", { exact: true })).toHaveValue(name);

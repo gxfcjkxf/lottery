@@ -1,9 +1,12 @@
-import { ApiError, createApiClient, type ApiClientOptions } from "./api";
+import { createApiClient, type ApiClientOptions } from "./api";
 
 interface AuthUser {
   id: string;
   username?: string;
   phone?: string;
+  wechat?: string;
+  telegram?: string;
+  whatsapp?: string;
   telegram_user_id?: string;
   status: string;
 }
@@ -29,12 +32,7 @@ export interface AuthProfile {
   member: AuthMember;
 }
 
-interface AuthTerms {
-  privacy_policy_version: string;
-  service_terms_version: string;
-}
-
-export interface RegisterInput extends AuthTerms {
+export interface RegisterInput {
   username?: string;
   phone?: string;
   password: string;
@@ -47,8 +45,6 @@ export interface RegisterInput extends AuthTerms {
 export interface LoginInput {
   identifier: string;
   password: string;
-  privacy_policy_version?: string;
-  service_terms_version?: string;
   agent_code?: string;
   referral_code?: string;
   captcha_id?: string;
@@ -73,7 +69,7 @@ export interface TelegramChallenge {
   expires_at: string;
 }
 
-export interface TelegramLoginInput extends AuthTerms {
+export interface TelegramLoginInput {
   id_token: string;
   challenge_id: string;
   nonce: string;
@@ -84,6 +80,9 @@ export interface TelegramLoginInput extends AuthTerms {
 export interface ProfileInput {
   username?: string;
   phone?: string;
+  wechat?: string;
+  telegram?: string;
+  whatsapp?: string;
 }
 
 export function createAuthClient(options: ApiClientOptions = {}) {
@@ -181,12 +180,6 @@ function jsonRequest(body: unknown, method = "POST"): RequestInit {
   };
 }
 
-export function isBrandJoinRequired(error: unknown): error is ApiError {
-  return (
-    error instanceof ApiError &&
-    error.code?.toUpperCase() === "BRAND_JOIN_REQUIRED"
-  );
-}
 
 interface CaptchaPuzzle {
   image: string; piece: string; width: number; height: number;

@@ -82,7 +82,7 @@ test('allocation history schemas are closed, exact and contain only captured pub
     'base_points', 'mode', 'agent_ratio', 'downstream_ratio', 'difference_ratio', 'exact_amount', 'created_at',
   ]);
   assert.deepEqual(schemas.CommissionAllocation.properties.mode.enum, ['loss', 'turnover']);
-  assert.equal(schemas.CommissionAllocation.properties.base_points.$ref, '#/components/schemas/NonnegativeInt64String');
+  assert.equal(schemas.CommissionAllocation.properties.base_points.$ref, '#/components/schemas/NonnegativePoints');
   assert.equal(schemas.CommissionAllocation.properties.exact_amount.$ref, '#/components/schemas/CommissionExactAmount');
   assert.deepEqual(schemas.CommissionAllocationPage.required, ['brand_id', 'cycle_id', 'run_id', 'agent_id', 'order_id', 'items', 'total_count', 'limit', 'offset']);
   assert.equal(schemas.CommissionAllocationPage.properties.agent_id.anyOf[1].type, 'null');

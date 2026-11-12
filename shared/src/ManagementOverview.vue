@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { pointsMinor } from './points'
+import SiteIcon from './SiteIcon'
+
 import { computed, onMounted, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { withGlobalLoading, formatPoints, type LocalizedMessage, type MessageParameters } from './index'
 import type { OverviewSummary, OverviewDay } from './overview'
@@ -21,16 +24,16 @@ const metric = ref<'stake_points' | 'net_points' | 'new_members'>('stake_points'
 const controller = new AbortController()
 let timer: ReturnType<typeof setInterval> | undefined
 const number = (value: string) => formatPoints(value, props.locale)
-const netTone = (value: string) => BigInt(value) === 0n ? 'overview-neutral' : BigInt(value) < 0n ? 'overview-loss' : 'overview-win'
-const net = (value: string) => BigInt(value) > 0n ? `+${number(value)}` : number(value)
+const netTone = (value: string) => pointsMinor(value) === 0n ? 'overview-neutral' : pointsMinor(value) < 0n ? 'overview-loss' : 'overview-win'
+const net = (value: string) => pointsMinor(value) > 0n ? `+${number(value)}` : number(value)
 const today = computed(() => data.value!.days[6])
 const yesterday = computed(() => data.value!.days[5])
 const cards = computed(() => data.value ? [
-  { label: 'overview.totalMembers', value: data.value.total_members },
-  { label: 'overview.online', value: data.value.online_members },
-  { label: 'overview.newYesterday', value: yesterday.value.new_members },
-  { label: 'overview.bettorsToday', value: today.value.bettor_count },
-] : [])
+  { label: 'overview.totalMembers', value: data.value.total_members, icon: 'users' },
+  { label: 'overview.online', value: data.value.online_members, icon: 'user' },
+  { label: 'overview.newYesterday', value: yesterday.value.new_members, icon: 'network' },
+  { label: 'overview.bettorsToday', value: today.value.bettor_count, icon: 'ticket' },
+] as const : [])
 const comparisons = computed(() => data.value ? [
   { title: 'overview.today', day: today.value },
   { title: 'overview.yesterday', day: yesterday.value },
@@ -48,11 +51,11 @@ const metrics = [
   { key: 'new_members', label: 'overview.trendNew' },
 ] as const
 const chartBounds = computed(() => {
-  const values = data.value!.days.map(day => BigInt(day[metric.value]))
+  const values = data.value!.days.map(day => pointsMinor(day[metric.value]))
   return { max: values.reduce((a, b) => b > a ? b : a, 0n), min: values.reduce((a, b) => b < a ? b : a, 0n) }
 })
 function bar(value: string) {
-  const { max, min } = chartBounds.value, range = max - min, amount = BigInt(value)
+  const { max, min } = chartBounds.value, range = max - min, amount = pointsMinor(value)
   if (range === 0n) return { height: '0%', bottom: '0%' }
   return { height: `${Number((amount < 0n ? -amount : amount) * 10000n / range) / 100}%`, bottom: `${Number((amount < 0n ? amount - min : -min) * 10000n / range) / 100}%` }
 }
@@ -60,7 +63,7 @@ const baseline = computed(() => {
   const { max, min } = chartBounds.value
   return max === min ? '0%' : `${Number(-min * 10000n / (max - min)) / 100}%`
 })
-const compact = (value: string) => new Intl.NumberFormat(props.locale, { notation: 'compact', maximumFractionDigits: 1 }).format(BigInt(value))
+const compact = (value: string) => new Intl.NumberFormat(props.locale, { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value))
 async function load() {
   if (reading.value || !props.canView || controller.signal.aborted) return
   reading.value = true
@@ -96,7 +99,7 @@ onBeforeUnmount(() => { controller.abort(); clearInterval(timer) })
       <section v-if="scope === 'brand'" class="panel overview-tasks overview-tasks-priority"><h2>{{ t('overview.tasks') }}</h2><button v-for="task in tasks" :key="task.label" type="button" class="button button-secondary overview-task overview-task-action" @click="emit('openWithdrawals')"><span>{{ t(task.label) }}</span><strong :class="BigInt(task.value) === 0n ? 'overview-neutral' : 'overview-pending'">{{ number(task.value) }}</strong></button></section>
       <section class="overview-stats" :aria-label="t('overview.totalMembers')">
         <article v-for="card in cards" :key="card.label" class="panel overview-stat">
-          <p class="overview-muted">{{ t(card.label) }}</p><strong class="overview-value overview-member">{{ number(card.value) }}</strong>
+          <p class="overview-muted overview-stat-label"><span class="overview-stat-icon"><SiteIcon :name="card.icon" /></span>{{ t(card.label) }}</p><strong class="overview-value overview-member">{{ number(card.value) }}</strong>
         </article>
       </section>
       <section v-if="scope === 'platform'" class="panel overview-tasks overview-tasks-priority"><h2>{{ t('overview.tasks') }}</h2><button v-for="task in tasks" :key="task.label" type="button" class="button button-secondary overview-task overview-task-action" @click="emit('openWithdrawals')"><span>{{ t(task.label) }}</span><strong :class="BigInt(task.value) === 0n ? 'overview-neutral' : 'overview-pending'">{{ number(task.value) }}</strong></button></section>
@@ -119,7 +122,7 @@ onBeforeUnmount(() => { controller.abort(); clearInterval(timer) })
         <div class="overview-chart">
           <div v-for="day in data.days" :key="day.day" class="overview-chart-column" :aria-label="`${day.day}: ${number(day[metric])}`">
             <span class="overview-chart-value" :class="metric === 'net_points' ? netTone(day[metric]) : metric === 'new_members' ? 'overview-member' : 'overview-stake'" :title="number(day[metric])">{{ compact(day[metric]) }}</span>
-            <div class="overview-chart-track"><span class="overview-baseline" :style="{ bottom: baseline }" /><span class="overview-bar" :class="{ 'overview-bar-stake': metric === 'stake_points', 'overview-bar-loss': BigInt(day[metric]) < 0n }" :style="bar(day[metric])" /></div>
+            <div class="overview-chart-track"><span class="overview-baseline" :style="{ bottom: baseline }" /><span class="overview-bar" :class="{ 'overview-bar-stake': metric === 'stake_points', 'overview-bar-loss': pointsMinor(day[metric]) < 0n }" :style="bar(day[metric])" /></div>
             <span class="overview-chart-date">{{ day.day.slice(5).replace('-', '/') }}</span>
           </div>
         </div>
@@ -141,9 +144,11 @@ onBeforeUnmount(() => { controller.abort(); clearInterval(timer) })
 .overview-muted { font-size: var(--body-font-size); color: var(--muted); }
 .overview-section-heading, .overview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .overview-section-heading { justify-content: space-between; margin-bottom: 12px; }
-.overview-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
-.overview-stat { padding: 14px; min-width: 0; margin: 0; }
-.overview-value { display: block; font-size: 28px; line-height: 1.3; font-weight: 750; letter-spacing: -.5px; margin: 6px 0; }
+.overview-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background-image: var(--lottery-art); background-size: cover; background-position: center; }
+.overview-stat { padding: 14px; min-width: 0; margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.overview-stat-label { display: flex; align-items: center; gap: 8px; }
+.overview-stat-icon { display: inline-grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--primary-dark); background: var(--primary-light); }
+.overview-value { display: block; font-family: var(--font-mono, ui-monospace, monospace); font-size: 28px; line-height: 1.3; font-weight: 750; letter-spacing: -.5px; margin: 6px 0; }
 .overview strong { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .overview-comparisons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .overview-business { padding: 16px; min-width: 0; margin: 0; }
@@ -157,9 +162,11 @@ onBeforeUnmount(() => { controller.abort(); clearInterval(timer) })
 .overview-chart-column { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
 .overview-chart-value, .overview-chart-date { font-size: var(--body-font-size); font-variant-numeric: tabular-nums; color: var(--muted); overflow-wrap: anywhere; }
 .overview-chart-track { height: 140px; width: 100%; position: relative; }
-.overview-bar { position: absolute; background: var(--primary); width: 64%; max-width: 44px; left: 50%; transform: translateX(-50%); border-radius: 4px 4px 0 0; opacity: .65; }
-.overview-chart-column:last-child .overview-bar { opacity: 1; }
-.overview-bar-stake { background: var(--warning-text); }
+.overview-bar { position: absolute; background: #cbd5e1; width: 64%; max-width: 44px; left: 50%; transform: translateX(-50%); border-radius: 4px 4px 0 0; transition: background-color 150ms ease; }
+.overview-chart-column:nth-child(n+5) .overview-bar { background: color-mix(in srgb, var(--primary) 55%, #cbd5e1); }
+.overview-chart-column:last-child .overview-bar { background: var(--primary); }
+.overview-bar-stake { background: color-mix(in srgb, var(--warning) 60%, #cbd5e1); }
+.overview-chart-column:last-child .overview-bar-stake { background: var(--warning-text); }
 .overview-bar-loss { background: var(--danger); border-radius: 0 0 4px 4px; }
 .overview-baseline { position: absolute; height: 1px; left: 0; right: 0; background: var(--line); }
 .overview-ranking { margin-top: 16px; }

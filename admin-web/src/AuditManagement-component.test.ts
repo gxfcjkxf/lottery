@@ -100,7 +100,7 @@ describe("audit management UI", () => {
     expect(text(view.root)).toContain('Change snapshot not recorded');
   });
 
-  it("loads on entry, renders redacted details, and offers separate export", async () => {
+  it("loads on entry, renders redacted details, without an export action", async () => {
     const view = mount(); await flush();
     expect(apiStub.list).toHaveBeenCalledTimes(1);
     apiStub.list.mockClear();
@@ -116,7 +116,7 @@ describe("audit management UI", () => {
     const details = all(view.root).find(node => node.props.class === "audit-snapshots");
     expect(text(details!) + operationToastText()).toContain("旧昵称");
     expect(text(details!) + operationToastText()).not.toContain("secret");
-    expect(all(view.root).some(node => node.tag === "button" && text(node).includes("导出完整 CSV"))).toBe(true);
+    expect(all(view.root).some(node => node.tag === "button" && text(node).includes("导出完整 CSV"))).toBe(false);
   });
 
   it("drops a pending read after language and brand scope changes", async () => {
@@ -178,7 +178,7 @@ describe("audit management UI", () => {
     expect(source).toContain("@media(max-width:760px)");
     expect(source).toContain("@media(max-width:420px)");
     expect(source).toContain(':aria-label="tr(\'admin.copy.315a9366\')"');
-    expect(source).toContain("aria-live=\"polite\"");
+    expect(source).not.toContain('v-if="receipt"');
   });
 
   it("keeps signed-out viewers behind the login boundary without demo audit records", () => {

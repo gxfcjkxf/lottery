@@ -75,12 +75,12 @@ func TestCanadaNiuMultipliers(t *testing.T) {
 	}
 }
 func TestCanadaNiuProfitKeepsExactFeeBeforeFinalRounding(t *testing.T) {
-	n, rate, e := CanadaNiuProfit(1234567, "1.000001", 20)
-	if e != nil || n != 23950624 || rate != "19.40001940" {
+	n, rate, e := CanadaNiuProfit(123456700, "1.000001", 20)
+	if e != nil || n != 2395062375 || rate != "19.40001940" {
 		t.Fatal(n, rate, e)
 	}
-	n, _, e = CanadaNiuProfit(5, "1000", 20)
-	if e != nil || n != 97000 {
+	n, _, e = CanadaNiuProfit(500, "1000", 20)
+	if e != nil || n != 9700000 {
 		t.Fatal(n, e)
 	}
 }

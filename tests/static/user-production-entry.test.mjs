@@ -10,12 +10,10 @@ test('ordinary user routes do not expose the retired draft-file tool', () => {
   assert.equal(existsSync(new URL('user-web/src/ConfiguredRulePreview.vue', root)), false)
 })
 
-test('user policy consent obtains versions from context instead of a trial default', () => {
+test('authentication has no consent gate or consent persistence', () => {
   const page = read('user-web/src/Page.vue')
-  assert.doesNotMatch(page, /dev-1/)
-  assert.match(page, /termsVersions\.value = context\.terms/)
-  assert.match(page, /if \(!termsVersions\.value\) throw/)
-  assert.doesNotMatch(read('user-web/src/i18n.ts'), /common\.mockVersion/)
+  assert.doesNotMatch(page, /termsVersions|authTerms|policiesAgreed|joinTermsPrompt|telegramRegistrationPrompt/)
+  assert.doesNotMatch(read('backend/migrations/0001_baseline.up.sql'), /privacy_policy_version|service_terms_version|terms_accepted|accepted_at|member_consent_consistent/)
 })
 
 test('the removed user preview does not leave obsolete sandbox translations', () => {

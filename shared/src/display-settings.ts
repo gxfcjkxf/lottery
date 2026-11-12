@@ -1,3 +1,4 @@
+import { applyTheme, themeIds, type ThemeId } from './theme'
 import { readApiEnvelope } from './api-response'
 
 import { shallowRef } from 'vue'
@@ -5,8 +6,8 @@ import { formatPlatformDateTime, type PlatformDisplaySettings } from './date-tim
 
 export const platformDisplaySettings = shallowRef<PlatformDisplaySettings | null>(null)
 export const displaySettingsCatalog = {
-  en: { loading: 'Loading…', pageUnavailable: 'Unable to open this page', unavailable: 'Unable to load date and time settings.', retry: 'Retry', date: 'Date', time: 'Time', 'datetime-local': 'Date and time' },
-  'zh-CN': { loading: '加载中…', pageUnavailable: '页面暂时无法打开', unavailable: '无法加载日期和时间设置。', retry: '重试', date: '日期', time: '时间', 'datetime-local': '日期和时间' },
+  en: { loading: 'Loading…', pageUnavailable: 'Unable to open this page', unavailable: 'Unable to load display settings.', retry: 'Retry', date: 'Date', time: 'Time', 'datetime-local': 'Date and time' },
+  'zh-CN': { loading: '加载中…', pageUnavailable: '页面暂时无法打开', unavailable: '无法加载显示设置。', retry: '重试', date: '日期', time: '时间', 'datetime-local': '日期和时间' },
 }
 
 export function setPlatformDisplaySettings(value: PlatformDisplaySettings): void {
@@ -17,8 +18,10 @@ export function setPlatformDisplaySettings(value: PlatformDisplaySettings): void
 
 export async function loadPlatformDisplaySettings(fetcher: typeof fetch = fetch): Promise<void> {
   const response = await fetcher('/api/v1/display-settings', { headers: { Accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store' })
-  const result = await readApiEnvelope<PlatformDisplaySettings>(response,(message,status,code)=>Object.assign(new Error(message),{status,code}))
-  if (!response.ok || result.success !== true || !result.data || Object.keys(result.data).sort().join(',') !== 'date_format,time_format,timezone') throw new Error('Invalid platform display settings response')
+  const result = await readApiEnvelope<PlatformDisplaySettings & {theme: ThemeId}>(response,(message,status,code)=>Object.assign(new Error(message),{status,code}))
+  if (!response.ok || result.success !== true || !result.data || Object.keys(result.data).sort().join(',') !== 'date_format,theme,time_format,timezone') throw new Error('Invalid platform display settings response')
+  if (!themeIds.includes(result.data.theme)) throw new Error('Invalid platform theme')
+  applyTheme(result.data.theme)
   setPlatformDisplaySettings(result.data)
 }
 

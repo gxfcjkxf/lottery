@@ -1,3 +1,4 @@
+import { isPoints } from '@lottery/shared'
 import { readAdminEnvelope } from './admin-api'
 
 import { AdminApiError, type AdminAccount } from "./admin-api";
@@ -298,7 +299,7 @@ export function createAgentsApi(fetchImpl: typeof fetch = fetch) {
     if (filters.online) query.set('online', filters.online);
     const value = await request(`${BASE}/agents?${query}`, brand);
     if (!isRecord(value) || value.brand_id !== brand || !Array.isArray(value.items) || value.items.length > limit ||
-        !value.items.every(item => validNode(item, brand) && isRecord(item) && typeof item.username === "string" && typeof item.online === "boolean" && (item.display_points === null || typeof item.display_points === "string" && /^(0|[1-9]\d*)$/.test(item.display_points))) || value.limit !== limit || value.offset !== offset ||
+        !value.items.every(item => validNode(item, brand) && isRecord(item) && typeof item.username === "string" && typeof item.online === "boolean" && (item.display_points === null || typeof item.display_points === "string" && isPoints(item.display_points))) || value.limit !== limit || value.offset !== offset ||
         typeof value.total_count !== "string" || !/^(0|[1-9]\d*)$/.test(value.total_count)) invalidResponse(false);
     return value as unknown as AgentList;
   }

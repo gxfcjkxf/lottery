@@ -154,7 +154,7 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 		prefix = "/api/v1/platform"
 	}
 	handle := func(method, path string, fn http.HandlerFunc) {
-		if platform && method != "GET" && path != "/auth/login" && path != "/auth/logout" && path != "/me/password" && !(method == "POST" && path == "/brands") && !(method == "DELETE" && path == "/brands/{id}") && !(method == "PATCH" && path == "/brands/{id}/game-settings") && !(method == "PATCH" && path == "/brand-operation") && !(method == "PATCH" && path == "/platform-settings") && !(method == "PUT" && (path == "/commission-settings" || path == "/report-archive-policy" || path == "/notification-templates/{key}")) && !(method == "POST" && (path == "/recharge-quota/grants" || path == "/recharge-quota/reclaims")) && !(method == "POST" && path == "/global-users/{id}/delete") && !platformBrandDomainWriteRoute(method, path) && !platformSecurityWriteRoute(method, path) && !platformAccountWriteRoute(method, path) && !platformLotteryWriteRoute(method, path) {
+		if platform && method != "GET" && path != "/auth/login" && path != "/auth/logout" && path != "/me/password" && !(method == "POST" && path == "/brands") && !(method == "DELETE" && path == "/brands/{id}") && !(method == "PATCH" && path == "/brands/{id}/game-settings") && !(method == "PATCH" && path == "/brand-operation") && !(method == "PATCH" && path == "/platform-settings") && !(method == "PUT" && (path == "/commission-settings" || path == "/report-archive-policy" || path == "/notification-templates/{key}")) && !(method == "POST" && (path == "/recharge-quota/grants" || path == "/recharge-quota/reclaims")) && !(method == "POST" && path == "/global-users/{id}/delete") && !(method == "PUT" && path == "/cash/config") && !(method == "POST" && (path == "/announcements" || path == "/announcements/image")) && !(method == "PUT" && path == "/announcements/{id}") && !platformBrandDomainWriteRoute(method, path) && !platformSecurityWriteRoute(method, path) && !platformAccountWriteRoute(method, path) && !platformLotteryWriteRoute(method, path) {
 			return
 		}
 		mux.HandleFunc(method+" "+prefix+path, func(w http.ResponseWriter, r *http.Request) {
@@ -175,6 +175,8 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 			fn(w, r.WithContext(ctx))
 		})
 	}
+	registerAnnouncementAdmin(handle, d, platform)
+	registerCashAdmin(handle, d, platform)
 	registerAssociationLookup(handle, d)
 	registerFilterOptions(handle, d)
 	if !platform {
@@ -183,7 +185,10 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 	registerPlatformLotteryRoutes(handle, d, platform)
 	registerBrandOperationRoutes(handle, d)
 	registerBrandPresentationRoutes(handle, d)
-	registerBrandLogoUpload(handle, d)
+	if !platform {
+		registerBrandContactAdminRoutes(handle, d)
+	}
+	registerBrandLogoUpload(handle, d, platform)
 	if platform {
 		registerBrandDomainRoutes(handle, d)
 	}
@@ -191,7 +196,6 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 	if platform {
 		registerNotificationTemplateRoutes(handle, d)
 	}
-	registerComplianceRoutes(handle, d)
 	if !platform {
 		handle("GET", "/auth/challenge", func(w http.ResponseWriter, r *http.Request) {
 			b, ok := resolveAdminEntry(w, r, d)

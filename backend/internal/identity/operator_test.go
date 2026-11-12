@@ -48,7 +48,7 @@ func operatorTestAdmin(t *testing.T, ctx context.Context, p *pgxpool.Pool) strin
 	return id
 }
 
-func TestOperatorCreatePendingConsentFlowAndGlobalUniqueness(t *testing.T) {
+func TestOperatorCreateDirectLoginAndGlobalUniqueness(t *testing.T) {
 	p := testdb.New(t)
 	s, err := New(p)
 	if err != nil {
@@ -81,20 +81,18 @@ func TestOperatorCreatePendingConsentFlowAndGlobalUniqueness(t *testing.T) {
 	if err := json.Unmarshal(created.Data, &response); err != nil {
 		t.Fatal(err)
 	}
-	if response.UserID == "" || response.MemberID == "" || response.BrandID != operatorTestBrand || response.TermsAccepted {
+	if response.UserID == "" || response.MemberID == "" || response.BrandID != operatorTestBrand {
 		t.Fatalf("unexpected create response: %+v", response)
 	}
 	if err = tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var termsAccepted bool
-	var acceptedAt *string
-	var joinMethod, createdBy, displayName, notes, privacy, terms string
-	if err = p.QueryRow(ctx, "SELECT terms_accepted,accepted_at::text,join_method,created_by::text,display_name,notes,privacy_policy_version,service_terms_version FROM brand_members WHERE id=$1", response.MemberID).Scan(&termsAccepted, &acceptedAt, &joinMethod, &createdBy, &displayName, &notes, &privacy, &terms); err != nil {
+	var joinMethod, createdBy, displayName, notes string
+	if err = p.QueryRow(ctx, "SELECT join_method,created_by::text,display_name,notes FROM brand_members WHERE id=$1", response.MemberID).Scan(&joinMethod, &createdBy, &displayName, &notes); err != nil {
 		t.Fatal(err)
 	}
-	if termsAccepted || acceptedAt != nil || joinMethod != "operator" || createdBy != adminID || displayName != "Example Person" || notes != "created from test" || privacy == "" || terms == "" {
-		t.Fatalf("bad pending member: accepted=%v accepted_at=%v method=%q creator=%q name=%q notes=%q policy=%q/%q", termsAccepted, acceptedAt, joinMethod, createdBy, displayName, notes, privacy, terms)
+	if joinMethod != "operator" || createdBy != adminID || displayName != "Example Person" || notes != "created from test" {
+		t.Fatal("unexpected member metadata")
 	}
 	var bucketCount, sessionCount int
 	if err = p.QueryRow(ctx, "SELECT count(*) FROM point_buckets pb JOIN point_accounts pa ON pa.id=pb.account_id WHERE pa.brand_member_id=$1", response.MemberID).Scan(&bucketCount); err != nil || bucketCount != 16 {
@@ -120,18 +118,18 @@ func TestOperatorCreatePendingConsentFlowAndGlobalUniqueness(t *testing.T) {
 		return result
 	}
 	noConsent := login("operator-login-pending", LoginInput{Identifier: "pending_user", Password: "operator-created-password"})
-	if noConsent.Status != 409 || noConsent.Error == nil || noConsent.Error.Code != "BRAND_JOIN_REQUIRED" {
-		t.Fatalf("pending password login: %+v", noConsent)
+	if noConsent.Status != 200 {
+		t.Fatalf("direct password login: %+v", noConsent)
 	}
 	tg, err := engine.Execute(ctx, operatorTestBrand, "operator-flow", "telegram", "operator-tg-pending", engine.Fingerprint("operator-tg-pending"), func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
 		return s.Telegram(ctx, tx, operatorTestBrand, telegramauth.Claims{ID: "987654321", Subject: "test"}, TelegramInput{}, "", meta)
 	})
-	if err != nil || tg.Status != 409 || tg.Error == nil || tg.Error.Code != "BRAND_JOIN_REQUIRED" {
-		t.Fatalf("pending Telegram login: %+v err=%v", tg, err)
+	if err != nil || tg.Status != 200 {
+		t.Fatalf("direct Telegram login: %+v err=%v", tg, err)
 	}
-	accepted := login("operator-login-accept", LoginInput{Identifier: "pending_user", Password: "operator-created-password", Privacy: privacy, Terms: terms})
+	accepted := login("operator-login-accept", LoginInput{Identifier: "pending_user", Password: "operator-created-password"})
 	if accepted.Status != 200 {
-		t.Fatalf("consent login: %+v", accepted)
+		t.Fatalf("normal repeat login: %+v", accepted)
 	}
 	var auth Authentication
 	if err := json.Unmarshal(accepted.Data, &auth); err != nil {
@@ -143,15 +141,8 @@ func TestOperatorCreatePendingConsentFlowAndGlobalUniqueness(t *testing.T) {
 	if _, err = s.Authenticate(ctx, operatorTestBrand, auth.AccessToken); err != nil {
 		t.Fatalf("accepted session did not authenticate: %v", err)
 	}
-	var acceptedAtPresent bool
-	if err = p.QueryRow(ctx, "SELECT terms_accepted,accepted_at IS NOT NULL FROM brand_members WHERE id=$1", response.MemberID).Scan(&termsAccepted, &acceptedAtPresent); err != nil {
-		t.Fatal(err)
-	}
-	if !termsAccepted || !acceptedAtPresent {
-		t.Fatal("consent was not persisted")
-	}
 	var acceptAuditCount, createAuditCount int
-	if err = p.QueryRow(ctx, "SELECT count(*) FILTER(WHERE action='member.terms_accept'),count(*) FILTER(WHERE action='user.operator_create') FROM audit_logs WHERE resource_id=$1", response.MemberID).Scan(&acceptAuditCount, &createAuditCount); err != nil || acceptAuditCount != 1 || createAuditCount != 1 {
+	if err = p.QueryRow(ctx, "SELECT count(*) FILTER(WHERE action='member.terms_accept'),count(*) FILTER(WHERE action='user.operator_create') FROM audit_logs WHERE resource_id=$1", response.MemberID).Scan(&acceptAuditCount, &createAuditCount); err != nil || acceptAuditCount != 0 || createAuditCount != 1 {
 		t.Fatalf("audit counts accept=%d create=%d err=%v", acceptAuditCount, createAuditCount, err)
 	}
 	var auditText string
@@ -257,7 +248,7 @@ func TestAuthSettingsCASValidationAndCrossStoreVisibility(t *testing.T) {
 	if err = json.Unmarshal(updated.Data, &updateResponse); err != nil {
 		t.Fatal(err)
 	}
-	if updateResponse.Version != before.Version+1 || updateResponse.PrivacyPolicyVersion != before.PrivacyPolicyVersion || updateResponse.ServiceTermsVersion != before.ServiceTermsVersion || updateResponse.AuditLogID == "" {
+	if updateResponse.Version != before.Version+1 || updateResponse.AuditLogID == "" {
 		t.Fatalf("update response omitted or changed preserved record fields: before=%+v response=%+v", before, updateResponse)
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -267,7 +258,7 @@ func TestAuthSettingsCASValidationAndCrossStoreVisibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.Version != before.Version+1 || !after.CaptchaEnabled || !after.TelegramEnabled || after.TelegramClientID != "9007199254740991" || after.PrivacyPolicyVersion != before.PrivacyPolicyVersion || after.ServiceTermsVersion != before.ServiceTermsVersion {
+	if after.Version != before.Version+1 || !after.CaptchaEnabled || !after.TelegramEnabled || after.TelegramClientID != "9007199254740991" {
 		t.Fatalf("unexpected cross-Store config: before=%+v after=%+v", before, after)
 	}
 	staleTx, err := p.Begin(ctx)
@@ -279,13 +270,6 @@ func TestAuthSettingsCASValidationAndCrossStoreVisibility(t *testing.T) {
 		t.Fatalf("stale update: %+v err=%v", stale, err)
 	}
 	_ = staleTx.Rollback(ctx)
-	var terms string
-	if err = p.QueryRow(ctx, "SELECT (auth_config->>'privacy_policy_version')||'/'||(auth_config->>'service_terms_version') FROM brands WHERE id=$1", operatorTestBrand).Scan(&terms); err != nil {
-		t.Fatal(err)
-	}
-	if terms != before.PrivacyPolicyVersion+"/"+before.ServiceTermsVersion {
-		t.Fatalf("policy versions changed: %s", terms)
-	}
 	var action, beforeJSON, afterJSON string
 	if err = p.QueryRow(ctx, "SELECT action,before_json::text,after_json::text FROM audit_logs WHERE action='auth_config.update' ORDER BY created_at DESC LIMIT 1").Scan(&action, &beforeJSON, &afterJSON); err != nil {
 		t.Fatal(err)

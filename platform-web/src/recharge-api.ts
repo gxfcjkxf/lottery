@@ -1,3 +1,5 @@
+import { isPoints } from '@lottery/shared'
+import { pointsMinor } from '@lottery/shared'
 import { readPaginationTotal } from '@lottery/shared'
 import { readPlatformEnvelope } from './platform-api'
 
@@ -43,7 +45,7 @@ function isRecharge(v: unknown): v is Recharge {
   const required = ['method', 'id', 'brand_id', 'member_id', 'member_username', 'account_id', 'points', 'state', 'proof_reference', 'remark', 'created_by', 'created_by_name', 'confirmed_by_name', 'version', 'created_at']
   const optional = ['confirmed_by', 'confirmed_at', 'ledger_entry_id', 'audit_log_id']
   if (!['manual','automatic'].includes(String(v.method)) || !exactKeys(v, required, optional) || !isUUID(v.id) || !isUUID(v.brand_id) || !isUUID(v.member_id) || !isUUID(v.account_id) ||
-    typeof v.member_username !== 'string' || typeof v.points !== 'string' || !/^[1-9]\d*$/.test(v.points) || BigInt(v.points) > INT64_MAX ||
+    typeof v.member_username !== 'string' || typeof v.points !== 'string' || !(isPoints(v.points) && pointsMinor(v.points)>0n) || pointsMinor(v.points) > INT64_MAX ||
     !['pending', 'confirmed', 'cancelled'].includes(String(v.state)) || typeof v.proof_reference !== 'string' || typeof v.remark !== 'string' || !isUUID(v.created_by) || typeof v.created_by_name !== 'string' || typeof v.confirmed_by_name !== 'string' ||
     typeof v.version !== 'number' || !Number.isSafeInteger(v.version) || v.version < 1 || !isDateTime(v.created_at)) return false
   for (const key of ['confirmed_by', 'ledger_entry_id', 'audit_log_id']) if (key in v && !isUUID(v[key])) return false

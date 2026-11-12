@@ -5,7 +5,6 @@ const totalCount = ref('0')
 
 import TablePagination from "@lottery/shared/TablePagination.vue"
 import { useOperationToast } from "@lottery/shared";
-import RechargeQuotaPanel from "@lottery/shared/RechargeQuotaPanel.vue"
 import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
 import { usePlatformI18n as usePublicErrorI18n } from "./i18n";
 const publicErrorI18n = usePublicErrorI18n();
@@ -16,11 +15,13 @@ import DirectorySearch from "@lottery/shared/DirectorySearch.vue";
 import { usePlatformI18n } from "./i18n"
 const ui = usePlatformI18n().t
 import DetailModal from "@lottery/shared/DetailModal.vue"
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformRechargeApi, type Recharge } from './recharge-api'
 import FilterAssociationSearch from "@lottery/shared/FilterAssociationSearch.vue"
 import { formatPlatformDateTime, type PlatformDisplaySettings } from './platform-format'
+const pageSize = ref(50)
+
 
 const props = defineProps<{ brandId: string; memberId: string; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
@@ -40,7 +41,7 @@ function report(cause: unknown) {
   else error.value = cause instanceof Error ? publicErrorMessage(cause) : publicErrorMessage(cause)
 }
 const filterReset=ref(0)
-async function clearFilters(){filterReset.value++;draftMember.value='';await nextTick();await load(0,'')}
+
 async function submitMemberQuery() {
   if (memberSearchPending.value) return
   try {
@@ -59,9 +60,9 @@ async function load(nextOffset = 0, member = filterMember.value) {
   if (!brandId) { loading.value = false; return }
   loading.value = true
   try {
-    const records = await api.list(brandId, member, 51, nextOffset)
+    const records = await api.list(brandId, member, pageSize.value, nextOffset)
     if (request !== generation || props.brandId !== brandId) return
-    [rows.value, totalCount.value] = [records.items.slice(0, 50), readPaginationTotal(records)]; more.value = records.items.length > 50
+    [rows.value, totalCount.value] = [records.items, readPaginationTotal(records)]; more.value = BigInt(nextOffset + records.items.length) < BigInt(totalCount.value)
     offset.value = nextOffset; filterMember.value = member
   } catch (cause) {
     if (request !== generation) return
@@ -80,10 +81,9 @@ useOperationToast(error, value => displayPublicError(value), 'error');
 
 <template>
   <ManagementList data-testid="platform-recharges" class="recharge-records">
-    <template #filters><DirectorySearch class="wallet-query" v-model="draftMember" :label="copy.memberPlaceholder" :query-label="ui('members.query')" :clear-label="ui('members.clear')" :busy="loading || !brandId" :query-pending="memberSearchPending" :active="Boolean(memberSearchPending || draftMember || filterMember)" :search="submitMemberQuery" :clear="clearFilters">
+    <template #filters><DirectorySearch :locale="locale" class="wallet-query" v-model="draftMember" :label="copy.memberPlaceholder" :query-label="ui('members.query')" :busy="loading || !brandId" :query-pending="memberSearchPending" :search="submitMemberQuery">
       <template #input><FilterAssociationSearch :reset-key="filterReset" v-model="draftMember" v-model:pending="memberSearchPending" :brand-id="brandId" surface="platform" resource="recharge" :scope-key="memberId" :label="copy.member" :locale="locale" /></template>
       <template #actions>
-        <RechargeQuotaPanel compact :brand-id="brandId" :locale="locale" base-path="/api/v1/platform" @failure="emit('failure', $event)" />
       </template>
     </DirectorySearch></template>
 
@@ -101,7 +101,7 @@ useOperationToast(error, value => displayPublicError(value), 'error');
 
     </section>
 </DetailModal>
-  <template #pagination><TablePagination :show-empty="!loading && !error" class="wallet-pagination" data-testid="platform-recharge-pages" :total="totalCount" :page="Math.floor(offset / 50 + 1)" :count="rows.length" :locale="locale" :page-size="50" :previous-disabled="loading || offset === 0 || !brandId" :next-disabled="loading || !more" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => load((target - 1) * 50)" /></template></ManagementList>
+  <template #pagination><TablePagination class="wallet-pagination" data-testid="platform-recharge-pages" :total="totalCount" :page="Math.floor(offset / pageSize + 1)" :count="rows.length" :locale="locale" :page-size="pageSize" :previous-disabled="loading || offset === 0 || !brandId" :next-disabled="loading || !more" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => load((target - 1) * pageSize)" :change-page-size="async (size: number) => { pageSize = size; await load(0) }" :busy="loading" /></template></ManagementList>
 </template>
 
 <style scoped>

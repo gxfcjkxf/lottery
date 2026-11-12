@@ -217,7 +217,7 @@ func seedDrill(t *testing.T, p *pgxpool.Pool) string {
 		args []any
 	}{
 		{`INSERT INTO global_users(id,username,password_hash) VALUES($1,'recovery_synthetic','not-a-login-hash')`, []any{user}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','drill','drill')`, []any{member, drillBrand, user}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, []any{member, drillBrand, user}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{account, drillBrand, member}},
 		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift','commission'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])t ON CONFLICT DO NOTHING`, []any{drillBrand, account}},
 	} {
@@ -351,7 +351,7 @@ func TestReplicationPromotionAndBackupRestore(t *testing.T) {
 	evidence.PromotedDigestMatches = sameSnapshot(t, readers[0], baseline)
 	postDrillPoints(t, readers[0], member, 50)
 	wallet, err := (points.Store{DB: readers[0]}).Read(ctx, drillBrand, member)
-	if err != nil || wallet.GiftPoints != 180 {
+	if err != nil || wallet.GiftPoints != 18000 {
 		t.Fatal("promoted ledger write is not visible")
 	}
 	evidence.PromotedWritable = true
@@ -380,7 +380,7 @@ func TestReplicationPromotionAndBackupRestore(t *testing.T) {
 	evidence.RestoreMigrationCount = restored.MigrationCount
 	evidence.RestoredImmutableGuardsVerified = verifyRestoreGuards(t, restoredDB)
 	restoredWallet, err := (points.Store{DB: restoredDB}).Read(ctx, drillBrand, member)
-	if err != nil || restoredWallet.GiftPoints != 130 {
+	if err != nil || restoredWallet.GiftPoints != 13000 {
 		t.Fatal("restored wallet is not the verified backup cutoff state")
 	}
 	if !sameSnapshot(t, restoredDB, baseline) {

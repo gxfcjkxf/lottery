@@ -22,7 +22,7 @@ func newExportMember(t *testing.T, ctx context.Context, db *pgxpool.Pool) string
 		args []any
 	}{
 		{`INSERT INTO global_users(id,username) VALUES($1,$2)`, []any{user, "report_export_" + user}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, []any{member, testBrand, user}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, []any{member, testBrand, user}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{account, testBrand, member}},
 		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,source,state FROM unnest(ARRAY['recharge','winning','gift','commission']) source CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) state ON CONFLICT DO NOTHING`, []any{testBrand, account}},
 	} {
@@ -36,12 +36,12 @@ func newExportMember(t *testing.T, ctx context.Context, db *pgxpool.Pool) string
 func postLedgerExportEntry(t *testing.T, ctx context.Context, db *pgxpool.Pool, tx pgx.Tx, member, entryType string) points.Entry {
 	t.Helper()
 	var delta points.Balance
-	delta[0][0] = 1
+	delta[0][0] = 100
 	entry, err := (points.Store{DB: db}).Post(ctx, tx, points.Change{
 		BrandID: testBrand, MemberID: member, EntryType: entryType, ReferenceType: "report_export",
 		OperationKey: "report-export:" + ids.New(), Reason: "report export fixture credit",
 		ActorType: "system", RequestID: ids.New(), Delta: delta,
-		Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 1}},
+		Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 100}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func postLedgerExportEntry(t *testing.T, ctx context.Context, db *pgxpool.Pool, 
 
 func postZeroNetLedgerTransfer(t *testing.T, ctx context.Context, db *pgxpool.Pool, tx pgx.Tx, member, entryType, from, to string) {
 	t.Helper()
-	allocation := []points.Allocation{{Source: "recharge", State: from, Points: 1}}
+	allocation := []points.Allocation{{Source: "recharge", State: from, Points: 100}}
 	delta, err := points.AllocationDelta(allocation, from, to)
 	if err != nil {
 		t.Fatal(err)

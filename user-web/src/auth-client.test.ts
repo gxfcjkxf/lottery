@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createAuthClient, isBrandJoinRequired } from "../../shared/src/auth";
+import { createAuthClient } from "../../shared/src/auth";
 import {
   discardAccessToken,
   isTelegramClientIdConfigured,
@@ -50,9 +50,7 @@ describe("auth client", () => {
     const received = await client.register({
       username: "lee",
       password: "long-password",
-      privacy_policy_version: "dev-1",
-      service_terms_version: "dev-1",
-    });
+      });
 
     const [url, init] = fetcher.mock.calls[0]!;
     expect(url).toBe("/api/v1/b/luma/auth/register");
@@ -66,8 +64,7 @@ describe("auth client", () => {
     );
     expect(JSON.parse(String(init?.body))).toMatchObject({
       username: "lee",
-      privacy_policy_version: "dev-1",
-    });
+      });
     expect(discardAccessToken(received)).not.toHaveProperty("access_token");
     expect(localWrite).not.toHaveBeenCalled();
     expect(sessionWrite).not.toHaveBeenCalled();
@@ -105,8 +102,7 @@ describe("auth client", () => {
         JSON.stringify({
           success: false,
           error: {
-            code: "BRAND_JOIN_REQUIRED",
-            message: "Accept the current brand terms.",
+            code: "JOIN_ATTRIBUTION_FIXED", message: "Join source is fixed.",
           },
           request_id: "req-join",
         }),
@@ -118,11 +114,9 @@ describe("auth client", () => {
     await expect(
       client.login({ identifier: "lee", password: "long-password" }),
     ).rejects.toSatisfy((error) => {
-      expect(isBrandJoinRequired(error)).toBe(true);
       expect(error).toMatchObject({
         status: 409,
-        code: "BRAND_JOIN_REQUIRED",
-        message: "Accept the current brand terms.",
+        code: "JOIN_ATTRIBUTION_FIXED", message: "Join source is fixed.",
       });
       return true;
     });
@@ -146,7 +140,6 @@ describe("auth client", () => {
     await expect(
       client.login({ identifier: "member", password: "long-password", referral_code: "A1B2C3D4E5F607182930ABCD" }),
     ).rejects.toSatisfy((error) => {
-      expect(isBrandJoinRequired(error)).toBe(false);
       expect(error).toMatchObject({ status: 409, code: "JOIN_ATTRIBUTION_FIXED" });
       return true;
     });
@@ -252,8 +245,6 @@ describe("auth client", () => {
     await client.register({
       username: "member",
       password: "long-password",
-      privacy_policy_version: "v1",
-      service_terms_version: "v1",
       referral_code: "  a1b2c3d4e5f607182930abcd ",
     });
     await client.login({
@@ -265,8 +256,6 @@ describe("auth client", () => {
       id_token: "signed.jwt",
       challenge_id: "challenge",
       nonce: "nonce",
-      privacy_policy_version: "v1",
-      service_terms_version: "v1",
       referral_code: " e1b2c3d4e5f607182930abcd ",
     });
 
@@ -303,7 +292,7 @@ describe("auth client", () => {
     expect(invalidFetcher).not.toHaveBeenCalled();
   });
 
-  it("sends a Telegram OIDC token with the matching server challenge and explicit terms", async () => {
+  it("sends a Telegram OIDC token with the matching server challenge and no consent fields", async () => {
     const session = {
       access_token: "token",
       token_type: "Bearer",
@@ -330,9 +319,7 @@ describe("auth client", () => {
       id_token: "oidc-signed-token",
       challenge_id: "tg-challenge",
       nonce: "server-nonce",
-      privacy_policy_version: "dev-1",
-      service_terms_version: "dev-1",
-    });
+      });
 
     const body = JSON.parse(String(fetcher.mock.calls[0]![1]?.body));
     expect(fetcher.mock.calls[0]![0]).toBe("/api/v1/auth/telegram");
@@ -340,9 +327,7 @@ describe("auth client", () => {
       id_token: "oidc-signed-token",
       challenge_id: "tg-challenge",
       nonce: "server-nonce",
-      privacy_policy_version: "dev-1",
-      service_terms_version: "dev-1",
-    });
+      });
     expect(body).not.toHaveProperty("username");
     expect(
       new Headers(fetcher.mock.calls[0]![1]?.headers).get("idempotency-key"),

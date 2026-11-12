@@ -115,11 +115,11 @@ function installFetch(options: { current?: CommissionPayment; onRetry?: (call: {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); PaymentState.clearAllCommissionPaymentIntents(); });
 
 describe("CommissionPaymentsManagement", () => {
-  it("keeps the selected calculation cycle through queue changes and reset", async () => {
+  it("keeps the selected calculation cycle through queue changes and queries", async () => {
     const installed = installFetch();
     const mounted = mount(baseAccount, brand, "active", cycleId); await flush();
     expect(findNode(mounted.container, node => node.tag === "select-control" && node.props["aria-label"] === "周期")).toBeNull();
-    click(button(mounted.container, "清空")); await flush();
+    (findNode(mounted.container, node => node.tag === "form" && String(node.props.class).includes("commission-toolbar"))!.props.onSubmit as (event: Event) => void)({preventDefault(){}} as Event); await flush();
     click(button(mounted.container, "待审核")); await flush();
     const reads = installed.calls.filter(call => call.url.includes("/commission-payments?"));
     expect(reads.length).toBeGreaterThanOrEqual(3);
@@ -185,7 +185,8 @@ describe("CommissionPaymentsManagement", () => {
     const server = installFetch({ current: payment({ state: "failed", payout_mode: "mixed", version: 7, paid_count: "1", paid_points: "5", last_error_code: "POST_FAILED" }) });
     const mounted = mount(baseAccount); await flush();
     click(button(mounted.container, paymentId)); await flush();
-    expect(textOf(mounted.container) + operationToastText()).toContain("混合（整周期人工审核）");
+    expect(textOf(mounted.container) + operationToastText()).toContain("混合");
+    expect(textOf(mounted.container) + operationToastText()).not.toMatch(/混合[（(]/);
      await flush();
     expect(byTestId(mounted.container, "commission-payment-retry")?.props.disabled).toBe(false);
     click(byTestId(mounted.container, "commission-payment-retry")); await flush();
@@ -199,7 +200,8 @@ describe("CommissionPaymentsManagement", () => {
     expect(retries).toHaveLength(1);
     expect(JSON.parse(String(retries[0].init?.body))).toEqual({ version: 7, reason: "" });
     expect(new Headers(retries[0].init?.headers).get("X-Commission-Payment-Actor-ID")).toBe(actor);
-    expect(textOf(mounted.container) + operationToastText()).toContain("混合（整周期人工审核）");
+    expect(textOf(mounted.container) + operationToastText()).toContain("混合");
+    expect(textOf(mounted.container) + operationToastText()).not.toMatch(/混合[（(]/);
     expect(textOf(mounted.container) + operationToastText()).toContain("操作回执");
     mounted.app.unmount();
   });
@@ -208,7 +210,8 @@ describe("CommissionPaymentsManagement", () => {
     const snapshot = payment({ state: "awaiting_approval", payout_mode: "mixed", last_error_code: null });
     const server = installFetch({ current: snapshot }); const mounted = mount(baseAccount); await flush();
     click(button(mounted.container, paymentId)); await flush();
-    expect(textOf(mounted.container) + operationToastText()).toContain("混合（整周期人工审核）");
+    expect(textOf(mounted.container) + operationToastText()).toContain("混合");
+    expect(textOf(mounted.container) + operationToastText()).not.toMatch(/混合[（(]/);
     expect(textOf(mounted.container) + operationToastText()).toContain("混合周期须整期审批");
      await flush();
     expect(byTestId(mounted.container, "commission-payment-approve")?.props.disabled).toBe(false);

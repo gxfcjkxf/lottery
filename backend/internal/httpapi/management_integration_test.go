@@ -277,7 +277,7 @@ func TestManagementHTTPRolesAccountsReplayRevocationAndAudit(t *testing.T) {
 	}
 }
 
-func TestManagementHTTPOperatorConsentConfigCASAndSuperRestrictions(t *testing.T) {
+func TestManagementHTTPOperatorDirectLoginConfigCASAndSuperRestrictions(t *testing.T) {
 	f := managedFixture(t)
 	body := map[string]string{"username": "operator_member", "password": "member-test-password-2026", "display_name": "Created member", "notes": "test fixture", "reason": "provision user"}
 	r := f.call("POST", "/api/v1/admin/users", "operator-create-001", f.token, managedBrand, body)
@@ -287,10 +287,9 @@ func TestManagementHTTPOperatorConsentConfigCASAndSuperRestrictions(t *testing.T
 	var created struct {
 		UserID        string `json:"user_id"`
 		MemberID      string `json:"member_id"`
-		TermsAccepted bool   `json:"terms_accepted"`
 	}
 	managedData(t, r, &created)
-	if created.TermsAccepted || created.MemberID == "" {
+	if created.MemberID == "" {
 		t.Fatal("operator impersonated consent")
 	}
 	var sessionCount int
@@ -299,11 +298,9 @@ func TestManagementHTTPOperatorConsentConfigCASAndSuperRestrictions(t *testing.T
 		t.Fatal("operator-created user received a session")
 	}
 	login := map[string]string{"identifier": "operator_member", "password": "member-test-password-2026"}
-	if r = f.call("POST", "/api/v1/auth/login", "member-login-001", "", managedBrand, login); r.Code != 409 {
-		t.Fatal("missing user consent accepted", r.Code, r.Body.String())
+	if r = f.call("POST", "/api/v1/auth/login", "member-login-001", "", managedBrand, login); r.Code != 200 {
+		t.Fatal("operator-created member could not log in directly", r.Code, r.Body.String())
 	}
-	login["privacy_policy_version"] = "dev-1"
-	login["service_terms_version"] = "dev-1"
 	if r = f.call("POST", "/api/v1/auth/login", "member-login-002", "", managedBrand, login); r.Code != 200 {
 		t.Fatal(r.Code, r.Body.String())
 	}
@@ -320,7 +317,7 @@ func TestManagementHTTPOperatorConsentConfigCASAndSuperRestrictions(t *testing.T
 	}
 	var after identity.AuthSettingsRecord
 	managedData(t, r, &after)
-	if !after.CaptchaEnabled || after.PrivacyPolicyVersion != "dev-1" || after.ServiceTermsVersion != "dev-1" {
+	if !after.CaptchaEnabled {
 		t.Fatal("config update lost policies", r.Body.String())
 	}
 	if r = operator.call("PATCH", "/api/v1/platform/auth-settings", "config-stale-001", operator.token, managedBrand, patch); r.Code != 409 {

@@ -39,6 +39,8 @@ import {
   type ManagementAccount,
   type RoleRecord,
 } from "./management-api";
+const pageSize = ref(50)
+
 
 const props = defineProps<{
   account: AdminAccount & Partial<ManagementAccount>;
@@ -185,7 +187,7 @@ async function load(requestedOffset = offset.value) {
     if (canRoles.value) {
       try {
         const [listed, perms] = await Promise.all([
-          api.roles(requestBrandId, 50, requestedOffset),
+          api.roles(requestBrandId, pageSize.value, requestedOffset),
           api.permissions(requestBrandId),
         ]);
         if (props.brandId !== requestBrandId) return;
@@ -215,7 +217,7 @@ async function load(requestedOffset = offset.value) {
     if (canAccounts.value)
       tasks.push(
         api
-          .accounts(requestBrandId, 50, requestedOffset)
+          .accounts(requestBrandId, pageSize.value, requestedOffset)
           .then((listed) => {
             if (props.brandId === requestBrandId) { [accounts.value, accountsTotal.value] = [listed.items, readPaginationTotal(listed)]; offset.value = requestedOffset; }
           })
@@ -462,7 +464,7 @@ async function saveAccount() {
   }
 }
 async function changePage(direction: number) {
-  await load(Math.max(0, offset.value + direction * 50));
+  await load(Math.max(0, offset.value + direction * pageSize.value));
 }
 
 useOperationToast(() => error.value, value => display(value), 'error');
@@ -518,21 +520,21 @@ useOperationToast(() => notice.value, value => display(value), 'success');
         </template>
         </DetailModal>
         <ManagementList v-if="canRoles" :busy="loading" class="listing">
-          <template #actions><button v-if="writeRoles" class="button button-primary" type="button" @click="startRole">{{ t('admin.copy.8c7fddfb') }}</button><button v-refresh-button="t('admin.copy.894e2a7d')" class="button button-secondary" :disabled="loading || busy" @click="withGlobalLoading(load)">{{ t('admin.copy.894e2a7d') }}</button></template>
+          <template v-if="writeRoles" #actions><button v-if="writeRoles" class="button button-primary" type="button" @click="startRole">{{ t('admin.copy.8c7fddfb') }}</button></template>
           <ManagementTable :entries="roles" :columns="[{key:'name',label:t('admin.copy.6404dc43')},{key:'status',label:t('admin.copy.a765b3ca')},{key:'actions',label:t('admin.copy.d21fcbef')}]" :empty="!loading && !error && !roles.length" :empty-label="t('admin.copy.5c979929')">
             <template #name="{entry:role}"><button type="button" class="text-button" @click="viewedRole = role"><AssociationName :record="role" kind="role" :id="role.id" :locale="associationLocale" /></button></template>
             <template #status="{entry:role}"><span class="status-pill" :class="role.status">{{ role.status === 'active' ? t('admin.copy.98d24810') : t('admin.copy.5e3326db') }}</span></template>
             <template #actions="{entry:role}"><MemberActionsMenu :id="'brand-role-actions-' + role.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" @click="viewedRole = role">{{ t('admin.copy.01db40da') }}</button><button v-if="editableRole(role)" type="button" role="menuitem" @click="editRole(role)">{{ t('admin.copy.24dfbf6c') }}</button></MemberActionsMenu></template>
           </ManagementTable>
 
-        <template #pagination><PaginationControls :show-empty="!loading && !error"
-            :total="rolesTotal" :page="Math.floor(offset / 50 + 1)" :count="roles.length" :locale="associationLocale"
+        <template #pagination><PaginationControls
+            :total="rolesTotal" :page="Math.floor(offset / pageSize + 1)" :count="roles.length" :locale="associationLocale"
             :previous-label="t('admin.copy.dbe7a5d7')"
             :next-label="t('admin.copy.2e9c9e7a')"
             :busy="loading"
             :has-previous="offset > 0"
             :has-next="pageHasNext"
-           :page-size="50" :go-to="(target: number) => changePage(target - (Math.floor(offset / 50 + 1)))" /></template></ManagementList>
+           :page-size="pageSize" :go-to="(target: number) => changePage(target - (Math.floor(offset / pageSize + 1)))" :change-page-size="async (size: number) => { pageSize = size; await load(0) }" /></template></ManagementList>
         <p v-else class="callout">
           {{
             display(roleCatalogMessage || message('admin.copy.4f2155ad'))
@@ -641,7 +643,7 @@ useOperationToast(() => notice.value, value => display(value), 'success');
           {{ t('admin.copy.f738dce4') }}
         </p>
         <ManagementList v-if="canAccounts" :busy="loading" class="listing">
-          <template #actions><button v-if="writeAccounts && roleCatalogLoaded" class="button button-primary" type="button" @click="startAccount">{{ t('admin.copy.0f043095') }}</button><button v-refresh-button="t('admin.copy.894e2a7d')" class="button button-secondary" :disabled="loading || busy" @click="withGlobalLoading(load)">{{ t('admin.copy.894e2a7d') }}</button></template>
+          <template v-if="writeAccounts && roleCatalogLoaded" #actions><button v-if="writeAccounts && roleCatalogLoaded" class="button button-primary" type="button" @click="startAccount">{{ t('admin.copy.0f043095') }}</button></template>
           <ManagementTable
             table-class="account-directory-table"
             :entries="accounts"
@@ -665,14 +667,14 @@ useOperationToast(() => notice.value, value => display(value), 'success');
             <template #actions="{ entry: target }"><MemberActionsMenu :id="'brand-account-actions-' + target.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" @click="viewedAccount = target">{{ t('admin.copy.01db40da') }}</button><button v-if="writeAccounts && editableAccount(target)" type="button" role="menuitem" @click="editAccount(target)">{{ t('admin.copy.24dfbf6c') }}</button><button v-if="writeAccounts && canResetTarget(target)" type="button" role="menuitem" @click="editAccount(target, true)">{{ t('admin.copy.d1e2ba79') }}</button></MemberActionsMenu></template>
           </ManagementTable>
 
-        <template #pagination><PaginationControls :show-empty="!loading && !error"
-            :total="accountsTotal" :page="Math.floor(offset / 50 + 1)" :count="accounts.length" :locale="associationLocale"
+        <template #pagination><PaginationControls
+            :total="accountsTotal" :page="Math.floor(offset / pageSize + 1)" :count="accounts.length" :locale="associationLocale"
             :previous-label="t('admin.copy.dbe7a5d7')"
             :next-label="t('admin.copy.2e9c9e7a')"
             :busy="loading"
             :has-previous="offset > 0"
             :has-next="pageHasNext"
-           :page-size="50" :go-to="(target: number) => changePage(target - (Math.floor(offset / 50 + 1)))" /></template></ManagementList>
+           :page-size="pageSize" :go-to="(target: number) => changePage(target - (Math.floor(offset / pageSize + 1)))" :change-page-size="async (size: number) => { pageSize = size; await load(0) }" /></template></ManagementList>
         <p v-else class="callout">
           {{ t('admin.copy.1a880f7b') }}
         </p>
@@ -849,7 +851,7 @@ code {
   padding: 10px 12px;
 }
 .button-primary:hover {
-  background: #4858cf;
+  background: var(--primary-dark);
 }
 .text-button {
   border: 0;
@@ -936,7 +938,7 @@ code {
   gap: 6px;
   border-radius: 8px;
   padding: 11px;
-  background: #f6f7fc;
+  background: #f4f6f4;
   font-size: var(--body-font-size);
   overflow-wrap: anywhere;
 }

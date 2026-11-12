@@ -1,3 +1,5 @@
+import { isPoints, pointsMinor } from '@lottery/shared'
+import { formatPoints } from '@lottery/shared'
 import { readPaginationTotal } from '@lottery/shared'
 import { readAdminEnvelope } from './admin-api'
 
@@ -127,24 +129,20 @@ export function canWriteFinance(
 }
 
 function isUnsignedAmount(value: string): boolean {
-  return /^(0|[1-9]\d*)$/.test(value);
+  return isPoints(value);
 }
 
 export function isPositiveAmount(value: string): boolean {
-  return isUnsignedAmount(value) && BigInt(value) > 0n;
+  return isUnsignedAmount(value) && pointsMinor(value) > 0n;
 }
 
 export function isSignedAmount(value: string): boolean {
-  return /^-?(0|[1-9]\d*)$/.test(value) && BigInt(value) !== 0n;
+  return isPoints(value,true) && pointsMinor(value) !== 0n;
 }
 
 /** Groups arbitrary-size integer point strings without converting through Number. */
 export function formatIntegerAmount(value: string): string {
-  if (!/^-?\d+$/.test(value)) return value;
-  const negative = value.startsWith("-");
-  const digits = negative ? value.slice(1) : value;
-  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${negative ? "−" : ""}${grouped}`;
+  return formatPoints(value).replace(/^-/, '−');
 }
 
 export function createBodyKeyTracker() {
@@ -279,7 +277,7 @@ export function createFinanceApi(fetcher: FetchLike = fetch) {
         if(cause instanceof TypeError) throw new FinanceApiError("Manual recharge result unconfirmed",0,"NETWORK_ERROR");
         throw cause;
       }
-      if (result.brand_id !== brandId || result.member_id !== body.member_id || result.points !== body.points || result.method !== 'manual' || result.state !== 'confirmed' || !result.id || !result.ledger_entry_id || !result.confirmed_at) throw new FinanceApiError('Invalid manual recharge receipt',502,'INVALID_RESPONSE');
+      if (result.brand_id !== brandId || result.member_id !== body.member_id || (!isPoints(result.points) || pointsMinor(result.points) !== pointsMinor(body.points)) || result.method !== 'manual' || result.state !== 'confirmed' || !result.id || !result.ledger_entry_id || !result.confirmed_at) throw new FinanceApiError('Invalid manual recharge receipt',502,'INVALID_RESPONSE');
       return result;
     },
     confirmRecharge(

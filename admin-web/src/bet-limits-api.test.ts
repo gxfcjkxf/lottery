@@ -33,3 +33,9 @@ describe('platform game betting limits', () => {
     await expect(api.save(record, 'same-key')).rejects.toMatchObject({ code: 'INVALID_RESPONSE', status: 502 })
   })
 })
+
+it('accepts decimal betting limits within the fixed-point bound', () => {
+  const data={...record,min_points:'0.01',max_points:'10.25',max_period_points:'100.50',max_user_period_points:'50.25'}
+  expect(validBetLimits(data)).toBe(true)
+  for(const min_points of ['0.001','0','-0.01','92233720368547758.08']) expect(validBetLimits({...data,min_points})).toBe(false)
+})

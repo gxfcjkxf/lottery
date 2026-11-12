@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ClearableInput from './ClearableInput.vue'
 import DetailModal from './DetailModal.vue'
 import ManagementTable from './ManagementTable.vue'
 import SelectControl from './SelectControl.vue'
@@ -104,7 +105,7 @@ function install(snapshot: ConfiguredSnapshot) {
   savedSnapshot.value = JSON.stringify(snapshot); draft.value = snapshot; editId.value = snapshot.catalog.plays[0]!.id
   request.value = { play_id: editId.value, options: [], plate: snapshot.catalog.plates[0]!, points: snapshot.catalog.plays[0]!.stake_mode === 'unit_multiplier' ? '0' : '10', multiplier: '1' }
 }
-async function run(action: () => Promise<void>) { busy.value = true; error.value = ''; remoteError.value = null; try { await action() } catch (cause) { const code = (cause as { code?: string }).code; if (code === 'RULE_INVALID' || (!code && cause instanceof Error && !(cause instanceof TypeError))) error.value = 'invalid'; else remoteError.value = i18n.errorMessage(cause, 'read'); if ((cause as { status?: number }).status === 401) emit('failure', cause) } finally { busy.value = false } }
+async function run(action: () => Promise<void>) { busy.value = true; error.value = ''; remoteError.value = null; try { await action() } catch (cause) { if ((cause as { status?: number }).status === 401) { emit('failure', cause); return } const code = (cause as { code?: string }).code; if (code === 'RULE_INVALID' || (!code && cause instanceof Error && !(cause instanceof TypeError))) error.value = 'invalid'; else remoteError.value = i18n.errorMessage(cause, 'read'); } finally { busy.value = false } }
 async function load() { if (dirty.value && !window.confirm(String(t('discardChanges')))) return; await run(async () => { const token = generation; const catalog = await api.value.template(templateName.value); if (token !== generation) return;if(props.model&&JSON.stringify(catalog.model)!==JSON.stringify(props.model)){error.value='templateModelMismatch';return;} install(configuredDemo(catalog)); savedSnapshot.value = ''; synthetic.value = true }) }
 async function validate() {
   if (!working.value) return
@@ -115,13 +116,6 @@ async function imported(event: Event) {
   if (!file) return
   await run(async () => { const token = generation; if (file.size > 4 * 1024 * 1024) throw new Error('Draft too large'); const snapshot = parseConfiguredSnapshot(await file.text()); if (token !== generation) return; await api.value.preview(snapshot); if (token !== generation) return; install(snapshot); savedSnapshot.value = ''; synthetic.value = snapshot.prices.version === 'synthetic-prices' })
   input.value = ''
-}
-function exportDraft() {
-  if (!draft.value) return
-  const url = URL.createObjectURL(new Blob([JSON.stringify(draft.value, null, 2)], { type: 'application/json' }))
-  const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'rules.json'; document.body.append(anchor); anchor.click(); anchor.remove()
-  // Keep the blob alive while Safari starts reading the download.
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 function duplicate() {
   if (!modalDraft.value || !play.value || !editable.value || locked.value) return
@@ -159,14 +153,14 @@ async function calculate(settle: boolean) {
     <summary v-if="!gameId">{{ t('title') }}</summary>
 
     <details v-if="surface === 'platform' || !gameId" class="configured-setup" :open="!draft"><summary>{{ t('draftTools') }}</summary>
-    <div class="configured-actions"><label>{{ t('templateChoice') }}<SelectControl v-model="templateName" :disabled="locked" :label="String(t('templateChoice'))" :options="(templates).map((name) => ({ value: name, label: (String(t(`template.${name}`))).trim() }))" /></label><button type="button" class="button button-secondary" :disabled="locked" @click="withGlobalLoading(load)">{{ t('template') }}</button><button type="button" class="button button-secondary" :disabled="locked" @click="fileInput?.click()">{{ t('import') }}</button><input ref="fileInput" type="file" accept="application/json,.json" hidden :disabled="locked" @change="withGlobalLoading(imported, $event)" /><button type="button" class="button button-secondary" :disabled="locked || !draft" @click="exportDraft">{{ t('export') }}</button></div>
+    <div class="configured-actions"><label>{{ t('templateChoice') }}<SelectControl v-model="templateName" :disabled="locked" :label="String(t('templateChoice'))" :options="(templates).map((name) => ({ value: name, label: (String(t(`template.${name}`))).trim() }))" /></label><button type="button" class="button button-secondary" :disabled="locked" @click="withGlobalLoading(load)">{{ t('template') }}</button><button type="button" class="button button-secondary" :disabled="locked" @click="fileInput?.click()">{{ t('import') }}</button><input ref="fileInput" type="file" accept="application/json,.json" hidden :disabled="locked" @change="withGlobalLoading(imported, $event)" /></div>
     </details>
     <p v-if="synthetic">{{ t('synthetic') }}</p>
     <p v-if="error" class="message error" role="alert">{{ t(error) }}</p>
     <p v-if="remoteError" class="message error" role="alert">{{ i18n.displayError(remoteError) }}</p>
     <template v-if="draft">
       <div class="rule-toolbar">
-        <label class="rule-search"><input v-model="search" type="search" :aria-label="t('searchPlays')" :placeholder="t('searchPlays')" /></label>
+        <label class="rule-search"><ClearableInput v-model="search" :locale="locale" :aria-label="t('searchPlays')" :placeholder="t('searchPlays')" /></label>
         <label><SelectControl v-model="groupFilter" :label="String(t('group'))" :options="[{value:'',label:String(t('allGroups'))},...groups.map(value=>({value,label:groupLabel(value)}))]" /></label>
         <div class="configured-actions rule-tools">
           <button v-if="editable" type="button" class="button button-primary" :disabled="locked" @click="openEditor('add')">{{ t('addPlay') }}</button>
@@ -280,7 +274,7 @@ async function calculate(settle: boolean) {
 </style>
 
 <style scoped>
-.rule-toolbar{display:flex;align-items:end;flex-wrap:wrap;gap:12px}.rule-toolbar>label{display:grid;gap:6px;min-width:0}.rule-search{flex:0 1 260px}.rule-search input{width:100%;min-width:0}.rule-tools{margin-left:auto;gap:8px}.rule-editor{gap:16px}.rule-editor .console-tabs{flex-wrap:wrap}.rule-editor :deep(.configured-node input){min-height:var(--control-height);width:100%;max-width:none}.rule-editor :deep(.select-control){width:100%;max-width:none}.rule-editor :deep(.configured-node summary){min-height:var(--control-height);align-content:center}.rule-dirty{color:var(--warning-text)!important}.rule-domain-link{justify-self:start}.rule-save-bar{position:sticky;bottom:0;z-index:1;padding:12px 0;background:var(--surface);border-top:1px solid var(--line)}.rule-shared-notice{color:var(--ink-secondary)!important}.rule-directory :deep(td){vertical-align:middle}
+.rule-toolbar{display:flex;align-items:end;flex-wrap:wrap;gap:12px}.rule-toolbar>label{display:grid;gap:6px;min-width:0}.rule-search{flex:0 1 260px}.rule-search :deep(.clearable-input){width:100%}.rule-search input{width:100%;min-width:0}.rule-tools{margin-left:auto;gap:8px}.rule-editor{gap:16px}.rule-editor .console-tabs{flex-wrap:wrap}.rule-editor :deep(.configured-node input){min-height:var(--control-height);width:100%;max-width:none}.rule-editor :deep(.select-control){width:100%;max-width:none}.rule-editor :deep(.configured-node summary){min-height:var(--control-height);align-content:center}.rule-dirty{color:var(--warning-text)!important}.rule-domain-link{justify-self:start}.rule-save-bar{position:sticky;bottom:0;z-index:1;padding:12px 0;background:var(--surface);border-top:1px solid var(--line)}.rule-shared-notice{color:var(--ink-secondary)!important}.rule-directory :deep(td){vertical-align:middle}
 @media(max-width:620px){.rule-toolbar>label{flex:1 1 100%;width:100%}.rule-tools{margin-left:0;width:100%}.rule-tools>.button{flex:1 1 auto}}
 </style>
 

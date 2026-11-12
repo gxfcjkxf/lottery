@@ -107,8 +107,8 @@ test('wallet snapshots update balances without background reads while manual ref
       await expect(page.locator('.total-primary strong')).toHaveText('180')
     }
     await page.getByRole('button',{name:'Menu',exact:true}).click()
-    await page.locator('#user-page-refresh button').click();await expect.poll(()=>requests).toBe(1)
-    await expect(page.locator('.global-loading-overlay')).toBeVisible()
+    await expect(page.locator('#user-page-refresh button')).toHaveCount(0)
+    expect(requests).toBe(0)
     release();await expect(page.locator('.global-loading-overlay')).toBeHidden()
     await expect(page.locator('.total-primary strong')).toHaveText('180')
   }finally{release()}
@@ -200,7 +200,7 @@ test('configured wallet retry waits for the response and preserves unavailable-w
 })
 
 
-test('draw overview polling stays quiet while refresh, year and pagination reads show progress', async ({ page }, info) => {
+test('draw overview polling stays quiet while year and pagination reads show progress', async ({ page }, info) => {
   await page.clock.install()
   let reads = 0
   let blocked = false
@@ -222,8 +222,7 @@ test('draw overview polling stays quiet while refresh, year and pagination reads
   await expect(overview.locator(".select-control-trigger")).toHaveAttribute('data-value', '2026')
   await expect(overlay).toBeHidden()
   const refresh = overview.locator('button[data-refresh-button]')
-  await expect(refresh).toHaveAccessibleName('Refresh')
-  await expect(refresh.locator('[data-refresh-icon]')).toHaveCount(1)
+  await expect(refresh).toHaveCount(0)
   block()
   try {
     const before = reads
@@ -232,7 +231,7 @@ test('draw overview polling stays quiet while refresh, year and pagination reads
     await expect(overlay).toBeHidden()
   } finally { blocked = false; release() }
   await expect(overview).toHaveAttribute('aria-busy', 'false')
-  for (const action of [() => refresh.click(), () => selectControl(overview.locator(".select-control-trigger"), '2025'), () => overview.getByRole('button', { name: 'Next page', exact: true }).click()]) {
+  for (const action of [() => selectControl(overview.locator(".select-control-trigger"), '2025'), () => overview.getByRole('button', { name: 'Next page', exact: true }).click()]) {
     block()
     try {
       await action()

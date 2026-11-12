@@ -177,7 +177,7 @@ BEGIN
   SELECT 1 FROM sums s FULL JOIN earnings e ON e.agent_id=s.agent_id AND e.member_id=s.member_id
   WHERE e.id IS NULL OR s.agent_id IS NULL OR valid_commission_fraction(e.numerator,e.denominator) IS NOT TRUE
    OR e.numerator::numeric*1000000 IS DISTINCT FROM s.micro*e.denominator::numeric
-   OR e.points::numeric IS DISTINCT FROM floor((s.micro*2+1000000)/2000000));
+   OR e.points::numeric IS DISTINCT FROM floor((s.micro*200+1000000)/2000000)/100);
 EXCEPTION WHEN OTHERS THEN RETURN false;
 END $$;
 CREATE FUNCTION commission_calendar_boundary(wall timestamp without time zone, tz text) RETURNS timestamp with time zone
@@ -229,10 +229,10 @@ BEGIN
  IF window_from IS NULL OR window_to IS NULL THEN RAISE EXCEPTION 'invalid commission calendar window';END IF;
  RETURN NEXT;
 END $$;
-CREATE FUNCTION commission_correction_candidates(b uuid, pid uuid, rid uuid) RETURNS TABLE(agent_id uuid, member_id uuid, original_target_id uuid, earning_id uuid, adjustment_version bigint, points_before bigint, points_after bigint, delta_points bigint)
+CREATE FUNCTION commission_correction_candidates(b uuid, pid uuid, rid uuid) RETURNS TABLE(agent_id uuid, member_id uuid, original_target_id uuid, earning_id uuid, adjustment_version bigint, points_before numeric, points_after numeric, delta_points numeric)
     LANGUAGE sql STABLE
     AS $$ SELECT agent_id,member_id,original_target_id,earning_id,adjustment_version,points_before,points_after,delta_points FROM commission_correction_candidates_v2(b,pid,rid) $$;
-CREATE FUNCTION commission_correction_candidates_v2(b uuid, pid uuid, rid uuid) RETURNS TABLE(agent_id uuid, member_id uuid, original_target_id uuid, earning_id uuid, adjustment_version bigint, points_before bigint, points_after bigint, delta_points bigint, previous_correction_target_id uuid, financial_version bigint)
+CREATE FUNCTION commission_correction_candidates_v2(b uuid, pid uuid, rid uuid) RETURNS TABLE(agent_id uuid, member_id uuid, original_target_id uuid, earning_id uuid, adjustment_version bigint, points_before numeric, points_after numeric, delta_points numeric, previous_correction_target_id uuid, financial_version bigint)
     LANGUAGE sql STABLE
     AS $$
  WITH original AS (
@@ -336,18 +336,6 @@ CREATE FUNCTION commission_payment_mode(rid uuid) RETURNS text
  SELECT CASE count(DISTINCT rule_snapshot->'financial_policy'->'config'->>'payout_mode') WHEN 0 THEN 'none' WHEN 1 THEN min(rule_snapshot->'financial_policy'->'config'->>'payout_mode') ELSE 'mixed' END
  FROM commission_calculations WHERE run_id=rid AND reason='eligible'
 $$;
-CREATE FUNCTION compliance_stub_checks(v jsonb) RETURNS jsonb
-    LANGUAGE sql IMMUTABLE
-    AS $$
- SELECT jsonb_build_array(
- jsonb_build_object('check','age','enabled',v->'age_enabled','decision',CASE WHEN v->'age_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'age_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END),
- jsonb_build_object('check','region','enabled',v->'region_enabled','decision',CASE WHEN v->'region_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'region_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END),
- jsonb_build_object('check','identity','enabled',v->'identity_enabled','decision',CASE WHEN v->'identity_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'identity_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END),
- jsonb_build_object('check','account_risk','enabled',v->'account_risk_enabled','decision',CASE WHEN v->'account_risk_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'account_risk_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END),
- jsonb_build_object('check','betting_risk','enabled',v->'betting_risk_enabled','decision',CASE WHEN v->'betting_risk_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'betting_risk_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END),
- jsonb_build_object('check','exclusion','enabled',v->'exclusion_enabled','decision',CASE WHEN v->'exclusion_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'exclusion_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END),
- jsonb_build_object('check','responsible_gambling','enabled',v->'responsible_gambling_enabled','decision',CASE WHEN v->'responsible_gambling_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'responsible_gambling_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END))
-$$;
 SET LOCAL default_tablespace = '';
 SET LOCAL default_table_access_method = heap;
 CREATE FUNCTION default_agent_policy() RETURNS jsonb
@@ -367,11 +355,6 @@ CREATE FUNCTION default_commission_policy() RETURNS jsonb
     LANGUAGE sql IMMUTABLE
     AS $$
  SELECT '{"enabled":false,"calendar":null,"payout_mode":"manual"}'::jsonb
-$$;
-CREATE FUNCTION default_compliance_config() RETURNS jsonb
-    LANGUAGE sql IMMUTABLE
-    AS $$
- SELECT '{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}'::jsonb
 $$;
 CREATE FUNCTION default_game_bet_policy() RETURNS jsonb
     LANGUAGE sql IMMUTABLE
@@ -843,7 +826,7 @@ END $$;
 CREATE FUNCTION guard_commission_correction_execution() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-DECLARE p commission_correction_plans; s commission_correction_execution_steps; a audit_logs; held boolean; expected text; t commission_correction_plan_targets; available bigint;
+DECLARE p commission_correction_plans; s commission_correction_execution_steps; a audit_logs; held boolean; expected text; t commission_correction_plan_targets; available numeric;
  n bigint; credit numeric; debit numeric;
 BEGIN
  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'correction executions retained'; END IF;
@@ -931,7 +914,7 @@ END $$;
 CREATE FUNCTION guard_commission_correction_execution_target() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-DECLARE x commission_correction_executions; p commission_correction_plans; t commission_correction_plan_targets; h commission_correction_balance_heads; s commission_correction_execution_steps; a audit_logs; base bigint;
+DECLARE x commission_correction_executions; p commission_correction_plans; t commission_correction_plan_targets; h commission_correction_balance_heads; s commission_correction_execution_steps; a audit_logs; base numeric;
 BEGIN
  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'correction financial targets retained'; END IF;
  SELECT * INTO x FROM commission_correction_executions WHERE brand_id=NEW.brand_id AND id=NEW.execution_id FOR UPDATE NOWAIT;
@@ -1214,7 +1197,7 @@ BEGIN
  SELECT * INTO c FROM commission_cycles WHERE brand_id=NEW.brand_id AND id=NEW.cycle_id;
  SELECT sum(numerator::numeric*(1000000/denominator::numeric)) INTO micro FROM commission_allocations WHERE run_id=NEW.run_id AND agent_id=NEW.agent_id AND member_id=NEW.member_id;
  IF r.state<>'summarizing' OR c.state<>'summarizing' OR c.current_run_id IS DISTINCT FROM NEW.run_id OR r.evidence_epoch<>c.evidence_epoch OR micro IS NULL OR NEW.numerator::numeric*1000000 IS DISTINCT FROM micro*NEW.denominator::numeric OR
-  NEW.points::numeric IS DISTINCT FROM floor((micro*2+1000000)/2000000) THEN RAISE EXCEPTION 'commission cycle earning total mismatch'; END IF;
+  NEW.points::numeric IS DISTINCT FROM floor((micro*200+1000000)/2000000)/100 THEN RAISE EXCEPTION 'commission cycle earning total mismatch'; END IF;
  RETURN NEW;
 END $$;
 CREATE FUNCTION guard_commission_notification_outbox() RETURNS trigger
@@ -1432,83 +1415,6 @@ BEGIN
   (c.manifest_cursor_at IS NOT NULL AND (NEW.placed_at,NEW.order_id)<=(c.manifest_cursor_at,c.manifest_cursor_id)) THEN RAISE EXCEPTION 'invalid commission manifest target'; END IF;
  NEW.creation_xid:=pg_current_xact_id(); RETURN NEW;
 END $$;
-CREATE FUNCTION guard_compliance_decision() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-DECLARE p brand_compliance_policies;a audit_logs;
-BEGIN
- IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'compliance decision immutable'; END IF;
- SELECT * INTO p FROM brand_compliance_policies WHERE brand_id=NEW.brand_id;
- SELECT * INTO a FROM audit_logs WHERE id=NEW.audit_log_id;
- IF NOT FOUND OR p.brand_id IS NULL OR p.version IS DISTINCT FROM NEW.policy_version OR p.config IS DISTINCT FROM NEW.config
- OR a.brand_id IS DISTINCT FROM NEW.brand_id OR a.actor_type IS DISTINCT FROM 'admin' OR a.actor_id IS DISTINCT FROM NEW.created_by
- OR a.action IS DISTINCT FROM 'compliance.check' OR a.resource_type IS DISTINCT FROM 'compliance_decision' OR a.resource_id IS DISTINCT FROM NEW.id
- OR a.reason IS DISTINCT FROM NEW.reason OR a.after_json->>'id' IS DISTINCT FROM NEW.id::text OR a.after_json->>'brand_id' IS DISTINCT FROM NEW.brand_id::text
- OR (a.after_json->>'policy_version')::bigint IS DISTINCT FROM NEW.policy_version OR a.after_json->'config' IS DISTINCT FROM NEW.config
- OR a.after_json->>'operation' IS DISTINCT FROM NEW.operation OR a.after_json->>'decision' IS DISTINCT FROM NEW.decision
- OR a.after_json->'checks' IS DISTINCT FROM NEW.checks OR a.after_json->>'adapter_mode' IS DISTINCT FROM NEW.adapter_mode
- OR (a.after_json->>'created_at')::timestamptz IS DISTINCT FROM NEW.created_at THEN RAISE EXCEPTION 'matching compliance decision audit required'; END IF;
- RETURN NEW;
-END $$;
-CREATE FUNCTION guard_compliance_gate_rejection() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-DECLARE p compliance_policy_revisions;a audit_logs;
-BEGIN
- IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'compliance admission rejection immutable'; END IF;
- SELECT * INTO p FROM compliance_policy_revisions WHERE brand_id=NEW.brand_id AND version=NEW.policy_version;
- SELECT * INTO a FROM audit_logs WHERE id=NEW.audit_log_id;
- IF NOT FOUND OR p.brand_id IS NULL OR p.config IS DISTINCT FROM NEW.config
- OR a.brand_id IS DISTINCT FROM NEW.brand_id OR a.actor_type IS DISTINCT FROM (CASE WHEN NEW.actor_type='anonymous' THEN 'system' ELSE NEW.actor_type END)
- OR a.actor_id IS DISTINCT FROM NEW.actor_id OR a.action IS DISTINCT FROM 'compliance.gate.reject'
- OR a.resource_type IS DISTINCT FROM 'compliance_gate' OR a.resource_id IS DISTINCT FROM NEW.id
- OR a.reason IS DISTINCT FROM 'COMPLIANCE_REVIEW_REQUIRED' OR a.request_id IS DISTINCT FROM NEW.request_id
- OR a.after_json->>'id' IS DISTINCT FROM NEW.id::text OR a.after_json->>'brand_id' IS DISTINCT FROM NEW.brand_id::text
- OR (a.after_json->>'policy_version')::bigint IS DISTINCT FROM NEW.policy_version OR a.after_json->'config' IS DISTINCT FROM NEW.config
- OR a.after_json->>'operation' IS DISTINCT FROM NEW.operation OR a.after_json->>'action' IS DISTINCT FROM NEW.action
- OR a.after_json->>'decision' IS DISTINCT FROM NEW.decision OR a.after_json->'checks' IS DISTINCT FROM NEW.checks
- OR a.after_json->>'adapter_mode' IS DISTINCT FROM NEW.adapter_mode OR a.after_json->>'actor_type' IS DISTINCT FROM NEW.actor_type
- OR a.after_json->'actor_id' IS DISTINCT FROM coalesce(to_jsonb(NEW.actor_id::text),'null'::jsonb)
- OR a.after_json->'member_id' IS DISTINCT FROM coalesce(to_jsonb(NEW.member_id::text),'null'::jsonb)
- OR (a.after_json->>'created_at')::timestamptz IS DISTINCT FROM NEW.created_at THEN RAISE EXCEPTION 'matching compliance gate audit required'; END IF;
- IF NEW.actor_type='admin' AND NOT EXISTS(SELECT 1 FROM admin_accounts WHERE id=NEW.actor_id)
- OR NEW.actor_type='user' AND NOT EXISTS(SELECT 1 FROM global_users WHERE id=NEW.actor_id)
- OR NEW.member_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM brand_members WHERE brand_id=NEW.brand_id AND id=NEW.member_id AND global_user_id=NEW.actor_id)
- THEN RAISE EXCEPTION 'compliance rejection actor/brand mismatch'; END IF;
- RETURN NEW;
-END $$;
-CREATE FUNCTION guard_compliance_policy() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
- IF TG_OP='DELETE' THEN RAISE EXCEPTION 'compliance policy cannot be deleted'; END IF;
- IF TG_OP='INSERT' THEN
-  IF NEW.version<>1 OR NEW.config<>default_compliance_config() THEN RAISE EXCEPTION 'disabled initial compliance policy required'; END IF;
- ELSE
-  IF NEW.brand_id IS DISTINCT FROM OLD.brand_id OR NEW.version<>OLD.version+1 THEN RAISE EXCEPTION 'compliance identity/version invalid'; END IF;
- END IF;
- NEW.updated_at:=clock_timestamp();RETURN NEW;
-END $$;
-CREATE FUNCTION guard_compliance_revision() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-DECLARE p brand_compliance_policies;a audit_logs;
-BEGIN
- IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'compliance revision immutable'; END IF;
- SELECT * INTO p FROM brand_compliance_policies WHERE brand_id=NEW.brand_id;
- IF NOT FOUND OR p.version IS DISTINCT FROM NEW.version OR p.config IS DISTINCT FROM NEW.config THEN RAISE EXCEPTION 'compliance revision requires current policy'; END IF;
- IF NEW.version=1 THEN
-  IF NEW.config<>default_compliance_config() THEN RAISE EXCEPTION 'initial compliance history must be disabled'; END IF;
- ELSE
-  SELECT * INTO a FROM audit_logs WHERE id=NEW.audit_log_id;
-  IF NOT FOUND OR a.brand_id IS DISTINCT FROM NEW.brand_id OR a.actor_type IS DISTINCT FROM 'admin' OR a.actor_id IS DISTINCT FROM NEW.changed_by
-  OR a.action IS DISTINCT FROM 'compliance.policy.update' OR a.resource_type IS DISTINCT FROM 'compliance_policy' OR a.resource_id IS DISTINCT FROM NEW.brand_id
-  OR a.reason IS DISTINCT FROM NEW.reason OR a.after_json->>'brand_id' IS DISTINCT FROM NEW.brand_id::text
-  OR (a.after_json->>'version')::bigint IS DISTINCT FROM NEW.version OR a.after_json->'config' IS DISTINCT FROM NEW.config
-  OR (a.before_json->>'version')::bigint IS DISTINCT FROM NEW.version-1 THEN RAISE EXCEPTION 'matching compliance audit required'; END IF;
- END IF;
- RETURN NEW;
-END $$;
 CREATE FUNCTION guard_draw_correction() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1680,7 +1586,7 @@ BEGIN
  SELECT * INTO a FROM point_accounts WHERE brand_id=NEW.brand_id AND id=NEW.account_id AND brand_member_id=NEW.member_id FOR UPDATE;
  IF NOT FOUND OR a.version<>NEW.version-1 THEN RAISE EXCEPTION 'ledger must advance locked account by one version'; END IF;
  SELECT jsonb_object_agg(source,states) INTO actual FROM (
-  SELECT source,jsonb_object_agg(state,points::text) states FROM point_buckets
+  SELECT source,jsonb_object_agg(state,trim_scale(points)::text) states FROM point_buckets
   WHERE brand_id=NEW.brand_id AND account_id=NEW.account_id GROUP BY source
  ) buckets;
  IF actual IS DISTINCT FROM NEW.before_snapshot THEN RAISE EXCEPTION 'ledger before must match complete current wallet'; END IF;
@@ -1701,8 +1607,8 @@ BEGIN
   IF jsonb_typeof(item) IS DISTINCT FROM 'object' OR (SELECT count(*) FROM jsonb_object_keys(item))<>3 OR
    NOT(item ?& ARRAY['source','state','points']) OR src IS NULL OR src NOT IN('recharge','winning','gift','commission') OR src=ANY(seen) OR
    st IS NULL OR st NOT IN('available','manual_frozen','system_frozen','withdrawal') OR
-   jsonb_typeof(item->'points') IS DISTINCT FROM 'string' OR item->>'points' !~ '^[1-9][0-9]*$' OR
-   (item->>'points')::numeric>9223372036854775807 THEN RAISE EXCEPTION 'invalid ledger source allocation'; END IF;
+   jsonb_typeof(item->'points') IS DISTINCT FROM 'string' OR item->>'points' !~ '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$' OR
+   ((item->>'points')::numeric<=0 OR (item->>'points')::numeric>92233720368547758.07) THEN RAISE EXCEPTION 'invalid ledger source allocation'; END IF;
   seen:=array_append(seen,src);
  END LOOP;
  IF NEW.reversal_of IS NOT NULL THEN
@@ -1711,7 +1617,7 @@ BEGIN
   IF original.id IS NULL OR original.reversal_of IS NOT NULL OR expected IS NULL OR NEW.source_allocation IS DISTINCT FROM original.source_allocation THEN RAISE EXCEPTION 'invalid original-source reversal'; END IF;
   FOREACH src IN ARRAY ARRAY['recharge','winning','gift','commission'] LOOP
    FOREACH st IN ARRAY ARRAY['available','manual_frozen','system_frozen','withdrawal'] LOOP
-    expected:=jsonb_set(expected,ARRAY[src,st],to_jsonb((-(expected->src->>st)::numeric)::text));
+    expected:=jsonb_set(expected,ARRAY[src,st],to_jsonb(trim_scale(-(expected->src->>st)::numeric)::text));
    END LOOP;
   END LOOP;
   IF NEW.delta_snapshot IS DISTINCT FROM expected THEN RAISE EXCEPTION 'reversal must negate exact original source changes'; END IF;
@@ -2028,7 +1934,7 @@ CREATE FUNCTION guard_settlement_policy() RETURNS trigger
 CREATE FUNCTION guard_unexecuted_commission_correction_credit() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-DECLARE t commission_correction_execution_targets; x commission_correction_executions; p commission_correction_plans; s commission_correction_execution_steps; cap bigint; total numeric;
+DECLARE t commission_correction_execution_targets; x commission_correction_executions; p commission_correction_plans; s commission_correction_execution_steps; cap numeric; total numeric;
 BEGIN
  IF NEW.entry_type NOT IN('commission_correction','commission_correction_plan') AND NEW.reference_type NOT IN('commission_correction_plan','commission_correction_plan_target','commission_correction_target') THEN RETURN NEW; END IF;
  SELECT * INTO t FROM commission_correction_execution_targets WHERE brand_id=NEW.brand_id AND id=NEW.reference_id FOR UPDATE NOWAIT;
@@ -2176,7 +2082,7 @@ CREATE TABLE brands (
     config_version bigint DEFAULT 1 NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    auth_config jsonb DEFAULT '{"captcha_enabled": false, "telegram_enabled": false, "service_terms_version": "dev-1", "privacy_policy_version": "dev-1"}'::jsonb NOT NULL,
+    auth_config jsonb DEFAULT '{"captcha_enabled": false, "telegram_enabled": false}'::jsonb NOT NULL,
     CONSTRAINT brands_status_check CHECK ((status = ANY (ARRAY['active'::text, 'paused'::text, 'disabled'::text])))
 );
 CREATE FUNCTION initial_brand_presentation(b brands) RETURNS jsonb
@@ -2201,14 +2107,6 @@ CREATE FUNCTION initialize_bet_policy() RETURNS trigger
 BEGIN
  IF TG_TABLE_NAME='brands' THEN INSERT INTO brand_bet_policies(brand_id,config) VALUES(NEW.id,default_brand_bet_policy());
  ELSE INSERT INTO game_bet_policies(brand_id,game_id,config) VALUES(NEW.brand_id,NEW.id,default_game_bet_policy()); END IF;
- RETURN NEW;
-END $$;
-CREATE FUNCTION initialize_brand_compliance() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
- INSERT INTO brand_compliance_policies(brand_id) VALUES(NEW.id);
- INSERT INTO compliance_policy_revisions(brand_id,version,config,reason) VALUES(NEW.id,1,default_compliance_config(),'Initial disabled compliance configuration');
  RETURN NEW;
 END $$;
 CREATE FUNCTION initialize_brand_notification_templates() RETURNS trigger
@@ -2275,7 +2173,7 @@ CREATE FUNCTION initialize_withdrawal_policy_revision() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
- INSERT INTO withdrawal_policy_revisions(brand_id,game_id,version,config,reason,points_step) VALUES(NEW.brand_id,NULLIF(to_jsonb(NEW)->>'game_id','')::uuid,1,NEW.config,'Initial withdrawal policy',CASE WHEN TG_TABLE_NAME='brand_withdrawal_policies' THEN (to_jsonb(NEW)->>'points_step')::bigint ELSE 1 END);
+ INSERT INTO withdrawal_policy_revisions(brand_id,game_id,version,config,reason,points_step) VALUES(NEW.brand_id,NULLIF(to_jsonb(NEW)->>'game_id','')::uuid,1,NEW.config,'Initial withdrawal policy',CASE WHEN TG_TABLE_NAME='brand_withdrawal_policies' THEN (to_jsonb(NEW)->>'points_step')::numeric ELSE 1 END);
  RETURN NULL;
 END $$;
 CREATE TABLE join_codes (
@@ -2323,9 +2221,9 @@ BEGIN
   src:=item->>'source'; st:=item->>'state';
   IF src IS NULL OR src NOT IN('recharge','winning','gift','commission') OR src=ANY(seen) OR
    st IS NULL OR st NOT IN('available','manual_frozen','system_frozen','withdrawal') OR
-   jsonb_typeof(item->'points') IS DISTINCT FROM 'string' OR item->>'points' !~ '^[1-9][0-9]*$' THEN RETURN NULL; END IF;
+   jsonb_typeof(item->'points') IS DISTINCT FROM 'string' OR item->>'points' !~ '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$' THEN RETURN NULL; END IF;
   amount:=(item->>'points')::numeric;
-  IF amount>9223372036854775807 THEN RETURN NULL; END IF;
+  IF amount<=0 OR amount>92233720368547758.07 THEN RETURN NULL; END IF;
   seen:=array_append(seen,src);
   expected:=jsonb_set(expected,ARRAY[src,st],to_jsonb((CASE WHEN negative THEN -amount ELSE amount END)::text),false);
  END LOOP;
@@ -2353,7 +2251,7 @@ CREATE TABLE point_ledger_entries (
     version bigint NOT NULL,
     request_hash text NOT NULL,
     actor_type text NOT NULL,
-    CONSTRAINT ledger_actor_type CHECK ((actor_type = ANY (ARRAY['user'::text, 'admin'::text, 'system'::text]))),
+    CONSTRAINT ledger_actor_type CHECK ((actor_type = ANY (ARRAY['user'::text, 'admin'::text, 'agent'::text, 'system'::text]))),
     CONSTRAINT ledger_hash_valid CHECK ((request_hash ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT ledger_version_positive CHECK ((version > 0))
 );
@@ -2520,14 +2418,14 @@ BEGIN
    allocation_valid:=false;
    IF jsonb_typeof(edge.allocation)='array' THEN
     allocation_valid:=jsonb_array_length(edge.allocation) BETWEEN 1 AND 4
-     AND (SELECT coalesce(sum(CASE WHEN v->>'points' ~ '^[1-9][0-9]*$' THEN (v->>'points')::numeric ELSE 0 END),0)
+     AND (SELECT coalesce(sum(CASE WHEN v->>'points' ~ '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$' THEN (v->>'points')::numeric ELSE 0 END),0)
       FROM jsonb_array_elements(edge.allocation) v)=edge.amount
      AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(edge.allocation) v WHERE jsonb_typeof(v)<>'object'
       OR (SELECT count(*) FROM jsonb_object_keys(v))<>3 OR NOT(v ?& ARRAY['source','state','points'])
       OR v->>'source' NOT IN('recharge','winning','gift','commission')
       OR v->>'state' IS DISTINCT FROM CASE WHEN edge.kind='paid' THEN 'withdrawal' ELSE 'available' END
-      OR jsonb_typeof(v->'points')<>'string' OR v->>'points' !~ '^[1-9][0-9]*$'
-      OR CASE WHEN v->>'points' ~ '^[1-9][0-9]*$' THEN (v->>'points')::numeric>9223372036854775807 ELSE false END)
+      OR jsonb_typeof(v->'points')<>'string' OR v->>'points' !~ '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$'
+      OR CASE WHEN v->>'points' ~ '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$' THEN (v->>'points')::numeric>9223372036854775807 ELSE false END)
      AND (SELECT count(DISTINCT v->>'source') FROM jsonb_array_elements(edge.allocation) v)=jsonb_array_length(edge.allocation);
    END IF;
    IF allocation_valid THEN
@@ -3151,13 +3049,6 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM commission_cycles WHERE id=NEW.cycle_id AND version>=NEW.version) THEN RAISE EXCEPTION 'orphan commission step'; END IF;
  RETURN NULL;
 END $$;
-CREATE FUNCTION require_compliance_history() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
- IF NOT EXISTS(SELECT 1 FROM compliance_policy_revisions WHERE brand_id=NEW.brand_id AND version=NEW.version AND config=NEW.config) THEN RAISE EXCEPTION 'compliance policy requires immutable history'; END IF;
- RETURN NULL;
-END $$;
 CREATE FUNCTION require_join_code_revision() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -3299,7 +3190,7 @@ END $_$;
 CREATE FUNCTION valid_commission_correction_notification_event(b uuid, k text, aggregate uuid, payload jsonb) RETURNS boolean
     LANGUAGE plpgsql STABLE
     AS $_$
-DECLARE amount bigint; valid boolean;
+DECLARE amount numeric; valid boolean;
 BEGIN
  IF b IS NULL OR aggregate IS NULL OR k IS DISTINCT FROM 'commission.corrected' OR
   jsonb_typeof(payload) IS DISTINCT FROM 'object' OR (SELECT count(*) FROM jsonb_object_keys(payload))<>5 OR
@@ -3307,8 +3198,8 @@ BEGIN
   jsonb_typeof(payload->'member_id') IS DISTINCT FROM 'string' OR jsonb_typeof(payload->'resource_id') IS DISTINCT FROM 'string' OR
   jsonb_typeof(payload->'points') IS DISTINCT FROM 'string' OR jsonb_typeof(payload->'ledger_entry_id') IS DISTINCT FROM 'string' OR
   jsonb_typeof(payload->'target_id') IS DISTINCT FROM 'string' OR
-  payload->>'points' !~ '^-?[1-9][0-9]*$' OR length(replace(payload->>'points','-',''))>19 THEN RETURN false; END IF;
- amount:=(payload->>'points')::bigint;
+  payload->>'points' !~ '^-?(0|[1-9][0-9]*)([.][0-9]{1,2})?$' OR length(replace(payload->>'points','-',''))>19 THEN RETURN false; END IF;
+ amount:=(payload->>'points')::numeric;
  IF amount=0 OR amount::text IS DISTINCT FROM payload->>'points' OR
   payload->>'resource_id' IS DISTINCT FROM aggregate::text OR payload->>'target_id' IS DISTINCT FROM aggregate::text THEN RETURN false; END IF;
  SELECT EXISTS(
@@ -3341,15 +3232,15 @@ CREATE FUNCTION valid_commission_fraction(n text, d text) RETURNS boolean
     LANGUAGE plpgsql IMMUTABLE
     AS $_$
 BEGIN
- IF n IS NULL OR d IS NULL OR length(n)>100 OR n !~ '^(0|[1-9][0-9]*)$' OR d !~ '^[1-9][0-9]{0,6}$' THEN RETURN false; END IF;
- RETURN d::numeric<=1000000 AND mod(1000000,d::numeric)=0 AND gcd(n::numeric,d::numeric)=1;
+ IF n IS NULL OR d IS NULL OR length(n)>100 OR n !~ '^(0|[1-9][0-9]*)$' OR d !~ '^[1-9][0-9]{0,8}$' THEN RETURN false; END IF;
+ RETURN d::numeric<=100000000 AND mod(100000000,d::numeric)=0 AND gcd(n::numeric,d::numeric)=1;
 EXCEPTION WHEN OTHERS THEN RETURN false;
 END
 $_$;
 CREATE FUNCTION valid_commission_notification_event(b uuid, k text, aggregate uuid, payload jsonb) RETURNS boolean
     LANGUAGE plpgsql STABLE
     AS $_$
-DECLARE v_member_id uuid; v_resource_id uuid; v_target_id uuid; v_ledger_id uuid; v_amount bigint; target commission_payment_targets; adjustment commission_adjustments; valid boolean;
+DECLARE v_member_id uuid; v_resource_id uuid; v_target_id uuid; v_ledger_id uuid; v_amount numeric; target commission_payment_targets; adjustment commission_adjustments; valid boolean;
 BEGIN
  IF jsonb_typeof(payload)<>'object' OR (SELECT count(*) FROM jsonb_object_keys(payload))<>5 OR
   NOT(payload ?& ARRAY['member_id','resource_id','points','ledger_entry_id','target_id']) OR
@@ -3361,8 +3252,8 @@ BEGIN
   (payload->>'target_id') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN RETURN false; END IF;
  v_member_id:=(payload->>'member_id')::uuid; v_resource_id:=(payload->>'resource_id')::uuid;
  v_ledger_id:=(payload->>'ledger_entry_id')::uuid; v_target_id:=(payload->>'target_id')::uuid;
- IF (payload->>'points') !~ '^-?[1-9][0-9]*$' OR length(replace(payload->>'points','-',''))>19 THEN RETURN false; END IF;
- v_amount:=(payload->>'points')::bigint;
+ IF (payload->>'points') !~ '^-?(0|[1-9][0-9]*)([.][0-9]{1,2})?$' OR length(replace(payload->>'points','-',''))>19 THEN RETURN false; END IF;
+ v_amount:=(payload->>'points')::numeric;
  IF v_amount=0 OR v_amount::text<>(payload->>'points') THEN RETURN false; END IF;
  IF k='commission.paid' THEN
   IF v_amount<=0 OR aggregate<>v_target_id OR v_resource_id<>v_target_id THEN RETURN false; END IF;
@@ -3413,26 +3304,6 @@ BEGIN
    jsonb_typeof(c->'month_day')='number' AND c->>'month_day' ~ '^[1-9][0-9]?$' AND (c->>'month_day')::int<=31;
  END IF;
  RETURN false;
-EXCEPTION WHEN OTHERS THEN RETURN false;
-END $_$;
-CREATE FUNCTION valid_compliance_config(v jsonb) RETURNS boolean
-    LANGUAGE plpgsql IMMUTABLE
-    AS $_$
-DECLARE countries jsonb; n integer;
-BEGIN
- IF jsonb_typeof(v)<>'object' OR (SELECT count(*) FROM jsonb_object_keys(v))<>9
- OR NOT(v ?& ARRAY['age_enabled','minimum_age','region_enabled','allowed_countries','identity_enabled','account_risk_enabled','betting_risk_enabled','exclusion_enabled','responsible_gambling_enabled'])
- OR jsonb_typeof(v->'age_enabled')<>'boolean' OR jsonb_typeof(v->'region_enabled')<>'boolean'
- OR jsonb_typeof(v->'identity_enabled')<>'boolean' OR jsonb_typeof(v->'allowed_countries')<>'array'
- OR jsonb_typeof(v->'account_risk_enabled')<>'boolean' OR jsonb_typeof(v->'betting_risk_enabled')<>'boolean'
- OR jsonb_typeof(v->'exclusion_enabled')<>'boolean' OR jsonb_typeof(v->'responsible_gambling_enabled')<>'boolean' THEN RETURN false; END IF;
- IF v->'minimum_age'<>'null'::jsonb AND (jsonb_typeof(v->'minimum_age')<>'number' OR v->>'minimum_age' !~ '^[0-9]+$' OR (v->>'minimum_age')::integer NOT BETWEEN 18 AND 120) THEN RETURN false; END IF;
- IF v->'age_enabled'='true'::jsonb AND v->'minimum_age'='null'::jsonb THEN RETURN false; END IF;
- n:=jsonb_array_length(v->'allowed_countries');
- IF n>250 OR (v->'region_enabled'='true'::jsonb AND n=0)
- OR EXISTS(SELECT 1 FROM jsonb_array_elements(v->'allowed_countries') e WHERE jsonb_typeof(e)<>'string' OR e#>>'{}' !~ '^[A-Z]{2}$') THEN RETURN false; END IF;
- SELECT coalesce(jsonb_agg(x ORDER BY x COLLATE "C"),'[]'::jsonb) INTO countries FROM (SELECT DISTINCT jsonb_array_elements_text(v->'allowed_countries') x) q;
- RETURN countries=v->'allowed_countries';
 EXCEPTION WHEN OTHERS THEN RETURN false;
 END $_$;
 CREATE FUNCTION valid_draw_notification_event(b uuid, k text, aggregate uuid, payload jsonb) RETURNS boolean
@@ -3490,13 +3361,14 @@ BEGIN
    NOT(v->src ?& ARRAY['available','manual_frozen','system_frozen','withdrawal']) THEN RETURN false; END IF;
   FOREACH st IN ARRAY ARRAY['available','manual_frozen','system_frozen','withdrawal'] LOOP
    IF jsonb_typeof(v->src->st) IS DISTINCT FROM 'string' OR
-    v->src->>st !~ (CASE WHEN signed_amounts THEN '^(0|-?[1-9][0-9]*)$' ELSE '^(0|[1-9][0-9]*)$' END) THEN RETURN false; END IF;
+    v->src->>st !~ (CASE WHEN signed_amounts THEN '^-?(0|[1-9][0-9]*)([.][0-9]{1,2})?$' ELSE '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$' END) THEN RETURN false; END IF;
    n:=(v->src->>st)::numeric;
-   IF n < -9223372036854775808 OR n > 9223372036854775807 THEN RETURN false; END IF;
+   IF n=0 AND left(v->src->>st,1)='-' THEN RETURN false; END IF;
+   IF n < -92233720368547758.08 OR n > 92233720368547758.07 THEN RETURN false; END IF;
    total:=total+n;
   END LOOP;
  END LOOP;
- RETURN signed_amounts OR total<=9223372036854775807;
+ RETURN signed_amounts OR total<=92233720368547758.07;
 EXCEPTION WHEN OTHERS THEN RETURN false;
 END $_$;
 CREATE FUNCTION valid_positive_withdrawal_multiple(v jsonb) RETURNS boolean
@@ -3509,7 +3381,7 @@ END $$;
 CREATE FUNCTION valid_reward_notification_event(b uuid, k text, aggregate uuid, payload jsonb) RETURNS boolean
     LANGUAGE plpgsql STABLE
     AS $_$
-DECLARE a reward_order_actions; o reward_orders; log audit_logs; l point_ledger_entries; amount bigint; expected jsonb;
+DECLARE a reward_order_actions; o reward_orders; log audit_logs; l point_ledger_entries; amount numeric; expected jsonb;
 BEGIN
  IF b IS NULL OR aggregate IS NULL OR k IS NULL OR k NOT IN('reward.order.granted','reward.order.revoked') OR
   jsonb_typeof(payload) IS DISTINCT FROM 'object' OR (SELECT count(*) FROM jsonb_object_keys(payload))<>6 OR
@@ -3517,9 +3389,9 @@ BEGIN
   jsonb_typeof(payload->'member_id') IS DISTINCT FROM 'string' OR jsonb_typeof(payload->'resource_id') IS DISTINCT FROM 'string' OR
   jsonb_typeof(payload->'points') IS DISTINCT FROM 'string' OR jsonb_typeof(payload->'action_id') IS DISTINCT FROM 'string' OR
   jsonb_typeof(payload->'version') IS DISTINCT FROM 'number' OR jsonb_typeof(payload->'audit_log_id') IS DISTINCT FROM 'string' THEN RETURN false; END IF;
- IF (payload->>'points') !~ '^[1-9][0-9]*$' OR length(payload->>'points')>19 OR
+ IF (payload->>'points') !~ '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$' OR length(payload->>'points')>19 OR
   (payload->>'version') !~ '^[1-9][0-9]*$' OR (payload->>'version')::numeric>9007199254740991 THEN RETURN false; END IF;
- amount:=(payload->>'points')::bigint;
+ amount:=(payload->>'points')::numeric;
  IF amount<=0 OR amount::text<>(payload->>'points') THEN RETURN false; END IF;
  SELECT * INTO a FROM reward_order_actions WHERE brand_id=b AND id=aggregate;
  SELECT * INTO o FROM reward_orders WHERE brand_id=b AND id=a.order_id;
@@ -3562,8 +3434,8 @@ BEGIN
  IF jsonb_typeof(v)<>'object' THEN RETURN false; END IF;
  SELECT count(*) INTO key_count FROM jsonb_object_keys(v);
  IF game_scope THEN RETURN key_count=1 AND v ? 'turnover_multiple' AND (v->'turnover_multiple'='null'::jsonb OR valid_withdrawal_multiple(v->'turnover_multiple')); END IF;
- IF key_count<>6 OR NOT v ?& ARRAY['enabled','min_points','max_points','allowed_sources','review_mode','turnover_multiple'] OR jsonb_typeof(v->'enabled')<>'boolean' OR jsonb_typeof(v->'min_points')<>'string' OR NOT (v->>'min_points') ~ '^[1-9][0-9]{0,18}$' OR (v->>'min_points')::numeric>9223372036854775807 OR jsonb_typeof(v->'allowed_sources')<>'array' OR jsonb_typeof(v->'review_mode')<>'string' OR v->>'review_mode' NOT IN ('manual','automatic') OR NOT valid_withdrawal_multiple(v->'turnover_multiple') THEN RETURN false; END IF;
- IF v->'max_points'<>'null'::jsonb AND (jsonb_typeof(v->'max_points')<>'string' OR NOT (v->>'max_points') ~ '^[1-9][0-9]{0,18}$' OR (v->>'max_points')::numeric>9223372036854775807 OR (v->>'max_points')::numeric<(v->>'min_points')::numeric) THEN RETURN false; END IF;
+ IF key_count<>6 OR NOT v ?& ARRAY['enabled','min_points','max_points','allowed_sources','review_mode','turnover_multiple'] OR jsonb_typeof(v->'enabled')<>'boolean' OR jsonb_typeof(v->'min_points')<>'string' OR NOT (v->>'min_points') ~ '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$' OR (v->>'min_points')::numeric>9223372036854775807 OR jsonb_typeof(v->'allowed_sources')<>'array' OR jsonb_typeof(v->'review_mode')<>'string' OR v->>'review_mode' NOT IN ('manual','automatic') OR NOT valid_withdrawal_multiple(v->'turnover_multiple') THEN RETURN false; END IF;
+ IF v->'max_points'<>'null'::jsonb AND (jsonb_typeof(v->'max_points')<>'string' OR NOT (v->>'max_points') ~ '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$' OR (v->>'max_points')::numeric>9223372036854775807 OR (v->>'max_points')::numeric<(v->>'min_points')::numeric) THEN RETURN false; END IF;
  sources:=jsonb_array_length(v->'allowed_sources');
  IF sources<1 OR sources>4 OR EXISTS(SELECT 1 FROM jsonb_array_elements(v->'allowed_sources') s WHERE jsonb_typeof(s)<>'string' OR s#>>'{}' NOT IN ('recharge','winning','gift','commission')) OR (SELECT count(DISTINCT s) FROM jsonb_array_elements(v->'allowed_sources') s)<>sources THEN RETURN false; END IF;
  RETURN true;
@@ -3586,7 +3458,7 @@ BEGIN
  SELECT * INTO a FROM point_accounts WHERE brand_id=NEW.brand_id AND id=NEW.account_id;
  SELECT * INTO tip FROM point_ledger_entries WHERE brand_id=NEW.brand_id AND account_id=NEW.account_id ORDER BY version DESC LIMIT 1;
  SELECT jsonb_object_agg(source,states) INTO actual FROM (
-  SELECT source,jsonb_object_agg(state,points::text) states FROM point_buckets
+  SELECT source,jsonb_object_agg(state,trim_scale(points)::text) states FROM point_buckets
   WHERE brand_id=NEW.brand_id AND account_id=NEW.account_id GROUP BY source
  ) buckets;
  IF tip.id IS NULL OR a.version IS DISTINCT FROM tip.version OR actual IS DISTINCT FROM tip.after_snapshot OR
@@ -3614,7 +3486,7 @@ BEGIN
   IF (SELECT count(*) FROM jsonb_object_keys(l.before_snapshot->src))<>4 OR (SELECT count(*) FROM jsonb_object_keys(l.after_snapshot->src))<>4 THEN RAISE EXCEPTION 'invalid payout snapshot buckets'; END IF;
   FOREACH bucket IN ARRAY ARRAY['available','manual_frozen','system_frozen','withdrawal'] LOOP
    IF jsonb_typeof(l.before_snapshot->src->bucket) IS DISTINCT FROM 'string' OR jsonb_typeof(l.after_snapshot->src->bucket) IS DISTINCT FROM 'string' OR
-   (l.before_snapshot->src->>bucket) !~ '^(0|[1-9][0-9]*)$' OR (l.after_snapshot->src->>bucket) !~ '^(0|[1-9][0-9]*)$' THEN RAISE EXCEPTION 'invalid payout integer snapshot'; END IF;
+   (l.before_snapshot->src->>bucket) !~ '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$' OR (l.after_snapshot->src->>bucket) !~ '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$' THEN RAISE EXCEPTION 'invalid payout integer snapshot'; END IF;
    IF (l.before_snapshot->src->>bucket)::numeric+(expected->src->>bucket)::numeric IS DISTINCT FROM (l.after_snapshot->src->>bucket)::numeric OR
    NOT EXISTS(SELECT 1 FROM point_buckets b WHERE b.brand_id=NEW.brand_id AND b.account_id=NEW.account_id AND b.source=src AND b.state=bucket AND b.points::numeric=(l.after_snapshot->src->>bucket)::numeric) THEN RAISE EXCEPTION 'payout snapshot must match applied buckets'; END IF;
   END LOOP;
@@ -3627,7 +3499,7 @@ END $_$;
 CREATE FUNCTION validate_withdrawal_funds() RETURNS trigger
     LANGUAGE plpgsql
     AS $_$
-DECLARE o withdrawal_orders; e point_ledger_entries; f point_ledger_entries; latest withdrawal_order_transitions; allocation jsonb; total numeric:=0; expected jsonb:='{}'; item jsonb; src text; n bigint; seen text[]:='{}'; h bigint;
+DECLARE o withdrawal_orders; e point_ledger_entries; f point_ledger_entries; latest withdrawal_order_transitions; allocation jsonb; total numeric:=0; expected jsonb:='{}'; item jsonb; src text; n numeric; seen text[]:='{}'; h bigint;
 BEGIN
  SELECT * INTO o FROM withdrawal_orders WHERE id=NEW.id;
  SELECT * INTO e FROM point_ledger_entries WHERE id=o.reserve_entry_id;
@@ -3635,13 +3507,13 @@ BEGIN
  IF jsonb_array_length(o.source_allocation) NOT BETWEEN 1 AND 4 THEN RAISE EXCEPTION 'invalid withdrawal allocation'; END IF;
  FOR item IN SELECT value FROM jsonb_array_elements(o.source_allocation) LOOP
   src:=item->>'source';
-  IF jsonb_typeof(item)<>'object' OR (SELECT count(*) FROM jsonb_object_keys(item))<>3 OR NOT(item ?& ARRAY['source','state','points']) OR src NOT IN('recharge','winning','gift','commission') OR src=ANY(seen) OR item->>'state'<>'available' OR jsonb_typeof(item->'points')<>'string' OR item->>'points' !~ '^[1-9][0-9]*$' THEN RAISE EXCEPTION 'invalid withdrawal source allocation'; END IF;
-  n:=(item->>'points')::bigint; total:=total+n; seen:=array_append(seen,src);
+  IF jsonb_typeof(item)<>'object' OR (SELECT count(*) FROM jsonb_object_keys(item))<>3 OR NOT(item ?& ARRAY['source','state','points']) OR src NOT IN('recharge','winning','gift','commission') OR src=ANY(seen) OR item->>'state'<>'available' OR jsonb_typeof(item->'points')<>'string' OR item->>'points' !~ '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$' THEN RAISE EXCEPTION 'invalid withdrawal source allocation'; END IF;
+  n:=(item->>'points')::numeric; total:=total+n; seen:=array_append(seen,src);
  END LOOP;
  IF total<>o.points THEN RAISE EXCEPTION 'withdrawal allocation does not sum to amount'; END IF;
  FOREACH src IN ARRAY ARRAY['recharge','winning','gift','commission'] LOOP
-  SELECT coalesce(sum((value->>'points')::bigint),0) INTO n FROM jsonb_array_elements(o.source_allocation) WHERE value->>'source'=src;
-  expected:=expected||jsonb_build_object(src,jsonb_build_object('available',(-n)::text,'manual_frozen','0','system_frozen','0','withdrawal',n::text));
+  SELECT coalesce(sum((value->>'points')::numeric),0) INTO n FROM jsonb_array_elements(o.source_allocation) WHERE value->>'source'=src;
+  expected:=expected||jsonb_build_object(src,jsonb_build_object('available',trim_scale(-n)::text,'manual_frozen','0','system_frozen','0','withdrawal',trim_scale(n)::text));
  END LOOP;
  IF validated_point_snapshot(e.delta_snapshot) IS DISTINCT FROM expected THEN RAISE EXCEPTION 'withdrawal reserve changed wrong buckets'; END IF;
  IF o.release_entry_id IS NOT NULL THEN
@@ -3674,7 +3546,7 @@ CREATE FUNCTION validate_withdrawal_policy_current() RETURNS trigger
     AS $$
 DECLARE selected_game uuid:=NULLIF(to_jsonb(NEW)->>'game_id','')::uuid;
 BEGIN
- IF NOT EXISTS(SELECT 1 FROM withdrawal_policy_revisions r WHERE r.brand_id=NEW.brand_id AND r.game_id IS NOT DISTINCT FROM selected_game AND r.version=NEW.version AND r.config=NEW.config AND (selected_game IS NOT NULL OR r.points_step=(to_jsonb(NEW)->>'points_step')::bigint)) THEN RAISE EXCEPTION 'current policy must commit with matching immutable revision'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM withdrawal_policy_revisions r WHERE r.brand_id=NEW.brand_id AND r.game_id IS NOT DISTINCT FROM selected_game AND r.version=NEW.version AND r.config=NEW.config AND (selected_game IS NOT NULL OR r.points_step=(to_jsonb(NEW)->>'points_step')::numeric)) THEN RAISE EXCEPTION 'current policy must commit with matching immutable revision'; END IF;
  RETURN NULL;
 END $$;
 CREATE FUNCTION validate_withdrawal_policy_revision_final() RETURNS trigger
@@ -3818,14 +3690,6 @@ CREATE TABLE brand_commission_policies (
     CONSTRAINT brand_commission_policies_config_check CHECK ((valid_commission_policy(config) IS TRUE)),
     CONSTRAINT brand_commission_policies_version_check CHECK ((version > 0))
 );
-CREATE TABLE brand_compliance_policies (
-    brand_id uuid NOT NULL,
-    version bigint DEFAULT 1 NOT NULL,
-    config jsonb DEFAULT default_compliance_config() NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT brand_compliance_policies_config_check CHECK ((valid_compliance_config(config) IS TRUE)),
-    CONSTRAINT brand_compliance_policies_version_check CHECK ((version > 0))
-);
 CREATE TABLE brand_creation_records (
     brand_id uuid NOT NULL,
     code text NOT NULL,
@@ -3880,16 +3744,11 @@ CREATE TABLE brand_members (
     join_method text NOT NULL,
     join_domain text,
     attribution_snapshot jsonb DEFAULT '{}'::jsonb NOT NULL,
-    privacy_policy_version text NOT NULL,
-    service_terms_version text NOT NULL,
-    accepted_at timestamp with time zone DEFAULT now(),
     joined_at timestamp with time zone DEFAULT now() NOT NULL,
-    terms_accepted boolean DEFAULT true NOT NULL,
     created_by uuid,
     betting_quick_amounts bigint[] DEFAULT '{}'::bigint[] NOT NULL,
     CONSTRAINT brand_members_join_method_check CHECK ((join_method = ANY (ARRAY['domain'::text, 'agent_code'::text, 'referral_code'::text, 'operator'::text]))),
-    CONSTRAINT brand_members_status_check CHECK ((status = ANY (ARRAY['normal'::text, 'frozen'::text, 'disabled'::text, 'expired'::text, 'cancelled'::text]))),
-    CONSTRAINT member_consent_consistent CHECK (((terms_accepted AND (accepted_at IS NOT NULL)) OR ((NOT terms_accepted) AND (accepted_at IS NULL))))
+    CONSTRAINT brand_members_status_check CHECK ((status = ANY (ARRAY['normal'::text, 'frozen'::text, 'disabled'::text, 'expired'::text, 'cancelled'::text])))
 );
 CREATE TABLE brand_operation_revisions (
     id uuid NOT NULL,
@@ -3910,9 +3769,9 @@ CREATE TABLE brand_operation_revisions (
 CREATE TABLE brand_point_policies (
     brand_id uuid NOT NULL,
     version bigint DEFAULT 1 NOT NULL,
-    max_balance_points bigint,
-    max_recharge_points bigint,
-    max_adjustment_points bigint,
+    max_balance_points numeric,
+    max_recharge_points numeric,
+    max_adjustment_points numeric,
     CONSTRAINT brand_point_policies_max_adjustment_points_check CHECK ((max_adjustment_points > 0)),
     CONSTRAINT brand_point_policies_max_balance_points_check CHECK ((max_balance_points > 0)),
     CONSTRAINT brand_point_policies_max_recharge_points_check CHECK ((max_recharge_points > 0)),
@@ -3970,7 +3829,7 @@ CREATE TABLE brand_withdrawal_policies (
     version bigint DEFAULT 1 NOT NULL,
     config jsonb DEFAULT default_brand_withdrawal_policy() NOT NULL,
     updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    points_step bigint DEFAULT 1 NOT NULL,
+    points_step numeric DEFAULT 1 NOT NULL,
     CONSTRAINT brand_withdrawal_policies_points_step_check CHECK (points_step > 0),
     CONSTRAINT brand_withdrawal_policies_config_check CHECK (valid_withdrawal_policy(config, false)),
     CONSTRAINT brand_withdrawal_policies_version_check CHECK ((version > 0))
@@ -3979,7 +3838,7 @@ CREATE TABLE commission_adjustment_heads (
     target_id uuid NOT NULL,
     brand_id uuid NOT NULL,
     version bigint DEFAULT 1 NOT NULL,
-    points bigint NOT NULL,
+    points numeric NOT NULL,
     last_adjustment_id uuid,
     CONSTRAINT commission_adjustment_heads_points_check CHECK ((points >= 0)),
     CONSTRAINT commission_adjustment_heads_version_check CHECK (((version >= 1) AND (version <= '9007199254740991'::bigint)))
@@ -3990,9 +3849,9 @@ CREATE TABLE commission_adjustments (
     target_id uuid NOT NULL,
     payment_id uuid NOT NULL,
     version bigint NOT NULL,
-    points_before bigint NOT NULL,
-    points_after bigint NOT NULL,
-    delta_points bigint NOT NULL,
+    points_before numeric NOT NULL,
+    points_after numeric NOT NULL,
+    delta_points numeric NOT NULL,
     ledger_entry_id uuid,
     audit_log_id uuid NOT NULL,
     created_by uuid NOT NULL,
@@ -4030,9 +3889,9 @@ CREATE TABLE commission_calculations (
     status text NOT NULL,
     member_id uuid NOT NULL,
     account_id uuid NOT NULL,
-    stake_points bigint NOT NULL,
-    prize_points bigint NOT NULL,
-    base_points bigint NOT NULL,
+    stake_points numeric NOT NULL,
+    prize_points numeric NOT NULL,
+    base_points numeric NOT NULL,
     job_id uuid,
     calculation_id uuid,
     generation bigint,
@@ -4054,7 +3913,7 @@ CREATE TABLE commission_correction_balance_heads (
     agent_id uuid NOT NULL,
     member_id uuid NOT NULL,
     version bigint NOT NULL,
-    points bigint NOT NULL,
+    points numeric NOT NULL,
     original_target_id uuid,
     last_execution_target_id uuid NOT NULL,
     CONSTRAINT commission_correction_balance_heads_points_check CHECK ((points >= 0)),
@@ -4104,9 +3963,9 @@ CREATE TABLE commission_correction_execution_targets (
     plan_target_id uuid NOT NULL,
     agent_id uuid NOT NULL,
     member_id uuid NOT NULL,
-    points_before bigint NOT NULL,
-    points_after bigint NOT NULL,
-    delta_points bigint NOT NULL,
+    points_before numeric NOT NULL,
+    points_after numeric NOT NULL,
+    delta_points numeric NOT NULL,
     base_financial_version bigint,
     financial_version bigint,
     execution_version bigint NOT NULL,
@@ -4205,9 +4064,9 @@ CREATE TABLE commission_correction_plan_targets (
     original_target_id uuid,
     earning_id uuid,
     adjustment_version bigint,
-    points_before bigint NOT NULL,
-    points_after bigint NOT NULL,
-    delta_points bigint NOT NULL,
+    points_before numeric NOT NULL,
+    points_after numeric NOT NULL,
+    delta_points numeric NOT NULL,
     plan_version bigint NOT NULL,
     creation_audit_log_id uuid NOT NULL,
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
@@ -4363,7 +4222,7 @@ CREATE TABLE commission_earnings (
     member_id uuid NOT NULL,
     numerator text NOT NULL,
     denominator text NOT NULL,
-    points bigint NOT NULL,
+    points numeric NOT NULL,
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     CONSTRAINT commission_earnings_check CHECK ((valid_commission_fraction(numerator, denominator) IS TRUE)),
     CONSTRAINT commission_earnings_points_check CHECK ((points >= 0))
@@ -4380,7 +4239,7 @@ CREATE TABLE commission_payment_targets (
     brand_id uuid NOT NULL,
     payment_id uuid NOT NULL,
     earning_id uuid NOT NULL,
-    points bigint NOT NULL,
+    points numeric NOT NULL,
     member_id uuid NOT NULL,
     agent_id uuid NOT NULL,
     payment_version bigint NOT NULL,
@@ -4444,74 +4303,6 @@ CREATE TABLE commission_runs (
     CONSTRAINT commission_runs_evidence_epoch_check CHECK ((evidence_epoch >= 0)),
     CONSTRAINT commission_runs_generation_check CHECK ((generation > 0)),
     CONSTRAINT commission_runs_state_check CHECK ((state = ANY (ARRAY['calculating'::text, 'summarizing'::text, 'ready'::text, 'abandoned'::text])))
-);
-CREATE TABLE compliance_decisions (
-    id uuid NOT NULL,
-    brand_id uuid NOT NULL,
-    policy_version bigint NOT NULL,
-    config jsonb NOT NULL,
-    operation text NOT NULL,
-    decision text NOT NULL,
-    checks jsonb NOT NULL,
-    adapter_mode text NOT NULL,
-    created_by uuid NOT NULL,
-    reason text NOT NULL,
-    audit_log_id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL,
-    CONSTRAINT compliance_decisions_adapter_mode_check CHECK ((adapter_mode = 'stub'::text)),
-    CONSTRAINT compliance_decisions_check CHECK ((checks = compliance_stub_checks(config))),
-    CONSTRAINT compliance_decisions_check1 CHECK ((decision =
-CASE
-    WHEN (((config -> 'age_enabled'::text) = 'true'::jsonb) OR ((config -> 'region_enabled'::text) = 'true'::jsonb) OR ((config -> 'identity_enabled'::text) = 'true'::jsonb) OR ((config -> 'account_risk_enabled'::text) = 'true'::jsonb) OR ((config -> 'betting_risk_enabled'::text) = 'true'::jsonb) OR ((config -> 'exclusion_enabled'::text) = 'true'::jsonb) OR ((config -> 'responsible_gambling_enabled'::text) = 'true'::jsonb)) THEN 'review'::text
-    ELSE 'allow'::text
-END)),
-    CONSTRAINT compliance_decisions_config_check CHECK ((valid_compliance_config(config) IS TRUE)),
-    CONSTRAINT compliance_decisions_decision_check CHECK ((decision = ANY (ARRAY['allow'::text, 'review'::text, 'deny'::text, 'freeze'::text]))),
-    CONSTRAINT compliance_decisions_operation_check CHECK ((operation = ANY (ARRAY['registration'::text, 'betting'::text, 'withdrawal'::text]))),
-    CONSTRAINT compliance_decisions_reason_check CHECK (((length(TRIM(BOTH FROM reason)) > 0) AND (char_length(reason) <= 500)))
-);
-CREATE TABLE compliance_gate_rejections (
-    id uuid NOT NULL,
-    brand_id uuid NOT NULL,
-    policy_version bigint NOT NULL,
-    config jsonb NOT NULL,
-    operation text NOT NULL,
-    action text NOT NULL,
-    decision text NOT NULL,
-    checks jsonb NOT NULL,
-    adapter_mode text NOT NULL,
-    actor_type text NOT NULL,
-    actor_id uuid,
-    member_id uuid,
-    request_id text NOT NULL,
-    audit_log_id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL,
-    CONSTRAINT compliance_gate_rejections_action_check CHECK ((action = ANY (ARRAY['register'::text, 'join'::text, 'operator_join'::text, 'bet_preview'::text, 'bet_place'::text]))),
-    CONSTRAINT compliance_gate_rejections_actor_type_check CHECK ((actor_type = ANY (ARRAY['anonymous'::text, 'user'::text, 'admin'::text]))),
-    CONSTRAINT compliance_gate_rejections_adapter_mode_check CHECK ((adapter_mode = 'stub'::text)),
-    CONSTRAINT compliance_gate_rejections_check CHECK ((checks = compliance_stub_checks(config))),
-    CONSTRAINT compliance_gate_rejections_check1 CHECK ((((operation = 'registration'::text) AND (action = ANY (ARRAY['register'::text, 'join'::text, 'operator_join'::text]))) OR ((operation = 'betting'::text) AND (action = ANY (ARRAY['bet_preview'::text, 'bet_place'::text]))))),
-    CONSTRAINT compliance_gate_rejections_check2 CHECK ((((actor_type = 'anonymous'::text) AND (action = 'register'::text) AND (actor_id IS NULL) AND (member_id IS NULL)) OR ((actor_type = 'admin'::text) AND (action = 'operator_join'::text) AND (actor_id IS NOT NULL) AND (member_id IS NULL)) OR ((actor_type = 'user'::text) AND (actor_id IS NOT NULL) AND ((action = 'join'::text) OR ((action = ANY (ARRAY['bet_preview'::text, 'bet_place'::text])) AND (member_id IS NOT NULL)))))),
-    CONSTRAINT compliance_gate_rejections_config_check CHECK ((valid_compliance_config(config) IS TRUE)),
-    CONSTRAINT compliance_gate_rejections_config_check1 CHECK ((((config -> 'age_enabled'::text) = 'true'::jsonb) OR ((config -> 'region_enabled'::text) = 'true'::jsonb) OR ((config -> 'identity_enabled'::text) = 'true'::jsonb) OR ((config -> 'account_risk_enabled'::text) = 'true'::jsonb) OR ((config -> 'betting_risk_enabled'::text) = 'true'::jsonb) OR ((config -> 'exclusion_enabled'::text) = 'true'::jsonb) OR ((config -> 'responsible_gambling_enabled'::text) = 'true'::jsonb))),
-    CONSTRAINT compliance_gate_rejections_decision_check CHECK ((decision = 'review'::text)),
-    CONSTRAINT compliance_gate_rejections_operation_check CHECK ((operation = ANY (ARRAY['registration'::text, 'betting'::text]))),
-    CONSTRAINT compliance_gate_rejections_request_id_check CHECK (((length(request_id) >= 1) AND (length(request_id) <= 80)))
-);
-CREATE TABLE compliance_policy_revisions (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    brand_id uuid NOT NULL,
-    version bigint NOT NULL,
-    config jsonb NOT NULL,
-    changed_by uuid,
-    reason text NOT NULL,
-    audit_log_id uuid,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT compliance_policy_revisions_check CHECK (((version = 1) = ((changed_by IS NULL) AND (audit_log_id IS NULL)))),
-    CONSTRAINT compliance_policy_revisions_check1 CHECK (((version = 1) OR ((changed_by IS NOT NULL) AND (audit_log_id IS NOT NULL)))),
-    CONSTRAINT compliance_policy_revisions_config_check CHECK ((valid_compliance_config(config) IS TRUE)),
-    CONSTRAINT compliance_policy_revisions_reason_check CHECK (((length(TRIM(BOTH FROM reason)) > 0) AND (char_length(reason) <= 500))),
-    CONSTRAINT compliance_policy_revisions_version_check CHECK ((version > 0))
 );
 CREATE TABLE consumed_events (
     consumer text NOT NULL,
@@ -4654,6 +4445,9 @@ CREATE TABLE global_users (
     phone_set_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    wechat text,
+    telegram text,
+    whatsapp text,
     CONSTRAINT global_users_check CHECK (((username IS NOT NULL) OR (phone IS NOT NULL) OR (telegram_user_id IS NOT NULL))),
     CONSTRAINT global_users_status_check CHECK ((status = ANY (ARRAY['active'::text, 'disabled'::text, 'deleted'::text]))),
     CONSTRAINT global_users_username_check CHECK ((username = lower(username)))
@@ -4833,7 +4627,7 @@ CREATE TABLE point_buckets (
     account_id uuid NOT NULL,
     source text NOT NULL,
     state text NOT NULL,
-    points bigint DEFAULT 0 NOT NULL,
+    points numeric DEFAULT 0 NOT NULL,
     CONSTRAINT point_buckets_points_check CHECK ((points >= 0)),
     CONSTRAINT point_buckets_source_check CHECK ((source = ANY (ARRAY['recharge'::text, 'winning'::text, 'gift'::text, 'commission'::text]))),
     CONSTRAINT point_buckets_state_check CHECK ((state = ANY (ARRAY['available'::text, 'manual_frozen'::text, 'system_frozen'::text, 'withdrawal'::text])))
@@ -4843,7 +4637,7 @@ CREATE TABLE recharge_orders (
     brand_id uuid NOT NULL,
     member_id uuid NOT NULL,
     account_id uuid NOT NULL,
-    points bigint NOT NULL,
+    points numeric NOT NULL,
     state text DEFAULT 'pending'::text NOT NULL,
     proof_reference text DEFAULT ''::text NOT NULL,
     remark text DEFAULT ''::text NOT NULL,
@@ -4936,7 +4730,7 @@ CREATE TABLE reward_orders (
     id uuid NOT NULL,
     brand_id uuid NOT NULL,
     member_id uuid NOT NULL,
-    points bigint NOT NULL,
+    points numeric NOT NULL,
     state text NOT NULL,
     version bigint DEFAULT 1 NOT NULL,
     grant_ledger_entry_id uuid,
@@ -5071,7 +4865,7 @@ CREATE TABLE withdrawal_orders (
     brand_id uuid NOT NULL,
     member_id uuid NOT NULL,
     account_id uuid NOT NULL,
-    points bigint NOT NULL,
+    points numeric NOT NULL,
     state text NOT NULL,
     version bigint NOT NULL,
     source_allocation jsonb NOT NULL,
@@ -5115,7 +4909,7 @@ CREATE TABLE withdrawal_policy_revisions (
     changed_by uuid,
     reason text NOT NULL,
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    points_step bigint DEFAULT 1 NOT NULL,
+    points_step numeric DEFAULT 1 NOT NULL,
     CONSTRAINT withdrawal_policy_revisions_points_step_check CHECK (points_step > 0),
     CONSTRAINT withdrawal_policy_revisions_check CHECK (valid_withdrawal_policy(config, (game_id IS NOT NULL))),
     CONSTRAINT withdrawal_policy_revisions_check1 CHECK (((version = 1) = (changed_by IS NULL))),
@@ -5165,8 +4959,6 @@ ALTER TABLE ONLY brand_commission_payment_policies
     ADD CONSTRAINT brand_commission_payment_policies_pkey PRIMARY KEY (brand_id);
 ALTER TABLE ONLY brand_commission_policies
     ADD CONSTRAINT brand_commission_policies_pkey PRIMARY KEY (brand_id);
-ALTER TABLE ONLY brand_compliance_policies
-    ADD CONSTRAINT brand_compliance_policies_pkey PRIMARY KEY (brand_id);
 ALTER TABLE ONLY brand_creation_records
     ADD CONSTRAINT brand_creation_records_audit_log_id_key UNIQUE (audit_log_id);
 ALTER TABLE ONLY brand_creation_records
@@ -5327,18 +5119,6 @@ ALTER TABLE ONLY commission_runs
     ADD CONSTRAINT commission_runs_cycle_id_generation_key UNIQUE (cycle_id, generation);
 ALTER TABLE ONLY commission_runs
     ADD CONSTRAINT commission_runs_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY compliance_decisions
-    ADD CONSTRAINT compliance_decisions_audit_log_id_key UNIQUE (audit_log_id);
-ALTER TABLE ONLY compliance_decisions
-    ADD CONSTRAINT compliance_decisions_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY compliance_gate_rejections
-    ADD CONSTRAINT compliance_gate_rejections_audit_log_id_key UNIQUE (audit_log_id);
-ALTER TABLE ONLY compliance_gate_rejections
-    ADD CONSTRAINT compliance_gate_rejections_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY compliance_policy_revisions
-    ADD CONSTRAINT compliance_policy_revisions_brand_id_version_key UNIQUE (brand_id, version);
-ALTER TABLE ONLY compliance_policy_revisions
-    ADD CONSTRAINT compliance_policy_revisions_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY consumed_events
     ADD CONSTRAINT consumed_events_pkey PRIMARY KEY (consumer, event_id);
 ALTER TABLE ONLY draw_attempt_batches
@@ -5584,10 +5364,6 @@ CREATE INDEX commission_payment_due ON commission_payments USING btree (next_wor
 CREATE INDEX commission_report_posted_business_entries ON point_ledger_entries USING btree (brand_id, created_at, id) WHERE (entry_type = ANY (ARRAY['commission'::text, 'commission_adjustment'::text]));
 CREATE INDEX commission_target_scan ON commission_cycle_targets USING btree (cycle_id, placed_at, order_id);
 CREATE INDEX commission_target_xid ON commission_cycle_targets USING btree (cycle_id, creation_xid);
-CREATE INDEX compliance_decisions_operation_page ON compliance_decisions USING btree (brand_id, operation, created_at DESC, id DESC);
-CREATE INDEX compliance_decisions_page ON compliance_decisions USING btree (brand_id, created_at DESC, id DESC);
-CREATE INDEX compliance_gate_rejections_operation_page ON compliance_gate_rejections USING btree (brand_id, operation, created_at DESC, id DESC);
-CREATE INDEX compliance_gate_rejections_page ON compliance_gate_rejections USING btree (brand_id, created_at DESC, id DESC);
 CREATE INDEX draw_attempts_period_history ON draw_attempt_batches USING btree (brand_id, period_id, created_at DESC, id DESC);
 CREATE UNIQUE INDEX draw_notification_event_once ON outbox_events USING btree (brand_id, event_type, aggregate_id) WHERE (event_type = ANY (ARRAY['draw.result.published'::text, 'draw.result.corrected'::text]));
 CREATE INDEX draw_results_period_history ON draw_results USING btree (brand_id, period_id, created_at DESC, id DESC);
@@ -5632,7 +5408,6 @@ CREATE CONSTRAINT TRIGGER agent_revision_committed AFTER INSERT ON agent_config_
 CREATE TRIGGER audit_immutable BEFORE DELETE OR UPDATE ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
 CREATE TRIGGER brand_agent_policy AFTER INSERT ON brands FOR EACH ROW EXECUTE FUNCTION initialize_agent_policy();
 CREATE TRIGGER brand_commission_policy AFTER INSERT ON brands FOR EACH ROW EXECUTE FUNCTION initialize_commission_policy();
-CREATE TRIGGER brand_compliance_initialized AFTER INSERT ON brands FOR EACH ROW EXECUTE FUNCTION initialize_brand_compliance();
 CREATE TRIGGER brand_default_bet_policy AFTER INSERT ON brands FOR EACH ROW EXECUTE FUNCTION initialize_bet_policy();
 CREATE TRIGGER brand_default_settlement_policy AFTER INSERT ON brands FOR EACH ROW EXECUTE FUNCTION initialize_settlement_policy();
 CREATE TRIGGER brand_default_withdrawal_policy AFTER INSERT ON brands FOR EACH ROW EXECUTE FUNCTION initialize_withdrawal_policy();
@@ -5667,7 +5442,6 @@ CREATE CONSTRAINT TRIGGER commission_payment_target_commit AFTER UPDATE ON commi
 CREATE TRIGGER commission_point_buckets AFTER INSERT ON point_accounts FOR EACH ROW EXECUTE FUNCTION initialize_commission_point_buckets();
 CREATE CONSTRAINT TRIGGER commission_run_commit AFTER INSERT ON commission_runs DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_commission_run_commit();
 CREATE CONSTRAINT TRIGGER commission_step_commit AFTER INSERT ON commission_cycle_steps DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_commission_step_commit();
-CREATE CONSTRAINT TRIGGER compliance_history_required AFTER INSERT OR UPDATE ON brand_compliance_policies DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_compliance_history();
 CREATE CONSTRAINT TRIGGER domain_history_required AFTER DELETE OR UPDATE ON brand_domains DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_brand_domain_history();
 CREATE TRIGGER enqueue_in_app_event AFTER INSERT ON outbox_events FOR EACH ROW EXECUTE FUNCTION enqueue_in_app_event();
 CREATE TRIGGER game_default_bet_policy AFTER INSERT ON games FOR EACH ROW EXECUTE FUNCTION initialize_bet_policy();
@@ -5709,10 +5483,6 @@ CREATE TRIGGER guarded_commission_policy BEFORE INSERT OR DELETE OR UPDATE ON br
 CREATE TRIGGER guarded_commission_run BEFORE INSERT OR DELETE OR UPDATE ON commission_runs FOR EACH ROW EXECUTE FUNCTION guard_commission_run();
 CREATE TRIGGER guarded_commission_step BEFORE INSERT OR DELETE OR UPDATE ON commission_cycle_steps FOR EACH ROW EXECUTE FUNCTION guard_commission_step();
 CREATE TRIGGER guarded_commission_target BEFORE INSERT OR DELETE OR UPDATE ON commission_cycle_targets FOR EACH ROW EXECUTE FUNCTION guard_commission_target();
-CREATE TRIGGER guarded_compliance_decision BEFORE INSERT OR DELETE OR UPDATE ON compliance_decisions FOR EACH ROW EXECUTE FUNCTION guard_compliance_decision();
-CREATE TRIGGER guarded_compliance_gate_rejection BEFORE INSERT OR DELETE OR UPDATE ON compliance_gate_rejections FOR EACH ROW EXECUTE FUNCTION guard_compliance_gate_rejection();
-CREATE TRIGGER guarded_compliance_policy BEFORE INSERT OR DELETE OR UPDATE ON brand_compliance_policies FOR EACH ROW EXECUTE FUNCTION guard_compliance_policy();
-CREATE TRIGGER guarded_compliance_revision BEFORE INSERT OR DELETE OR UPDATE ON compliance_policy_revisions FOR EACH ROW EXECUTE FUNCTION guard_compliance_revision();
 CREATE TRIGGER guarded_domain_binding BEFORE DELETE OR UPDATE ON brand_domains FOR EACH ROW EXECUTE FUNCTION guard_brand_domain_binding();
 CREATE TRIGGER guarded_domain_history BEFORE INSERT OR DELETE OR UPDATE ON brand_domain_revisions FOR EACH ROW EXECUTE FUNCTION guard_brand_domain_revision();
 CREATE TRIGGER guarded_draw_notification_content BEFORE INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION guard_draw_notification_content();
@@ -5815,8 +5585,6 @@ ALTER TABLE ONLY brand_commission_payment_policies
     ADD CONSTRAINT brand_commission_payment_policies_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES brands(id);
 ALTER TABLE ONLY brand_commission_policies
     ADD CONSTRAINT brand_commission_policies_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES brands(id);
-ALTER TABLE ONLY brand_compliance_policies
-    ADD CONSTRAINT brand_compliance_policies_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES brands(id);
 ALTER TABLE ONLY brand_creation_records
     ADD CONSTRAINT brand_creation_records_audit_log_id_fkey FOREIGN KEY (audit_log_id) REFERENCES audit_logs(id);
 ALTER TABLE ONLY brand_creation_records
@@ -6015,28 +5783,6 @@ ALTER TABLE ONLY commission_payments
     ADD CONSTRAINT commission_payments_last_audit_log_id_fkey FOREIGN KEY (last_audit_log_id) REFERENCES audit_logs(id);
 ALTER TABLE ONLY commission_runs
     ADD CONSTRAINT commission_runs_brand_id_cycle_id_fkey FOREIGN KEY (brand_id, cycle_id) REFERENCES commission_cycles(brand_id, id);
-ALTER TABLE ONLY compliance_decisions
-    ADD CONSTRAINT compliance_decisions_audit_log_id_fkey FOREIGN KEY (audit_log_id) REFERENCES audit_logs(id);
-ALTER TABLE ONLY compliance_decisions
-    ADD CONSTRAINT compliance_decisions_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES brands(id);
-ALTER TABLE ONLY compliance_decisions
-    ADD CONSTRAINT compliance_decisions_brand_id_policy_version_fkey FOREIGN KEY (brand_id, policy_version) REFERENCES compliance_policy_revisions(brand_id, version);
-ALTER TABLE ONLY compliance_decisions
-    ADD CONSTRAINT compliance_decisions_created_by_fkey FOREIGN KEY (created_by) REFERENCES admin_accounts(id);
-ALTER TABLE ONLY compliance_gate_rejections
-    ADD CONSTRAINT compliance_gate_rejections_audit_log_id_fkey FOREIGN KEY (audit_log_id) REFERENCES audit_logs(id);
-ALTER TABLE ONLY compliance_gate_rejections
-    ADD CONSTRAINT compliance_gate_rejections_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES brands(id);
-ALTER TABLE ONLY compliance_gate_rejections
-    ADD CONSTRAINT compliance_gate_rejections_brand_id_member_id_fkey FOREIGN KEY (brand_id, member_id) REFERENCES brand_members(brand_id, id);
-ALTER TABLE ONLY compliance_gate_rejections
-    ADD CONSTRAINT compliance_gate_rejections_brand_id_policy_version_fkey FOREIGN KEY (brand_id, policy_version) REFERENCES compliance_policy_revisions(brand_id, version);
-ALTER TABLE ONLY compliance_policy_revisions
-    ADD CONSTRAINT compliance_policy_revisions_audit_log_id_fkey FOREIGN KEY (audit_log_id) REFERENCES audit_logs(id);
-ALTER TABLE ONLY compliance_policy_revisions
-    ADD CONSTRAINT compliance_policy_revisions_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES brands(id);
-ALTER TABLE ONLY compliance_policy_revisions
-    ADD CONSTRAINT compliance_policy_revisions_changed_by_fkey FOREIGN KEY (changed_by) REFERENCES admin_accounts(id);
 ALTER TABLE ONLY draw_attempt_batches
     ADD CONSTRAINT draw_attempt_batches_brand_id_game_id_period_id_fkey FOREIGN KEY (brand_id, game_id, period_id) REFERENCES periods(brand_id, game_id, id);
 ALTER TABLE ONLY draw_attempt_batches
@@ -6361,12 +6107,6 @@ INSERT INTO permissions VALUES ('brand_domains.write.brand');
 INSERT INTO permissions VALUES ('brand_domains.view.platform');
 INSERT INTO permissions VALUES ('brand_domains.write.platform');
 INSERT INTO permissions VALUES ('brand.create.platform');
-INSERT INTO permissions VALUES ('compliance_policy.view.brand');
-INSERT INTO permissions VALUES ('compliance_policy.view.platform');
-INSERT INTO permissions VALUES ('compliance_policy.write.brand');
-INSERT INTO permissions VALUES ('compliance_check.view.brand');
-INSERT INTO permissions VALUES ('compliance_check.view.platform');
-INSERT INTO permissions VALUES ('compliance_check.run.brand');
 INSERT INTO permissions VALUES ('report_betting.export.brand');
 INSERT INTO permissions VALUES ('report_betting.export.platform');
 INSERT INTO permissions VALUES ('report_ledger.export.brand');
@@ -6612,6 +6352,7 @@ CREATE TABLE platform_settings (
     time_format text NOT NULL DEFAULT 'HH:mm:ss',
     updated_by uuid,
     updated_at timestamptz NOT NULL DEFAULT now(),
+    theme text NOT NULL DEFAULT 'jade' CHECK (theme IN ('jade','vermilion','ocean','obsidian')),
     CONSTRAINT platform_settings_singleton CHECK (id),
     CONSTRAINT platform_settings_version_check CHECK (version > 0),
     CONSTRAINT platform_settings_date_format_check CHECK (date_format IN ('YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY')),
@@ -6718,9 +6459,9 @@ CREATE TABLE platform_mark_six_settings (
 CREATE TABLE brand_mark_six_sales (
  brand_id uuid NOT NULL, game_id uuid NOT NULL, version bigint NOT NULL CHECK(version>0),
  rule_version bigint NOT NULL, enabled boolean NOT NULL, odds jsonb NOT NULL,
- min_points bigint NOT NULL CHECK(min_points>0), max_points bigint NOT NULL CHECK(max_points>=min_points),
- max_period_points bigint NOT NULL CHECK(max_period_points>=max_points),
- max_user_period_points bigint NOT NULL CHECK(max_user_period_points>=max_points),
+ min_points numeric NOT NULL CHECK(min_points>0), max_points numeric NOT NULL CHECK(max_points>=min_points),
+ max_period_points numeric NOT NULL CHECK(max_period_points>=max_points),
+ max_user_period_points numeric NOT NULL CHECK(max_user_period_points>=max_points),
  updated_by uuid NOT NULL REFERENCES admin_accounts(id), updated_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(brand_id,game_id), FOREIGN KEY(brand_id,game_id) REFERENCES brand_platform_games(brand_id,game_id),
  FOREIGN KEY(game_id,rule_version) REFERENCES platform_mark_six_versions(game_id,version)
@@ -6800,9 +6541,9 @@ CREATE TABLE platform_canada_settings (
 CREATE TABLE brand_canada_sales (
  brand_id uuid NOT NULL, game_id uuid NOT NULL, version bigint NOT NULL CHECK(version>0),
  profile text NOT NULL, rule_version bigint NOT NULL, enabled boolean NOT NULL, odds jsonb NOT NULL,
- min_points bigint NOT NULL CHECK(min_points>0), max_points bigint NOT NULL CHECK(max_points>=min_points),
- max_period_points bigint NOT NULL CHECK(max_period_points>=max_points),
- max_user_period_points bigint NOT NULL CHECK(max_user_period_points>=max_points),
+ min_points numeric NOT NULL CHECK(min_points>0), max_points numeric NOT NULL CHECK(max_points>=min_points),
+ max_period_points numeric NOT NULL CHECK(max_period_points>=max_points),
+ max_user_period_points numeric NOT NULL CHECK(max_user_period_points>=max_points),
  updated_by uuid NOT NULL REFERENCES admin_accounts(id), updated_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(brand_id,game_id), FOREIGN KEY(brand_id,game_id) REFERENCES brand_platform_games(brand_id,game_id),
  FOREIGN KEY(game_id,rule_version) REFERENCES platform_canada_versions(game_id,version)
@@ -7090,10 +6831,6 @@ ALTER TABLE commission_cycle_steps DROP CONSTRAINT commission_cycle_steps_reason
 ALTER TABLE commission_cycle_steps ADD CONSTRAINT commission_cycle_steps_reason_check CHECK ((((char_length(reason) <= 500)) AND (TRIM(BOTH FROM reason) = reason)));
 ALTER TABLE commission_cycles DROP CONSTRAINT commission_cycles_reason_check;
 ALTER TABLE commission_cycles ADD CONSTRAINT commission_cycles_reason_check CHECK ((((char_length(reason) <= 500)) AND (TRIM(BOTH FROM reason) = reason)));
-ALTER TABLE compliance_decisions DROP CONSTRAINT compliance_decisions_reason_check;
-ALTER TABLE compliance_decisions ADD CONSTRAINT compliance_decisions_reason_check CHECK (((char_length(reason) <= 500)));
-ALTER TABLE compliance_policy_revisions DROP CONSTRAINT compliance_policy_revisions_reason_check;
-ALTER TABLE compliance_policy_revisions ADD CONSTRAINT compliance_policy_revisions_reason_check CHECK (((char_length(reason) <= 500)));
 ALTER TABLE join_code_revisions DROP CONSTRAINT join_code_revisions_reason_check;
 ALTER TABLE join_code_revisions ADD CONSTRAINT join_code_revisions_reason_check CHECK (((char_length(reason) <= 500)));
 ALTER TABLE notification_template_revisions DROP CONSTRAINT notification_template_revisions_reason_check;
@@ -7138,16 +6875,16 @@ CREATE TABLE configured_rule_heads (
 );
 CREATE TABLE configured_sales (
  brand_id uuid NOT NULL, game_id uuid NOT NULL, version bigint NOT NULL, rule_id uuid NOT NULL,
- enabled boolean NOT NULL, prices jsonb NOT NULL, min_points bigint NOT NULL CHECK(min_points>0),
- max_points bigint NOT NULL CHECK(max_points>=min_points), max_period_points bigint NOT NULL CHECK(max_period_points>=max_points),
- max_user_period_points bigint NOT NULL CHECK(max_user_period_points>=max_points),
+ enabled boolean NOT NULL, prices jsonb NOT NULL, min_points numeric NOT NULL CHECK(min_points>0),
+ max_points numeric NOT NULL CHECK(max_points>=min_points), max_period_points numeric NOT NULL CHECK(max_period_points>=max_points),
+ max_user_period_points numeric NOT NULL CHECK(max_user_period_points>=max_points),
  PRIMARY KEY(brand_id,game_id), FOREIGN KEY(brand_id,game_id) REFERENCES brand_platform_games(brand_id,game_id),
  FOREIGN KEY(game_id,rule_id) REFERENCES configured_rule_versions(game_id,id)
 );
 CREATE TABLE configured_orders (
  id uuid PRIMARY KEY, brand_id uuid NOT NULL, member_id uuid NOT NULL, user_id uuid NOT NULL,
  game_id uuid NOT NULL, period_id uuid NOT NULL, rule_id uuid NOT NULL, sales_version bigint NOT NULL,
- snapshot jsonb NOT NULL, quote jsonb NOT NULL, sales_snapshot jsonb NOT NULL, total_points bigint NOT NULL CHECK(total_points>0),
+ snapshot jsonb NOT NULL, quote jsonb NOT NULL, sales_snapshot jsonb NOT NULL, total_points numeric NOT NULL CHECK(total_points>0),
  allocation jsonb NOT NULL, debit_entry_id uuid NOT NULL REFERENCES point_ledger_entries(id),
  payout_entry_id uuid REFERENCES point_ledger_entries(id), refund_entry_id uuid REFERENCES point_ledger_entries(id),
  result jsonb, status text NOT NULL DEFAULT 'placed' CHECK(status IN('placed','settled')),
@@ -7188,8 +6925,8 @@ BEGIN
   FOR l IN SELECT * FROM point_ledger_entries WHERE id IN(NEW.payout_entry_id,NEW.refund_entry_id) LOOP
    IF l.brand_id<>NEW.brand_id OR l.member_id<>NEW.member_id OR l.account_id<>d.account_id OR l.reference_type<>'configured_order' OR l.reference_id<>NEW.id THEN RAISE EXCEPTION 'Credit scope mismatch'; END IF;
   END LOOP;
-  IF (NEW.result->>'prize_points')::bigint>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.payout_entry_id AND entry_type='prize' AND operation_key='configured-prize:'||NEW.id::text AND source_allocation=jsonb_build_array(jsonb_build_object('source','winning','state','available','points',NEW.result->>'prize_points'))) THEN RAISE EXCEPTION 'Prize mismatch'; END IF;
-  IF (NEW.result->>'refund_points')::bigint>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.refund_entry_id AND entry_type='refund' AND operation_key='configured-refund:'||NEW.id::text AND (SELECT sum((v->>'points')::numeric) FROM jsonb_array_elements(source_allocation) v)=(NEW.result->>'refund_points')::numeric AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(source_allocation) r WHERE (r->>'points')::numeric>coalesce((SELECT (a->>'points')::numeric FROM jsonb_array_elements(NEW.allocation) a WHERE a->>'source'=r->>'source'),0))) THEN RAISE EXCEPTION 'Refund mismatch'; END IF;
+  IF (NEW.result->>'prize_points')::numeric>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.payout_entry_id AND entry_type='prize' AND operation_key='configured-prize:'||NEW.id::text AND source_allocation=jsonb_build_array(jsonb_build_object('source','winning','state','available','points',NEW.result->>'prize_points'))) THEN RAISE EXCEPTION 'Prize mismatch'; END IF;
+  IF (NEW.result->>'refund_points')::numeric>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.refund_entry_id AND entry_type='refund' AND operation_key='configured-refund:'||NEW.id::text AND (SELECT sum((v->>'points')::numeric) FROM jsonb_array_elements(source_allocation) v)=(NEW.result->>'refund_points')::numeric AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(source_allocation) r WHERE (r->>'points')::numeric>coalesce((SELECT (a->>'points')::numeric FROM jsonb_array_elements(NEW.allocation) a WHERE a->>'source'=r->>'source'),0))) THEN RAISE EXCEPTION 'Refund mismatch'; END IF;
  END IF;
  RETURN NEW;
 END $$;
@@ -7211,7 +6948,7 @@ LANGUAGE sql STABLE AS $$
  FROM configured_orders o
  JOIN point_accounts pa ON pa.brand_id=o.brand_id AND pa.brand_member_id=o.member_id
  CROSS JOIN LATERAL (VALUES ('bet'::text,o.debit_entry_id,o.total_points,'bet'::text),
- ('prize',o.payout_entry_id,coalesce((o.result->>'prize_points')::bigint,0),'prize'),('refund',o.refund_entry_id,coalesce((o.result->>'refund_points')::bigint,0),'refund')) e(kind,ledger,points,operation)
+ ('prize',o.payout_entry_id,coalesce((o.result->>'prize_points')::numeric,0),'prize'),('refund',o.refund_entry_id,coalesce((o.result->>'refund_points')::numeric,0),'refund')) e(kind,ledger,points,operation)
  LEFT JOIN point_ledger_entries l ON l.id=e.ledger
  WHERE o.brand_id=b AND pa.id=a AND e.points>0
 $$;
@@ -7372,10 +7109,10 @@ LANGUAGE sql STABLE AS $$
  FROM configured_orders o
  JOIN point_accounts pa ON pa.brand_id=o.brand_id AND pa.brand_member_id=o.member_id
  CROSS JOIN LATERAL (VALUES
- ('bet'::text,o.debit_entry_id,CASE WHEN o.snapshot->'catalog'->>'funding'='reserve' THEN (o.quote->>'reserved_points')::bigint ELSE o.total_points END,'bet'::text),
- ('bet',o.loss_entry_id,CASE WHEN o.snapshot->'catalog'->>'funding'='reserve' THEN coalesce((o.result->>'consumed_points')::bigint,0) ELSE 0 END,'loss'),
- ('prize',o.payout_entry_id,coalesce((o.result->>'prize_points')::bigint,0),'prize'),
- ('refund',o.refund_entry_id,coalesce((o.result->>'refund_points')::bigint,0),'refund')) e(kind,ledger,points,operation)
+ ('bet'::text,o.debit_entry_id,CASE WHEN o.snapshot->'catalog'->>'funding'='reserve' THEN (o.quote->>'reserved_points')::numeric ELSE o.total_points END,'bet'::text),
+ ('bet',o.loss_entry_id,CASE WHEN o.snapshot->'catalog'->>'funding'='reserve' THEN coalesce((o.result->>'consumed_points')::numeric,0) ELSE 0 END,'loss'),
+ ('prize',o.payout_entry_id,coalesce((o.result->>'prize_points')::numeric,0),'prize'),
+ ('refund',o.refund_entry_id,coalesce((o.result->>'refund_points')::numeric,0),'refund')) e(kind,ledger,points,operation)
  LEFT JOIN point_ledger_entries l ON l.id=e.ledger
  WHERE o.brand_id=b AND pa.id=a AND e.points>0
 $$;
@@ -7589,10 +7326,6 @@ CREATE TABLE brand_logo_assets (
  content bytea NOT NULL CHECK (octet_length(content) BETWEEN 1 AND 1048576),
  created_at timestamptz NOT NULL DEFAULT now()
 );
-INSERT INTO permissions(key) VALUES ('compliance_policy.write.platform'),('compliance_check.run.platform');
-INSERT INTO role_permissions(role_id,permission_key)
-SELECT r.id,p.key FROM roles r CROSS JOIN permissions p
-WHERE r.is_bootstrap AND r.brand_id IS NULL AND p.key IN ('compliance_policy.write.platform','compliance_check.run.platform');
 -- Whole-line mode changes keep the current period untouched. Targets contain
 -- audited future revisions, and snapshots resolve them by the bet timestamp.
 CREATE TABLE agent_mode_changes (
@@ -7846,15 +7579,15 @@ CREATE TRIGGER sync_platform_commission_timezone AFTER UPDATE OF timezone ON pla
 -- Brand shared manual recharge quota
 CREATE TABLE brand_recharge_quotas (
  brand_id uuid PRIMARY KEY REFERENCES brands(id) ON DELETE CASCADE,
- available bigint NOT NULL DEFAULT 0 CHECK (available >= 0)
+ available numeric NOT NULL DEFAULT 0 CHECK (available >= 0)
 );
 CREATE TABLE brand_recharge_quota_entries (
  id uuid PRIMARY KEY,
  brand_id uuid NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
  kind text NOT NULL CHECK (kind IN ('grant','reclaim','manual_recharge','manual_adjustment')),
- points bigint NOT NULL CHECK (points > 0),
- before_available bigint NOT NULL CHECK (before_available >= 0),
- after_available bigint NOT NULL CHECK (after_available >= 0),
+ points numeric NOT NULL CHECK (points > 0),
+ before_available numeric NOT NULL CHECK (before_available >= 0),
+ after_available numeric NOT NULL CHECK (after_available >= 0),
  recharge_order_id uuid UNIQUE,
  FOREIGN KEY (brand_id,recharge_order_id) REFERENCES recharge_orders(brand_id,id),
  actor_id uuid NOT NULL REFERENCES admin_accounts(id),
@@ -8234,14 +7967,14 @@ CREATE VIEW betting_financial_facts AS SELECT o.id,o.brand_id,o.member_id AS bra
  d.account_id,o.game_id,o.period_id,o.rule_id AS rule_version_id,o.total_points,o.allocation AS deduction_allocation,
  o.debit_entry_id,o.payout_entry_id,o.refund_entry_id,o.loss_entry_id,o.placed_at,o.settled_at,
  o.attribution_snapshot,o.commission_rule_snapshot,o.withdrawal_rule_snapshot,o.snapshot,o.quote,o.result,
- CASE WHEN o.status='placed' THEN 'placed' WHEN (o.result->>'prize_points')::bigint>0 THEN 'won' ELSE 'lost' END AS status,
- coalesce((o.result->>'prize_points')::bigint,0) AS prize_points,
- CASE WHEN o.snapshot->'catalog'->>'funding'='reserve' THEN 0 ELSE coalesce((o.result->>'refund_points')::bigint,0) END AS refund_points,
- coalesce((o.result->>'effective_points')::bigint,0) AS effective_points,
- CASE WHEN o.snapshot->'catalog'->>'funding'='reserve' THEN coalesce((o.result->>'consumed_points')::bigint,0)
- ELSE o.total_points-coalesce((o.result->>'refund_points')::bigint,0) END AS consumed_points,
+ CASE WHEN o.status='placed' THEN 'placed' WHEN (o.result->>'prize_points')::numeric>0 THEN 'won' ELSE 'lost' END AS status,
+ coalesce((o.result->>'prize_points')::numeric,0) AS prize_points,
+ CASE WHEN o.snapshot->'catalog'->>'funding'='reserve' THEN 0 ELSE coalesce((o.result->>'refund_points')::numeric,0) END AS refund_points,
+ coalesce((o.result->>'effective_points')::numeric,0) AS effective_points,
+ CASE WHEN o.snapshot->'catalog'->>'funding'='reserve' THEN coalesce((o.result->>'consumed_points')::numeric,0)
+ ELSE o.total_points-coalesce((o.result->>'refund_points')::numeric,0) END AS consumed_points,
  greatest(CASE WHEN o.snapshot->'catalog'->>'funding'='reserve' THEN coalesce((o.result->>'consumed_points')::numeric,0)
- ELSE o.total_points::numeric-coalesce((o.result->>'refund_points')::numeric,0) END-coalesce((o.result->>'prize_points')::numeric,0),0)::bigint AS loss_points
+ ELSE o.total_points::numeric-coalesce((o.result->>'refund_points')::numeric,0) END-coalesce((o.result->>'prize_points')::numeric,0),0)::numeric AS loss_points
  FROM configured_orders o JOIN point_ledger_entries d ON d.id=o.debit_entry_id;
 ALTER TABLE commission_cycle_targets ADD CONSTRAINT commission_cycle_targets_brand_id_order_id_fkey FOREIGN KEY (brand_id, order_id) REFERENCES configured_orders(brand_id, id);
 ALTER TABLE commission_cycles ADD CONSTRAINT commission_cycles_brand_id_anchor_order_id_fkey FOREIGN KEY (brand_id, anchor_order_id) REFERENCES configured_orders(brand_id, id);
@@ -8311,67 +8044,187 @@ INSERT INTO platform_auth_settings(id) VALUES(true);
 ALTER TABLE brands ADD COLUMN auth_inherit_platform boolean NOT NULL DEFAULT false;
 ALTER TABLE brands ALTER COLUMN auth_inherit_platform SET DEFAULT true;
 
-CREATE TABLE platform_compliance_settings (
- id boolean PRIMARY KEY DEFAULT true CHECK(id),
- version bigint NOT NULL DEFAULT 1 CHECK(version>0),
- config jsonb NOT NULL DEFAULT default_compliance_config(),
- updated_at timestamptz NOT NULL DEFAULT now()
-);
-INSERT INTO platform_compliance_settings(id) VALUES(true);
-ALTER TABLE brand_compliance_policies ADD COLUMN inherit_platform boolean NOT NULL DEFAULT false;
-ALTER TABLE brand_compliance_policies ALTER COLUMN inherit_platform SET DEFAULT true;
-CREATE FUNCTION initial_compliance_config() RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT config FROM platform_compliance_settings WHERE id=true $$;
-
-CREATE OR REPLACE FUNCTION guard_compliance_policy() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
- IF TG_OP='DELETE' THEN RAISE EXCEPTION 'compliance policy cannot be deleted'; END IF;
- IF TG_OP='INSERT' THEN
-  IF NEW.version<>1 OR NEW.config<>initial_compliance_config() THEN RAISE EXCEPTION 'disabled initial compliance policy required'; END IF;
- ELSE
-  IF NEW.brand_id IS DISTINCT FROM OLD.brand_id OR NEW.version<>OLD.version+1 THEN RAISE EXCEPTION 'compliance identity/version invalid'; END IF;
- END IF;
- NEW.updated_at:=clock_timestamp();RETURN NEW;
-END $$;
-
-CREATE OR REPLACE FUNCTION guard_compliance_revision() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-DECLARE p brand_compliance_policies;a audit_logs;
-BEGIN
- IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'compliance revision immutable'; END IF;
- SELECT * INTO p FROM brand_compliance_policies WHERE brand_id=NEW.brand_id;
- IF NOT FOUND OR p.version IS DISTINCT FROM NEW.version OR p.config IS DISTINCT FROM NEW.config THEN RAISE EXCEPTION 'compliance revision requires current policy'; END IF;
- IF NEW.version=1 THEN
-  IF NEW.config<>initial_compliance_config() THEN RAISE EXCEPTION 'initial compliance history must be disabled'; END IF;
- ELSE
-  SELECT * INTO a FROM audit_logs WHERE id=NEW.audit_log_id;
-  IF NOT FOUND OR a.brand_id IS DISTINCT FROM NEW.brand_id OR a.actor_type IS DISTINCT FROM 'admin' OR a.actor_id IS DISTINCT FROM NEW.changed_by
-  OR a.action IS DISTINCT FROM 'compliance.policy.update' OR a.resource_type IS DISTINCT FROM 'compliance_policy' OR a.resource_id IS DISTINCT FROM NEW.brand_id
-  OR a.reason IS DISTINCT FROM NEW.reason OR a.after_json->>'brand_id' IS DISTINCT FROM NEW.brand_id::text
-  OR (a.after_json->>'version')::bigint IS DISTINCT FROM NEW.version OR a.after_json->'config' IS DISTINCT FROM NEW.config
-  OR (a.before_json->>'version')::bigint IS DISTINCT FROM NEW.version-1 THEN RAISE EXCEPTION 'matching compliance audit required'; END IF;
- END IF;
- RETURN NEW;
-END $$;
-
-CREATE OR REPLACE FUNCTION initialize_brand_compliance() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-DECLARE initial_config jsonb;
-BEGIN
- SELECT config INTO STRICT initial_config FROM platform_compliance_settings WHERE id=true FOR SHARE;
- INSERT INTO brand_compliance_policies(brand_id,config) VALUES(NEW.id,initial_config);
- INSERT INTO compliance_policy_revisions(brand_id,version,config,reason) VALUES(NEW.id,1,initial_config,'Initial platform compliance configuration');
- RETURN NEW;
-END $$;
-DO $$ DECLARE f regprocedure; BEGIN
- FOR f IN SELECT p.oid::regprocedure FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
- WHERE n.nspname=current_schema() AND p.proname IN ('initial_compliance_config','guard_compliance_policy','guard_compliance_revision','initialize_brand_compliance')
- LOOP EXECUTE format('ALTER FUNCTION %s SET search_path = pg_catalog, %I, pg_temp',f,current_schema()); END LOOP;
-END $$;
-
 -- Manual historical results share the immutable draw archive.
 ALTER TABLE platform_draw_history DROP CONSTRAINT platform_draw_history_source_check;
 ALTER TABLE platform_draw_history ADD CONSTRAINT platform_draw_history_source_check CHECK (source IN ('hkjc','6hch_123565_agreement','manual'));
+
+-- Points use exact hundredths; reject excess precision.
+ALTER TABLE brand_point_policies ADD CONSTRAINT brand_point_policies_max_balance_points_precision CHECK (max_balance_points=trunc(max_balance_points,2) AND max_balance_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_point_policies ADD CONSTRAINT brand_point_policies_max_recharge_points_precision CHECK (max_recharge_points=trunc(max_recharge_points,2) AND max_recharge_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_point_policies ADD CONSTRAINT brand_point_policies_max_adjustment_points_precision CHECK (max_adjustment_points=trunc(max_adjustment_points,2) AND max_adjustment_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_withdrawal_policies ADD CONSTRAINT brand_withdrawal_policies_points_step_precision CHECK (points_step=trunc(points_step,2) AND points_step BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_adjustment_heads ADD CONSTRAINT commission_adjustment_heads_points_precision CHECK (points=trunc(points,2) AND points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_adjustments ADD CONSTRAINT commission_adjustments_points_before_precision CHECK (points_before=trunc(points_before,2) AND points_before BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_adjustments ADD CONSTRAINT commission_adjustments_points_after_precision CHECK (points_after=trunc(points_after,2) AND points_after BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_adjustments ADD CONSTRAINT commission_adjustments_delta_points_precision CHECK (delta_points=trunc(delta_points,2) AND delta_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_calculations ADD CONSTRAINT commission_calculations_stake_points_precision CHECK (stake_points=trunc(stake_points,2) AND stake_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_calculations ADD CONSTRAINT commission_calculations_prize_points_precision CHECK (prize_points=trunc(prize_points,2) AND prize_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_calculations ADD CONSTRAINT commission_calculations_base_points_precision CHECK (base_points=trunc(base_points,2) AND base_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_balance_heads ADD CONSTRAINT commission_correction_balance_heads_points_precision CHECK (points=trunc(points,2) AND points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_execution_targets ADD CONSTRAINT commission_correction_execution_targets_points_before_precision CHECK (points_before=trunc(points_before,2) AND points_before BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_execution_targets ADD CONSTRAINT commission_correction_execution_targets_points_after_precision CHECK (points_after=trunc(points_after,2) AND points_after BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_execution_targets ADD CONSTRAINT commission_correction_execution_targets_delta_points_precision CHECK (delta_points=trunc(delta_points,2) AND delta_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_executions ADD CONSTRAINT commission_correction_executions_credit_points_precision CHECK (credit_points=trunc(credit_points,2) AND credit_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_executions ADD CONSTRAINT commission_correction_executions_debit_points_precision CHECK (debit_points=trunc(debit_points,2) AND debit_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_executions ADD CONSTRAINT commission_correction_executions_net_points_precision CHECK (net_points=trunc(net_points,2) AND net_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_plan_targets ADD CONSTRAINT commission_correction_plan_targets_points_before_precision CHECK (points_before=trunc(points_before,2) AND points_before BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_plan_targets ADD CONSTRAINT commission_correction_plan_targets_points_after_precision CHECK (points_after=trunc(points_after,2) AND points_after BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_plan_targets ADD CONSTRAINT commission_correction_plan_targets_delta_points_precision CHECK (delta_points=trunc(delta_points,2) AND delta_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_plans ADD CONSTRAINT commission_correction_plans_before_points_precision CHECK (before_points=trunc(before_points,2) AND before_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_plans ADD CONSTRAINT commission_correction_plans_calculated_points_precision CHECK (calculated_points=trunc(calculated_points,2) AND calculated_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_plans ADD CONSTRAINT commission_correction_plans_credit_points_precision CHECK (credit_points=trunc(credit_points,2) AND credit_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_plans ADD CONSTRAINT commission_correction_plans_debit_points_precision CHECK (debit_points=trunc(debit_points,2) AND debit_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_correction_plans ADD CONSTRAINT commission_correction_plans_net_points_precision CHECK (net_points=trunc(net_points,2) AND net_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_earnings ADD CONSTRAINT commission_earnings_points_precision CHECK (points=trunc(points,2) AND points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_payment_targets ADD CONSTRAINT commission_payment_targets_points_precision CHECK (points=trunc(points,2) AND points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE commission_payments ADD CONSTRAINT commission_payments_total_points_precision CHECK (total_points=trunc(total_points,2) AND total_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE point_buckets ADD CONSTRAINT point_buckets_points_precision CHECK (points=trunc(points,2) AND points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE recharge_orders ADD CONSTRAINT recharge_orders_points_precision CHECK (points=trunc(points,2) AND points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE reward_orders ADD CONSTRAINT reward_orders_points_precision CHECK (points=trunc(points,2) AND points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE withdrawal_orders ADD CONSTRAINT withdrawal_orders_points_precision CHECK (points=trunc(points,2) AND points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE withdrawal_policy_revisions ADD CONSTRAINT withdrawal_policy_revisions_points_step_precision CHECK (points_step=trunc(points_step,2) AND points_step BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_mark_six_sales ADD CONSTRAINT brand_mark_six_sales_min_points_precision CHECK (min_points=trunc(min_points,2) AND min_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_mark_six_sales ADD CONSTRAINT brand_mark_six_sales_max_points_precision CHECK (max_points=trunc(max_points,2) AND max_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_mark_six_sales ADD CONSTRAINT brand_mark_six_sales_max_period_points_precision CHECK (max_period_points=trunc(max_period_points,2) AND max_period_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_mark_six_sales ADD CONSTRAINT brand_mark_six_sales_max_user_period_points_precision CHECK (max_user_period_points=trunc(max_user_period_points,2) AND max_user_period_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_canada_sales ADD CONSTRAINT brand_canada_sales_min_points_precision CHECK (min_points=trunc(min_points,2) AND min_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_canada_sales ADD CONSTRAINT brand_canada_sales_max_points_precision CHECK (max_points=trunc(max_points,2) AND max_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_canada_sales ADD CONSTRAINT brand_canada_sales_max_period_points_precision CHECK (max_period_points=trunc(max_period_points,2) AND max_period_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_canada_sales ADD CONSTRAINT brand_canada_sales_max_user_period_points_precision CHECK (max_user_period_points=trunc(max_user_period_points,2) AND max_user_period_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE configured_sales ADD CONSTRAINT configured_sales_min_points_precision CHECK (min_points=trunc(min_points,2) AND min_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE configured_sales ADD CONSTRAINT configured_sales_max_points_precision CHECK (max_points=trunc(max_points,2) AND max_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE configured_sales ADD CONSTRAINT configured_sales_max_period_points_precision CHECK (max_period_points=trunc(max_period_points,2) AND max_period_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE configured_sales ADD CONSTRAINT configured_sales_max_user_period_points_precision CHECK (max_user_period_points=trunc(max_user_period_points,2) AND max_user_period_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE configured_orders ADD CONSTRAINT configured_orders_total_points_precision CHECK (total_points=trunc(total_points,2) AND total_points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_recharge_quotas ADD CONSTRAINT brand_recharge_quotas_available_precision CHECK (available=trunc(available,2) AND available BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_recharge_quota_entries ADD CONSTRAINT brand_recharge_quota_entries_points_precision CHECK (points=trunc(points,2) AND points BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_recharge_quota_entries ADD CONSTRAINT brand_recharge_quota_entries_before_available_precision CHECK (before_available=trunc(before_available,2) AND before_available BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+ALTER TABLE brand_recharge_quota_entries ADD CONSTRAINT brand_recharge_quota_entries_after_available_precision CHECK (after_available=trunc(after_available,2) AND after_available BETWEEN -92233720368547758.08 AND 92233720368547758.07);
+
+-- Customer-service contacts have independent configuration and versioning.
+ALTER TABLE brands ADD COLUMN contact_config jsonb NOT NULL DEFAULT '{"items":[],"default_id":null}'::jsonb;
+ALTER TABLE brands ADD COLUMN contact_version bigint NOT NULL DEFAULT 1 CHECK (contact_version > 0);
+-- Multi-currency balances: recharge funds cannot be withdrawn before point conversion.
+CREATE TABLE cash_configs (scope text PRIMARY KEY,version bigint NOT NULL CHECK(version>0),config jsonb NOT NULL);
+CREATE TABLE cash_destinations (
+ id uuid PRIMARY KEY,brand_id uuid NOT NULL REFERENCES brands(id),member_id uuid,
+ currency text NOT NULL CHECK(currency IN('CNY','USD','THB','USDT')),data jsonb NOT NULL,
+ enabled boolean NOT NULL,version bigint NOT NULL CHECK(version>0),
+ assigned_count bigint NOT NULL DEFAULT 0 CHECK(assigned_count>=0),assigned_amount bigint NOT NULL DEFAULT 0 CHECK(assigned_amount>=0),
+ FOREIGN KEY(brand_id,member_id) REFERENCES wallet_owners(brand_id,id),UNIQUE(brand_id,id)
+);
+CREATE INDEX cash_destinations_scope ON cash_destinations(brand_id,member_id,currency,id);
+CREATE TABLE cash_balances (
+ brand_id uuid NOT NULL,member_id uuid NOT NULL,currency text NOT NULL CHECK(currency IN('CNY','USD','THB','USDT')),
+ deposited bigint NOT NULL DEFAULT 0 CHECK(deposited>=0),withdrawable bigint NOT NULL DEFAULT 0 CHECK(withdrawable>=0),reserved bigint NOT NULL DEFAULT 0 CHECK(reserved>=0),
+ PRIMARY KEY(brand_id,member_id,currency),FOREIGN KEY(brand_id,member_id) REFERENCES brand_members(brand_id,id),
+ CHECK(currency='USDT' OR (deposited%10000=0 AND withdrawable%10000=0 AND reserved%10000=0))
+);
+CREATE TABLE cash_orders (
+ id uuid PRIMARY KEY,brand_id uuid NOT NULL,member_id uuid NOT NULL,
+ kind text NOT NULL CHECK(kind IN('deposit','to_points','from_points','withdrawal')),
+ currency text NOT NULL CHECK(currency IN('CNY','USD','THB','USDT')),amount bigint NOT NULL CHECK(amount>0),
+ points numeric NOT NULL DEFAULT 0 CHECK(points>=0 AND points=trunc(points,2)),fee bigint NOT NULL DEFAULT 0 CHECK(fee>=0 AND fee<amount),rate text NOT NULL DEFAULT '',
+ state text NOT NULL CHECK(state IN('pending','submitted','confirmed','cancelled','expired','completed','reviewing','processing','paid','rejected','failed')),
+ version bigint NOT NULL DEFAULT 1 CHECK(version>0),destination_id uuid,destination jsonb NOT NULL DEFAULT '{}',
+ proof text NOT NULL DEFAULT '',reference text NOT NULL DEFAULT '',point_entry_id uuid, evidence jsonb NOT NULL DEFAULT '{}',
+ created_at timestamptz NOT NULL DEFAULT now(),expires_at timestamptz,
+ FOREIGN KEY(brand_id,member_id) REFERENCES brand_members(brand_id,id),FOREIGN KEY(brand_id,destination_id) REFERENCES cash_destinations(brand_id,id),UNIQUE(brand_id,id),
+ CHECK(currency='USDT' OR (amount%10000=0 AND fee%10000=0))
+);
+CREATE INDEX cash_orders_member ON cash_orders(brand_id,member_id,created_at DESC,id DESC);
+CREATE UNIQUE INDEX cash_active_withdrawal ON cash_orders(brand_id,member_id) WHERE kind='withdrawal' AND state IN('reviewing','processing');
+CREATE UNIQUE INDEX cash_deposit_reference ON cash_orders(brand_id,currency,reference) WHERE kind='deposit' AND state='confirmed' AND reference<>'';
+CREATE TABLE cash_entries (
+ id uuid PRIMARY KEY,brand_id uuid NOT NULL,member_id uuid NOT NULL,currency text NOT NULL,
+ order_id uuid NOT NULL,operation text NOT NULL,before_snapshot jsonb NOT NULL,delta_snapshot jsonb NOT NULL,after_snapshot jsonb NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),FOREIGN KEY(brand_id,member_id,currency) REFERENCES cash_balances(brand_id,member_id,currency),FOREIGN KEY(brand_id,order_id) REFERENCES cash_orders(brand_id,id),UNIQUE(order_id,operation)
+);
+CREATE TRIGGER cash_entries_immutable BEFORE UPDATE OR DELETE ON cash_entries FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
+CREATE TABLE cash_turnover_cycles (
+ brand_id uuid NOT NULL,member_id uuid NOT NULL,cutoff_at timestamptz NOT NULL,cutoff_version bigint NOT NULL CHECK(cutoff_version>0),order_id uuid NOT NULL,
+ PRIMARY KEY(brand_id,member_id),FOREIGN KEY(brand_id,member_id) REFERENCES brand_members(brand_id,id),FOREIGN KEY(brand_id,order_id) REFERENCES cash_orders(brand_id,id)
+);
+CREATE TABLE cash_quota_entries (
+ order_id uuid PRIMARY KEY,brand_id uuid NOT NULL,member_id uuid NOT NULL,points numeric NOT NULL CHECK(points>0),before_available numeric NOT NULL,after_available numeric NOT NULL CHECK(after_available>=0 AND after_available=before_available-points),
+ created_at timestamptz NOT NULL DEFAULT now(),FOREIGN KEY(brand_id,order_id) REFERENCES cash_orders(brand_id,id),FOREIGN KEY(brand_id,member_id) REFERENCES wallet_owners(brand_id,id)
+);
+CREATE TRIGGER cash_quota_entries_immutable BEFORE UPDATE OR DELETE ON cash_quota_entries FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
+ALTER TABLE cash_destinations ADD COLUMN rotation_epoch bigint NOT NULL DEFAULT 1;
+ALTER TABLE cash_orders ADD COLUMN rotation_epoch bigint;
+CREATE TABLE cash_rotation (brand_id uuid NOT NULL REFERENCES brands(id),currency text NOT NULL,destination_id uuid NOT NULL,PRIMARY KEY(brand_id,currency),FOREIGN KEY(brand_id,destination_id) REFERENCES cash_destinations(brand_id,id));
+ALTER TABLE cash_orders ADD COLUMN requested_amount bigint NOT NULL CHECK(requested_amount>0);
+CREATE FUNCTION guard_cash_order() RETURNS trigger LANGUAGE plpgsql SET search_path FROM CURRENT AS $$
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'cash orders are immutable'; END IF;
+ IF (NEW.id,NEW.brand_id,NEW.member_id,NEW.kind,NEW.currency,NEW.requested_amount,NEW.points,NEW.fee,NEW.rate,NEW.destination_id,NEW.destination,NEW.created_at,NEW.expires_at) IS DISTINCT FROM (OLD.id,OLD.brand_id,OLD.member_id,OLD.kind,OLD.currency,OLD.requested_amount,OLD.points,OLD.fee,OLD.rate,OLD.destination_id,OLD.destination,OLD.created_at,OLD.expires_at) THEN RAISE EXCEPTION 'cash economic terms are immutable'; END IF;
+ IF NEW.amount<>OLD.amount AND NOT(OLD.kind='deposit' AND OLD.state IN('pending','submitted','expired') AND NEW.state='confirmed') THEN RAISE EXCEPTION 'only verified receipt can change deposit amount'; END IF;
+ IF OLD.state IN('confirmed','cancelled','paid','rejected','failed') OR OLD.state='completed' AND OLD.point_entry_id IS NOT NULL THEN
+   IF NEW IS DISTINCT FROM OLD THEN RAISE EXCEPTION 'completed cash orders are immutable'; END IF;
+ END IF;
+ IF NEW.state<>OLD.state AND NEW.version<>OLD.version+1 THEN RAISE EXCEPTION 'cash transition requires next version'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER cash_order_guard BEFORE UPDATE OR DELETE ON cash_orders FOR EACH ROW EXECUTE FUNCTION guard_cash_order();
+ALTER TABLE cash_balances ADD COLUMN version bigint NOT NULL DEFAULT 0 CHECK(version>=0);
+ALTER TABLE cash_entries ADD COLUMN version bigint NOT NULL CHECK(version>0);
+ALTER TABLE cash_entries ADD CONSTRAINT cash_entry_version UNIQUE(brand_id,member_id,currency,version);
+CREATE UNIQUE INDEX cash_payout_reference ON cash_orders(brand_id,currency,reference) WHERE kind='withdrawal' AND state='paid' AND reference<>'';
+CREATE UNIQUE INDEX cash_usdt_deposit_transaction ON cash_orders(reference) WHERE kind='deposit' AND currency='USDT' AND state='confirmed' AND reference<>'';
+CREATE TABLE announcements (
+ id uuid PRIMARY KEY,
+ brand_id uuid REFERENCES brands(id) ON DELETE CASCADE,
+ version bigint NOT NULL CHECK(version>0),
+ generation bigint NOT NULL CHECK(generation>0),
+ status text NOT NULL CHECK(status IN ('draft','published','withdrawn')),
+ config jsonb NOT NULL,
+ published_at timestamptz,
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX announcements_scope ON announcements(brand_id,status);
+CREATE TABLE announcement_assets (
+ id text PRIMARY KEY CHECK(id ~ '^[a-f0-9]{64}$'),
+ brand_id uuid REFERENCES brands(id) ON DELETE CASCADE,
+ media_type text NOT NULL CHECK(media_type IN ('image/png','image/jpeg','image/webp')),
+ content bytea NOT NULL CHECK(octet_length(content)<=5242880)
+);
+CREATE TABLE announcement_receipts (
+ brand_id uuid NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+ subject text NOT NULL,
+ announcement_id uuid NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+ generation bigint NOT NULL,
+ seen_at timestamptz,
+ session_key text NOT NULL,
+ muted_day text,
+ PRIMARY KEY(brand_id,subject,announcement_id,generation)
+);
+INSERT INTO permissions(key) VALUES
+ ('announcement.view.platform'),('announcement.write.platform'),('announcement.publish.platform'),
+ ('announcement.view.brand'),('announcement.write.brand'),('announcement.publish.brand');
+
+-- Currency deposits also belong to independent agent wallet owners.
+ALTER TABLE cash_balances DROP CONSTRAINT cash_balances_brand_id_member_id_fkey;
+ALTER TABLE cash_balances ADD CONSTRAINT cash_balances_wallet_owner_fkey FOREIGN KEY(brand_id,member_id) REFERENCES wallet_owners(brand_id,id);
+ALTER TABLE cash_orders DROP CONSTRAINT cash_orders_brand_id_member_id_fkey;
+ALTER TABLE cash_orders ADD CONSTRAINT cash_orders_wallet_owner_fkey FOREIGN KEY(brand_id,member_id) REFERENCES wallet_owners(brand_id,id);
+
+
+-- Shared-address USDT orders: principal is amount; payable is principal + fee.
+ALTER TABLE cash_orders ADD COLUMN automatic boolean NOT NULL DEFAULT false;
+ALTER TABLE cash_orders ADD COLUMN sender text NOT NULL DEFAULT '';
+CREATE TABLE cash_usdt_amounts (
+ address text NOT NULL,payable bigint NOT NULL CHECK(payable>0),order_id uuid NOT NULL UNIQUE REFERENCES cash_orders(id),
+ PRIMARY KEY(address,payable)
+);
+CREATE TRIGGER cash_usdt_amounts_immutable BEFORE UPDATE OR DELETE ON cash_usdt_amounts FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
+CREATE TABLE cash_usdt_receipts (
+ transaction_id text NOT NULL,event_index integer NOT NULL CHECK(event_index>=0),order_id uuid NOT NULL UNIQUE REFERENCES cash_orders(id),
+ sender text NOT NULL,received bigint NOT NULL CHECK(received>0),block_time timestamptz NOT NULL,
+ PRIMARY KEY(transaction_id,event_index)
+);
+CREATE TRIGGER cash_usdt_receipts_immutable BEFORE UPDATE OR DELETE ON cash_usdt_receipts FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
+ALTER TABLE cash_orders ADD COLUMN event_index integer NOT NULL DEFAULT -1 CHECK(event_index>=-1);
+DROP INDEX cash_deposit_reference;
+CREATE UNIQUE INDEX cash_deposit_reference ON cash_orders(brand_id,currency,reference) WHERE kind='deposit' AND currency<>'USDT' AND state='confirmed' AND reference<>'';
+DROP INDEX cash_usdt_deposit_transaction;
+CREATE UNIQUE INDEX cash_usdt_deposit_transaction ON cash_orders(reference,event_index) WHERE kind='deposit' AND currency='USDT' AND state='confirmed' AND reference<>'';

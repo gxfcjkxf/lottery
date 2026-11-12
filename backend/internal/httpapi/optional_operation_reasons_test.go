@@ -49,7 +49,7 @@ func TestOperatorWritesWithoutReasonRetainAuditAndWalletGuards(t *testing.T) {
 	mustStatus(t, f.call("POST", walletPath+"/adjust", "optional-underflow-001", f.token, managedBrand, map[string]string{"source": "gift", "delta": "-3"}), 409)
 	mustStatus(t, f.call("POST", "/api/v1/admin/recharges", "optional-cross-brand-001", f.token, pointsBrandB, map[string]string{"member_id": f.memberID, "points": "1"}), 403)
 	wallet := pointWallet(t, f)
-	if wallet.DisplayPoints != 12 || wallet.AvailablePoints != 12 || wallet.FrozenPoints != 0 {
+	if wallet.DisplayPoints != 1200 || wallet.AvailablePoints != 1200 || wallet.FrozenPoints != 0 {
 		t.Fatalf("wallet protection changed: %+v", wallet)
 	}
 	var count int

@@ -119,7 +119,7 @@ func TestReportArchiveHTTPReceiptsVersionsCanonicalDownloadAndIndependentRights(
 	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM report_archives`).Scan(&count); err != nil || count != 2 {
 		t.Fatal("denied replay changed archives", count, err)
 	}
-	if wallet := pointWallet(t, pf); wallet.AvailablePoints != 48 {
+	if wallet := pointWallet(t, pf); wallet.AvailablePoints != 4800 {
 		t.Fatal("archive operations changed actual wallet", wallet)
 	}
 }

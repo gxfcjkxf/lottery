@@ -49,10 +49,10 @@ func TestMarkSixExpandedOutcomesAndRegular49(t *testing.T) {
 	if hits := MarkSixRegularZodiacHits("regular_zodiac_horse", d, a); hits != 5 {
 		t.Fatalf("regular 49 must count: %d", hits)
 	}
-	if paid, e := MarkSixZodiacPayout(100, "1.8", 5); e != nil || paid != 500 {
+	if paid, e := MarkSixZodiacPayout(10000, "1.8", 5); e != nil || paid != 50000 {
 		t.Fatal("five hits return stake once plus five profits", paid, e)
 	}
-	if paid, e := MarkSixZodiacPayout(1, "1.5", 2); e != nil || paid != 2 {
+	if paid, e := MarkSixZodiacPayout(100, "1.5", 2); e != nil || paid != 200 {
 		t.Fatal("round total once rather than each hit", paid, e)
 	}
 	d = Draw{Regular: []int{1, 13, 25, 37, 2, 3}, Special: []int{49}}

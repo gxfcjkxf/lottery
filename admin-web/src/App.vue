@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import ThemeSwitcher from "@lottery/shared/ThemeSwitcher.vue"
+import CashConsole from "@lottery/shared/CashConsole.vue";
+import { effectiveBrandPermissions as cashPermissions } from "./point-policy-api";
+import BetDistribution from "./BetDistribution.vue";
+import { formatPoints } from "@lottery/shared";
 import SelectControl from '@lottery/shared/SelectControl.vue'
 import { useOperationToast } from "@lottery/shared";
 import OperationToastHost from "./OperationToastHost.vue";
@@ -47,6 +52,8 @@ import AccessManagement from "./AccessManagement.vue";
 import MemberActionsMenu from "@lottery/shared/MemberActionsMenu.vue";
 import MemberProvision from "./MemberProvision.vue";
 import BrandOperation from "./BrandOperation.vue";
+import AnnouncementsManagement from "@lottery/shared/AnnouncementsManagement.vue";
+import BrandContacts from "./BrandContacts.vue";
 import BrandPresentation from "./BrandPresentation.vue";
 import {watch,watchEffect} from "vue";
 import {buildBrandCssTokens,defaultBrand,safeBrandAssetUrl,applyBrandPresentation,applyBrowserBranding,nativeLocaleName,type BrandTheme} from "@lottery/shared";
@@ -75,6 +82,7 @@ import { clearAllPendingJoinCodeWrites } from "./join-codes-state";
 import { clearAllPendingBrandOperationWrites } from "./brand-operation-state";
 import { clearAllPendingCommissionWrites } from "./commission-policy-state";
 import { adminKey, useAdminI18n } from "./i18n";
+import RechargeQuotaPanel from "@lottery/shared/RechargeQuotaPanel.vue";
 import WithdrawalPolicySettings from "./WithdrawalPolicySettings.vue";
 import {
   AdminApiError,
@@ -85,6 +93,8 @@ import {
   type Member,
   type MemberStatus,
 } from "./admin-api";
+const memberPageSize = ref(100)
+
 
 const { t, message, display, locale, availableLocales, setLocale, configure, resetBrand } = useAdminI18n();
 const navLabels: Record<string, string> = {
@@ -93,6 +103,7 @@ const navLabels: Record<string, string> = {
   "开奖更正": "admin.nav.corrections",
   "期次取消": "admin.nav.cancellation",
   "充值记录": "admin.console.recharges",
+  "额度管理": "admin.console.quota",
   "提现管理": "admin.withdrawal.title",
   "角色权限": "admin.copy.78c84d5e",
   "首页": "overview.home",
@@ -101,8 +112,8 @@ const navLabels: Record<string, string> = {
   "资金管理": "admin.console.group.4",
   "投注管理": "admin.console.group.3",
   "品牌设置": "admin.settings.title", "会员管理": "admin.nav.users",
-  "代理管理": "admin.nav.agents", "代理列表": "admin.nav.agentList", "彩种管理": "admin.nav.games", "规则配置": "admin.copy.db7e35eb",
-  "期次管理": "admin.nav.periods", "注单管理": "admin.copy.f83e2039",
+  "代理管理": "admin.nav.agents", "代理列表": "admin.nav.agentList", "彩种管理": "admin.nav.games", "盘口赔率": "admin.nav.odds", "规则配置": "admin.copy.db7e35eb",
+  "期次管理": "admin.nav.periods", "注单管理": "admin.copy.f83e2039", "注单分布": "distribution.title",
   "佣金管理": "admin.commission.ui.management",
   "人工奖励": "admin.copy.3fecab01", "业务报表": "admin.nav.reports", "管理账号": "admin.copy.f8e4afe4",
   "审计日志": "admin.copy.315a9366",
@@ -115,6 +126,7 @@ type Page =
   | "角色权限"
   | "提现管理"
   | "充值记录"
+  | "额度管理"
   | "期次取消"
   | "开奖更正"
   | "结算管理"
@@ -124,9 +136,11 @@ type Page =
   | "会员管理"
   | "代理列表"
   | "彩种管理"
+  | "盘口赔率"
   | "规则配置"
   | "期次管理"
   | "注单管理"
+  | "注单分布"
   | "佣金管理"
   | "人工奖励"
   | "业务报表"
@@ -138,8 +152,11 @@ const nav: { name: Page; icon: SiteIconName; group: string | null }[] = [
   { name: "会员管理", icon: "users", group: null },
   { name: "代理列表", icon: "network", group: "代理管理" },
   { name: "彩种管理", icon: "ticket", group: "投注管理" },
+  { name: "盘口赔率", icon: "ticket", group: "投注管理" },
   { name: "注单管理", icon: "ticket", group: "投注管理" },
+  { name: "注单分布", icon: "chart", group: "投注管理" },
   { name: "充值记录", icon: "wallet", group: "资金管理" },
+  { name: "额度管理", icon: "wallet", group: "资金管理" },
   { name: "提现管理", icon: "wallet", group: "资金管理" },
   { name: "佣金管理", icon: "trend", group: null },
   { name: "人工奖励", icon: "gift", group: "资金管理" },
@@ -152,7 +169,7 @@ const page = ref<Page>("首页");
 const financePages = { '充值记录': 'recharges', '提现管理': 'withdrawals' } as const;
 const financeView = computed(() => financePages[page.value as keyof typeof financePages]);
 const memberCreateOpen = ref(false);
-const brandSettingsView = ref<'operation' | 'presentation' | 'funds' | 'withdrawal' | 'betting' | 'agents'>('operation');
+const brandSettingsView = ref<'operation' | 'presentation' | 'contacts' | 'announcements' | 'funds' | 'withdrawal' | 'betting' | 'agents'>('operation');
 const brandSettingsTabs = computed(() => [
   { id: 'operation', label: t('admin.settings.operation') },
   { id: 'presentation', label: t('admin.settings.presentation') },
@@ -160,6 +177,8 @@ const brandSettingsTabs = computed(() => [
   { id: 'withdrawal', label: t('admin.settings.withdrawal') },
   { id: 'betting', label: t('admin.console.betPolicies') },
   { id: 'agents', label: t('admin.nav.agentSettings') },
+  { id: 'announcements', label: t('announcements.title') },
+  { id: 'contacts', label: t('contacts.title') },
 ] as const);
 const brandsLoading = ref(false);
 const mobileMore = ref(false);
@@ -286,7 +305,7 @@ const canViewJoinCodes = computed(() => {
   if (!account.value || !selectedBrandId.value) return false;
   return brandPermissionSet(account.value, selectedBrandId.value).has("join_code.view.brand");
 });
-const visibleNav = computed(() => nav);
+const visibleNav = computed(() => nav.filter(item => (item.name !== "额度管理" || hasPermission("recharge.view.brand")) && (item.name !== "注单分布" || hasPermission("bet.view.brand"))));
 const mobileNavPages = computed<Page[]>(() => ['首页', '会员管理', '彩种管理']);
 const memberDetail = ref<Member | null>(null);
 watch(() => [account.value?.id, selectedBrandId.value], () => { memberFinance.value = null; memberDetail.value = null; editTarget.value = null; kickTarget.value = null; resetTarget.value = null; memberActionError.value = ''; });
@@ -320,6 +339,9 @@ watch(() => [memberDetail.value?.id, selectedBrandId.value, account.value?.id, c
 const memberPointsHint = computed(() => memberWallet.value && memberWallet.value.display_points !== memberWallet.value.available_points
   ? t('admin.members.pointsHint', { current: memberWallet.value.display_points, available: memberWallet.value.available_points }) : undefined);
 const toast = (text: ReturnType<typeof message>) => showOperationToast(() => display(text), 'success');
+function handleQuotaFailure(cause: unknown) {
+  if (cause instanceof Error && 'status' in cause && cause.status === 401) clearAdminData();
+}
 const hasPermission = (permission: string) => {
   if (!account.value) return false;
   return brandPermissionSet(account.value, selectedBrandId.value).has(permission);
@@ -330,7 +352,7 @@ function batchMemberDeleted(member: Member) {
   membersTotal.value = String(BigInt(membersTotal.value) - 1n);
 }
 async function refreshBatchMembers() {
-  if (BigInt(memberOffset.value) >= BigInt(membersTotal.value)) memberOffset.value = Math.max(0, memberOffset.value - 100);
+  if (BigInt(memberOffset.value) >= BigInt(membersTotal.value)) memberOffset.value = Math.max(0, memberOffset.value - memberPageSize.value);
   await loadMembers();
 }
 const canEditUsers = computed(() =>
@@ -544,7 +566,7 @@ const loadMembers = async () => {
   membersLoading.value = true;
   membersError.value = "";
   try {
-    const result = await api.users(brandId, 100, memberOffset.value, "", { query: memberQuery.value, online: memberOnlineQuery.value });
+    const result = await api.users(brandId, memberPageSize.value, memberOffset.value, "", { query: memberQuery.value, online: memberOnlineQuery.value });
     if (isCurrent()) { members.value = result.items; membersTotal.value = result.total_count; }
   } catch (error) {
     if (!isCurrent()) return;
@@ -555,7 +577,7 @@ const loadMembers = async () => {
   }
 };
 const searchMembers = async () => { memberOffset.value = 0; memberQuery.value = search.value.trim(); memberOnlineQuery.value = memberOnlineFilter.value; await loadMembers(); };
-const clearMemberSearch = async () => { search.value = ''; memberOnlineFilter.value = ''; await searchMembers(); };
+
 const openEdit = (member: Member) => {
   memberActionError.value = ""; editTarget.value = member;
   editStatus.value = member.status;
@@ -654,7 +676,7 @@ const resetMemberPassword = async () => {
   }
 };
 const changeMemberPage = async (direction: number) => {
-  memberOffset.value = Math.max(0, memberOffset.value + direction * 100);
+  memberOffset.value = Math.max(0, memberOffset.value + direction * memberPageSize.value);
   await loadMembers();
 };
 
@@ -667,7 +689,7 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
 
 <template>
 
-  <GlobalLoadingOverlay :active="authLoading" :label="t('admin.copy.3f7a199d')" />
+  <GlobalLoadingOverlay :active="authLoading" :label="authLoading ? t('admin.copy.3f7a199d') : t('admin.copy.57f408ff')" />
   <LoginEntry v-if="authLoading || !account" :ready="!authLoading" language-test-id="admin-language" :brand-name="t('admin.ui.administration')" :title="t('admin.copy.5b5aac39')" title-id="admin-login-title" :locale="locale" :language-label="t('admin.copy.65749d82')" :languages="availableLocales.map(code => ({code,label:nativeLocaleName(code)}))" @update:locale="setLocale">
         <form v-write-guard="loginBusy" novalidate v-inline-validation class="login-entry__form" @submit.prevent="withGlobalLoading(login)">
           <LoginCredentials v-model:identifier="loginIdentifier" v-model:password="loginPassword" :identifier-label="t('admin.copy.851c6121')" :password-label="t('admin.copy.66467891')" />
@@ -712,7 +734,7 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
         </div>
         <div class="top-actions">
           <SelectControl v-if="authorizedBrands.length > 1" v-model="selectedBrandId" class="admin-brand-picker" :label="t('admin.copy.b5720d4c')" :options="[{value:'',label:t('admin.copy.0cf7b8b5'),disabled:true},...authorizedBrands.map(item=>({value:item.id,label:item.name}))]" />
-          <LanguageSwitcher data-testid="admin-language" :model-value="locale" :label="t('admin.copy.65749d82')"
+          <ThemeSwitcher :locale="locale" /><LanguageSwitcher data-testid="admin-language" :model-value="locale" :label="t('admin.copy.65749d82')"
             :options="availableLocales.map(code => ({ code, label: nativeLocaleName(code) }))"
             @update:model-value="setLocale" />
           <AccountMenu :username="account.username || t('association.unnamed')"><button type="button" role="menuitem" @click="accountProfileOpen = true">{{ t('admin.copy.55de09a4') }}</button><button type="button" role="menuitem" @click="changePasswordOpen = true">{{ t('admin.copy.14ce8ba8') }}</button><button v-write-guard="logoutBusy" type="button" role="menuitem" class="popover-logout" @click="withGlobalLoading(logout)">{{ t('admin.copy.6824d914') }}</button></AccountMenu>
@@ -753,7 +775,10 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
           </article>
           <BrandPresentation v-if="selectedBrandId && brandSettingsView === 'presentation'" :key="`${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" @loaded="acceptPresentation"/>
 
+          <AnnouncementsManagement v-if="selectedBrandId && brandSettingsView === 'announcements'" base-path="/api/v1/admin" :key="`announcements:${account.id}:${selectedBrandId}`" :actor-id="account.id" :brand-id="selectedBrandId" :locale="locale" :permissions="[...cashPermissions(account,selectedBrandId)]" @failure="handleQuotaFailure" />
+          <BrandContacts v-if="brandSettingsView === 'contacts'" :key="`contacts:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
           <div v-if="brandSettingsView === 'funds'" class="console-stack">
+            <CashConsole base-path="/api/v1/admin" mode="settings" :key="`cash:${account.id}:${selectedBrandId}`" :actor-id="account.id" :brand-id="selectedBrandId" :locale="locale" :permissions="[...cashPermissions(account,selectedBrandId)]" @failure="handleQuotaFailure" />
             <PointPolicySettings :key="`points:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
           </div>
           <div v-if="brandSettingsView === 'withdrawal'" class="console-stack">
@@ -776,7 +801,7 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
           </div>
           <div class="console-page-actions">
 
-          
+
           </div>
         </div>
           <template v-if="selectedBrandId">
@@ -785,12 +810,12 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
             </DetailModal>
 
             <ManagementList :busy="membersLoading"><template v-if="hasPermission('user.create.brand')" #actions><button v-if="hasPermission('user.create.brand')" type="button" class="button button-primary" :aria-expanded="memberCreateOpen" aria-controls="member-create-form" @click="memberCreateOpen = !memberCreateOpen"><SiteIcon :name="memberCreateOpen ? 'close' : 'plus'" />{{ t('admin.copy.40acb767') }}</button></template><template #filters>
-              <DirectorySearch v-model="search" :label="t('admin.members.search')" :query-label="t('admin.members.query')" :clear-label="t('admin.copy.b089734d')" :busy="membersLoading" :active="Boolean(search||memberOnlineFilter)" :search="searchMembers" :clear="clearMemberSearch"><SelectControl v-model="memberOnlineFilter" :label="t('admin.members.onlineStatus')" :options="[{ value: '', label: (String(t('admin.members.allOnline'))).trim() }, { value: 'true', label: (String(t('admin.members.online'))).trim() }, { value: 'false', label: (String(t('admin.members.offline'))).trim() }]" /></DirectorySearch></template>
+              <DirectorySearch :locale="locale" v-model="search" :label="t('admin.members.search')" :query-label="t('admin.members.query')" :busy="membersLoading" :search="searchMembers"><SelectControl v-model="memberOnlineFilter" :label="t('admin.members.onlineStatus')" :options="[{ value: '', label: (String(t('admin.members.allOnline'))).trim() }, { value: 'true', label: (String(t('admin.members.online'))).trim() }, { value: 'false', label: (String(t('admin.members.offline'))).trim() }]" /></DirectorySearch></template>
               <BatchDelete subject="accounts" :entry-label="member => member.username || member.phone" :scope-key="String(memberOffset) + JSON.stringify(search)" feedback="toast" :key="account.id + ':' + selectedBrandId" :entries="members" :enabled="canDeleteMembers" :locale="locale" :loading="membersLoading" :delete-entry="(member, key) => api.deleteMember(member.brand_id, member.id, key)" :error-text="cause => display(apiErrorText(cause))" :is-unknown="cause => !(cause instanceof AdminApiError) || cause.status === 0 || cause.status >= 500 || cause.code === 'INVALID_RESPONSE'" @deleted="batchMemberDeleted" @finished="withGlobalLoading(refreshBatchMembers)" v-slot="{ selected, toggle, selectLabel, locked }">
               <ManagementTable table-class="member-directory-table" :entries="members" :columns="[{key:'account',label:t('admin.copy.851c6121')},{key:'online',label:t('admin.members.onlineStatus')},{key:'points',label:t('admin.members.points'),cellClass:'member-points'},{key:'phone',label:t('admin.copy.d794da3d')},{key:'status',label:t('admin.copy.cf6d9c6d')},{key:'joined',label:t('admin.copy.ac08e5ed')},{key:'notes',label:t('admin.copy.fd2d2c8b'),cellClass:'member-notes'},{key:'tags',label:t('admin.copy.b96f43c6')},{key:'actions',label:t('admin.copy.d21fcbef')}]" :empty="!membersLoading && !membersError && !members.length" :empty-label="t('admin.copy.ef8be9d6')">
                 <template #account="{entry:m}"><span class="member-account-select"><label v-if="canDeleteMembers" class="member-select-control"><input type="checkbox" :checked="selected.includes(m.id)" :aria-label="selectLabel(m.username || m.phone)" :disabled="locked" @change="toggle(m.id)" /></label><button type="button" class="text-button member-account" @click="memberDetail=m">{{m.username || m.phone || t('association.unnamed')}}</button></span></template>
                 <template #online="{entry:m}"><span class="member-presence" :class="{'is-online':m.online}"><i aria-hidden="true" />{{t(m.online?'admin.members.online':'admin.members.offline')}}</span></template>
-                <template #points="{entry:m}">{{m.display_points===null?t('admin.members.pointsRestricted'):m.display_points}}</template>
+                <template #points="{entry:m}">{{m.display_points===null?t('admin.members.pointsRestricted'):formatPoints(m.display_points,locale)}}</template>
                 <template #phone="{entry:m}">{{m.phone || '—'}}</template>
                 <template #status="{entry:m}"><span class="badge" :class="statusClass(m.status)">{{t(adminKey(statusLabel[m.status]))}}</span></template>
                 <template #joined="{entry:m}">{{formatDisplayDateTime(m.joined_at,displayLocale)}}</template>
@@ -798,9 +823,9 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
                 <template #tags="{entry:m}"><span v-for="tag in m.tags" :key="tag" class="member-tag">{{tag}}</span><span v-if="!m.tags.length">—</span></template>
                 <template #actions="{entry:m}"><MemberActionsMenu :id="`member-actions-${m.id}`" :label="t('admin.members.actions',{account:m.username || m.phone})"><button v-if="canViewMemberWallet" type="button" role="menuitem" @click="memberFinance = { member: m, view: 'wallet' }">{{t('admin.nav.points')}}</button><button v-if="canViewMemberWallet" type="button" role="menuitem" @click="memberFinance = { member: m, view: 'ledger' }">{{t('admin.nav.ledger')}}</button><button v-if="canRechargeMember" type="button" role="menuitem" @click="rechargeMember = m">{{t('admin.recharge.menu')}}</button><button type="button" role="menuitem" :disabled="!canEditUsers && !canResetPasswords" @click="openEdit(m)">{{t('admin.copy.24dfbf6c')}}</button><button v-if="m.online && canKickUsers" type="button" role="menuitem" @click="openKick(m)">{{t('admin.copy.d192029b')}}</button></MemberActionsMenu></template>
               </ManagementTable>
-              
+
               </BatchDelete>
-            <template #pagination><PaginationControls :show-empty="!membersLoading && !membersError" :total="membersTotal" :page="Math.floor(memberOffset / 100 + 1)" :count="members.length" :locale="locale" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.ee97c955')" :busy="membersLoading" :has-previous="memberOffset>0" :has-next="memberHasNext"  :page-size="100" :go-to="(target: number) => changeMemberPage(target - (Math.floor(memberOffset / 100 + 1)))" /></template></ManagementList>
+            <template #pagination><PaginationControls :total="membersTotal" :page="Math.floor(memberOffset / memberPageSize + 1)" :count="members.length" :locale="locale" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.ee97c955')" :busy="membersLoading" :has-previous="memberOffset>0" :has-next="memberHasNext"  :page-size="memberPageSize" :go-to="(target: number) => changeMemberPage(target - (Math.floor(memberOffset / memberPageSize + 1)))" :change-page-size="async (size: number) => { memberPageSize = size; memberOffset = 0; await loadMembers() }" /></template></ManagementList>
           </template>
       </section>
 
@@ -808,11 +833,11 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
         <AgentManagement :key="`agents:${account.id}:${selectedBrandId}`" mode="directory" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
       </section>
 
-      <section v-else-if="page === '彩种管理'" class="page-content" data-testid="brand-game-management">
-        <div class="console-page-heading page-heading"><h1 class="console-page-title">{{ t('admin.nav.games') }}</h1></div>
+      <section v-else-if="page === '彩种管理' || page === '盘口赔率'" class="page-content" data-testid="brand-game-management">
         <PlatformLottery
           v-if="account && selectedBrandId && hasPermission('platform_game.view.brand')"
-          :key="`${account.id}:${selectedBrandId}`"
+          :key="`${account.id}:${selectedBrandId}:${page}`"
+          :odds-only="page === '盘口赔率'"
           surface="admin"
           :brand-id="selectedBrandId"
           :locale="displayLocale"
@@ -822,6 +847,10 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
           @failure="clearAdminData"
         />
         <p v-else class="panel directory-state" role="status">{{ t('admin.games.viewDenied') }}</p>
+      </section>
+
+      <section v-else-if="page === '注单分布'" class="page-content">
+        <BetDistribution v-if="account && selectedBrandId && hasPermission('bet.view.brand')" :key="`${account.id}:${selectedBrandId}`" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
       </section>
 
       <section v-else-if="page === '注单管理'" class="page-content">
@@ -838,7 +867,14 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
       </section>
 
 
+      <section v-else-if="page === '额度管理'" class="page-content">
+        <RechargeQuotaPanel v-if="account && selectedBrandId && hasPermission('recharge.view.brand')" standalone
+          :key="`${account.id}:${selectedBrandId}`" :brand-id="selectedBrandId" :locale="displayLocale"
+          base-path="/api/v1/admin" @failure="handleQuotaFailure" />
+      </section>
+
       <section v-else-if="financeView" class="page-content">
+        <CashConsole v-if="account && selectedBrandId && ['withdrawals','recharges'].includes(financeView || '')" base-path="/api/v1/admin" :mode="financeView === 'withdrawals' ? 'withdrawal' : 'deposit'" :key="`cash:${account.id}:${selectedBrandId}:${financeView}`" :actor-id="account.id" :brand-id="selectedBrandId" :locale="locale" :permissions="[...cashPermissions(account,selectedBrandId)]" @failure="handleQuotaFailure" />
         <WithdrawalManagement
           :active="financeView === 'withdrawals'"
           v-if="account && selectedBrandId && financeView === 'withdrawals'"
@@ -947,7 +983,7 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
           <div><dt>{{ t('admin.copy.851c6121') }}</dt><dd>{{ memberDetail.username || memberDetail.phone || t('association.unnamed') }}</dd></div>
           <div><dt>{{ t('admin.copy.b60e278d') }}</dt><dd>{{ memberDetail.display_name || '—' }}</dd></div>
           <div><dt>{{ t('admin.members.onlineStatus') }}</dt><dd>{{ t(memberDetail.online ? 'admin.members.online' : 'admin.members.offline') }}</dd></div>
-          <div><dt>{{ t('admin.members.points') }}</dt><dd><span v-if="memberWallet" :title="memberPointsHint" :tabindex="memberPointsHint ? 0 : undefined">{{ memberWallet.display_points }}<template v-if="memberPointsHint"> / {{ memberWallet.available_points }}</template></span><template v-else-if="memberWalletError" /><span v-else>{{ canViewMemberWallet ? '—' : t('admin.members.pointsRestricted') }}</span></dd></div>
+          <div><dt>{{ t('admin.members.points') }}</dt><dd><span v-if="memberWallet" :title="memberPointsHint" :tabindex="memberPointsHint ? 0 : undefined">{{ formatPoints(memberWallet.display_points,locale) }}<template v-if="memberPointsHint"> / {{ memberWallet.available_points }}</template></span><template v-else-if="memberWalletError" /><span v-else>{{ canViewMemberWallet ? '—' : t('admin.members.pointsRestricted') }}</span></dd></div>
           <div><dt>{{ t('admin.copy.d794da3d') }}</dt><dd>{{ memberDetail.phone || '—' }}</dd></div>
           <div><dt>{{ t('admin.copy.cf6d9c6d') }}</dt><dd>{{ t(adminKey(statusLabel[memberDetail.status])) }}</dd></div>
           <div><dt>{{ t('admin.copy.ac08e5ed') }}</dt><dd>{{ formatDisplayDateTime(memberDetail.joined_at, displayLocale) }}</dd></div>
@@ -1077,7 +1113,7 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
 .brand-operation-list__identity > span:last-child { display: grid; gap: 4px; min-width: 0; }
 .brand-operation-list__identity strong, .brand-operation-list__identity small { overflow-wrap: anywhere; }
 .brand-operation-list__identity small { color: #718096; font-size: var(--body-font-size); }
-.brand-operation-list__mark { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border-radius: 10px; background: #edf3ff; color: #315fbd; font-weight: 700; }
+.brand-operation-list__mark { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border-radius: 10px; background: #ecfdf5; color: #047857; font-weight: 700; }
 @media (max-width: 700px) { .brand-operation-list li { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; } .brand-operation-list li > .text-button { grid-column: 1 / -1; justify-self: start; } }
 @media (min-width: 901px) and (pointer: fine) {
   .brand-operation-list li { padding-block: 8px; }

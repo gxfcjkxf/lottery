@@ -101,3 +101,11 @@ describe('platform reports read API', () => {
     await expect(createPlatformReportsApi(fetcherFor(emptyPage)).read(brandId, 'betting', { ...query, offset: 2 })).resolves.toMatchObject({ items: [], total_groups: '1' })
   })
 })
+
+it('accepts exact fractional balance totals while preserving integral account counts', async () => {
+ const balances={account_count:'1',available_points:'9007199254740993.25',frozen_points:'0.50',withdrawal_points:'6.25',total_points:'9007199254741000.00'}
+ await expect(createPlatformReportsApi(fetcherFor(data('ledger',{balances}))).read(brandId,'ledger',query)).resolves.toMatchObject({balances})
+ for(const change of [{account_count:'1.5'},{available_points:'0.001'},{frozen_points:'-0.01'}]) {
+  await expect(createPlatformReportsApi(fetcherFor(data('ledger',{balances:{...balances,...change}}))).read(brandId,'ledger',query)).rejects.toMatchObject({code:'INVALID_RESPONSE'})
+ }
+})

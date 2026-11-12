@@ -39,7 +39,7 @@ function place() { answer.value = position.value > 0 ? String(position.value) : 
 .puzzle-captcha__track>input[type="range"]:active{cursor:grabbing}
 .puzzle-captcha__track>input[type="range"]:focus{box-shadow:none !important}
 .puzzle-captcha__track>input[type="range"]:focus-visible{outline:2px solid var(--brand-primary) !important;outline-offset:3px}
-.puzzle-captcha__track>input[type="range"]::-webkit-slider-thumb{appearance:none;width:44px;height:44px;border:0;border-radius:var(--radius-sm);background:var(--brand-primary) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpath d='m8 5 7 7-7 7'/%3E%3C/svg%3E") center no-repeat}
+.puzzle-captcha__track>input[type="range"]::-webkit-slider-thumb{appearance:none;width:44px;height:44px;border:0;border-radius:var(--radius-sm);background:var(--brand-primary) var(--slider-chevron) center no-repeat}
 .puzzle-captcha__track>input[type="range"]::-moz-range-thumb{width:44px;height:44px;border:0;border-radius:var(--radius-sm);background:var(--brand-primary)}
 .puzzle-captcha__track>input[type="range"]:disabled{opacity:.5;cursor:wait}
 </style>

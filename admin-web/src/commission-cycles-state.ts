@@ -1,4 +1,4 @@
-import type { CommissionCreateBody, CommissionRetryBody } from "./commission-cycles-api";
+import type { CommissionCycleCandidate, CommissionCreateBody, CommissionRetryBody } from "./commission-cycles-api";
 
 type CommissionCycleWriteOperation = "create" | "retry_cycle" | "retry_discovery";
 export interface CommissionWriteScope {
@@ -7,6 +7,7 @@ export interface CommissionWriteScope {
 export interface PendingCommissionCycleWrite extends CommissionWriteScope {
   readonly body: Readonly<CommissionCreateBody | CommissionRetryBody>;
   readonly key: string;
+  readonly cycleWindow?: Readonly<CommissionCycleCandidate>;
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const keyPattern = /^[A-Za-z0-9_:.-]{8,128}$/;
@@ -44,7 +45,7 @@ export function freezeCommissionCycleBody<T extends CommissionCreateBody | Commi
 }
 function copyIntent(intent: PendingCommissionCycleWrite): PendingCommissionCycleWrite {
   return Object.freeze({ accountId: intent.accountId, brandId: intent.brandId, operation: intent.operation,
-    ...(intent.targetId === undefined ? {} : { targetId: intent.targetId }), key: intent.key, body: freezeCommissionCycleBody(intent.body) });
+    ...(intent.targetId === undefined ? {} : { targetId: intent.targetId }), key: intent.key, ...(intent.cycleWindow ? { cycleWindow: Object.freeze({ ...intent.cycleWindow }) } : {}), body: freezeCommissionCycleBody(intent.body) });
 }
 export function getPendingCommissionCycleWrite(scope: CommissionWriteScope): PendingCommissionCycleWrite | null {
   if (!validScope(scope)) return null;

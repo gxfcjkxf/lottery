@@ -13,7 +13,6 @@ const context = {
   },
   available_locales: ['en', 'zh-CN'],
   features: { pwa: true, real_payments: false },
-  terms: { privacy_policy_version: 'dev-1', service_terms_version: 'dev-1' },
 }
 
 function clientFor(data: unknown) {
@@ -33,7 +32,6 @@ describe('API envelope and tenant context', () => {
     expect(result.availableLanguages).toEqual(['en', 'zh-CN'])
     expect(result.brand.languages).toEqual(['en', 'zh'])
     expect(result.features?.real_payments).toBe(false)
-    expect(result.terms?.service_terms_version).toBe('dev-1')
   })
 
   it('uses the nested backend theme locales and default locale', async () => {
@@ -62,7 +60,7 @@ describe('API envelope and tenant context', () => {
   })
 
   it.each([
-    { success: true, data: { brand: { ...context.brand, theme: undefined }, available_locales: context.available_locales, features: context.features, terms: context.terms } },
+    { success: true, data: { brand: { ...context.brand, theme: undefined }, available_locales: context.available_locales, features: context.features } },
     { success: true, data: { ...context, brand: { ...context.brand, theme: { ...context.brand.theme, primary_color: 'red' } } } },
     { success: true, data: { ...context, brand: { ...context.brand, theme: { ...context.brand.theme, font_family: 'fantasy' } } } },
     { success: true, data: { ...context, brand: { ...context.brand, theme: { ...context.brand.theme, default_locale: 'fr' } } } },

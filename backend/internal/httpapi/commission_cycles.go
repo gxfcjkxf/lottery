@@ -219,6 +219,29 @@ func registerCommissionCycleRoutes(handle func(string, string, http.HandlerFunc)
 	registerCommissionAllocationRoutes(handle, d)
 	s := commission.Service{DB: d.Admins.DB}
 	const collection = "/commission-cycles"
+	handle("GET", collection+"/candidates", func(w http.ResponseWriter, r *http.Request) {
+		brand, ok := commissionCycleBrand(w, r)
+		if !ok {
+			return
+		}
+		limit, offset, ok := commissionCyclePage(r)
+		if !ok {
+			failure(w, r, 400, "REQUEST_INVALID", "查询参数不正确")
+			return
+		}
+		initial, ok := adminAccount(w, r, d)
+		if !ok {
+			return
+		}
+		out, err := commissionCycleRead(w, r, d, initial, brand, "view", "commission.cycle.candidates", func(tx pgx.Tx) (any, error) {
+			return s.CycleCandidatesTx(r.Context(), tx, brand, limit, offset)
+		})
+		if commissionCycleReadFailure(w, r, err) {
+			return
+		}
+		result, err := commissionCycleResult(out, err)
+		outputMutation(w, r, result, err)
+	})
 	handle("GET", collection, func(w http.ResponseWriter, r *http.Request) {
 		brand, ok := commissionCycleBrand(w, r)
 		if !ok {

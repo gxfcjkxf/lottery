@@ -19,7 +19,6 @@ type HistoryRoute string
 const (
 	HistoryAudit        HistoryRoute = "audit.view"
 	HistoryNotification HistoryRoute = "notification.template.history"
-	HistoryCompliance   HistoryRoute = "compliance_policy.history.view"
 	HistoryPresentation HistoryRoute = "brand_presentation.history"
 	HistoryDomains      HistoryRoute = "brand_domains.history"
 	HistoryOperation    HistoryRoute = "brand_operation.history"
@@ -27,7 +26,7 @@ const (
 
 func (r HistoryRoute) allowed() bool {
 	switch r {
-	case HistoryAudit, HistoryNotification, HistoryCompliance, HistoryPresentation, HistoryDomains, HistoryOperation:
+	case HistoryAudit, HistoryNotification, HistoryPresentation, HistoryDomains, HistoryOperation:
 		return true
 	}
 	return false

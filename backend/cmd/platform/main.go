@@ -67,7 +67,6 @@ func run(logger *slog.Logger) error {
 	case "create-admin":
 		return createAdmin(ctx, pools.Primary)
 	case "check":
-		return database.CheckMigrations(ctx, pools.Primary)
 	case "worker":
 	case "check-draw-sources":
 	case "serve":
@@ -82,6 +81,17 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return errors.New("database schema unavailable or incompatible; initialize the current schema explicitly")
 	}
+	key, keyErr := loadKey(c)
+	if keyErr != nil {
+		return keyErr
+	}
+	engine, err := mutation.New(pools.Primary, key)
+	if err != nil {
+		return err
+	}
+	if command == "check" {
+		return nil
+	}
 	if command == "worker" || command == "check-draw-sources" {
 		sources, e := platformlottery.LoadAutomationSources()
 		if e != nil {
@@ -95,18 +105,9 @@ func run(logger *slog.Logger) error {
 		}
 	}
 	// Finish API dependency validation before any operational listener can
-	// advertise readiness. Workers intentionally do not need the API auth key.
-	var engine *mutation.Engine
+	// advertise readiness. The same server key encrypts query credentials for the worker.
 	var users *identity.Store
 	if command == "serve" {
-		key, keyErr := loadKey(c)
-		if keyErr != nil {
-			return keyErr
-		}
-		engine, err = mutation.New(pools.Primary, key)
-		if err != nil {
-			return err
-		}
 		users, err = identity.New(pools.Primary)
 		if err != nil {
 			return err

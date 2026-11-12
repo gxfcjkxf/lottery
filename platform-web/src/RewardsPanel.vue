@@ -18,6 +18,9 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformRewardsApi, type RewardAction, type RewardOrder } from './rewards-api'
 import { formatPlatformDateTime, type PlatformDisplaySettings } from './platform-format'
+const historyPageSize = ref(100)
+const orderPageSize = ref(100)
+
 
 const props = defineProps<{ brandId: string; brandName: string; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
@@ -35,15 +38,14 @@ const detail = ref<RewardOrder | null>(null)
 const history = ref<RewardAction[]>([])
 const historyOpen=ref(false),historyLoading=ref(false),historyFailed=ref(false)
 let historyGeneration=0
-const pageSize = 100
 const orderOffset = ref(0)
 const orderTotal = ref('0')
 const historyOffset = ref(0)
 const historyTotal = ref('0')
 const previousLabel = computed(() => ui('platform.pagination.previous'))
 const nextLabel = computed(() => ui('platform.pagination.next'))
-const hasNextOrders = computed(() => BigInt(orderOffset.value + pageSize) < BigInt(orderTotal.value))
-const hasNextHistory = computed(() => BigInt(historyOffset.value + pageSize) < BigInt(historyTotal.value))
+const hasNextOrders = computed(() => BigInt(orderOffset.value + orderPageSize.value) < BigInt(orderTotal.value))
+const hasNextHistory = computed(() => BigInt(historyOffset.value + historyPageSize.value) < BigInt(historyTotal.value))
 const loading = ref(false)
 const error = ref<string | import("@lottery/shared").LocalizedMessage>("")
 let generation = 0
@@ -62,7 +64,7 @@ async function refresh(offset = 0) {
   if (!brandId) { loading.value = false; return }
   loading.value = true
   try {
-    const page = await api.list(brandId, pageSize, offset)
+    const page = await api.list(brandId, orderPageSize.value, offset)
     if (request === generation && props.brandId === brandId) {
       orders.value = page.items
       orderOffset.value = page.offset
@@ -102,7 +104,7 @@ async function loadHistory(offset = 0) {
  const request=++historyGeneration,brandId=props.brandId,orderId=detail.value.id
  historyOpen.value=true;historyLoading.value=true;historyFailed.value=false;historyOffset.value=offset;history.value=[];error.value=''
  try{
-  const page=await api.actions(brandId,orderId,pageSize,offset)
+  const page=await api.actions(brandId,orderId,historyPageSize.value,offset)
   if(request===historyGeneration&&props.brandId===brandId&&detail.value?.id===orderId){history.value=page.items;historyOffset.value=page.offset;historyTotal.value=page.total_count}
  }catch(cause){if(request===historyGeneration&&props.brandId===brandId&&detail.value?.id===orderId){historyFailed.value=true;report(cause)}}
  finally{if(request===historyGeneration)historyLoading.value=false}
@@ -112,7 +114,7 @@ watch(() => props.brandId, () => { orders.value = []; orderTotal.value = '0'; or
 </script>
 
 <template>
-  <ManagementList data-testid="platform-rewards" :busy="loading"><template #actions><button v-refresh-button="copy.refresh" class="button button-secondary" data-testid="platform-reward-refresh" :disabled="loading || !props.brandId" @click="withGlobalLoading(refresh)">{{ copy.refresh }}</button></template>
+  <ManagementList data-testid="platform-rewards" :busy="loading"><template v-if="error" #actions><button v-refresh-button="copy.refresh" class="button button-secondary" data-testid="platform-reward-refresh" :disabled="loading || !props.brandId" @click="withGlobalLoading(refresh)">{{ copy.refresh }}</button></template>
     <div v-if="error" class="message error global-message">{{ displayPublicError(error) }}</div>
     <section class="console-stack">
 
@@ -139,9 +141,9 @@ watch(() => props.brandId, () => { orders.value = []; orderTotal.value = '0'; or
         <tr v-if="!historyLoading && !historyFailed && !history.length"><td colspan="6" class="empty-state">{{ copy.noHistory }}</td></tr>
       </tbody></table></div>
 
-    <template #pagination><TablePagination :show-empty="!loading && !error" v-if="detail && historyOpen && !historyFailed" :total="historyTotal" :page="Math.floor(historyOffset / pageSize + 1)" :count="history.length" :locale="locale" data-testid="platform-reward-history-pages" :page-size="pageSize" :previous-disabled="historyLoading || historyOffset === 0" :next-disabled="historyLoading || !hasNextHistory" :previous-label="previousLabel" :next-label="nextLabel" :go-to="(target: number) => loadHistory((target - 1) * pageSize)" /></template></ManagementList>
+    <template #pagination><TablePagination v-if="detail && historyOpen && !historyFailed" :total="historyTotal" :page="Math.floor(historyOffset / historyPageSize + 1)" :count="history.length" :locale="locale" data-testid="platform-reward-history-pages" :page-size="historyPageSize" :previous-disabled="historyLoading || historyOffset === 0" :next-disabled="historyLoading || !hasNextHistory" :previous-label="previousLabel" :next-label="nextLabel" :go-to="(target: number) => loadHistory((target - 1) * historyPageSize)" :change-page-size="async (size: number) => { historyPageSize = size; await loadHistory(0) }" :busy="historyLoading" /></template></ManagementList>
 </DetailModal>
-  <template #pagination><TablePagination :show-empty="!loading && !error" :total="orderTotal" :page="Math.floor(orderOffset / pageSize + 1)" :count="orders.length" :locale="locale" data-testid="platform-reward-pages" :page-size="pageSize" :previous-disabled="loading || orderOffset === 0" :next-disabled="loading || !hasNextOrders" :previous-label="previousLabel" :next-label="nextLabel" :go-to="(target: number) => refresh((target - 1) * pageSize)" /></template></ManagementList>
+  <template #pagination><TablePagination :total="orderTotal" :page="Math.floor(orderOffset / orderPageSize + 1)" :count="orders.length" :locale="locale" data-testid="platform-reward-pages" :page-size="orderPageSize" :previous-disabled="loading || orderOffset === 0" :next-disabled="loading || !hasNextOrders" :previous-label="previousLabel" :next-label="nextLabel" :go-to="(target: number) => refresh((target - 1) * orderPageSize)" :change-page-size="async (size: number) => { orderPageSize = size; await refresh(0) }" :busy="loading" /></template></ManagementList>
 </template>
 
 <style scoped>

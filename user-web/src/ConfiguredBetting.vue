@@ -1,13 +1,16 @@
 <script setup lang="ts">
+import { pointsMinor } from '@lottery/shared'
+
 import { useOperationToast } from "@lottery/shared";
 import { vGlobalLoading, vWriteGuard } from "@lottery/shared";
 import { computed,onMounted,onUnmounted,ref,shallowRef,watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import {createPlatformLotteryClient,type PlatformPeriod} from '../../shared/src/platform-lottery'
-import {readBettingPreferences,writeBettingPreferences,createQuickAmountsApi,validBetAmount,type BettingPreferences} from './betting-preferences'
+import {createQuickAmountsApi,validBetAmount} from './betting-preferences'
 import BettingSheet from './BettingSheet.vue'
 import ConfiguredBetReviewTable from './ConfiguredBetReviewTable.vue'
 import PlayRules from './PlayRules.vue'
+import {configuredSelectionGroups,configuredSelectionRequests} from '../../shared/src/configured-selection-groups'
 import UserPeriodStrip from './UserPeriodStrip.vue'
 import {markSixCatalog} from '../../shared/src/mark-six'
 import {useUserI18n} from './i18n'
@@ -36,22 +39,15 @@ const previousNumbers=computed(()=>{
  const regular=draw.regular_order===null?draw.result.regular:draw.regular_order
  return [...regular.map(value=>({value,special:false})),...draw.result.special.map(value=>({value,special:true})),...draw.result.digits.map(value=>({value,special:false}))].map(number=>({...number,...draw.attributes[String(number.value).padStart(2,'0')]}))
 })
+const selectedPlays=ref<string[]>([])
+const betRequests=computed(()=>data.value?configuredSelectionRequests(data.value.snapshot,request.value,selectedPlays.value):[])
 const request=ref<ConfiguredRequest>({play_id:'',options:[],plate:'',points:'',multiplier:'1'}),error=ref<LocalizedMessage|null>(null),notice=ref(false),busy=ref(false)
 type Intent={owner:string;key:string;body:ConfiguredLiveInput;quote:ConfiguredLiveQuote;snapshot:ConfiguredSnapshot}
 const pending=shallowRef<Intent|null>(null),intentError=ref(false),reviewOpen=ref(false),selectionInvalid=ref(false),pointsInvalid=ref(false)
 const owner=computed(()=>`${props.brandCode??''}:${props.auth?.user.id??''}:${props.auth?.member.id??''}`)
 const storageKey=computed(()=>`lottery.configured.intent:${owner.value}:${props.gameId}`)
 const quickAmounts=ref<string[]>([])
-const preferences=shallowRef<BettingPreferences>({lastPoints:''}),preferencesFailed=ref(false)
-watch(owner,()=>{
- preferencesFailed.value=false;preferences.value={lastPoints:''};request.value={play_id:'',options:[],plate:'',points:'',multiplier:'1'}
- if(!props.auth)return
- try{preferences.value=readBettingPreferences(localStorage,props.auth.member.brand_id,props.auth.member.id)}catch{preferencesFailed.value=true}
-},{immediate:true})
-watch(()=>request.value.points,value=>{
- if(!props.auth||preferencesFailed.value||currentPlay.value?.stake_mode!=='per_line'||(value!==''&&!validBetAmount(value))||preferences.value.lastPoints===value)return
- try{const next={...preferences.value,lastPoints:value};writeBettingPreferences(localStorage,props.auth.member.brand_id,props.auth.member.id,next);preferences.value=next}catch{preferencesFailed.value=true}
-})
+watch(owner,()=>{selectedPlays.value=[];request.value={play_id:'',options:[],plate:'',points:'',multiplier:'1'}},{immediate:true})
 function acceptWallet(value:Wallet){
  if(value.brand_id!==props.auth?.member.brand_id||value.member_id!==props.auth?.member.id)return false
  if(wallet.value&&value.version<wallet.value.version)return true
@@ -67,7 +63,7 @@ async function refreshWallet(){
  catch(cause){if(token!==walletGeneration)return;wallet.value=null;walletFailed.value=true;if((cause as {status?:number}).status===401)emit('auth-expired')}
 }
 watch(owner,()=>{walletGeneration++;wallet.value=null;walletFailed.value=false;void refreshWallet()},{immediate:true})
-const quoteInsufficient=computed(()=>{if(!quote.value||!wallet.value||!data.value)return false;const needed=data.value.snapshot.catalog.funding==='reserve'?quote.value.reserved_points!:quote.value.bet_points;return BigInt(needed)>BigInt(wallet.value.available_points)})
+const quoteInsufficient=computed(()=>{if(!quote.value||!wallet.value||!data.value)return false;const needed=data.value.snapshot.catalog.funding==='reserve'?quote.value.reserved_points!:quote.value.bet_points;return pointsMinor(needed)>pointsMinor(wallet.value.available_points)})
 watch(quoteInsufficient, value=>{if(value&&!pending.value)reviewOpen.value=false})
 let generation=0
 let syncTimer:ReturnType<typeof setTimeout>|undefined
@@ -88,24 +84,38 @@ onMounted(()=>{window.addEventListener(WALLET_SNAPSHOT_EVENT,walletSnapshot);doc
 onUnmounted(()=>{generation++;walletGeneration++;window.removeEventListener(WALLET_SNAPSHOT_EVENT,walletSnapshot);clearTimeout(syncTimer);clearInterval(clockTimer);document.removeEventListener('visibilitychange',resumeSync)})
 watch([busy,pending],scheduleSync)
 const currentPlay=computed(()=>data.value?.snapshot.catalog.plays.find(play=>play.id===request.value.play_id))
+const currentGroup=computed(()=>data.value?configuredSelectionGroups(data.value.snapshot).find(group=>group.plays.some(play=>play.id===request.value.play_id)):undefined)
 const reviewQuote=computed(()=>pending.value ? pending.value.quote : quote.value)
-const canBet=computed(()=>!!props.auth&&!!data.value?.period&&Date.parse(data.value.period.bet_start_at)<=now.value&&Date.parse(data.value.period.bet_end_at)>now.value&&data.value.sales.enabled&&data.value.game.status==='active'&&data.value.game.brand_enabled)
-const unavailableState=computed(()=>data.value&&!canBet.value ? (displayPeriod.value&&Date.parse(displayPeriod.value.bet_start_at)>now.value ? 'notOpen' : 'closed') : '')
-const clearUnavailableToast=useOperationToast(unavailableState, value => value==='notOpen' ? userText('workspace.notOpen') : t('closed'), 'error', 'center', 0)
+const unavailableState=computed(()=>{
+ const catalog=data.value
+ if(!catalog)return ''
+ if(!props.auth)return 'signIn'
+ if(catalog.game.status!=='active')return 'gameDisabled'
+ if(!catalog.game.brand_enabled)return 'brandGameDisabled'
+ if(!catalog.sales.enabled)return 'bettingPaused'
+ const period=displayPeriod.value
+ if(period&&Date.parse(period.bet_start_at)>now.value)return 'notOpen'
+ if(period&&Date.parse(period.bet_end_at)<=now.value)return 'closed'
+ if(!catalog.period)return 'noBettingPeriod'
+ return ''
+})
+const canBet=computed(()=>!!data.value&&!unavailableState.value)
+const unavailableText=computed(()=>unavailableState.value==='notOpen'?userText('workspace.notOpen'):unavailableState.value?t(unavailableState.value):'')
+const clearUnavailableToast=useOperationToast(unavailableState, () => unavailableText.value, 'error', 'center', 0)
 onUnmounted(clearUnavailableToast)
 function report(cause:unknown,read=false){error.value=i18n.errorMessage(cause,read?'read':'write');if((cause as {status?:number}).status===401)emit('auth-expired')}
 async function load(background=false){
  const token=++generation;clearTimeout(syncTimer);if(!background)busy.value=true;error.value=null;now.value=Date.now()
  try{
-  try{const [value,detail,amounts]=await Promise.all([api.value.catalog(props.gameId),createPlatformLotteryClient('user',()=>'',fetch,props.brandCode).detail(props.gameId),createQuickAmountsApi({brandCode:props.brandCode}).read(props.auth!.member.brand_id,props.auth!.member.id)]);if(token!==generation)return;quickAmounts.value=amounts;periods.value=detail.periods;if(data.value&&(data.value.snapshot_hash!==value.snapshot_hash||data.value.period?.id!==value.period?.id)){quote.value=null;review.value=null}data.value=value;emit('game-title',value.game.name);if(!request.value.play_id||!value.snapshot.catalog.plays.some(p=>p.id===request.value.play_id)){const p=value.snapshot.catalog.plays[0]!;request.value={play_id:p.id,options:[],plate:value.snapshot.catalog.plates[0]!,points:p.stake_mode==='unit_multiplier'?'0':preferences.value.lastPoints,multiplier:'1'}}}catch(e){if(token===generation){data.value=null;periods.value=[];quote.value=null;review.value=null;report(e,true)}}
+  try{const [value,detail,amounts]=await Promise.all([api.value.catalog(props.gameId),createPlatformLotteryClient('user',()=>'',fetch,props.brandCode).detail(props.gameId),createQuickAmountsApi({brandCode:props.brandCode}).read(props.auth!.member.brand_id,props.auth!.member.id)]);if(token!==generation)return;quickAmounts.value=amounts;periods.value=detail.periods;if(data.value&&(data.value.snapshot_hash!==value.snapshot_hash||data.value.period?.id!==value.period?.id)){quote.value=null;review.value=null}data.value=value;emit('game-title',value.game.name);if(!request.value.play_id||!value.snapshot.catalog.plays.some(p=>p.id===request.value.play_id)){const p=value.snapshot.catalog.plays[0]!;request.value={play_id:p.id,options:[],plate:value.snapshot.catalog.plates[0]!,points:p.stake_mode==='unit_multiplier'?'0':'',multiplier:'1'}}}catch(e){if(token===generation){data.value=null;periods.value=[];quote.value=null;review.value=null;report(e,true)}}
  }finally{if(token===generation){if(!background)busy.value=false;scheduleSync()}}
 }
-watch(()=>[props.gameId,owner.value],()=>{generation++;reviewOpen.value=false;selectionInvalid.value=false;pending.value=null;quote.value=null;review.value=null;data.value=null;periods.value=[];intentError.value=false;notice.value=false;try{const raw=sessionStorage.getItem(storageKey.value);if(raw!==null){const saved=JSON.parse(raw) as Intent;if(saved.owner!==owner.value||!saved.key||!saved.body.actor_context||!saved.body.requests.length||!saved.snapshot||!saved.quote)throw new Error('Invalid saved intent');pending.value=saved;reviewOpen.value=true}}catch(e){intentError.value=true;report(e)}void load()},{immediate:true})
-watch(request,()=>{if(!pending.value){quote.value=null;review.value=null}},{deep:true})
-async function preview(){if(busy.value)return;reviewOpen.value=true;selectionInvalid.value=false;pointsInvalid.value=false;error.value=null;if(pending.value)return;if(!data.value?.period||!canBet.value)return;if(request.value.options.length<currentPlay.value!.selection.min){selectionInvalid.value=true;return;}if(currentPlay.value!.stake_mode==='per_line'&&!validBetAmount(request.value.points)){pointsInvalid.value=true;return;}const token=generation;busy.value=true;error.value=null;notice.value=false;try{const body:ConfiguredLiveInput={period_id:data.value.period.id,rule_id:data.value.rule_id,sales_version:data.value.sales.version,snapshot_hash:data.value.snapshot_hash,actor_context:'',requests:[JSON.parse(JSON.stringify(request.value))]};const [result]=await Promise.all([api.value.preview(body),refreshWallet()]);if(token!==generation)return;if(result.snapshot_hash!==body.snapshot_hash||result.rule_id!==body.rule_id||result.sales_version!==body.sales_version)throw new Error('Quote version mismatch');review.value={...body,actor_context:result.actor_context};quote.value=result}catch(e){if(token===generation)report(e)}finally{if(token===generation)busy.value=false}}
+watch(()=>[props.gameId,owner.value],()=>{generation++;selectedPlays.value=[];reviewOpen.value=false;selectionInvalid.value=false;pending.value=null;quote.value=null;review.value=null;data.value=null;periods.value=[];intentError.value=false;notice.value=false;try{const raw=sessionStorage.getItem(storageKey.value);if(raw!==null){const saved=JSON.parse(raw) as Intent;if(saved.owner!==owner.value||!saved.key||!saved.body.actor_context||!saved.body.requests.length||!saved.snapshot||!saved.quote)throw new Error('Invalid saved intent');pending.value=saved;reviewOpen.value=true}}catch(e){intentError.value=true;report(e)}void load()},{immediate:true})
+watch([request,selectedPlays],()=>{if(!pending.value){quote.value=null;review.value=null}},{deep:true})
+async function preview(){if(busy.value)return;reviewOpen.value=true;selectionInvalid.value=false;pointsInvalid.value=false;error.value=null;if(pending.value)return;if(!data.value?.period||!canBet.value)return;if(!betRequests.value.length||betRequests.value.some(r=>r.options.length<data.value!.snapshot.catalog.plays.find(p=>p.id===r.play_id)!.selection.min)){selectionInvalid.value=true;return;}if(betRequests.value.some(r=>data.value!.snapshot.catalog.plays.find(p=>p.id===r.play_id)!.stake_mode==='per_line'&&!validBetAmount(r.points))){pointsInvalid.value=true;return;}const token=generation;busy.value=true;error.value=null;notice.value=false;try{const body:ConfiguredLiveInput={period_id:data.value.period.id,rule_id:data.value.rule_id,sales_version:data.value.sales.version,snapshot_hash:data.value.snapshot_hash,actor_context:'',requests:JSON.parse(JSON.stringify(betRequests.value))};const [result]=await Promise.all([api.value.preview(body),refreshWallet()]);if(token!==generation)return;if(result.snapshot_hash!==body.snapshot_hash||result.rule_id!==body.rule_id||result.sales_version!==body.sales_version)throw new Error('Quote version mismatch');review.value={...body,actor_context:result.actor_context};quote.value=result}catch(e){if(token===generation)report(e)}finally{if(token===generation)busy.value=false}}
 async function place(){now.value=Date.now();if(busy.value||!props.auth||intentError.value)return;if(!pending.value&&!canBet.value)return;if(!pending.value){if(!review.value||!quote.value||!data.value||!wallet.value||quoteInsufficient.value)return;const intent:Intent={owner:owner.value,key:crypto.randomUUID(),body:JSON.parse(JSON.stringify(review.value)),quote:quote.value,snapshot:data.value.snapshot};try{sessionStorage.setItem(storageKey.value,JSON.stringify(intent));pending.value=intent}catch(e){intentError.value=true;report(e);return}}
  const intent=pending.value,token=++generation;busy.value=true;error.value=null
- try{await api.value.place(intent.body,intent.key);if(token!==generation)return;sessionStorage.removeItem(storageKey.value);pending.value=null;quote.value=null;review.value=null;notice.value=true;reviewOpen.value=false;request.value={...request.value,options:[]};await refreshWallet();await load()}
+ try{await api.value.place(intent.body,intent.key);if(token!==generation)return;sessionStorage.removeItem(storageKey.value);pending.value=null;quote.value=null;review.value=null;notice.value=true;reviewOpen.value=false;selectedPlays.value=[];request.value={...request.value,options:[],points:currentPlay.value!.stake_mode==='unit_multiplier'?'0':'',multiplier:'1'};await refreshWallet();await load()}
  catch(e){if(token!==generation)return;const status=(e as {status?:number}).status;if(status&&status>=400&&status<500){sessionStorage.removeItem(storageKey.value);pending.value=null;quote.value=null;review.value=null}report(e)}finally{if(token===generation)busy.value=false}
 }
 useOperationToast(notice, () => t('placed'), 'success');
@@ -113,8 +123,7 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
 </script>
 <template>
  <section class="panel configured-live"><p v-if="error&&!reviewOpen" class="message error" role="alert"><button v-if="!pending&&!intentError" type="button" class="button button-secondary" :disabled="busy" @click="withGlobalLoading(load)">{{t('retryRead')}}</button></p>
- <p v-if="preferencesFailed" class="message error" role="alert">{{t('preferencesReadFailed')}}</p>
- <p v-if="!auth"><RouterLink to="/login">{{t('signIn')}}</RouterLink></p><UserPeriodStrip v-if="data" :class="{'has-result-attributes':previousIsMarkSix}" :previous-no="previousDraw?.period_no" :period-no="displayPeriod?.period_no" :open-at="displayPeriod?.bet_start_at" :close-at="displayPeriod?.bet_end_at" :draw-at="displayPeriod?.draw_at" :now="now" :clock-offset="0">
+ <p v-if="!auth"><RouterLink to="/login">{{t('signIn')}}</RouterLink></p><UserPeriodStrip v-if="data" :game-id="gameId" :class="{'has-result-attributes':previousIsMarkSix}" :previous-no="previousDraw?.period_no" :period-no="displayPeriod?.period_no" :open-at="displayPeriod?.bet_start_at" :close-at="displayPeriod?.bet_end_at" :draw-at="displayPeriod?.draw_at" :now="now" :clock-offset="0">
   <template v-for="(number,index) in previousNumbers" :key="index">
    <span v-if="number.special&&!previousNumbers[index-1]?.special" class="configured-result-plus" aria-hidden="true">+</span>
    <span class="configured-result-number">
@@ -122,9 +131,10 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
     <span v-if="previousIsMarkSix" class="configured-result-attributes" :title="number.zodiac&&number.element?`${attributeText(number.zodiac)} / ${attributeText(number.element)}`:userText('draw.attributesMissing')"><span class="configured-result-zodiac" :class="{'is-missing':!number.zodiac}">{{attributeText(number.zodiac)}}</span><span class="configured-attribute-divider" aria-hidden="true">/</span><span class="configured-result-element" :class="number.element?`configured-element-${number.element}`:'is-missing'">{{attributeText(number.element)}}</span></span>
    </span>
   </template>
+  <span v-if="previousDraw?.result.digits.length===3" class="configured-result-sum" :aria-label="`${userText('draw.summary.total')}: ${previousDraw.result.digits.reduce((sum,n)=>sum+n,0)}`"><span aria-hidden="true">=</span><strong>{{previousDraw.result.digits.reduce((sum,n)=>sum+n,0)}}</strong></span>
  </UserPeriodStrip>
- <PlayRules v-if="data&&currentPlay" :locale="locale" :name="currentPlay.label[localeCode]" :snapshot="data.snapshot" :play="currentPlay" :plate="request.plate" />
- <ConfiguredSelection v-if="data" v-model="request" :snapshot="data.snapshot" :quick-amounts="quickAmounts" :remembered-points="preferences.lastPoints" :locale="localeCode" :disabled="busy||!!pending||intentError||!canBet" :available-points="wallet ? wallet.available_points : null" :wallet-failed="walletFailed" @refresh-wallet="withGlobalLoading(refreshWallet)" v-slot="{ insufficientPoints }" sale><button type="button" class="button button-primary" :disabled="busy||intentError||(!pending&&(!canBet||insufficientPoints))" @click="withGlobalLoading(preview)">{{t(pending?'retryWrite':'previewBet')}}</button></ConfiguredSelection>
+ <PlayRules v-if="data&&currentPlay" :locale="locale" :name="currentGroup!.label[localeCode]" :group="currentGroup" :snapshot="data.snapshot" :play="currentPlay" :plate="request.plate" />
+ <ConfiguredSelection v-if="data" v-model="request" v-model:selected-plays="selectedPlays" :snapshot="data.snapshot" :quick-amounts="quickAmounts" :locale="localeCode" :disabled="busy||!!pending||intentError||!canBet" :available-points="wallet ? wallet.available_points : null" :wallet-failed="walletFailed" @refresh-wallet="withGlobalLoading(refreshWallet)" v-slot="{ insufficientPoints }" sale><button type="button" class="button button-primary" :disabled="busy||intentError||(!pending&&(!canBet||insufficientPoints))" @click="withGlobalLoading(preview)">{{t(pending?'retryWrite':'previewBet')}}</button></ConfiguredSelection>
  <BettingSheet v-if="reviewOpen" :title="t('previewBet')" :close-label="t('closeBet')" @close="reviewOpen=false">
 
   <p v-if="selectionInvalid" class="message error" role="alert">{{t('selectionRequired',{min:currentPlay!.selection.min})}}</p>
@@ -138,19 +148,20 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
 <p v-if="!wallet" class="message error" role="alert">{{t('walletUnavailable')}}</p>
    <ConfiguredBetReviewTable :snapshot="data.snapshot" :lines="quote.lines" :locale="localeCode" />
   </template>
-  <p v-else-if="!busy&&!selectionInvalid&&!error">{{t('closed')}}</p>
+  <p v-else-if="!busy&&!selectionInvalid&&!error&&unavailableText">{{unavailableText}}</p>
   <template #footer><div class="configured-review-footer"><div v-if="reviewQuote" class="configured-review-totals"><span>{{t('entries')}}: <strong>{{reviewQuote.lines.length}}</strong></span><span>{{t('bet')}}: <strong>{{reviewQuote.bet_points}}</strong></span><span v-if="reviewQuote.reserved_points">{{t('reserved')}}: <strong>{{reviewQuote.reserved_points}}</strong></span></div><div class="configured-review-actions"><button v-if="pending||(quote&&data)" v-write-guard="busy" type="button" class="button button-primary" :disabled="busy||!auth||intentError||(!pending&&(!canBet||!wallet||quoteInsufficient))" @click="withGlobalLoading(place)">{{t(pending?'retryWrite':'confirmBet')}}</button></div></div></template>
  </BettingSheet>
 
  </section>
 </template>
 <style scoped>
+.configured-result-sum{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;color:var(--ink);font-variant-numeric:tabular-nums}.configured-result-sum>span{color:var(--muted)}
 .configured-review-footer{display:flex;flex:1 1 100%;flex-wrap:wrap;align-items:center;gap:8px 16px;min-width:0;width:100%}
 .configured-review-totals{display:flex;flex:1 1 200px;flex-wrap:wrap;align-items:baseline;gap:4px 12px;min-width:0;font-size:var(--body-font-size);font-variant-numeric:tabular-nums}
 .configured-review-totals>span{white-space:nowrap}
 .configured-review-actions{display:flex;align-items:center;gap:8px;max-width:100%;margin-left:auto}
 
-.configured-live{padding:0;min-width:0;width:100%;box-sizing:border-box;font-size:14px}.configured-live p{overflow-wrap:anywhere}.configured-live > .panel{padding:12px;margin:12px 0;min-width:0}.configured-plain-ball{display:inline-grid;place-items:center;flex-shrink:0;min-width:24px;height:24px;padding:0 4px;border-radius:50%;background:var(--primary-light);color:var(--primary-dark);font-size:var(--body-font-size);font-weight:700}.configured-result-number{display:inline-flex;flex-direction:column;align-items:center;gap:3px;min-width:0}.configured-result-plus{display:inline-grid;place-items:center;min-height:clamp(24px,6.8vw,28px);color:var(--ink-secondary);font-size:16px;font-weight:700}.configured-plain-ball.special{border:2px solid var(--primary)}
+.configured-live{padding:0;min-width:0;width:100%;box-sizing:border-box;font-size:14px}.configured-live p{overflow-wrap:anywhere}.configured-live > .panel{padding:12px;margin:12px 0;min-width:0}.configured-plain-ball{display:inline-grid;place-items:center;flex-shrink:0;min-width:24px;height:24px;padding:0 4px;border-radius:50%;background:var(--primary-light);border:1px solid var(--primary-ring);color:var(--primary-dark);font-size:var(--body-font-size);font-weight:700}.configured-result-number{display:inline-flex;flex-direction:column;align-items:center;gap:3px;min-width:0}.configured-result-plus{display:inline-grid;place-items:center;min-height:clamp(24px,6.8vw,28px);color:var(--ink-secondary);font-size:16px;font-weight:700}.configured-plain-ball.special{border:2px solid var(--accent);color:var(--accent)}
 .configured-result-attributes{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:1px;max-width:100%;font-size:var(--body-font-size);line-height:1.4}.configured-result-attributes>span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.configured-result-zodiac{color:var(--lottery-attribute-zodiac)}.configured-element-metal{color:var(--lottery-element-metal)}.configured-element-wood{color:var(--lottery-element-wood)}.configured-element-water{color:var(--lottery-element-water)}.configured-element-fire{color:var(--lottery-element-fire)}.configured-element-earth{color:var(--lottery-element-earth)}.configured-attribute-divider,.configured-result-attributes .is-missing{color:var(--muted)}
 @media(max-width:620px){.configured-result-attributes{flex-direction:column;gap:0}.configured-attribute-divider{display:none}}
 </style>

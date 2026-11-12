@@ -60,7 +60,8 @@ const auditExportDescription = "Requires an explicit X-Brand-ID UUID even for pl
 export const schemas = {
   BrandOverview: obj({
     brand_id: ref('UUID'), snapshot_at: ref('DateTime'), timezone: string({ minLength: 1 }), today: string({ format: 'date' }),
-    ...Object.fromEntries(['total_members','online_members','unsettled_points','available_points','frozen_points','withdrawal_points','withdrawal_count','yesterday_same_time_stake'].map(key => [key,string({ pattern: '^(0|[1-9][0-9]*)$' })])),
+    ...Object.fromEntries(['total_members','online_members','withdrawal_count'].map(key => [key,string({ pattern: '^(0|[1-9][0-9]*)$' })])),
+    ...Object.fromEntries(['unsettled_points','available_points','frozen_points','withdrawal_points','yesterday_same_time_stake'].map(key => [key,string({ pattern: '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$' })])),
     days: array(ref('PlatformOverviewDay'), { minItems: 7, maxItems: 7 }),
   }, ['brand_id','snapshot_at','timezone','today','total_members','online_members','unsettled_points','available_points','frozen_points','withdrawal_points','withdrawal_count','yesterday_same_time_stake','days']),
   PlatformOverviewDay: obj({
@@ -71,38 +72,11 @@ export const schemas = {
   PlatformOverviewBrand: obj({ brand_id: ref('UUID'), brand_name: string({ minLength: 1 }), stake_points: string({ pattern: '^(0|[1-9][0-9]*)$' }), net_points: string({ pattern: '^(0|-?[1-9][0-9]*)$' }) }, ['brand_id','brand_name','stake_points','net_points']),
   PlatformOverview: obj({
     snapshot_at: ref('DateTime'), timezone: string({ minLength: 1 }), today: string({ format: 'date' }),
-    ...Object.fromEntries(['total_members','online_members','unsettled_points','available_points','frozen_points','withdrawal_points','withdrawal_count','yesterday_same_time_stake'].map(key => [key,string({ pattern: '^(0|[1-9][0-9]*)$' })])),
+    ...Object.fromEntries(['total_members','online_members','withdrawal_count'].map(key => [key,string({ pattern: '^(0|[1-9][0-9]*)$' })])),
+    ...Object.fromEntries(['unsettled_points','available_points','frozen_points','withdrawal_points','yesterday_same_time_stake'].map(key => [key,string({ pattern: '^(0|[1-9][0-9]*)([.][0-9]{1,2})?$' })])),
     days: array(ref('PlatformOverviewDay'), { minItems: 7, maxItems: 7 }), brands: array(ref('PlatformOverviewBrand'), { maxItems: 10 }),
   }, ['snapshot_at','timezone','today','total_members','online_members','unsettled_points','available_points','frozen_points','withdrawal_points','withdrawal_count','yesterday_same_time_stake','days','brands']),
   ...platformAccountSchemas,
-  ComplianceGateRecord: obj({
-    id:ref("UUID"),brand_id:ref("UUID"),policy_version:integer({minimum:1}),
-    config:{allOf:[ref("ComplianceConfig"),{anyOf:[{properties:{age_enabled:{const:true}}},{properties:{region_enabled:{const:true}}},{properties:{identity_enabled:{const:true}}},{properties:{account_risk_enabled:{const:true}}},{properties:{betting_risk_enabled:{const:true}}},{properties:{exclusion_enabled:{const:true}}},{properties:{responsible_gambling_enabled:{const:true}}}]}]},
-    operation:string({enum:["registration","betting"]}),action:string({enum:["register","join","operator_join","bet_preview","bet_place"]}),
-    decision:string({const:"review"}),checks:array(ref("ComplianceCheck"),{minItems:7,maxItems:7}),adapter_mode:string({const:"stub"}),
-    actor_type:string({enum:["anonymous","user","admin"]}),actor_id:nullable(ref("UUID")),member_id:nullable(ref("UUID")),
-    request_id:string({minLength:1,maxLength:80}),audit_log_id:ref("UUID"),created_at:ref("DateTime")
-  },["id","brand_id","policy_version","config","operation","action","decision","checks","adapter_mode","actor_type","actor_id","member_id","request_id","audit_log_id","created_at"],{
-    oneOf:[
-      {properties:{operation:{const:"registration"},action:{const:"register"},actor_type:{const:"anonymous"},actor_id:{type:"null"},member_id:{type:"null"}}},
-      {properties:{operation:{const:"registration"},action:{const:"operator_join"},actor_type:{const:"admin"},actor_id:ref("UUID"),member_id:{type:"null"}}},
-      {properties:{actor_type:{const:"user"},actor_id:ref("UUID")},oneOf:[
-        {properties:{operation:{const:"registration"},action:{const:"join"}}},
-        {properties:{operation:{const:"betting"},action:{enum:["bet_preview","bet_place"]},member_id:ref("UUID")}}
-      ]}
-    ],
-    description:"Immutable actual business admission rejection, distinct from administrative simulations. Actor ids refer to existing identities only; no usernames, credentials, documents, raw keys or IP in DTO. At least one check enabled; current stub review prevents new business."
-  }),
-  ComplianceGatesPage: obj({brand_id:ref("UUID"),operation:nullable(string({enum:["registration","betting"]})),items:array(ref("ComplianceGateRecord")),limit:integer({minimum:1,maximum:100}),offset:integer({minimum:0,maximum:1000000}),total_count:string({pattern:"^(0|[1-9][0-9]*)$"})},["brand_id","operation","items","limit","offset","total_count"]),
-  ComplianceConfig: obj({age_enabled:{type:"boolean"},minimum_age:nullable(integer({minimum:18,maximum:120})),region_enabled:{type:"boolean"},allowed_countries:array(string({pattern:"^[A-Z]{2}$"}),{maxItems:250,uniqueItems:true,description:"Strictly sorted canonical uppercase two-letter tokens; syntax is not a legal jurisdiction approval."}),identity_enabled:{type:"boolean"},account_risk_enabled:{type:"boolean"},betting_risk_enabled:{type:"boolean"},exclusion_enabled:{type:"boolean"},responsible_gambling_enabled:{type:"boolean"}},["age_enabled","minimum_age","region_enabled","allowed_countries","identity_enabled","account_risk_enabled","betting_risk_enabled","exclusion_enabled","responsible_gambling_enabled"],{allOf:[{if:{properties:{age_enabled:{const:true}},required:["age_enabled"]},then:{properties:{minimum_age:integer({minimum:18,maximum:120})}}},{if:{properties:{region_enabled:{const:true}},required:["region_enabled"]},then:{properties:{allowed_countries:{minItems:1}}}}],description:"All nine fields required. Default all flags disabled, age null and countries empty. Enabled unconfigured checks reject new registration/brand admission, betting and withdrawal; disabled checks are skipped, not real verification. Existing login/reads/refunds remain available; external payments not implemented."}),
-  CompliancePolicy: obj({inherit_platform:{type:"boolean"},brand_id:{anyOf:[ref("UUID"),{const:""}]},version:integer({minimum:1}),config:ref("ComplianceConfig"),updated_at:ref("DateTime"),audit_log_id:ref("UUID")},["inherit_platform","brand_id","version","config","updated_at"]),
-  CompliancePolicyInput: obj({inherit_platform:{type:"boolean"},version:integer({minimum:1}),config:ref("ComplianceConfig"),reason:textString(500,{description:"Nonempty UTF-8, no surrounding whitespace or control characters; maximum 500 characters."})},["version","config"]),
-  ComplianceCheckInput: obj({version:integer({minimum:1}),operation:string({enum:["registration","betting","withdrawal"]}),reason:textString(500,{})},["version","operation"],{description:"Explicit administrative stub check against current policy version. Rejects personal data, subjects, arbitrary adapter decisions and omitted fields."}),
-  ComplianceCheck: obj({check:string({enum:["age","region","identity","account_risk","betting_risk","exclusion","responsible_gambling"]}),enabled:{type:"boolean"},decision:string({enum:["allow","review","deny","freeze"]}),reason_code:string({enum:["CHECK_DISABLED","ADAPTER_NOT_CONFIGURED"]})},["check","enabled","decision","reason_code"],{description:"Current stub returns allow/CHECK_DISABLED if disabled, review/ADAPTER_NOT_CONFIGURED if enabled. deny/freeze reserved, never money/member mutation."}),
-  ComplianceDecision: obj({id:ref("UUID"),brand_id:ref("UUID"),policy_version:integer({minimum:1}),config:ref("ComplianceConfig"),operation:string({enum:["registration","betting","withdrawal"]}),decision:string({enum:["allow","review","deny","freeze"]}),checks:array(ref("ComplianceCheck"),{minItems:7,maxItems:7}),adapter_mode:string({const:"stub"}),created_by:ref("UUID"),reason:textString(500,{}),audit_log_id:ref("UUID"),created_at:ref("DateTime")},["id","brand_id","policy_version","config","operation","decision","checks","adapter_mode","created_by","reason","audit_log_id","created_at"],{description:"Immutable explicit check snapshot, not user verification, review queue, live enforcement, wallet freeze or legal approval. Check order age/region/identity/account_risk/betting_risk/exclusion/responsible_gambling."}),
-  ComplianceRevision: obj({id:ref("UUID"),brand_id:ref("UUID"),version:integer({minimum:1}),config:ref("ComplianceConfig"),changed_by:nullable(ref("UUID")),reason:string(),audit_log_id:nullable(ref("UUID")),created_at:ref("DateTime")},["id","brand_id","version","config","changed_by","reason","audit_log_id","created_at"]),
-  ComplianceHistoryPage: obj({brand_id:ref("UUID"),items:array(ref("ComplianceRevision")),limit:integer({minimum:1,maximum:100}),offset:integer({minimum:0,maximum:1000000}),total_count:string({pattern:"^(0|[1-9][0-9]*)$"})},["brand_id","items","limit","offset","total_count"]),
-  ComplianceDecisionPage: obj({brand_id:ref("UUID"),operation:nullable(string({enum:["registration","betting","withdrawal"]})),items:array(ref("ComplianceDecision")),limit:integer({minimum:1,maximum:100}),offset:integer({minimum:0,maximum:1000000}),total_count:string({pattern:"^(0|[1-9][0-9]*)$"})},["brand_id","operation","items","limit","offset","total_count"]),
   IdentityChallenge: obj({
     id: ref("UUID"),
     puzzle: obj({image:string(),piece:string(),width:integer(),height:integer(),piece_width:integer(),piece_height:integer(),y:integer()},["image","piece","width","height","piece_width","piece_height","y"],{description:"GoCaptcha raster images and piece geometry; the target X is never sent to the client."}),
@@ -113,6 +87,9 @@ export const schemas = {
     id: ref("UUID"),
     username: string(),
     phone: string(),
+    wechat: string(),
+    telegram: string(),
+    whatsapp: string(),
     telegram_user_id: string(),
     status: string(),
   }, ["id", "status"]),
@@ -139,9 +116,7 @@ export const schemas = {
     username: string({ minLength: 3, maxLength: 32, pattern: "^[A-Za-z][A-Za-z0-9_]{2,31}$" }),
     phone: string({ pattern: "^\\+[1-9][0-9]{6,14}$" }),
     password: string({ minLength: 6, maxLength: 30, description: "6–30 characters." }),
-    privacy_policy_version: string({ minLength: 1 }),
-    service_terms_version: string({ minLength: 1 }),
-  }, ["password", "privacy_policy_version", "service_terms_version"], {
+  }, ["password"], {
     anyOf: [{ required: ["username"] }, { required: ["phone"] }],
     ...mutuallyExclusiveNonemptyJoinCodes(),
     description: "At least one of username or phone is required. Empty attribution fields mean not supplied; non-empty agent_code and referral_code are mutually exclusive. A supplied code is trimmed, uppercased, and must contain 24 hexadecimal characters. Unknown keys and null values are rejected.",
@@ -153,28 +128,27 @@ export const schemas = {
     captcha_answer: string({ maxLength: 128, description: "Puzzle piece X coordinate in source-image pixels, as a decimal integer." }),
     identifier: string({ minLength: 1 }),
     password: string({ minLength: 1 }),
-    privacy_policy_version: string(),
-    service_terms_version: string(),
   }, ["identifier", "password"], {
     ...mutuallyExclusiveNonemptyJoinCodes(),
     description: "Unknown keys and null values are rejected. Empty attribution fields mean not supplied; non-empty codes are mutually exclusive and apply only to a first-time brand join.",
   }),
   IdentityProfileRequest: obj({
     username: string({ minLength: 3, maxLength: 32, pattern: "^[A-Za-z][A-Za-z0-9_]{2,31}$" }),
-    phone: string({ pattern: "^\\+[1-9][0-9]{6,14}$" }),
-  }, [], { anyOf: [{ required: ["username"] }, { required: ["phone"] }], description: "Only previously unset username/phone fields can be supplied; at least one must be non-empty." }),
+    phone: string({ pattern: "^([0-9]{7,15}|\\+[1-9][0-9]{6,14})$" }),
+    wechat: string({ maxLength: 120 }),
+    telegram: string({ maxLength: 120 }),
+    whatsapp: string({ maxLength: 120 }),
+  }, [], { anyOf: ["username", "phone", "wechat", "telegram", "whatsapp"].map(key => ({ required: [key] })), description: "All contact fields are optional. Only previously unset fields can be supplied; at least one must be non-empty. Telegram contact is independent of Telegram sign-in binding." }),
   IdentityTelegramRequest: obj({
     agent_code: joinCode,
     referral_code: joinCode,
     id_token: string({ minLength: 1 }),
     challenge_id: ref("UUID"),
     nonce: string({ minLength: 1 }),
-    privacy_policy_version: string({ minLength: 1 }),
-    service_terms_version: string({ minLength: 1 }),
     bind: { type: "boolean" },
-  }, ["id_token", "challenge_id", "nonce", "privacy_policy_version", "service_terms_version"], {
+  }, ["id_token", "challenge_id", "nonce"], {
     ...mutuallyExclusiveNonemptyJoinCodes(),
-    description: "Requires a real Telegram OIDC id_token verified by the server against its configured client ID and this one-time nonce. bind=true requires an existing user session. Empty attribution fields mean not supplied; non-empty codes are mutually exclusive. Telegram login is disabled until configured.",
+    description: "Requires a real Telegram OIDC id_token verified by the server against its configured client ID and this one-time nonce. bind=true requires an existing user session. Empty attribution fields mean not supplied; non-empty codes are mutually exclusive. Policy versions are required only when creating a global account or first joining this brand; existing members can log in without them. Telegram login is disabled until configured.",
   }),
   IdentityAuditResult: auditResult,
   IdentityContextBrand: obj({
@@ -186,10 +160,9 @@ export const schemas = {
     available_locales: array(string({ enum: ["en", "zh-CN"] }), { minItems: 1, uniqueItems: true }),
     features: obj({ pwa: { type: "boolean" }, real_payments: { type: "boolean" } }, ["pwa", "real_payments"]),
     auth: obj({ captcha_enabled: { type: "boolean" }, telegram_enabled: { type: "boolean" }, telegram_client_id: string() }, ["captcha_enabled", "telegram_enabled"]),
-    terms: obj({ privacy_policy_version: string(), service_terms_version: string() }, ["privacy_policy_version", "service_terms_version"]),
-  }, ["brand", "available_locales", "features", "auth", "terms"]),
+  }, ["brand", "available_locales", "features", "auth"]),
   IdentityHealth: obj({ status: string({ enum: ["alive", "ready"] }) }, ["status"]),
-  PublicDisplaySettings: obj({ timezone: string(), date_format: string({ enum: ['YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY'] }), time_format: string({ enum: ['HH:mm:ss', 'hh:mm:ss A'] }) }, ['timezone', 'date_format', 'time_format']),
+  PublicDisplaySettings: obj({ theme: string({ enum: ['jade','vermilion','ocean','obsidian'] }), timezone: string(), date_format: string({ enum: ['YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY'] }), time_format: string({ enum: ['HH:mm:ss', 'hh:mm:ss A'] }) }, ['theme', 'timezone', 'date_format', 'time_format']),
 
   AdminAuthentication: obj({ access_token: string(), token_type: string({ enum: ["Bearer"] }), expires_at: ref("DateTime") }, ["access_token", "token_type", "expires_at"]),
   AdminLoginRequest: obj({
@@ -197,7 +170,6 @@ export const schemas = {
     referral_code: string({ description: "Accepted by the shared login DTO but ignored by admin authentication." }),
     captcha_id: ref("UUID"), captcha_answer: string({ maxLength: 128, description: "Puzzle piece X coordinate in source-image pixels, as a decimal integer." }),
     identifier: string({ minLength: 1 }), password: string({ minLength: 1 }),
-    privacy_policy_version: string(), service_terms_version: string(),
   }, ["identifier", "password"], { description: "Unknown keys and null values are rejected. CAPTCHA proof is required when the brand effective authentication settings enable it. Other additional fields are ignored by admin authentication." }),
   AdminSelfPasswordChangeRequest: obj({
     current_password: string({ minLength: 6, maxLength: 30, description: "6–30 characters." }),
@@ -208,7 +180,7 @@ export const schemas = {
     version: integer(), permissions_by_brand: { type: "object", additionalProperties: array(string()) }, platform_permissions: array(string()),
   }, ["id", "username", "super_admin", "brand_ids", "permissions", "version", "permissions_by_brand", "platform_permissions"]) }, ["account"]),
   AdminBrand: obj({ id: ref("UUID"), code: string(), name: string(), allow_custom_games: {type:"boolean",default:false}, has_custom_games: {type:"boolean"}, status: string() }, ["id", "code", "name", "status", "allow_custom_games", "has_custom_games"]),
-  PlatformBrandSummary: obj({id:ref("UUID"),code:string(),name:string(),status:string(),member_count:string({pattern:"^(0|[1-9][0-9]*)$"}),agent_count:string({pattern:"^(0|[1-9][0-9]*)$"}),recharge_quota_available:nullable(ref("NonnegativeInt64String")),created_at:ref("DateTime")},["id","code","name","status","member_count","agent_count","recharge_quota_available","created_at"]),
+  PlatformBrandSummary: obj({id:ref("UUID"),code:string(),name:string(),status:string(),member_count:string({pattern:"^(0|[1-9][0-9]*)$"}),agent_count:string({pattern:"^(0|[1-9][0-9]*)$"}),recharge_quota_available:nullable(ref("NonnegativePoints")),created_at:ref("DateTime")},["id","code","name","status","member_count","agent_count","recharge_quota_available","created_at"]),
   PlatformBrandSummaryList: obj({items:array(ref("PlatformBrandSummary"))},["items"]),
   AdminBrandList: obj({ items: array(ref("AdminBrand")) }, ["items"]),
   AdminBrandCreationInput: obj({
@@ -275,13 +247,13 @@ export const schemas = {
     agent_code: joinCode, referral_code: joinCode,
     username: string({ pattern: "^[A-Za-z][A-Za-z0-9_]{2,31}$" }), phone: string({ pattern: "^\\+[1-9][0-9]{6,14}$" }),
     password: string({ minLength: 6, maxLength: 30, description: "6–30 characters." }), display_name: string({ maxLength: 120 }), notes: string({ maxLength: 2000 }), reason: ref("Reason"),
-  }, ["password"], { anyOf: [{ required: ["username"] }, { required: ["phone"] }], ...mutuallyExclusiveNonemptyJoinCodes(), description: "At least one of username or phone is required. Creates a new global identity and pending-consent member; it does not reuse existing identities or create a session. Empty attribution fields mean not supplied; non-empty codes are mutually exclusive." }),
-  AdminOperatorCreateResult: obj({ user_id: ref("UUID"), member_id: ref("UUID"), brand_id: ref("UUID"), terms_accepted: { type: "boolean", enum: [false] }, audit_log_id: ref("UUID") }, ["user_id", "member_id", "brand_id", "terms_accepted", "audit_log_id"]),
-  AdminAuthSettings: obj({ inherit_platform:{type:"boolean"}, version: integer(), captcha_enabled: { type: "boolean" }, telegram_enabled: { type: "boolean" }, telegram_client_id: string(), privacy_policy_version: string(), service_terms_version: string() }, ["inherit_platform", "version", "captcha_enabled", "telegram_enabled", "telegram_client_id", "privacy_policy_version", "service_terms_version"]),
+  }, ["password"], { anyOf: [{ required: ["username"] }, { required: ["phone"] }], ...mutuallyExclusiveNonemptyJoinCodes(), description: "At least one of username or phone is required. Creates a new global identity and brand member; it does not reuse existing identities or create a session. Empty attribution fields mean not supplied; non-empty codes are mutually exclusive." }),
+  AdminOperatorCreateResult: obj({ user_id: ref("UUID"), member_id: ref("UUID"), brand_id: ref("UUID"), audit_log_id: ref("UUID") }, ["user_id", "member_id", "brand_id", "audit_log_id"]),
+  AdminAuthSettings: obj({ inherit_platform:{type:"boolean"}, version: integer(), captcha_enabled: { type: "boolean" }, telegram_enabled: { type: "boolean" }, telegram_client_id: string(), }, ["inherit_platform", "version", "captcha_enabled", "telegram_enabled", "telegram_client_id"]),
   AdminAuthSettingsRequest: obj({
     inherit_platform:{type:"boolean"}, version: integer({ minimum: 1 }), captcha_enabled: { type: "boolean" }, telegram_enabled: { type: "boolean" }, telegram_client_id: string(), reason: ref("Reason"),
   }, ["version", "captcha_enabled", "telegram_enabled", "telegram_client_id"], { description: "Client ID is an empty string when disabled or a positive safe-integer decimal string without leading zeroes. Enabling Telegram requires a configured client ID." }),
-  AdminAuthSettingsUpdated: obj({ inherit_platform:{type:"boolean"}, version: integer(), captcha_enabled: { type: "boolean" }, telegram_enabled: { type: "boolean" }, telegram_client_id: string(), privacy_policy_version: string(), service_terms_version: string(), audit_log_id: ref("UUID") }, ["inherit_platform", "version", "captcha_enabled", "telegram_enabled", "telegram_client_id", "privacy_policy_version", "service_terms_version", "audit_log_id"]),
+  AdminAuthSettingsUpdated: obj({ inherit_platform:{type:"boolean"}, version: integer(), captcha_enabled: { type: "boolean" }, telegram_enabled: { type: "boolean" }, telegram_client_id: string(), audit_log_id: ref("UUID") }, ["inherit_platform", "version", "captcha_enabled", "telegram_enabled", "telegram_client_id", "audit_log_id"]),
   AdminBrandOperation: obj({
     brand_id: ref("UUID"), version: integer({ minimum: 1 }), name: string(), status: string({ enum: ["active", "paused", "disabled"] }),
     updated_at: ref("DateTime"), audit_log_id: ref("UUID"), pause_starts_at: ref("DateTime"), pause_ends_at: ref("DateTime"),
@@ -364,26 +336,18 @@ export const operations = [
   { method: 'GET', path: '/api/v1/admin/overview', operationId: 'getBrandOverview', summary: 'Read the current brand dashboard', tag: 'administration', auth: 'admin', brandHeader: true, idempotency: false, permissions: ['overview.view.brand'], data: ref('BrandOverview'), successStatus: 200, parameters: [], description: 'Requires overview.view.brand and an X-Brand-ID within the current account scope. A registered central entry can select an authorized brand; a brand-bound entry must match its host brand. Rejects all query parameters. Returns a single statement snapshot of the current brand only: membership, valid session activity within five minutes, four betting engines, exact point balances and exception tasks. New members use first brand join time; order totals use placement, net win uses settlement, refunds use refund time. Uses platform calendar days. Released Niu risk reserves are not refunds or profit. No cross-brand ranking and no financial mutations.' },
   { method: 'GET', path: '/api/v1/platform/overview', operationId: 'getPlatformOverview', summary: 'Read the cross-brand platform overview', tag: 'administration', auth: 'admin', brandHeader: false, idempotency: false, permissions: ['overview.view.platform'], data: ref('PlatformOverview'), successStatus: 200, parameters: [], description: 'Platform administrator entry only. Requires overview.view.platform; rejects X-Brand-ID and all query parameters. One PostgreSQL snapshot across all four betting engines, exact decimal strings, seven platform-local calendar days, brand memberships summed across brands without cross-brand deduplication, new members by first brand join time, valid unrevoked member sessions active within five minutes counted once per brand member, current point balances, review withdrawals and exception tasks. Stakes use placement time, results settlement time, refunds actual refund time. Niu uses actual loss minus member winnings and excludes released risk reserves from refunds. Top ten brands ranked by today stake points. No business or financial mutations.' },
   ...platformAccountOperations,
-  {method:"GET",path:"/api/v1/admin/compliance-gates",operationId:"getComplianceAdmissionRejections",summary:"List actual compliance admission rejections",tag:"administration",auth:"admin",brandHeader:true,idempotency:false,permissions:["compliance_check.view.brand","compliance_check.view.platform"],data:ref("ComplianceGatesPage"),successStatus:200,parameters:[{name:"limit",in:"query",required:false,schema:integer({minimum:1,maximum:100,default:20})},{name:"offset",in:"query",required:false,schema:integer({minimum:0,maximum:1000000,default:0})},{name:"operation",in:"query",required:false,schema:string({enum:["registration","betting"]})}],description:"Brand-scoped audited readonly immutable actual registration/join/operator-provisioning and betting admission rejections. Strict paging/filter, repeatable-read count/rows. Not a manual review queue or real verification/freeze. Evidence and encrypted negative idempotency receipt commit after business rollback; cached replays create no new evidence. Previews are separate non-idempotent observations."},
-  ...[
-    ["GET","/compliance-policy","getCompliancePolicy","compliance_policy.view.platform","CompliancePolicy",null],
-    ["PUT","/compliance-policy","updateCompliancePolicy","compliance_policy.write.platform","CompliancePolicy","CompliancePolicyInput"],
-    ["GET","/compliance-policy/history","getCompliancePolicyHistory","compliance_policy.view.platform","ComplianceHistoryPage",null],
-    ["POST","/compliance-checks","runComplianceStubCheck","compliance_check.run.platform","ComplianceDecision","ComplianceCheckInput"],
-    ["GET","/compliance-checks","getComplianceStubChecks","compliance_check.view.brand","ComplianceDecisionPage",null],
-  ].map(([method,path,operationId,permission,data,body])=>({method,path:`/api/v1/admin${path}`,operationId,summary:operationId,tag:"administration",auth:"admin",brandHeader:true,idempotency:method!=="GET",permissions:permission.endsWith("view.brand")?[permission,permission.replace(".brand",".platform")]:[permission],data:ref(data),...(body?{requestBody:ref(body)}:{}),successStatus:method==="POST"?201:200,parameters:((path.endsWith("/history")||method==="GET"&&path==="/compliance-checks")?[{name:"limit",in:"query",required:false,schema:integer({minimum:1,maximum:100,default:20})},{name:"offset",in:"query",required:false,schema:integer({minimum:0,maximum:1000000,default:0})}]:[]).concat(method==="GET"&&path==="/compliance-checks"?[{name:"operation",in:"query",required:false,schema:string({enum:["registration","betting","withdrawal"]})}]:[]),description:"Brand-scoped compliance configuration and explicit administrative stub checks only. Separate explicit administrative simulations from actual registration/join/betting rejection gates. No real verification or withdrawal flow. Independent policy version, immutable audited history and decisions, checked encrypted idempotency. Super administrators may read only with explicit platform grants; writes and runs denied. Disabled brands readonly. All-disabled means checks skipped, not a verified user; enabled means review/ADAPTER_NOT_CONFIGURED."})),
   {method:"POST",path:"/api/v1/admin/brands",operationId:"createBrand",summary:"Create an initially paused brand",tag:"administration",auth:"admin",idempotency:true,brandHeader:false,permissions:["brand.create.platform"],requestBody:ref("AdminBrandCreationInput"),data:ref("AdminBrandCreationReceipt"),successStatus:201,description:"Global checked mutation independent of a selected brand. X-Brand-ID and query parameters rejected. Explicit platform permission, not super flag or brand grant alone. Code uniqueness, seven initial policy/presentation rows, immutable audited creation and encrypted platform idempotency are atomic. Existing configured platform entry permits administration even without an active brand. Replays recheck session/permission and return the same creation snapshot; no automatic scope grants, admins, domains, money or settlement enablement."},
   op("DELETE", "/api/v1/admin/brands/{id}", "deleteBrand", "Permanently delete a brand and its related data", "administration", "admin", true, ref("AdminBrandDeletionReceipt"), { requestBody: emptyBody, brandHeader: false, permissions: ["brand.delete.platform"], description: "Global checked platform mutation independent of a selected brand. X-Brand-ID and query parameters are rejected. Requires brand.delete.platform. Permanently deletes the selected brand and all related brand-scoped data in one transaction; the operation is audited with the operator and object information, and unknown results must be replayed with the same idempotency key." }),
   op("GET", "/health/live", "healthLive", "Check process liveness", "system", "public", false, ref("IdentityHealth"), { description: "Returns alive while the HTTP process is serving." }),
   op("GET", "/health/ready", "healthReady", "Check service readiness", "system", "public", false, ref("IdentityHealth"), { description: "Checks the configured readiness dependency with a two-second timeout; unavailable readiness returns 503." }),
-  op('GET', '/api/v1/display-settings', 'getPublicDisplaySettings', 'Read platform date and time display policy', 'system', 'public', false, ref('PublicDisplaySettings'), { brandAlias: false, description: 'Shared by all three frontends. Returns only timezone and display formats; no administrative metadata. Responses are not cached.' }),
+  op('GET', '/api/v1/display-settings', 'getPublicDisplaySettings', 'Read platform date and time display policy', 'system', 'public', false, ref('PublicDisplaySettings'), { brandAlias: false, description: 'Shared by all four frontends. Returns the global theme, timezone and display formats; no administrative metadata. Responses are not cached.' }),
   op("GET", "/api/v1/context", "getPublicContext", "Get the current brand and public configuration", "identity", "public", false, ref("IdentityContext"), { description: "Resolves the brand from the request host or generated platform brand path. Includes current authentication switches and policy versions; no secrets are returned." }),
 
-  op("POST", "/api/v1/auth/register", "registerIdentity", "Register a user and join the current brand", "identity", "public", true, ref("IdentityAuthentication"), { requestBody: ref("IdentityRegisterRequest"), successStatus: 201, description: "Creates a new global identity and brand member only after compliance admission. Enabled unconfigured checks return COMPLIANCE_REVIEW_REQUIRED without identity/member/session writes. Accepts only current policy versions and issues a user session. Existing identities are not reused; attribution codes are optional and mutually exclusive." }),
-  op("POST", "/api/v1/auth/login", "loginIdentity", "Log in with username or phone", "identity", "public", true, ref("IdentityAuthentication"), { requestBody: ref("IdentityLoginRequest"), description: "Authenticates the global account for the resolved brand. Joining a new brand or accepting a provisioned pending member also passes current compliance admission; enabled unconfigured checks reject the new admission. Existing accepted member login is not blocked." }),
+  op("POST", "/api/v1/auth/register", "registerIdentity", "Register a user and join the current brand", "identity", "public", true, ref("IdentityAuthentication"), { requestBody: ref("IdentityRegisterRequest"), successStatus: 201, description: "Creates a new global identity and brand member. Accepts only current policy versions and issues a user session. Existing identities are not reused; attribution codes are optional and mutually exclusive." }),
+  op("POST", "/api/v1/auth/login", "loginIdentity", "Log in with username or phone", "identity", "public", true, ref("IdentityAuthentication"), { requestBody: ref("IdentityLoginRequest"), description: "Authenticates the global account for the resolved brand." }),
   op("POST", "/api/v1/auth/logout", "logoutIdentity", "Revoke the current user session", "identity", "session", true, ref("IdentityAuditResult"), { requestBody: emptyBody, description: "Revokes the current brand-scoped user session and returns its audit log ID." }),
   op("GET", "/api/v1/me", "getCurrentIdentity", "Get the current user and brand membership", "identity", "user", false, ref("IdentityView"), { description: "Requires an active user session for the host-resolved brand." }),
-  op("PATCH", "/api/v1/me/profile", "fillIdentityProfile", "Fill previously unset profile fields", "identity", "user", true, ref("IdentityAuditResult"), { requestBody: ref("IdentityProfileRequest"), description: "Only fills a username or phone that has never been set; set values are immutable. Returns an audit log ID." }),
+  op("PATCH", "/api/v1/me/profile", "fillIdentityProfile", "Fill previously unset profile fields", "identity", "user", true, ref("IdentityAuditResult"), { requestBody: ref("IdentityProfileRequest"), description: "Only fills previously unset username, phone, WeChat, Telegram or WhatsApp fields; set values are immutable. Returns an audit log ID." }),
   op("GET", "/api/v1/auth/challenge", "getCaptchaChallenge", "Create a CAPTCHA challenge", "identity", "public", false, ref("IdentityChallenge"), { description: "Returns a one-time slider puzzle CAPTCHA challenge with a five-minute expiry. The handler exposes this endpoint regardless of the captcha_enabled setting; subject to persistent authentication rate limits." }),
   op("GET", "/api/v1/auth/telegram/challenge", "getTelegramChallenge", "Create a Telegram OIDC nonce challenge", "identity", "public", false, ref("IdentityChallenge"), { description: "Requires Telegram login to be enabled and configured for the resolved brand. Returns a one-time nonce and five-minute expiry." }),
   op("POST", "/api/v1/auth/telegram", "loginWithTelegram", "Authenticate using Telegram OIDC", "identity", "public", true, ref("IdentityAuthentication"), { requestBody: ref("IdentityTelegramRequest"), description: "The server verifies the supplied real Telegram id_token against the configured client ID and one-time challenge nonce. No token-availability mock or arbitrary identity assertion is accepted. bind=true requires a current user session and binding cannot be replaced or removed." }),
@@ -432,7 +396,7 @@ export const operations = [
   op("PATCH", "/api/v1/admin/accounts/{id}", "updateAdminAccount", "Update an admin account's status and roles", "administration", "admin", true, ref("AdminAccount"), { requestBody: ref("AdminAccountUpdateRequest"), brandHeader: true, permissions: ["admin.write.brand", "admin.write.platform"], description: "Requires admin.write in the selected brand or platform scope. Username and brand scopes are immutable here. Self, super-admin, multi-brand targets without platform scope, and targets with undelegated roles cannot be changed. Revokes target sessions; success includes audit_log_id." }),
   op("POST", "/api/v1/admin/accounts/{id}/delete", "deleteAdminAccount", "Delete a brand account", "administration", "admin", true, ref("IdentityAuditResult"), { requestBody: ref("AccountDeleteRequest"), brandHeader: true, permissions: ["admin.delete.platform"], description: "Requires admin.delete.platform for total-management deletion. Permanently retires a non-super-admin account, clears its password, sessions, brand scopes and role assignments; no reason is required. Historical business records and actor references remain intact, and the username stays reserved. Deleted accounts are excluded from management and cannot be reactivated or reset. The selected brand must belong to the account." }),
   op("POST", "/api/v1/admin/accounts/{id}/reset-password", "resetAdminAccountPassword", "Reset an admin account password", "administration", "admin", true, ref("IdentityAuditResult"), { requestBody: ref("AdminAccountPasswordResetRequest"), brandHeader: true, permissions: ["admin.write.brand", "admin.write.platform"], description: "Requires admin.write in the selected brand or platform scope. Super-admin targets, self-reset, and unauthorized multi-brand targets are denied. Resets the password and revokes all target admin sessions." }),
-  op("POST", "/api/v1/admin/users", "createUserForBrand", "Provision a new user and pending brand member", "administration", "admin", true, ref("AdminOperatorCreateResult"), { requestBody: ref("AdminOperatorCreateRequest"), successStatus: 201, brandHeader: true, permissions: ["user.create.brand"], description: "Requires user.create.brand and is denied to super-admins. Compliance admission prevents operator provisioning from bypassing enabled unconfigured checks. Rejected provisioning rolls back even a new global identity and preserves scoped evidence. Existing usernames or phones are not linked. At least one username or phone is required. No session is issued; terms_accepted is false and success returns an audit log ID." }),
+  op("POST", "/api/v1/admin/users", "createUserForBrand", "Provision a new user and brand member", "administration", "admin", true, ref("AdminOperatorCreateResult"), { requestBody: ref("AdminOperatorCreateRequest"), successStatus: 201, brandHeader: true, permissions: ["user.create.brand"], description: "Requires user.create.brand and is denied to super-admins. Existing usernames or phones are not linked. At least one username or phone is required. No session is issued; success returns an audit log ID." }),
   op("GET", "/api/v1/admin/auth-settings", "getAdminAuthSettings", "Get brand authentication settings", "administration", "admin", false, ref("AdminAuthSettings"), { brandHeader: true, permissions: ["auth_config.view.platform"], description: "Platform-owned settings. Brand staff requests are denied; use the platform entry with auth_config.view.platform. Returns current configuration version and read-only policy versions; the read is audited." }),
   op("PATCH", "/api/v1/admin/auth-settings", "updateAdminAuthSettings", "Update brand authentication settings", "administration", "admin", true, ref("AdminAuthSettingsUpdated"), { requestBody: ref("AdminAuthSettingsRequest"), brandHeader: true, permissions: ["auth_config.write.platform"], description: "Platform-owned settings. Brand staff requests are denied; use the platform entry with auth_config.write.platform. Current permission and disabled state are rechecked even on replay. Updates CAPTCHA/Telegram public login configuration only; policy text and versions are read-only. Telegram enablement requires a valid client ID. Version conflicts return 409 CONFIG_VERSION_CONFLICT; success includes audit_log_id." }),
   op("GET", "/api/v1/admin/brand-operation", "getAdminBrandOperation", "Get the selected brand's operating status", "administration", "admin", false, ref("AdminBrandOperation"), { brandHeader: true, permissions: ["brand_operation.view.brand", "brand_operation.view.platform"], description: "Requires an explicit brand_operation.view.brand grant for the selected brand or brand_operation.view.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. The selected brand is identified only by X-Brand-ID." }),
@@ -453,6 +417,6 @@ export const operations = [
 
 addHistoryReadHeaders(operations);
 
-for (const source of operations.filter(op=>['/api/v1/admin/auth-settings','/api/v1/admin/compliance-policy'].includes(op.path))) {
- operations.push({...source,path:source.path.replace('/admin/','/platform/'),operationId:source.operationId+'Platform',brandHeader:false,parameters:[brandHeader(false)],description:'Platform administrator only, with the explicit platform permission. Omit X-Brand-ID to read or update platform defaults; provide it to read effective brand settings or change the brand override/inherit_platform choice. Existing brands keep explicit settings; new brands inherit platform defaults. CAPTCHA applies to user, brand administrator and independent agent password login. Compliance default updates atomically create audited policy revisions for inherited brands. Version checks, permission rechecks and idempotent replay apply.'});
+for (const source of operations.filter(op=>['/api/v1/admin/auth-settings'].includes(op.path))) {
+ operations.push({...source,path:source.path.replace('/admin/','/platform/'),operationId:source.operationId+'Platform',brandHeader:false,parameters:[brandHeader(false)],description:'Platform administrator only, with the explicit platform permission. Omit X-Brand-ID to read or update platform defaults; provide it to read effective brand settings or change the brand override/inherit_platform choice. Existing brands keep explicit settings; new brands inherit platform defaults. CAPTCHA applies to user, brand administrator and independent agent password login. Version checks, permission rechecks and idempotent replay apply.'});
 }

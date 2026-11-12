@@ -44,7 +44,7 @@ func newConfiguredFixture(t *testing.T, disjoint ...bool) configuredFixture {
 		strict.Catalog.DisjointGroups = true
 		raw, _ = json.Marshal(strict)
 	}
-	cases := []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{{PlayID: "operator_new_play", Options: []string{"lucky"}, Plate: "A", Points: 10, Multiplier: 1}}, Draw: rules.Draw{Regular: []int{1, 3, 7, 4, 5, 6}, Special: []int{2}}, Bet: 10, Prize: 25}}
+	cases := []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{{PlayID: "operator_new_play", Options: []string{"lucky"}, Plate: "A", Points: 1000, Multiplier: 1}}, Draw: rules.Draw{Regular: []int{1, 3, 7, 4, 5, 6}, Special: []int{2}}, Bet: 1000, Prize: 2500}}
 	return configuredFixtureFrom(t, raw, cases)
 }
 func configuredFixtureFrom(t *testing.T, raw []byte, cases []platformlottery.ConfiguredCase, base ...bettingFixture) configuredFixture {
@@ -83,7 +83,7 @@ func configuredFixtureFrom(t *testing.T, raw []byte, cases []platformlottery.Con
 		if e != nil {
 			return e
 		}
-		_, e = s.WriteConfiguredSales(ctx, tx, b, f.brand, g.ID, platformlottery.ConfiguredSales{RuleID: v.ID, Enabled: true, Prices: snapshot.Prices, MinPoints: 1, MaxPoints: 100, MaxPeriodPoints: 10000, MaxUserPeriodPoints: 10000}, points.Metadata{})
+		_, e = s.WriteConfiguredSales(ctx, tx, b, f.brand, g.ID, platformlottery.ConfiguredSales{RuleID: v.ID, Enabled: true, Prices: snapshot.Prices, MinPoints: 100, MaxPoints: 10000, MaxPeriodPoints: 1000000, MaxUserPeriodPoints: 1000000}, points.Metadata{})
 		return e
 	})
 	var p platformlottery.Period
@@ -107,7 +107,10 @@ func configuredPlace(t *testing.T, c configuredFixture, key string, in Configure
 		if e != nil {
 			return mutation.Result{}, e
 		}
-		return mutation.OK(201, o), nil
+		if len(o.Items) != 1 {
+			t.Fatalf("single-item fixture returned %d orders", len(o.Items))
+		}
+		return mutation.OK(201, o.Items[0]), nil
 	})
 }
 func configuredPublishDraw(t *testing.T, c configuredFixture, n int) {
@@ -122,7 +125,7 @@ func TestConfiguredLiveWorkflowFrozenSnapshotAndIsolation(t *testing.T) {
 	c := newConfiguredFixture(t)
 	f := c.f
 	ctx := context.Background()
-	fundBettingWallet(t, f, 100)
+	fundBettingWallet(t, f, 10000)
 	first, e := configuredPlace(t, c, "configured-repeat", c.input)
 	if e != nil {
 		t.Fatal(e)
@@ -133,7 +136,7 @@ func TestConfiguredLiveWorkflowFrozenSnapshotAndIsolation(t *testing.T) {
 	}
 	altered := c.input
 	altered.Requests = append([]rules.ConfiguredRequest{}, c.input.Requests...)
-	altered.Requests[0].Points = 11
+	altered.Requests[0].Points = 1100
 	mismatch, e := configuredPlace(t, c, "configured-repeat", altered)
 	if e == nil && mismatch.Status != 409 {
 		t.Fatal("same key changed body", mismatch)
@@ -204,7 +207,7 @@ func TestConfiguredLiveWorkflowFrozenSnapshotAndIsolation(t *testing.T) {
 	}
 	wg.Wait()
 	rows, e := f.service.ConfiguredOrders(ctx, f.brand, f.member, c.g.ID, 0)
-	if e != nil || len(rows) != 1 || rows[0].Result == nil || rows[0].Result.PrizePoints != 25 {
+	if e != nil || len(rows) != 1 || rows[0].Result == nil || rows[0].Result.PrizePoints != 2500 {
 		t.Fatal("frozen payout", rows, e)
 	}
 	var audited bool
@@ -215,7 +218,7 @@ func TestConfiguredLiveWorkflowFrozenSnapshotAndIsolation(t *testing.T) {
 		t.Fatal("repeated payout", n, e)
 	}
 	wallet, e := (points.Store{DB: f.db}).Read(ctx, f.brand, f.member)
-	if e != nil || wallet.AvailablePoints != 115 {
+	if e != nil || wallet.AvailablePoints != 11500 {
 		t.Fatal("wallet", wallet, e)
 	}
 	var invalid int
@@ -248,7 +251,7 @@ func TestConfiguredLiveWorkflowFrozenSnapshotAndIsolation(t *testing.T) {
 		t.Fatal("deleted game history", e)
 	}
 	rows, e = f.service.ConfiguredOrders(ctx, f.brand, f.member, c.g.ID, 0)
-	if e != nil || len(rows) != 1 || rows[0].Result.PrizePoints != 25 {
+	if e != nil || len(rows) != 1 || rows[0].Result.PrizePoints != 2500 {
 		t.Fatal("settled order history", rows, e)
 	}
 	if _, e = c.s.Detail(ctx, storeTestOtherBrand, c.g.ID, 50, 0); !errors.Is(e, platformlottery.ErrNotFound) {
@@ -288,7 +291,7 @@ func TestConfiguredRuleSaveIsBoundToCurrentRevision(t *testing.T) {
 
 func TestConfiguredDrawPublicationChecksFrozenSemantics(t *testing.T) {
 	c := newConfiguredFixture(t, true)
-	fundBettingWallet(t, c.f, 100)
+	fundBettingWallet(t, c.f, 10000)
 	if _, e := configuredPlace(t, c, "configured-strict-draw", c.input); e != nil {
 		t.Fatal(e)
 	}
@@ -311,9 +314,9 @@ func TestConfiguredDrawPublicationChecksFrozenSemantics(t *testing.T) {
 }
 func TestConfiguredConcurrentAdmissionsDoNotOverdraw(t *testing.T) {
 	c := newConfiguredFixture(t)
-	fundBettingWallet(t, c.f, 100)
+	fundBettingWallet(t, c.f, 10000)
 	in := c.input
-	in.Requests[0].Points = 30
+	in.Requests[0].Points = 3000
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	success := 0
@@ -334,15 +337,15 @@ func TestConfiguredConcurrentAdmissionsDoNotOverdraw(t *testing.T) {
 		t.Fatal("admission count", success)
 	}
 	w, e := (points.Store{DB: c.f.db}).Read(context.Background(), c.f.brand, c.f.member)
-	if e != nil || w.AvailablePoints != 10 {
+	if e != nil || w.AvailablePoints != 1000 {
 		t.Fatal("overdraw", w, e)
 	}
 }
 func TestConfiguredPushReturnsOriginalSourcesOnce(t *testing.T) {
 	c := newConfiguredFixture(t)
 	f := c.f
-	fundBettingWallet(t, f, 15, 5, 100)
-	c.input.Requests[0].Points = 30
+	fundBettingWallet(t, f, 1500, 500, 10000)
+	c.input.Requests[0].Points = 3000
 	if _, e := configuredPlace(t, c, "configured-push", c.input); e != nil {
 		t.Fatal(e)
 	}
@@ -354,7 +357,7 @@ func TestConfiguredPushReturnsOriginalSourcesOnce(t *testing.T) {
 		t.Fatal(n, e)
 	}
 	w, e := (points.Store{DB: f.db}).Read(context.Background(), f.brand, f.member)
-	if e != nil || w.BySource[0][0] != 15 || w.BySource[1][0] != 5 || w.BySource[2][0] != 100 {
+	if e != nil || w.BySource[0][0] != 1500 || w.BySource[1][0] != 500 || w.BySource[2][0] != 10000 {
 		t.Fatal("refund allocation", w, e)
 	}
 }
@@ -672,7 +675,7 @@ func TestConfiguredOpeningScheduleRejectsBeforeOpenWithoutDebit(t *testing.T) {
 		}
 		return err
 	})
-	fundBettingWallet(t, c.f, 100)
+	fundBettingWallet(t, c.f, 10000)
 	before, e := (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, c.f.member)
 	if e != nil {
 		t.Fatal(e)
@@ -713,9 +716,9 @@ func TestConfiguredBetLimitsApplyToAdmissionWithoutDebiting(t *testing.T) {
 		t.Fatal(e)
 	}
 	next := before
-	next.MaxPoints = 5
-	next.MaxPeriodPoints = 50
-	next.MaxUserPeriodPoints = 25
+	next.MaxPoints = 500
+	next.MaxPeriodPoints = 5000
+	next.MaxUserPeriodPoints = 2500
 	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
 		var err error
 		next, err = c.s.WriteBetLimits(ctx, tx, c.b, c.f.brand, c.g.ID, next, points.Metadata{})
@@ -724,7 +727,7 @@ func TestConfiguredBetLimitsApplyToAdmissionWithoutDebiting(t *testing.T) {
 	if next.Version != before.Version+1 {
 		t.Fatal("sales version did not advance")
 	}
-	fundBettingWallet(t, c.f, 100)
+	fundBettingWallet(t, c.f, 10000)
 	wallet, e := (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, c.f.member)
 	if e != nil {
 		t.Fatal(e)
@@ -757,7 +760,7 @@ func TestConfiguredPurchasedAndClosedOpeningCannotChange(t *testing.T) {
 		return err
 	})
 	c.input.PeriodID = period.ID
-	fundBettingWallet(t, c.f, 100)
+	fundBettingWallet(t, c.f, 10000)
 	if _, err := configuredPlace(t, c, "opening-purchased", c.input); err != nil {
 		t.Fatal(err)
 	}
@@ -800,7 +803,7 @@ func TestConfiguredRetiredAutomaticPeriodCannotAcceptFunds(t *testing.T) {
 	c := newConfiguredFixture(t)
 	f := c.f
 	ctx := context.Background()
-	fundBettingWallet(t, f, 100)
+	fundBettingWallet(t, f, 10000)
 	const version int64 = 1
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		_, e := tx.Exec(ctx, `INSERT INTO platform_automation_versions(game_id,version,enabled,anchor_draw_at,anchor_period_no,interval_seconds,open_before_seconds,close_before_seconds,source_url,credential_ref,created_by,source_type) VALUES($1,1,true,clock_timestamp(),'100',120,120,15,'https://draw.example.test/retired','',$2,'interval_json')`, c.g.ID, c.a.ID)

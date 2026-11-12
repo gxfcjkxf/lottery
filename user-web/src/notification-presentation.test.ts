@@ -1,313 +1,88 @@
-import { describe, expect, it } from "vitest";
-import {
-  formatIntegerString,
-  renderNotification,
-  type NotificationPresentationItem,
-} from "./notification-presentation";
-import type { NotificationEventType } from "./notification-api";
+import { describe, expect, it } from 'vitest';
+import { notificationCatalog } from '@lottery/shared';
+import { formatIntegerString, notificationAmount, renderNotification, type NotificationPresentationItem } from './notification-presentation';
+import type { NotificationEventType } from './notification-api';
 
-const events = [
-  "member.joined",
-  "recharge.confirmed",
-  "bet.order.placed",
-  "bet.order.cancelled",
-  "bet.order.judged_cancelled",
-  "bet.order.abnormal",
-  "bet.order.won",
-  "bet.order.prize_reversed",
-  "reward.order.granted",
-  "reward.order.revoked",
-  "commission.paid",
-  "commission.adjusted",
-  "commission.corrected",
-  "withdrawal.order.reviewing",
-  "withdrawal.order.processing",
-  "withdrawal.order.paid",
-  "withdrawal.order.rejected",
-  "withdrawal.order.failed",
-  "withdrawal.order.cancelled",
-] as const;
-
-function item(event_type: NotificationEventType, template_version = 1): NotificationPresentationItem {
-  const withdrawalState = event_type.startsWith("withdrawal.order.") ? event_type.slice("withdrawal.order.".length) : null;
-  const withdrawalChinese: Record<string, string> = {
-    reviewing: "审核中", processing: "提现中", paid: "已提现", rejected: "已驳回", failed: "失败", cancelled: "已取消",
-  };
+function item(event: NotificationEventType, points: string | null = '489.9'): NotificationPresentationItem {
   return {
-    event_type,
-    template_key: event_type,
-    template_version,
-    content: event_type === "member.joined"
-      ? {
-          en: { title: "Welcome", body: "Your membership is ready. Welcome aboard." },
-          "zh-CN": { title: "欢迎", body: "您的会员账号已准备就绪，欢迎加入。" },
-        }
-      : event_type === "bet.order.won"
-        ? {
-            en: { title: "Prize credit recorded", body: "Historical record: {points} points were credited as this order's prize. This records the credit, not your current wallet balance or a guaranteed final outcome. Any correction will appear as a separate prize event; this record is retained." },
-            "zh-CN": { title: "派奖入账记录", body: "历史记录：此注单的 {points} 积分奖金已记入账本。此记录仅表示该笔入账，不代表当前钱包余额，也不保证最终结果。任何更正都会作为单独的奖金事件记录；此记录会保留。" },
-          }
-        : event_type === "bet.order.prize_reversed"
-          ? {
-              en: { title: "Prize reversal recorded", body: "Historical record: the full original prize amount of {points} points for this order was reversed. This records the reversal, not your current wallet balance. Any later prize correction will appear as a separate event; this record is retained." },
-              "zh-CN": { title: "奖金冲正记录", body: "历史记录：此注单原奖金全额 {points} 积分已冲回。此记录仅表示该笔冲正，不代表当前钱包余额。之后如有奖金更正，会作为单独事件记录；此记录会保留。" },
-            }
-          : {
-              en: { title: "Notification", body: "Current record: {points}." },
-              "zh-CN": { title: "通知", body: "当前记录：{points}。" },
-            },
-    ...(withdrawalState ? { content: {
-      en: { title: "Withdrawal status recorded", body: `Historical withdrawal status: ${withdrawalState}. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state.` },
-      "zh-CN": { title: "提现状态记录", body: `历史提现状态：${withdrawalChinese[withdrawalState]}，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。` },
-    } } : {}),
-    ...(event_type.startsWith("commission.") ? { content: {
-      en: { title: "Commission historical record", body: "Historical commission record: {points}." },
-      "zh-CN": { title: "佣金历史记录", body: "历史佣金记录：{points}。" },
-    } } : {}),
-    ...(event_type.startsWith("reward.order.") ? { content: {
-      en: { title: "Gift event recorded", body: "Edited copy: {points}." },
-      "zh-CN": { title: "赠送记录", body: "已编辑文案：{points}。" },
-    } } : {}),
-    payload: {
-      resource_id: "business-reference-42",
-      points: event_type === "member.joined" ? null : "900719925474099312345",
-    },
-    created_at: "2026-10-06T00:00:00.000Z",
+    event_type: event, template_key: event, template_version: 1,
+    content: notificationCatalog[event],
+    payload: { resource_id: 'business-reference', points: event === 'member.joined' || event.startsWith('draw.') ? null : points },
+    created_at: '2026-11-06T14:32:27Z',
   };
 }
 
-describe("notification presentation", () => {
-  it("shows saved draw facts in a separate protected bilingual note and preserves digit zeroes", () => {
-    const drawItem = (event: "draw.result.published" | "draw.result.corrected"): NotificationPresentationItem => ({
-      event_type: event,
-      template_key: event,
-      template_version: 1,
-      content: {
-        en: { title: "Result published", body: "Saved result for {resource_id}." },
-        "zh-CN": { title: "结果已公布", body: "保存的结果：{resource_id}。" },
-      },
-      payload: { resource_id: "44444444-4444-4444-8444-444444444444", points: null, draw: {
-        game_id: "11111111-1111-4111-8111-111111111111",
-        period_id: "22222222-2222-4222-8222-222222222222",
-        period_no: "20261009001",
-        result: { regular: [], special: [], digits: [0, 1, 0] },
-        drawn_at: "2026-10-06T12:00:00.123+08:00",
-        previous_draw_id: event === "draw.result.corrected" ? "55555555-5555-4555-8555-555555555555" : null,
-      } },
-      created_at: "2026-10-06T00:00:00.000Z",
-    });
-    for (const event of ["draw.result.published", "draw.result.corrected"] as const) {
-      const en = renderNotification(drawItem(event), "en");
-      const zh = renderNotification(drawItem(event), "zh");
-      expect(en.body).toBe("Saved result for 44444444-4444-4444-8444-444444444444.");
-      expect(en.protectedNote).toContain("Period: 20261009001");
-      expect(en.protectedNote).toContain("Regular: none · Special: none · Digits: 010");
-      expect(en.protectedNote).not.toContain("does not indicate a win, prize payment");
-      expect(zh.protectedNote).toContain("期号：20261009001");
-      expect(zh.protectedNote).toContain("普通：无 · 特别：无 · 数字：010");
-      expect(zh.protectedNote).not.toContain("不代表中奖、派奖或当前结果保证");
-      expect(en.body).not.toContain("010");
-    }
-  });
-
-  it.each(["zh", "en"] as const)("renders fixed copy for every %s event", (locale) => {
-    for (const event of events) {
+describe('notification presentation', () => {
+  it.each(['en', 'zh'] as const)('renders concise bilingual system events in %s', locale => {
+    for (const event of Object.keys(notificationCatalog) as NotificationEventType[]) {
+      if (event.startsWith('draw.')) continue;
       const rendered = renderNotification(item(event), locale);
       expect(rendered.title.length).toBeGreaterThan(0);
       expect(rendered.body.length).toBeGreaterThan(0);
-      expect(rendered.createdAt.length).toBeGreaterThan(0);
+      expect(rendered.protectedNote).toBeNull();
+      expect(rendered.body).not.toMatch(/Historical record|this record is retained|历史记录|此记录会保留/);
+      if (event !== 'member.joined') {
+        expect(rendered.body).toContain('489.9');
+        expect(notificationAmount(item(event), locale)?.label.length).toBeGreaterThan(0);
+      }
     }
   });
 
-  it("does not claim a win or payout for an abnormal order", () => {
-    const english = renderNotification(item("bet.order.abnormal"), "en");
-    const chinese = renderNotification(item("bet.order.abnormal"), "zh");
-    expect(english.body).not.toMatch(/win|payout|prize/i);
-    expect(chinese.body).not.toMatch(/中奖|派奖/);
+  it.each([
+    ['bet.order.won', '489.9', '+489.9', 'positive'],
+    ['bet.order.prize_reversed', '489.9', '-489.9', 'negative'],
+    ['reward.order.granted', '500', '+500', 'positive'],
+    ['reward.order.revoked', '500', '-500', 'negative'],
+    ['bet.order.cancelled', '10', '+10', 'positive'],
+    ['bet.order.judged_cancelled', '10', '+10', 'positive'],
+    ['recharge.confirmed', '25', '+25', 'positive'],
+    ['commission.paid', '25', '+25', 'positive'],
+    ['commission.adjusted', '-42.5', '-42.5', 'negative'],
+    ['commission.corrected', '42.5', '+42.5', 'positive'],
+    ['commission.corrected', '-42', '-42', 'negative'],
+    ['bet.order.placed', '10', '10', 'neutral'],
+    ['bet.order.abnormal', '10', '10', 'neutral'],
+    ['withdrawal.order.paid', '10', '10', 'neutral'],
+    ['withdrawal.order.rejected', '10', '10', 'neutral'],
+    ['commission.corrected', '0', '0', 'positive'],
+    ['commission.paid', '900719925474099312345', '+900,719,925,474,099,312,345', 'positive'],
+  ] as const)('shows the event amount without implying a wallet balance: %s %s', (event, raw, value, tone) => {
+    expect(notificationAmount(item(event, raw), 'en')).toMatchObject({ value, tone });
   });
 
-  it("presents prize credits and reversals as retained historical ledger events", () => {
-    const wonEn = renderNotification(item("bet.order.won"), "en");
-    const reversedEn = renderNotification(item("bet.order.prize_reversed"), "en");
-    expect(wonEn.body).toContain("Historical record");
-    expect(wonEn.body).toContain("were credited");
-    expect(wonEn.body).toContain("not your current wallet balance");
-    expect(wonEn.body).toContain("or a guaranteed final outcome");
-    expect(wonEn.body).toContain("separate prize event");
-    expect(wonEn.body).toContain("this record is retained");
-    expect(reversedEn.body).toContain("full original prize amount");
-    expect(reversedEn.body).toContain("not your current wallet balance");
-    expect(reversedEn.body).toContain("separate event");
-    expect(reversedEn.body).toContain("this record is retained");
-
-    const wonZh = renderNotification(item("bet.order.won"), "zh");
-    const reversedZh = renderNotification(item("bet.order.prize_reversed"), "zh");
-    expect(wonZh.body).toContain("历史记录");
-    expect(wonZh.body).toContain("不代表当前钱包余额");
-    expect(wonZh.body).toContain("不保证最终结果");
-    expect(wonZh.body).toContain("单独的奖金事件");
-    expect(wonZh.body).toContain("此记录会保留");
-    expect(reversedZh.body).toContain("原奖金全额");
-    expect(reversedZh.body).toContain("已冲回");
-    expect(reversedZh.body).toContain("不代表当前钱包余额");
-    expect(reversedZh.body).toContain("单独事件");
-    expect(reversedZh.body).toContain("此记录会保留");
-    expect(wonEn.protectedNote).toContain("were credited");
-    expect(reversedEn.protectedNote).toContain("full original prize amount");
-  });
-
-  it.each(["commission.paid", "commission.adjusted"] as const)("keeps historical wallet facts for %s", (event) => {
-    const snapshot = {
-      en: { title: "Operator title", body: "Operator copy: {points}." },
-      "zh-CN": { title: "运营标题", body: "运营内容：{points}。" },
-    };
-    const custom = { ...item(event, 2), content: snapshot };
-    const en = renderNotification(custom, "en");
-    const zh = renderNotification(custom, "zh");
-    expect(en.body).toBe("Operator copy: 900,719,925,474,099,312,345.");
-    expect(en.protectedNote).toContain("Historical record");
-    expect(en.protectedNote).not.toContain("not new income or an external payment forecast");
-    expect(en.protectedNote).toContain("900,719,925,474,099,312,345");
-    expect(zh.body).toBe("运营内容：900,719,925,474,099,312,345。");
-    expect(zh.protectedNote).toContain("历史记录");
-    expect(zh.protectedNote).not.toContain("不是新收入预测或外部付款承诺");
-    expect(zh.protectedNote).toContain("900,719,925,474,099,312,345");
-  });
-
-  it("keeps corrected commission facts fixed when custom copy is shown", () => {
-    const corrected = { ...item("commission.corrected", 2), payload: { resource_id: "target-id", points: "-42" }, content: {
-      en: { title: "Operator title", body: "Operator copy: {points}." },
-      "zh-CN": { title: "运营标题", body: "运营内容：{points}。" },
+  it('preserves operator copy and replaces placeholders without adding duplicate explanations', () => {
+    const custom = { ...item('commission.corrected', '-42.5'), template_version: 2, content: {
+      en: { title: 'Correction {points}', body: 'Adjustment {points}; reference {resource_id}.' },
+      'zh-CN': { title: '更正 {points}', body: '调整 {points}；编号 {resource_id}。' },
     } };
-    const en = renderNotification(corrected, "en");
-    const zh = renderNotification(corrected, "zh");
-    expect(en.title).toBe("Operator title");
-    expect(en.protectedNote).toBe("Historical record: a commission correction of -42 points was posted to your commission available balance. Positive points record an additional credit; negative points record a recovery.");
-    expect(zh.protectedNote).toBe("历史记录：佣金可用积分曾发生 -42 积分更正。正数表示补发，负数表示追回。");
+    expect(renderNotification(custom, 'en')).toMatchObject({ title: 'Correction -42.5', body: 'Adjustment -42.5; reference business-reference.', protectedNote: null });
+    expect(renderNotification(custom, 'zh').body).toBe('调整 -42.5；编号 business-reference。');
+    expect(notificationAmount(custom, 'zh')).toMatchObject({ label: '调整积分', value: '-42.5' });
   });
 
-  it.each(["commission.paid", "commission.adjusted", "commission.corrected"] as const)("rejects missing historical snapshots for %s", (event) => {
-    expect(() => renderNotification({ ...item(event), content: null as never }, "en")).toThrow(/immutable content snapshot/);
+  it('preserves saved draw facts and leading zeroes', () => {
+    const draw = { ...item('draw.result.corrected'), payload: { resource_id: 'draw-id', points: null, draw: {
+      game_id: 'game-id', period_id: 'period-id', period_no: '2026310', result: { regular: [], special: [], digits: [0, 1, 0] },
+      drawn_at: '2026-11-06T12:00:00Z', previous_draw_id: 'previous-id',
+    } } };
+    expect(renderNotification(draw, 'en').protectedNote).toContain('Digits: 010');
+    expect(renderNotification(draw, 'zh').protectedNote).toContain('数字：010');
+    expect(notificationAmount(draw, 'zh')).toBeNull();
+    expect(() => renderNotification(item('draw.result.published'), 'en')).toThrow(/draw facts/);
   });
 
-  it.each([
-    ["reward.order.granted", "points were credited to your gift available balance", "积分曾记入赠送可用积分"],
-    ["reward.order.revoked", "was reversed from your gift available balance", "曾从赠送可用积分撤销"],
-  ] as const)("keeps the fixed reward-state note for edited %s content", (event, enPhrase, zhPhrase) => {
-    const renderedEn = renderNotification(item(event), "en");
-    const renderedZh = renderNotification(item(event), "zh");
-    expect(renderedEn.body).toBe("Edited copy: 900,719,925,474,099,312,345.");
-    expect(renderedZh.body).toBe("已编辑文案：900,719,925,474,099,312,345。");
-    expect(renderedEn.protectedNote).toContain(enPhrase);
-    expect(renderedZh.protectedNote).toContain(zhPhrase);
-    expect(renderedEn.protectedNote).toContain("900,719,925,474,099,312,345");
-    expect(renderedZh.protectedNote).toContain("900,719,925,474,099,312,345");
-
+  it('rejects unsupported events, mismatched templates and missing snapshots', () => {
+    expect(() => renderNotification({ ...item('member.joined'), event_type: 'unknown' as never, template_key: 'unknown' as never }, 'en')).toThrow(RangeError);
+    expect(() => renderNotification({ ...item('member.joined'), template_key: 'bet.order.placed' }, 'en')).toThrow(RangeError);
+    expect(() => renderNotification({ ...item('commission.paid'), content: null as never }, 'en')).toThrow(/immutable content snapshot/);
+    expect(() => renderNotification({ ...item('commission.paid'), template_version: 0 }, 'en')).toThrow(RangeError);
+    expect(() => renderNotification(item('commission.paid', null), 'en')).toThrow(/Invalid points/);
   });
 
-  it.each(["reward.order.granted", "reward.order.revoked"] as const)(
-    "requires a frozen reward snapshot for %s", (event) => {
-      expect(() => renderNotification({ ...item(event), content: null as never }, "en")).toThrow(/immutable content snapshot/);
-    },
-  );
-
-  it.each([
-    ["withdrawal.order.reviewing", "reviewing", "审核中"],
-    ["withdrawal.order.processing", "processing", "提现中"],
-    ["withdrawal.order.paid", "paid", "已提现"],
-    ["withdrawal.order.rejected", "rejected", "已驳回"],
-    ["withdrawal.order.failed", "failed", "失败"],
-    ["withdrawal.order.cancelled", "cancelled", "已取消"],
-  ] as const)("keeps protected bilingual historical context for %s snapshots", (event, state, stateZh) => {
-    const snapshot = {
-      en: { title: "Operator title", body: "Operator copy: {points}." },
-      "zh-CN": { title: "运营标题", body: "运营内容：{points}。" },
-    };
-    const custom = { ...item(event, 2), content: snapshot };
-    const renderedEn = renderNotification(custom, "en");
-    const renderedZh = renderNotification(custom, "zh");
-
-    expect(renderedEn.body).toBe("Operator copy: 900,719,925,474,099,312,345.");
-    expect(renderedEn.protectedNote).toContain(`Historical withdrawal status: ${state}.`);
-    expect(renderedEn.protectedNote).not.toContain("not proof of an external transfer");
-    expect(renderedEn.protectedNote).toContain("Check the withdrawal order for its current state.");
-    expect(renderedZh.body).toBe("运营内容：900,719,925,474,099,312,345。");
-    expect(renderedZh.protectedNote).toContain(`历史提现状态：${stateZh}`);
-    expect(renderedZh.protectedNote).not.toContain("不证明外部转账");
-    expect(renderedZh.protectedNote).toContain("请查询提现订单的最新状态");
-    expect(renderedEn.protectedNote).not.toMatch(/bank|crypto|virtual currency|payment|transfer succeeded/i);
-    expect(() => renderNotification({ ...item(event), content: null as never }, "en")).toThrow(/immutable content snapshot/);
-  });
-
-  it("renders snapshot copy by locale and replaces every supported placeholder exactly", () => {
-    const snapshot = {
-      en: { title: "Credit {points} ({points})", body: "Added {points}; again {points}; reference {resource_id}." },
-      "zh-CN": { title: "到账 {points}（{points}）", body: "已到账 {points}；再次 {points}；编号 {resource_id}。" },
-    };
-    const custom = {
-      ...item("recharge.confirmed", 2),
-      content: snapshot,
-      payload: { resource_id: "44444444-4444-4444-8444-444444444444", points: "9223372036854775807" },
-    };
-
-    expect(renderNotification(custom, "en")).toMatchObject({
-      title: "Credit 9,223,372,036,854,775,807 (9,223,372,036,854,775,807)",
-      body: "Added 9,223,372,036,854,775,807; again 9,223,372,036,854,775,807; reference 44444444-4444-4444-8444-444444444444.",
-      protectedNote: null,
-    });
-    expect(renderNotification(custom, "zh")).toMatchObject({
-      title: "到账 9,223,372,036,854,775,807（9,223,372,036,854,775,807）",
-      body: "已到账 9,223,372,036,854,775,807；再次 9,223,372,036,854,775,807；编号 44444444-4444-4444-8444-444444444444。",
-    });
-  });
-
-  it.each(["bet.order.won", "bet.order.prize_reversed"] as const)(
-    "adds a fixed protected historical note beside snapshot copy for %s",
-    (event) => {
-      const snapshot = {
-        en: { title: "Operator title", body: "Operator copy: {points}." },
-        "zh-CN": { title: "自定义标题", body: "自定义内容：{points}。" },
-      };
-      const custom = { ...item(event, 2), content: snapshot };
-      const renderedEn = renderNotification(custom, "en");
-      const renderedZh = renderNotification(custom, "zh");
-      const defaultEn = renderNotification(item(event), "en");
-      const defaultZh = renderNotification(item(event), "zh");
-      expect(renderedEn.body).toBe("Operator copy: 900,719,925,474,099,312,345.");
-      expect(renderedEn.protectedNote).toBe(defaultEn.protectedNote);
-      expect(renderedZh.body).toBe("自定义内容：900,719,925,474,099,312,345。");
-      expect(renderedZh.protectedNote).toBe(defaultZh.protectedNote);
-      expect(renderedEn.protectedNote).not.toContain("not your current wallet balance");
-      expect(renderedZh.protectedNote).not.toContain("不代表当前钱包余额");
-    },
-  );
-
-  it.each(["zh", "en"] as const)("renders exact points and business references in %s", (locale) => {
-    const withPoints = events.filter((event) => event !== "member.joined");
-    for (const event of withPoints) {
-      const rendered = renderNotification(item(event), locale);
-      expect(rendered.points).toBe("900,719,925,474,099,312,345");
-      expect(rendered.body).toContain("900,719,925,474,099,312,345");
-      expect(rendered.reference).toBe("business-reference-42");
-    }
-    const welcome = renderNotification(item("member.joined"), locale);
-    expect(welcome.points).toBeNull();
-    expect(welcome.reference).toBeNull();
-  });
-
-  it("rejects unknown versions, template keys, and unsupported events", () => {
-    expect(renderNotification(item("member.joined", 2), "en").body).toContain("Welcome aboard");
-    expect(() => renderNotification(item("admin.internal" as NotificationEventType), "zh")).toThrow(RangeError);
-    expect(() => renderNotification({ ...item("member.joined"), template_key: "bet.order.placed" }, "en")).toThrow(RangeError);
-    expect(() => renderNotification({ ...item("member.joined", 2), content: undefined as never }, "en")).toThrow(RangeError);
-  });
-
-  it("formats large integer strings without numeric precision loss", () => {
-    expect(formatIntegerString("900719925474099312345", "en")).toBe(
-      "900,719,925,474,099,312,345",
-    );
-    expect(formatIntegerString("-1200000", "zh")).toBe("-1,200,000");
-    expect(formatIntegerString(null, "en")).toBe("");
-    expect(formatIntegerString("1.5", "en")).toBe("1.5");
+  it('formats integer strings without losing precision and preserves decimals', () => {
+    expect(formatIntegerString('900719925474099312345', 'en')).toBe('900,719,925,474,099,312,345');
+    expect(formatIntegerString('-1200000', 'zh')).toBe('-1,200,000');
+    expect(formatIntegerString(null, 'en')).toBe('');
+    expect(formatIntegerString('489.9', 'en')).toBe('489.9');
   });
 });

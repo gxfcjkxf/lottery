@@ -117,6 +117,7 @@ function mount(account: AdminAccount, brandId: string) {
 }
 function defaultFetch(input: RequestInfo | URL, init?: RequestInit) {
   const url = String(input), brandId = new Headers(init?.headers).get("X-Brand-ID") ?? brandA;
+  if (url.includes('/commission-cycles/candidates?')) return Promise.resolve(ok({brand_id:brandId,items:[{anchor_order_id:anchorId,window_from:'2026-10-01T00:00:00Z',window_to:'2026-10-08T00:00:00Z',cycle:'weekly'}],limit:100,offset:0}));
   if (url.includes("/commission-discovery?")) return Promise.resolve(ok(page(brandId, [discovery(brandId)])));
   if (url.endsWith("/commission-cycles?limit=20&offset=0")) return Promise.resolve(ok(page(brandId, [cycle(brandId, false)])));
   if (url.endsWith(`/commission-cycles/${cycleId}/earnings?limit=20&offset=0`)) return Promise.resolve(ok({ ...page(brandId, []), cycle_id: cycleId }));
@@ -266,10 +267,10 @@ describe("CommissionCyclesManagement", () => {
       return defaultFetch(input, init);
     }));
     const first = mount(baseAccount, brandA); await flush();
-    const createButton=findNode(first.container,n=>n.tag==='button' && textOf(n)==='手动创建核算');(createButton!.props.onClick as ()=>void)();await nextTick();
-    const anchor = findNode(first.container, node => node.tag === 'select-control' && node.props['aria-label']==='注单');
+    const createButton=findNode(first.container,n=>n.tag==='button' && textOf(n)==='补建核算');(createButton!.props.onClick as ()=>void)();await flush();
+    const anchor = findNode(first.container, node => node.tag === 'select-control' && node.props['aria-label']==='周期');
     (anchor!.props["onUpdate:modelValue"] as (value: string) => void)(anchorId); await nextTick();
-    const review = findNode(first.container, (node) => node.tag === "button" && textOf(node).includes("检查并确认登记"));
+    const review = findNode(first.container, (node) => node.tag === "button" && textOf(node).includes("核对周期"));
     (review!.props.onClick as () => void)(); await nextTick();
     const checkbox = findNode(first.container, (node) => node.tag === "input" && node.props.type === "checkbox");
     (checkbox!.props["onUpdate:modelValue"] as (value: boolean) => void)(true); await nextTick();
@@ -283,6 +284,8 @@ describe("CommissionCyclesManagement", () => {
     expect(buttonTexts(second.container).some((label) => label.includes("丢弃此请求"))).toBe(false);
     const recover = findNode(second.container, (node) => node.tag === "button" && textOf(node).includes("检查并恢复原请求"));
     expect(recover).not.toBeNull(); (recover!.props.onClick as () => void)(); await nextTick();
+    expect(textOf(second.container)).toContain('周结');
+    expect(textOf(second.container)).not.toContain(anchorId);
     const replayCheck = findNode(second.container, (node) => node.tag === "input" && node.props.type === "checkbox");
     (replayCheck!.props["onUpdate:modelValue"] as (value: boolean) => void)(true); await nextTick();
     const replay = findNode(second.container, (node) => node.tag === "button" && textOf(node).includes("提交"));
@@ -323,13 +326,14 @@ describe("CommissionCyclesManagement", () => {
     vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
     vi.stubGlobal("fetch", vi.fn<typeof fetch>((input, init) => {
       const url = String(input), brandId = new Headers(init?.headers).get("X-Brand-ID") ?? brandA;
+  if (url.includes('/commission-cycles/candidates?')) return Promise.resolve(ok({brand_id:brandId,items:[{anchor_order_id:anchorId,window_from:'2026-10-01T00:00:00Z',window_to:'2026-10-08T00:00:00Z',cycle:'weekly'}],limit:100,offset:0}));
       if (url.endsWith("/commission-cycles?limit=20&offset=0")) return Promise.resolve(ok(page(brandId, [cycle(brandId, true, "failed")])));
       if (url.endsWith(`/commission-cycles/${cycleId}`)) return Promise.resolve(ok(cycle(brandId, true, "failed")));
       return defaultFetch(input, init);
     }));
     const retryOnly: AdminAccount = { ...baseAccount, permissions_by_brand: { [brandA]: ["commission.view.brand", "commission.retry.brand"] } };
     const mounted = mount(retryOnly, brandA); await flush();
-    const create = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("检查并确认登记"));
+    const create = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("核对周期"));
     expect(create).toBeNull();
     const card = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-cycle-id"] === cycleId);
     (card!.props.onClick as () => void)(); await flush();
@@ -358,10 +362,10 @@ describe("CommissionCyclesManagement", () => {
       return defaultFetch(input, init);
     }));
     const mounted = mount(baseAccount, brandA); await flush();
-    const createButton=findNode(mounted.container,n=>n.tag==='button' && textOf(n)==='手动创建核算');(createButton!.props.onClick as ()=>void)();await nextTick();
-    const anchor = findNode(mounted.container, node => node.tag === 'select-control' && node.props['aria-label']==='注单');
+    const createButton=findNode(mounted.container,n=>n.tag==='button' && textOf(n)==='补建核算');(createButton!.props.onClick as ()=>void)();await flush();
+    const anchor = findNode(mounted.container, node => node.tag === 'select-control' && node.props['aria-label']==='周期');
     (anchor!.props["onUpdate:modelValue"] as (value: string) => void)(anchorId); await nextTick();
-    const reviewButton = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("检查并确认登记"));
+    const reviewButton = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("核对周期"));
     (reviewButton!.props.onClick as () => void)(); await nextTick();
     const check = findNode(mounted.container, (node) => node.tag === "input" && node.props.type === "checkbox");
     (check!.props["onUpdate:modelValue"] as (value: boolean) => void)(true); await nextTick();
@@ -396,10 +400,10 @@ describe("CommissionCyclesManagement", () => {
     });
     vi.stubGlobal("fetch", fetcher);
     const mounted = mount(baseAccount, brandA); await flush();
-    const createButton=findNode(mounted.container,n=>n.tag==='button' && textOf(n)==='手动创建核算');(createButton!.props.onClick as ()=>void)();await nextTick();
-    const anchor = findNode(mounted.container, node => node.tag === 'select-control' && node.props['aria-label']==='注单');
+    const createButton=findNode(mounted.container,n=>n.tag==='button' && textOf(n)==='补建核算');(createButton!.props.onClick as ()=>void)();await flush();
+    const anchor = findNode(mounted.container, node => node.tag === 'select-control' && node.props['aria-label']==='周期');
     (anchor!.props["onUpdate:modelValue"] as (value: string) => void)(anchorId); await nextTick();
-    const review = findNode(mounted.container, node => node.tag === "button" && textOf(node).includes("检查并确认登记"));
+    const review = findNode(mounted.container, node => node.tag === "button" && textOf(node).includes("核对周期"));
     (review!.props.onClick as () => void)(); await nextTick();
     const check = findNode(mounted.container, node => node.tag === "input" && node.props.type === "checkbox");
     (check!.props["onUpdate:modelValue"] as (value: boolean) => void)(true); await nextTick();
@@ -422,7 +426,7 @@ describe("CommissionCyclesManagement", () => {
     mounted.app.unmount();
   });
 
-  it("clears a selected discovery when a new page no longer contains it", async () => {
+  it("reopening tasks rereads the list without a permanent refresh button", async () => {
     let removeDiscovery = false;
     vi.stubGlobal("fetch", vi.fn<typeof fetch>((input, init) => {
       if (removeDiscovery && String(input).includes("/commission-discovery?")) return Promise.resolve(ok(page(brandA, [])));
@@ -434,8 +438,8 @@ describe("CommissionCyclesManagement", () => {
     (discovery!.props.onClick as () => void)(); await flush();
     expect(textOf(mounted.container) + operationToastText()).toContain("所选发现记录");
     removeDiscovery = true;
-    const refresh = findNode(mounted.container, node => node.tag === "button" && textOf(node) === "刷新");
-    await (refresh!.props.onClick as () => Promise<void>)(); await flush();
+    expect(findNode(mounted.container, node => node.tag === "button" && textOf(node) === "刷新")).toBeNull();
+    await (taskButton!.props.onClick as () => Promise<void>)(); await flush();
     expect(textOf(mounted.container) + operationToastText()).not.toContain("所选发现记录");
     expect(findNode(mounted.container, node => node.tag === "button" && textOf(node).includes("检查并确认重试发现记录"))).toBeNull();
     mounted.app.unmount();

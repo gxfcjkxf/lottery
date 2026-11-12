@@ -21,6 +21,13 @@ test('real-page checks reject missing headers, legacy pagers and nested surfaces
   await expect(list.locator('td.empty-state')).toBeVisible()
   await expectListLayout(page)
 
+  await test.step('reintroducing a parenthetical label instruction fails acceptance', async () => {
+    const header = list.locator('th,button').filter({ visible: true }).first(), original = await header.innerHTML()
+    await header.evaluate(node => { node.textContent = 'Display name (max 120 characters)' })
+    try { await expect(expectListLayout(page)).rejects.toThrow(/redundant parenthetical instructions/) }
+    finally { await header.evaluate((node, html) => { node.innerHTML = html }, original) }
+  })
+
   await test.step('removing the table header fails acceptance', async () => {
     const header = await list.locator('thead').evaluateHandle(node => { node.remove(); return node })
     try { await expect(expectListLayout(page)).rejects.toThrow(/missing table headers/) }

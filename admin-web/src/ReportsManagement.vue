@@ -1,6 +1,6 @@
 <script setup lang="ts">
+const showSummary = ref(true), showDetails = ref(true)
 import {vInlineValidation} from '@lottery/shared'
-import {nextTick} from 'vue'
 const filterReset=ref(0)
 import ManagementList from "@lottery/shared/ManagementList.vue"
 import TablePagination from "@lottery/shared/TablePagination.vue"
@@ -18,13 +18,11 @@ const publicErrorI18n = usePublicErrorI18n();
 const publicErrorMessage = publicErrorI18n.errorMessage;
 import { withGlobalLoading } from '@lottery/shared';
 import PlatformTemporalInput from "@lottery/shared/PlatformTemporalInput.vue";
-import { vGlobalLoading } from "@lottery/shared";
 const displayLocale = useAdminI18n().locale;
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { createReportsApi, reportsPermissions } from "./reports-api";
 import { createAttributionReportApi, attributionReportPermissions, type AttributionReport, type AttributionGroupBy, type AttributionJoinMethod } from "./attribution-report-api";
-import { createReportExportApi, reportExportPermissions } from "./report-export-api";
 import "./report-workspace.css";
 import WithdrawalReport from "./WithdrawalReport.vue";
 import CommissionReport from "./CommissionReport.vue";
@@ -39,7 +37,7 @@ const ui = (key: string) => t(adminKey(key));
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 
-const PAGE_SIZE = 20;
+const pageSizes = ref({ betting: 20, ledger: 20 });
 const api = createReportsApi();
 const attributionApi = createAttributionReportApi();
 const attributionRights = computed(() => attributionReportPermissions(props.account, props.brandId));
@@ -49,9 +47,7 @@ const agentDraft = ref("");
 const agentScope = ref<"direct" | "downline">("direct");
 const joinMethod = ref<AttributionJoinMethod | "">("");
 const joinMethodLabels = { domain: 'admin.attribution.join.domain', operator: 'admin.attribution.join.operator', agent_code: 'admin.attribution.join.agentCode', referral_code: 'admin.attribution.join.referralCode' } as const;
-const exportApi = createReportExportApi();
 const permissions = computed(() => reportsPermissions(props.account, props.brandId));
-const exportPermissions = computed(() => reportExportPermissions(props.account, props.brandId));
 const reportTabs = [
   { id: 'betting', permissions: ['report_betting.view.brand'], label: 'admin.copy.b30b1af4' },
   { id: 'ledger', permissions: ['report_ledger.view.brand'], label: 'admin.copy.5a74ef63' },
@@ -85,15 +81,9 @@ const bettingError = ref<string | import("@lottery/shared").LocalizedMessage>(""
 const ledgerError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const bettingBusy = ref(false);
 const ledgerBusy = ref(false);
-const bettingExportBusy = ref(false);
-const ledgerExportBusy = ref(false);
-const bettingExportError = ref<string | import("@lottery/shared").LocalizedMessage>("");
-const ledgerExportError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const bettingOffset = ref(0);
 const ledgerOffset = ref(0);
 let requestTicket = 0;
-let exportGeneration = 0;
-const exportTickets = { betting: 0, ledger: 0 };
 let alive = true;
 type ReportFilters = { from: string; to: string; memberId: string | null; gameId: string | null; agentId: string | null; agentScope: "direct" | "downline"; joinMethod: AttributionJoinMethod | null };
 type ReportGroups = { betting: AttributionGroupBy; ledger: "day" | "entry_type" };
@@ -177,10 +167,9 @@ function attributionQuery(filters: ReportFilters, group: AttributionGroupBy) {
 }
 async function readBetting(filters: ReportFilters, group: AttributionGroupBy, offset: number) {
   return usesAttribution(filters, group)
-    ? attributionApi.report(props.brandId, { ...attributionQuery(filters, group), limit: PAGE_SIZE, offset })
-    : api.betting(props.brandId, { ...bettingQuery(filters, group), limit: PAGE_SIZE, offset });
+    ? attributionApi.report(props.brandId, { ...attributionQuery(filters, group), limit: pageSizes.value.betting, offset })
+    : api.betting(props.brandId, { ...bettingQuery(filters, group), limit: pageSizes.value.betting, offset });
 }
-const canExportBetting = computed(() => !!committedQuery.value && (usesAttribution(committedQuery.value.filters, committedQuery.value.groups.betting) ? attributionRights.value.export : exportPermissions.value.betting));
 
 async function loadReports(offsets: { betting: number; ledger: number }, filters: ReportFilters, groups: ReportGroups) {
   const scope = scopeKey.value;
@@ -207,7 +196,7 @@ async function loadReports(offsets: { betting: number; ledger: number }, filters
     }).finally(() => { if (current(ticket, scope)) bettingBusy.value = false; }));
   }
   if (permissions.value.ledger) {
-    const query = { from: filters.from, to: filters.to, group_by: groups.ledger, limit: PAGE_SIZE, offset: offsets.ledger, ...(filters.memberId ? { member_id: filters.memberId } : {}) };
+    const query = { from: filters.from, to: filters.to, group_by: groups.ledger, limit: pageSizes.value.ledger, offset: offsets.ledger, ...(filters.memberId ? { member_id: filters.memberId } : {}) };
     jobs.push(api.ledger(props.brandId, query).then((result: Awaited<ReturnType<typeof api.ledger>>) => {
       if (!current(ticket, scope)) return;
       ledgerResult.value = result;
@@ -239,53 +228,11 @@ async function queryReports() {
   }
 }
 
-async function exportReport(kind: "betting" | "ledger") {
-  const committed = committedQuery.value;
-  const allowed = kind === "betting" ? canExportBetting.value : exportPermissions.value.ledger;
-  if (!allowed || !committed || !alive) return;
-  const scope = scopeKey.value;
-  const generation = exportGeneration;
-  const exportTicket = ++exportTickets[kind];
-  const exportKind = activeReport.value;
-  const busy = kind === "betting" ? bettingExportBusy : ledgerExportBusy;
-  const error = kind === "betting" ? bettingExportError : ledgerExportError;
-  busy.value = true;
-  error.value = "";
-  try {
-    const filters = committed.filters;
-    const result = kind === "betting"
-      ? usesAttribution(filters, committed.groups.betting)
-        ? await attributionApi.exportCsv(props.brandId, attributionQuery(filters, committed.groups.betting))
-        : await exportApi.betting(props.brandId, bettingQuery(filters, committed.groups.betting))
-      : await exportApi.ledger(props.brandId, { from: filters.from, to: filters.to, group_by: committed.groups.ledger, ...(filters.memberId ? { member_id: filters.memberId } : {}) });
-    if (!alive || exportGeneration !== generation || scopeKey.value !== scope || committedQuery.value !== committed || activeReport.value !== exportKind || exportKind !== kind) return;
-    const blob = new Blob([result.bytes], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = result.filename;
-    anchor.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-  } catch (cause) {
-    if (!alive || exportGeneration !== generation || scopeKey.value !== scope || committedQuery.value !== committed || activeReport.value !== exportKind) return;
-    if (cause instanceof AdminApiError && cause.status === 401) {
-      requestTicket++;
-      clearResults();
-      committedQuery.value = null;
-      setErrorForPermission();
-      emit("session-invalid");
-    }
-    error.value = errorText(cause);
-  } finally {
-    if (exportTickets[kind] === exportTicket) busy.value = false;
-  }
-}
-
 async function pageReport(kind: "betting" | "ledger", delta: number) {
   const committed = committedQuery.value;
   if (!committed) return;
   const offsets = { betting: bettingOffset.value, ledger: ledgerOffset.value };
-  offsets[kind] = Math.max(0, offsets[kind] + delta * PAGE_SIZE);
+  offsets[kind] = Math.max(0, offsets[kind] + delta * pageSizes.value[kind]);
   await loadReports(offsets, committed.filters, committed.groups);
 }
 
@@ -345,43 +292,27 @@ function setErrorForPermission() {
 }
 
 watch(scopeKey, (next) => {
-  exportGeneration++;
-  exportTickets.betting++;
-  exportTickets.ledger++;
   requestTicket++;
   committedScope = next;
   committedQuery.value = null;
   clearResults();
   bettingBusy.value = false;
   ledgerBusy.value = false;
-  bettingExportBusy.value = false;
-  ledgerExportBusy.value = false;
-  bettingExportError.value = "";
-  ledgerExportError.value = "";
   setErrorForPermission();
   if (canViewBetting.value || permissions.value.ledger) void withGlobalLoading(queryReports);
 }, { flush: "sync" });
 watch(activeReport, () => {
-  exportGeneration++;
-  exportTickets.betting++;
-  exportTickets.ledger++;
-  bettingExportBusy.value = false;
-  ledgerExportBusy.value = false;
-  bettingExportError.value = "";
-  ledgerExportError.value = "";
-}, { flush: "sync" });
+  }, { flush: "sync" });
 onMounted(() => {
   setPreset("today");
   setErrorForPermission();
   if (canViewBetting.value || permissions.value.ledger) void withGlobalLoading(queryReports);
 });
-onBeforeUnmount(() => { alive = false; exportGeneration++; exportTickets.betting++; exportTickets.ledger++; requestTicket++; });
+onBeforeUnmount(() => { alive = false; requestTicket++; });
 
-useOperationToast(() => bettingExportError.value, value => display(value), 'error');
 useOperationToast(() => bettingError.value, value => display(value), 'error');
-useOperationToast(() => ledgerExportError.value, value => display(value), 'error');
 useOperationToast(() => ledgerError.value, value => display(value), 'error');
-async function clearFilters() { filterReset.value++; setPreset('today'); memberDraft.value=agentDraft.value=gameDraft.value=''; agentScope.value='direct'; joinMethod.value=''; bettingGroup.value=ledgerGroup.value='day'; await nextTick();await queryReports() }
+
 </script>
 
 <template>
@@ -397,7 +328,7 @@ async function clearFilters() { filterReset.value++; setPreset('today'); memberD
 
     <div :id="`report-panel-${activeReport}`" role="tabpanel" :aria-labelledby="`report-tab-${activeReport}`" :tabindex="0" class="report-panel">
     <ManagementList v-show="activeReport === 'betting' || activeReport === 'ledger'" :busy="bettingBusy || ledgerBusy" class="report-panel">
-    <template #actions><template v-if="activeReport==='betting'"><div class="reports-section-heading report-actions"><div class="reports-export-actions"><span v-global-loading v-if="bettingBusy" class="reports-state">{{ t('admin.copy.27342bf3') }}</span><button data-testid="attribution-export" class="reports-button button button-secondary" type="button" :disabled="!canExportBetting || !committedQuery || bettingExportBusy" @click="withGlobalLoading(exportReport, 'betting')">{{ bettingExportBusy ? t('admin.copy.1c800a70') : t('admin.copy.800c75fc') }}</button><span v-if="!canExportBetting">{{ t('admin.copy.fcd324d4') }}</span></div></div></template><template v-else><div class="reports-section-heading report-actions"><div class="reports-export-actions"><span v-global-loading v-if="ledgerBusy" class="reports-state">{{ t('admin.copy.27342bf3') }}</span><button class="reports-button button button-secondary" type="button" :disabled="!exportPermissions.ledger || !committedQuery || ledgerExportBusy" @click="withGlobalLoading(exportReport, 'ledger')">{{ ledgerExportBusy ? t('admin.copy.1c800a70') : t('admin.copy.800c75fc') }}</button><span v-if="!exportPermissions.ledger">{{ t('admin.copy.fcd324d4') }}</span></div></div></template></template><template #filters>
+<template #filters>
       <div class="reports-presets" :aria-label="t('admin.copy.56549499')">
         <button class="reports-button button button-secondary" type="button" @click="setPreset('today')">{{ t('admin.report.today') }}</button>
         <button class="reports-button button button-secondary" type="button" @click="setPreset('yesterday')">{{ t('admin.report.yesterday') }}</button>
@@ -417,38 +348,39 @@ async function clearFilters() { filterReset.value++; setPreset('today'); memberD
         </template>
         <label v-if="activeReport === 'betting'"><SelectControl :placeholder="t('admin.copy.6cc02c91')" data-testid="attribution-group" v-model="bettingGroup" :label="t('admin.copy.6cc02c91')" :options="[{ value: 'day', label: (String(t('admin.report.byDate'))).trim() }, { value: 'game', label: (String(t('admin.copy.ef04a723'))).trim() }, { value: 'member', label: (String(t('admin.copy.93a783ef'))).trim() }, ...(attributionRights.view ? [{ value: 'agent', label: t('filter.agent') }, { value: 'join_method', label: t('admin.copy.9a96afd1') }] : [])]" /></label>
         <label v-else><SelectControl :placeholder="t('admin.copy.6cc02c91')" v-model="ledgerGroup" :label="t('admin.copy.6cc02c91')" :options="[{ value: 'day', label: (String(t('admin.copy.f91541ed'))).trim() }, { value: 'entry_type', label: (String(t('admin.copy.5ea104fa'))).trim() }]" /></label>
+        <label class="report-display-option"><input v-model="showSummary" type="checkbox" />{{ t('admin.reports.showSummary') }}</label><label class="report-display-option"><input v-model="showDetails" type="checkbox" />{{ t('admin.reports.showDetails') }}</label>
         <button data-testid="attribution-query" class="reports-button button button-primary" type="submit" :disabled="bettingBusy || ledgerBusy || memberSearchPending || activeReport === 'betting' && agentSearchPending">{{ t('admin.copy.2bd50b3e') }}</button>
-      <button type="button" class="reports-button button button-secondary" :disabled="bettingBusy || ledgerBusy" @click="withGlobalLoading(clearFilters)">{{t('admin.copy.b089734d')}}</button></form>
+      </form>
     </template>
 
 
-    <div v-show="activeReport === 'betting'" id="betting-results" data-testid="attribution-result" class="reports-panel report-results" :aria-label="t('admin.copy.b30b1af4')">
+    <div v-show="activeReport === 'betting' && (showSummary || showDetails)" id="betting-results" data-testid="attribution-result" class="reports-panel report-results" :aria-label="t('admin.copy.b30b1af4')">
 
 
       <template v-if="bettingResult">
-        <dl data-testid="attribution-summary" class="reports-summary report-metrics"><div v-for="metric in bettingMetrics(bettingResult.summary)" :key="metric[0]"><dt><span>{{ labelFor(metric[0]) }}</span></dt><dd><strong>{{ formatInteger(metric[1]) }}</strong></dd></div></dl>
-        <div class="table-wrap reports-table-wrap"><table class="console-table reports-table" :class="{'console-responsive-table':!bettingResult.items.length}"><thead><tr><th>{{ t('admin.copy.b96f43c6') }}</th><th v-for="metric in bettingMetrics(bettingResult.summary)" :key="metric[0]">{{ labelFor(metric[0]) }}</th></tr></thead><tbody><tr v-for="item in bettingResult.items" :key="item.key"><td :data-label="String(t('admin.copy.b96f43c6'))">{{ bettingResult.query.group_by === 'agent' && item.key === 'none' ? t('admin.copy.a4faa770') : associationGroupLabel(item, bettingResult.query.group_by, item.key, item.label, associationLocale) }}</td><td :data-label="String(labelFor(metric[0]))" v-for="metric in bettingMetrics(item.totals)" :key="metric[0]">{{ formatInteger(metric[1]) }}</td></tr><tr v-if="!bettingResult.items.length"><td :colspan="bettingMetrics(bettingResult.summary).length + 1" class="empty-state">{{ t('admin.copy.24e33023') }}</td></tr></tbody></table></div>
-        <div v-if="bettingResult.items.length" class="reports-cards"><article v-for="item in bettingResult.items" :key="item.key"><h4>{{ bettingResult.query.group_by === 'agent' && item.key === 'none' ? t('admin.copy.a4faa770') : associationGroupLabel(item, bettingResult.query.group_by, item.key, item.label, associationLocale) }}</h4><dl><div v-for="[key, value] in rowValues(item.totals)" :key="key"><dt>{{ labelFor(key) }}</dt><dd>{{ formatInteger(value) }}</dd></div></dl></article></div>
+        <dl data-testid="attribution-summary" v-if="showSummary" class="reports-summary report-metrics report-summary-tags"><div v-for="metric in bettingMetrics(bettingResult.summary)" :key="metric[0]"><dt><span>{{ labelFor(metric[0]) }}</span></dt><dd><strong>{{ formatInteger(metric[1]) }}</strong></dd></div></dl>
+        <div v-if="showDetails" class="table-wrap reports-table-wrap"><table class="console-table reports-table" :class="{'console-responsive-table':!bettingResult.items.length}"><thead><tr><th>{{ t('admin.copy.b96f43c6') }}</th><th v-for="metric in bettingMetrics(bettingResult.summary)" :key="metric[0]">{{ labelFor(metric[0]) }}</th></tr></thead><tbody><tr v-for="item in bettingResult.items" :key="item.key"><td :data-label="String(t('admin.copy.b96f43c6'))">{{ bettingResult.query.group_by === 'agent' && item.key === 'none' ? t('admin.copy.a4faa770') : associationGroupLabel(item, bettingResult.query.group_by, item.key, item.label, associationLocale) }}</td><td :data-label="String(labelFor(metric[0]))" v-for="metric in bettingMetrics(item.totals)" :key="metric[0]">{{ formatInteger(metric[1]) }}</td></tr><tr v-if="!bettingResult.items.length"><td :colspan="bettingMetrics(bettingResult.summary).length + 1" class="empty-state">{{ t('admin.copy.24e33023') }}</td></tr></tbody></table></div>
+        <div v-if="showDetails && bettingResult.items.length" class="reports-cards"><article v-for="item in bettingResult.items" :key="item.key"><h4>{{ bettingResult.query.group_by === 'agent' && item.key === 'none' ? t('admin.copy.a4faa770') : associationGroupLabel(item, bettingResult.query.group_by, item.key, item.label, associationLocale) }}</h4><dl><div v-for="[key, value] in rowValues(item.totals)" :key="key"><dt>{{ labelFor(key) }}</dt><dd>{{ formatInteger(value) }}</dd></div></dl></article></div>
 
 
       </template>
 
     </div>
 
-    <div v-show="activeReport === 'ledger'" id="ledger-results" class="reports-panel report-results" :aria-label="t('admin.copy.5a74ef63')">
+    <div v-show="activeReport === 'ledger' && (showSummary || showDetails)" id="ledger-results" class="reports-panel report-results" :aria-label="t('admin.copy.5a74ef63')">
 
 
       <template v-if="ledgerResult">
-        <dl class="reports-summary report-metrics"><div v-for="metric in ledgerMetrics(ledgerResult.summary)" :key="metric[0]"><dt><span>{{ labelFor(metric[0]) }}</span></dt><dd><strong>{{ formatInteger(metric[1]) }}</strong></dd></div></dl>
-        <div class="reports-balance"><h4>{{ t('admin.copy.fda22cd7') }}</h4><dl class="reports-summary report-metrics"> <div v-for="metric in balanceMetrics(ledgerResult)" :key="metric[0]"><dt><span>{{ labelFor(metric[0]) }}</span></dt><dd><strong>{{ formatInteger(metric[1]) }}</strong></dd></div></dl></div>
-        <div class="table-wrap reports-table-wrap"><table class="console-table reports-table" :class="{'console-responsive-table':!ledgerResult.items.length}"><thead><tr><th>{{ t('admin.copy.b96f43c6') }}</th><th v-for="metric in ledgerMetrics(ledgerResult.summary)" :key="metric[0]">{{ labelFor(metric[0]) }}</th></tr></thead><tbody><tr v-for="item in ledgerResult.items" :key="item.key"><td :data-label="String(t('admin.copy.b96f43c6'))">{{ associationGroupLabel(item, ledgerResult.query.group_by, item.key, item.label, associationLocale) }}</td><td :data-label="String(labelFor(metric[0]))" v-for="metric in ledgerMetrics(item.totals)" :key="metric[0]">{{ formatInteger(metric[1]) }}</td></tr><tr v-if="!ledgerResult.items.length"><td :colspan="ledgerMetrics(ledgerResult.summary).length + 1" class="empty-state">{{ t('admin.copy.24e33023') }}</td></tr></tbody></table></div>
-        <div v-if="ledgerResult.items.length" class="reports-cards"><article v-for="item in ledgerResult.items" :key="item.key"><h4>{{ associationGroupLabel(item, ledgerResult.query.group_by, item.key, item.label, associationLocale) }}</h4><dl><div v-for="[key, value] in rowValues(item.totals)" :key="key"><dt>{{ labelFor(key) }}</dt><dd>{{ formatInteger(value) }}</dd></div></dl></article></div>
+        <dl v-if="showSummary" class="reports-summary report-metrics report-summary-tags"><div v-for="metric in ledgerMetrics(ledgerResult.summary)" :key="metric[0]"><dt><span>{{ labelFor(metric[0]) }}</span></dt><dd><strong>{{ formatInteger(metric[1]) }}</strong></dd></div></dl>
+        <div v-if="showSummary" class="reports-balance"><h4>{{ t('admin.copy.fda22cd7') }}</h4><dl v-if="showSummary" class="reports-summary report-metrics report-summary-tags"> <div v-for="metric in balanceMetrics(ledgerResult)" :key="metric[0]"><dt><span>{{ labelFor(metric[0]) }}</span></dt><dd><strong>{{ formatInteger(metric[1]) }}</strong></dd></div></dl></div>
+        <div v-if="showDetails" class="table-wrap reports-table-wrap"><table class="console-table reports-table" :class="{'console-responsive-table':!ledgerResult.items.length}"><thead><tr><th>{{ t('admin.copy.b96f43c6') }}</th><th v-for="metric in ledgerMetrics(ledgerResult.summary)" :key="metric[0]">{{ labelFor(metric[0]) }}</th></tr></thead><tbody><tr v-for="item in ledgerResult.items" :key="item.key"><td :data-label="String(t('admin.copy.b96f43c6'))">{{ associationGroupLabel(item, ledgerResult.query.group_by, item.key, item.label, associationLocale) }}</td><td :data-label="String(labelFor(metric[0]))" v-for="metric in ledgerMetrics(item.totals)" :key="metric[0]">{{ formatInteger(metric[1]) }}</td></tr><tr v-if="!ledgerResult.items.length"><td :colspan="ledgerMetrics(ledgerResult.summary).length + 1" class="empty-state">{{ t('admin.copy.24e33023') }}</td></tr></tbody></table></div>
+        <div v-if="showDetails && ledgerResult.items.length" class="reports-cards"><article v-for="item in ledgerResult.items" :key="item.key"><h4>{{ associationGroupLabel(item, ledgerResult.query.group_by, item.key, item.label, associationLocale) }}</h4><dl><div v-for="[key, value] in rowValues(item.totals)" :key="key"><dt>{{ labelFor(key) }}</dt><dd>{{ formatInteger(value) }}</dd></div></dl></article></div>
 
 
       </template>
 
     </div>
-<template #pagination><template v-if="activeReport==='betting' && bettingResult"><TablePagination :show-empty="Boolean(bettingResult)" class="reports-pagination" :total="bettingResult.total_groups" :page="Math.floor(bettingOffset / PAGE_SIZE + 1)" :count="bettingResult.items.length" :locale="locale" :page-size="PAGE_SIZE" :previous-disabled="bettingOffset === 0 || bettingBusy || ledgerBusy" :next-disabled="!hasNext(bettingResult.total_groups, bettingOffset, bettingResult.items.length) || bettingBusy || ledgerBusy" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.ee97c955')" :go-to="(target: number) => pageReport('betting', target - (Math.floor(bettingOffset / PAGE_SIZE + 1)))" /></template><template v-else-if="activeReport==='ledger' && ledgerResult"><TablePagination :show-empty="Boolean(ledgerResult)" class="reports-pagination" :total="ledgerResult.total_groups" :page="Math.floor(ledgerOffset / PAGE_SIZE + 1)" :count="ledgerResult.items.length" :locale="locale" :page-size="PAGE_SIZE" :previous-disabled="ledgerOffset === 0 || bettingBusy || ledgerBusy" :next-disabled="!hasNext(ledgerResult.total_groups, ledgerOffset, ledgerResult.items.length) || bettingBusy || ledgerBusy" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.ee97c955')" :go-to="(target: number) => pageReport('ledger', target - (Math.floor(ledgerOffset / PAGE_SIZE + 1)))" /></template></template>
+<template v-if="showDetails" #pagination><template v-if="activeReport==='betting' && bettingResult"><TablePagination class="reports-pagination" :total="bettingResult.total_groups" :page="Math.floor(bettingOffset / pageSizes.betting + 1)" :count="bettingResult.items.length" :locale="locale" :page-size="pageSizes.betting" :previous-disabled="bettingOffset === 0 || bettingBusy || ledgerBusy" :next-disabled="!hasNext(bettingResult.total_groups, bettingOffset, bettingResult.items.length) || bettingBusy || ledgerBusy" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.ee97c955')" :go-to="(target: number) => pageReport('betting', target - (Math.floor(bettingOffset / pageSizes.betting + 1)))" :change-page-size="async (size: number) => { pageSizes.betting = size; await loadReports({ betting: 0, ledger: ledgerOffset }, committedQuery!.filters, committedQuery!.groups) }" :busy="bettingBusy || ledgerBusy" /></template><template v-else-if="activeReport==='ledger' && ledgerResult"><TablePagination class="reports-pagination" :total="ledgerResult.total_groups" :page="Math.floor(ledgerOffset / pageSizes.ledger + 1)" :count="ledgerResult.items.length" :locale="locale" :page-size="pageSizes.ledger" :previous-disabled="ledgerOffset === 0 || bettingBusy || ledgerBusy" :next-disabled="!hasNext(ledgerResult.total_groups, ledgerOffset, ledgerResult.items.length) || bettingBusy || ledgerBusy" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.ee97c955')" :go-to="(target: number) => pageReport('ledger', target - (Math.floor(ledgerOffset / pageSizes.ledger + 1)))" :change-page-size="async (size: number) => { pageSizes.ledger = size; await loadReports({ betting: bettingOffset, ledger: 0 }, committedQuery!.filters, committedQuery!.groups) }" :busy="bettingBusy || ledgerBusy" /></template></template>
     </ManagementList>
     <WithdrawalReport v-if="activeReport === 'withdrawal'" :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />
     <RewardReports v-if="activeReport === 'reward'" :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />

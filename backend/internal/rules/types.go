@@ -75,7 +75,7 @@ type Tier struct {
 }
 type Limits struct {
 	MaxCombinations int            `json:"max_combinations"`
-	MaxMultiplier   points.Amount  `json:"max_multiplier"`
+	MaxMultiplier   points.Integer `json:"max_multiplier"`
 	MaxBetPoints    *points.Amount `json:"max_bet_points"`
 }
 type Definition struct {
@@ -115,20 +115,20 @@ type LineResult struct {
 	Points    string    `json:"points"`
 }
 type SimulationInput struct {
-	Definition Definition    `json:"definition"`
-	Selection  Selection     `json:"selection"`
-	Draw       Draw          `json:"draw"`
-	Multiplier points.Amount `json:"multiplier"`
+	Definition Definition     `json:"definition"`
+	Selection  Selection      `json:"selection"`
+	Draw       Draw           `json:"draw"`
+	Multiplier points.Integer `json:"multiplier"`
 }
 type Simulation struct {
-	Won               bool          `json:"won"`
-	Normalized        Selection     `json:"normalized"`
-	CombinationCount  int           `json:"combination_count"`
-	Multiplier        points.Amount `json:"multiplier"`
-	BetPoints         points.Amount `json:"bet_points"`
-	PrizePoints       points.Amount `json:"prize_points"`
-	RawPrizePoints    string        `json:"raw_prize_points"`
-	CappedPrizePoints string        `json:"capped_prize_points"`
-	Lines             []LineResult  `json:"lines"`
-	Warnings          []string      `json:"warnings"`
+	Won               bool           `json:"won"`
+	Normalized        Selection      `json:"normalized"`
+	CombinationCount  int            `json:"combination_count"`
+	Multiplier        points.Integer `json:"multiplier"`
+	BetPoints         points.Amount  `json:"bet_points"`
+	PrizePoints       points.Amount  `json:"prize_points"`
+	RawPrizePoints    string         `json:"raw_prize_points"`
+	CappedPrizePoints string         `json:"capped_prize_points"`
+	Lines             []LineResult   `json:"lines"`
+	Warnings          []string       `json:"warnings"`
 }

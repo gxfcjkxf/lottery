@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { nextTick } from 'vue'
 const filterReset = ref(0)
 
 import ManagementList from "@lottery/shared/ManagementList.vue"
@@ -30,6 +29,8 @@ import { createIdempotencyKey } from "./admin-api";
 import { createWithdrawalOrdersAdminApi, MAX_WITHDRAWAL_PAGE, withdrawalPermissions, WithdrawalAdminUnknownIntentError } from "./withdrawal-orders-api";
 import { useAdminI18n } from "./i18n";
 import FilterAssociationSearch from "@lottery/shared/FilterAssociationSearch.vue";
+const pageSize = ref(MAX_WITHDRAWAL_PAGE)
+
 
 const props = defineProps<{ account: AdminAccount; brandId: string; active: boolean }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
@@ -66,7 +67,7 @@ const actionsFor = (order: WithdrawalOrder): WithdrawalAction[] => order.state =
 const actionName = (action: WithdrawalAction) => ({ approve: words.value.approve, reject: words.value.reject, cancel: words.value.cancel, fail: words.value.fail, "mark-paid": words.value.paid })[action];
 function date(value: string){ return formatDisplayDateTime(value, displayLocale.value); }
 
-async function clearFilters() { filterReset.value++; stateFilter.value = ''; memberFilter.value = ''; await nextTick(); await load(0); }
+
 async function load(nextOffset = 0) {
   if (memberSearchPending.value) return;
   const requestGeneration = ++generation;
@@ -80,7 +81,7 @@ async function load(nextOffset = 0) {
   loading.value = true;
   try {
     const memberId = memberFilter.value || undefined;
-    const result = await api.list(props.brandId, { state: stateFilter.value || undefined, memberId, limit: MAX_WITHDRAWAL_PAGE, offset: nextOffset }, controller.signal);
+    const result = await api.list(props.brandId, { state: stateFilter.value || undefined, memberId, limit: pageSize.value, offset: nextOffset }, controller.signal);
     if (disposed || requestGeneration !== generation || requestScope !== scope.value) return;
     if (result.brand_id !== props.brandId || result.items.some((item) => item.brand_id !== props.brandId)) throw new Error("The server returned withdrawal orders for another brand.");
     offset.value = nextOffset;
@@ -183,7 +184,7 @@ useOperationToast(() => receipt.value, () => t('admin.withdrawal.acted'), 'succe
           </div>
         </label>
         <button type="submit" class="button button-primary" :disabled="loading || memberSearchPending">{{ words.filter }}</button>
-        <button type="button" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(clearFilters)">{{ t('admin.copy.b089734d') }}</button>
+
       </form></template>
       <div class="table-wrap withdrawal-table-wrap"><table class="console-table withdrawal-table console-responsive-table"><thead><tr><th>{{ words.order }}</th><th>{{ words.member }}</th><th>{{ words.points }}</th><th><BusinessDetails :value="words.state" :locale="associationLocale" /></th><th>{{ words.created }}</th><th>{{ t('admin.console.actions') }}</th></tr></thead><tbody><tr v-for="order in page" :key="order.id"><td class="mono" :data-label="words.order">{{ order.id }}</td><td class="mono" :data-label="words.member"><AssociationName :record="order" kind="member" :id="order.member_id" :locale="associationLocale" /></td><td :data-label="words.points">{{ order.points }}</td><td :data-label="words.state"><span class="badge" :class="order.state === 'paid' ? 'badge-success' : ['failed','rejected','cancelled'].includes(order.state) ? 'badge-neutral' : 'badge-warn'">{{ stateName(order.state) }}</span></td><td :data-label="words.created">{{ date(order.created_at) }}</td><td :data-label="t('admin.console.actions')"><button class="text-button" @click="withGlobalLoading(showHistory, order)">{{ words.history }}</button></td></tr><tr v-if="!page.length && !loading && !error"><td colspan="6" class="empty-state">{{ words.empty }}</td></tr></tbody></table></div>
 
@@ -198,7 +199,7 @@ useOperationToast(() => receipt.value, () => t('admin.withdrawal.acted'), 'succe
         <form v-write-guard="busy" novalidate v-inline-validation v-if="activeAction && !pending" class="withdrawal-confirm ui-form" @submit.prevent="withGlobalLoading(perform, activeAction)"><p v-if="activeAction === 'mark-paid'" class="withdrawal-internal-note" role="note">{{ words.internal }}</p><div class="withdrawal-actions ui-form-actions"><button class="button button-primary" type="submit" :disabled="busy || !activeAction">{{ activeAction === 'mark-paid' ? words.confirm : `${words.confirm} ${actionName(activeAction)}` }}</button></div></form>
         </div>
       </DetailModal>
-    <template #pagination><TablePagination :show-empty="!loading && !error" class="withdrawal-pagination" :total="totalCount" :page="Math.floor(offset / MAX_WITHDRAWAL_PAGE + 1)" :count="page.length" :locale="associationLocale" :page-size="MAX_WITHDRAWAL_PAGE" :previous-disabled="offset === 0 || loading" :next-disabled="!hasMore || loading" :previous-label="words.previous" :next-label="words.next" :go-to="(target: number) => load((target - 1) * MAX_WITHDRAWAL_PAGE)" /></template></ManagementList>
+    <template #pagination><TablePagination class="withdrawal-pagination" :total="totalCount" :page="Math.floor(offset / pageSize + 1)" :count="page.length" :locale="associationLocale" :page-size="pageSize" :previous-disabled="offset === 0 || loading" :next-disabled="!hasMore || loading" :previous-label="words.previous" :next-label="words.next" :go-to="(target: number) => load((target - 1) * pageSize)" :change-page-size="async (size: number) => { pageSize = size; await load(0) }" :busy="loading" /></template></ManagementList>
   </section>
 </template>
 

@@ -20,7 +20,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await openBrandPage(page,locale==='en'?'Audit log':'审计日志');await expectRealEntry(page,'brand')
    const table = page.locator('.audit-table')
    await expect(table).toBeVisible()
-   await expect(page.locator('.audit-pagination .table-pagination-summary')).toHaveText(locale==='en'?'Page 1 · 1 record on this page · Total: 1':'第 1 页 · 本页 1 条 · 共 1 条')
+   await expect(page.locator('.audit-pagination .table-pagination-summary .table-pagination-desktop')).toHaveText(locale==='en'?'Page 1 · 1 record on this page · Total: 1':'第 1 页 · 本页 1 条 · 共 1 条')
    await expect(page.locator('.audit-pagination')).not.toContainText(/Offset|偏移/)
     await expect(table.locator('tbody')).toContainText('log_reviewer')
     await table.getByRole('button').click()

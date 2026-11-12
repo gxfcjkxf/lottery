@@ -27,7 +27,7 @@ func fixture(t *testing.T) (*pgxpool.Pool, Store, string) {
 		args []any
 	}{
 		{`INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'test-only-opaque-hash')`, []any{user, "points_" + user}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, []any{member, testBrand, user}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, []any{member, testBrand, user}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{account, testBrand, member}},
 		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift','commission'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])t ON CONFLICT(brand_id,account_id,source,state) DO NOTHING`, []any{testBrand, account}},
 	} {
@@ -69,18 +69,18 @@ func credit(t *testing.T, p *pgxpool.Pool, s Store, member string, source int, a
 func TestLedgerReconstructReplayAndExactRefund(t *testing.T) {
 	p, s, member := fixture(t)
 	ctx := context.Background()
-	credit(t, p, s, member, 0, 50)
-	credit(t, p, s, member, 1, 30)
-	credit(t, p, s, member, 2, 20)
+	credit(t, p, s, member, 0, 5000)
+	credit(t, p, s, member, 1, 3000)
+	credit(t, p, s, member, 2, 2000)
 	w, err := s.Read(ctx, testBrand, member)
-	if err != nil || w.DisplayPoints != 100 || w.Version != 3 {
+	if err != nil || w.DisplayPoints != 10000 || w.Version != 3 {
 		t.Fatal(w, err)
 	}
-	allocation, err := w.BySource.Allocate(75, "available")
+	allocation, err := w.BySource.Allocate(7500, "available")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(allocation) != 2 || allocation[0].Source != "recharge" || allocation[0].Points != 50 || allocation[1].Points != 25 {
+	if len(allocation) != 2 || allocation[0].Source != "recharge" || allocation[0].Points != 5000 || allocation[1].Points != 2500 {
 		t.Fatal(allocation)
 	}
 	d, err := AllocationDelta(allocation, "available", "")
@@ -90,7 +90,7 @@ func TestLedgerReconstructReplayAndExactRefund(t *testing.T) {
 	c := change(member, "test-debit", d, allocation)
 	c.EntryType = "bet"
 	e := post(t, p, s, c)
-	if e.Before != w.BySource || e.After[0][0] != 0 || e.After[1][0] != 5 {
+	if e.Before != w.BySource || e.After[0][0] != 0 || e.After[1][0] != 500 {
 		t.Fatal(e)
 	}
 	c.RequestID = ids.New()
@@ -136,21 +136,21 @@ func TestLedgerReconstructReplayAndExactRefund(t *testing.T) {
 
 func TestCommissionDebitAndExactRefundAcrossDebitPriority(t *testing.T) {
 	p, s, member := fixture(t)
-	credit(t, p, s, member, 0, 2)
-	credit(t, p, s, member, 1, 3)
-	credit(t, p, s, member, 2, 5)
-	credit(t, p, s, member, 3, 7)
+	credit(t, p, s, member, 0, 200)
+	credit(t, p, s, member, 1, 300)
+	credit(t, p, s, member, 2, 500)
+	credit(t, p, s, member, 3, 700)
 	ctx := context.Background()
 	wallet, err := s.Read(ctx, testBrand, member)
-	if err != nil || wallet.CommissionPoints != 7 || wallet.AvailablePoints != 17 {
+	if err != nil || wallet.CommissionPoints != 700 || wallet.AvailablePoints != 1700 {
 		t.Fatalf("commission wallet=%+v err=%v", wallet, err)
 	}
-	allocations, err := wallet.BySource.Allocate(17, "available")
+	allocations, err := wallet.BySource.Allocate(1700, "available")
 	want := []Allocation{
-		{Source: "recharge", State: "available", Points: 2},
-		{Source: "winning", State: "available", Points: 3},
-		{Source: "commission", State: "available", Points: 7},
-		{Source: "gift", State: "available", Points: 5},
+		{Source: "recharge", State: "available", Points: 200},
+		{Source: "winning", State: "available", Points: 300},
+		{Source: "commission", State: "available", Points: 700},
+		{Source: "gift", State: "available", Points: 500},
 	}
 	if err != nil || !reflect.DeepEqual(allocations, want) {
 		t.Fatalf("commission debit allocations=%+v err=%v want=%+v", allocations, err, want)
@@ -177,7 +177,7 @@ func TestCommissionDebitAndExactRefundAcrossDebitPriority(t *testing.T) {
 		t.Fatal(err)
 	}
 	restored, err := s.Read(ctx, testBrand, member)
-	if err != nil || restored.BySource != wallet.BySource || restored.CommissionPoints != 7 {
+	if err != nil || restored.BySource != wallet.BySource || restored.CommissionPoints != 700 {
 		t.Fatalf("commission refund wallet=%+v err=%v", restored, err)
 	}
 	reconciled, err := s.Reconcile(ctx, testBrand, member)
@@ -188,7 +188,7 @@ func TestCommissionDebitAndExactRefundAcrossDebitPriority(t *testing.T) {
 
 func TestConcurrentDebitsNeverOverdraw(t *testing.T) {
 	p, s, member := fixture(t)
-	credit(t, p, s, member, 0, 100)
+	credit(t, p, s, member, 0, 10000)
 	var successes atomic.Int64
 	var wg sync.WaitGroup
 	ctx := context.Background()
@@ -203,8 +203,8 @@ func TestConcurrentDebitsNeverOverdraw(t *testing.T) {
 			}
 			defer tx.Rollback(ctx)
 			var d Balance
-			d[0][0] = -10
-			c := change(member, fmt.Sprintf("debit:%d", i), d, []Allocation{{Source: "recharge", State: "available", Points: 10}})
+			d[0][0] = -1000
+			c := change(member, fmt.Sprintf("debit:%d", i), d, []Allocation{{Source: "recharge", State: "available", Points: 1000}})
 			_, err = s.Post(ctx, tx, c)
 			if err == nil {
 				if err = tx.Commit(ctx); err != nil {
@@ -232,17 +232,17 @@ func TestConcurrentDebitsNeverOverdraw(t *testing.T) {
 }
 func TestFreezeTransferReversalAndRollback(t *testing.T) {
 	p, s, member := fixture(t)
-	credit(t, p, s, member, 0, 7)
-	credit(t, p, s, member, 2, 8)
+	credit(t, p, s, member, 0, 700)
+	credit(t, p, s, member, 2, 800)
 	ctx := context.Background()
 	w, _ := s.Read(ctx, testBrand, member)
-	a, _ := w.BySource.Allocate(10, "available")
+	a, _ := w.BySource.Allocate(1000, "available")
 	d, _ := AllocationDelta(a, "available", "manual_frozen")
 	c := change(member, "freeze:one", d, a)
 	c.EntryType = "freeze"
 	e := post(t, p, s, c)
 	w, err := s.Read(ctx, testBrand, member)
-	if err != nil || w.AvailablePoints != 5 || w.ManualFrozenPoints != 10 || w.DisplayPoints != 15 || w.RechargePoints != 0 || w.GiftPoints != 5 {
+	if err != nil || w.AvailablePoints != 500 || w.ManualFrozenPoints != 1000 || w.DisplayPoints != 1500 || w.RechargePoints != 0 || w.GiftPoints != 500 {
 		t.Fatal(w, err)
 	}
 	tx, _ := p.Begin(ctx)
@@ -262,7 +262,7 @@ func TestFreezeTransferReversalAndRollback(t *testing.T) {
 	}
 	tx.Commit(ctx)
 	w, _ = s.Read(ctx, testBrand, member)
-	if w.BySource[0][0] != 7 || w.BySource[2][0] != 8 || w.FrozenPoints != 0 {
+	if w.BySource[0][0] != 700 || w.BySource[2][0] != 800 || w.FrozenPoints != 0 {
 		t.Fatal(w)
 	}
 	foreign := "0199a000-0000-7000-8000-000000000002"
@@ -278,8 +278,8 @@ func TestOverflowMissingBucketAndOutOfBandChangeFailClosed(t *testing.T) {
 	ctx := context.Background()
 	credit(t, p, s, member, 0, Amount(math.MaxInt64))
 	var d Balance
-	d[2][0] = 1
-	c := change(member, "overflow", d, []Allocation{{Source: "gift", State: "available", Points: 1}})
+	d[2][0] = 100
+	c := change(member, "overflow", d, []Allocation{{Source: "gift", State: "available", Points: 100}})
 	tx, _ := p.Begin(ctx)
 	_, err := s.Post(ctx, tx, c)
 	tx.Rollback(ctx)

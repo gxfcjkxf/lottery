@@ -94,7 +94,7 @@ test("DTOs are closed, exact, and exclude private recharge and ledger data", () 
     "brand_id", "member_id", "snapshot_at", "state", "items", "limit", "offset", "total_count",
   ]);
   for (const schema of Object.values(schemas)) assert.equal(schema.additionalProperties, false);
-  assert.deepEqual(schemas.MemberRecharge.properties.points, { $ref: "#/components/schemas/PositiveInt64String" });
+  assert.deepEqual(schemas.MemberRecharge.properties.points, { $ref: "#/components/schemas/PositivePoints" });
   assert.deepEqual(schemas.MemberRecharge.properties.version, { $ref: "#/components/schemas/PositiveInt64String" });
   assert.deepEqual(schemas.MemberRecharge.properties.confirmed_at.anyOf, [
     { type: "string", format: "date-time", pattern: "Z$", description: "RFC3339 timestamp in UTC, serialized with the Z suffix." },

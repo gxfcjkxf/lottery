@@ -25,7 +25,7 @@ func TestArchiveSnapshotWithdrawalsMatchesPaidAndRejectedOrders(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = policyService.UpdateBrand(ctx, tx, orderTestBrand, f.admin,
-		BrandInput{PointsStep: 1, Version: policy.Version, Config: policyConfig, Reason: "authorize four-source archive fixture"},
+		BrandInput{PointsStep: 100, Version: policy.Version, Config: policyConfig, Reason: "authorize four-source archive fixture"},
 		points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()}); err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)
@@ -34,13 +34,13 @@ func TestArchiveSnapshotWithdrawalsMatchesPaidAndRejectedOrders(t *testing.T) {
 		t.Fatal(err)
 	}
 	allocation := []points.Allocation{
-		{Source: "recharge", State: "available", Points: 10},
-		{Source: "winning", State: "available", Points: 10},
-		{Source: "gift", State: "available", Points: 10},
-		{Source: "commission", State: "available", Points: 10},
+		{Source: "recharge", State: "available", Points: 1000},
+		{Source: "winning", State: "available", Points: 1000},
+		{Source: "gift", State: "available", Points: 1000},
+		{Source: "commission", State: "available", Points: 1000},
 	}
 	f.fund(t, allocation)
-	paid := createOrder(t, f, 40, "archive-paid-four-source", allocation)
+	paid := createOrder(t, f, 4000, "archive-paid-four-source", allocation)
 	meta := points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()}
 	if _, err := orderAction(t, f, orderID(t, paid), "approve", "archive-paid-approve", f.admin,
 		ActionInput{Version: 1, ClientKey: "archive-paid-approve", Reason: "review actual withdrawal"}, meta); err != nil {
@@ -52,7 +52,7 @@ func TestArchiveSnapshotWithdrawalsMatchesPaidAndRejectedOrders(t *testing.T) {
 	}
 
 	f.fund(t, allocation)
-	rejected := createOrder(t, f, 40, "archive-rejected-four-source", allocation)
+	rejected := createOrder(t, f, 4000, "archive-rejected-four-source", allocation)
 	if got, err := orderAction(t, f, orderID(t, rejected), "reject", "archive-reject", f.admin,
 		ActionInput{Version: 1, ClientKey: "archive-reject", Reason: "reject actual withdrawal"}, meta); err != nil || got.State != "rejected" {
 		t.Fatalf("actual withdrawal rejection=%+v err=%v", got, err)

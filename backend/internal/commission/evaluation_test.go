@@ -57,7 +57,7 @@ func TestEvaluateOrderTwoAndThreeLevelLossAndTurnover(t *testing.T) {
 			if tc.mode == "turnover" {
 				status = "won"
 			}
-			fact := evaluationFact(snapshot, status, 100, 0)
+			fact := evaluationFact(snapshot, status, 10000, 0)
 			got, err := EvaluateOrder(snapshot, fact)
 			if err != nil || len(got) != tc.depth {
 				t.Fatalf("EvaluateOrder() = %#v, %v", got, err)
@@ -74,15 +74,15 @@ func TestEvaluateOrderTwoAndThreeLevelLossAndTurnover(t *testing.T) {
 func TestEvaluateOrderWonPrizeDoesNotChangeTurnoverAndLossIsZero(t *testing.T) {
 	snapshot := snapshotFixture()
 	setEvaluationMode(&snapshot, "turnover")
-	for _, prize := range []points.Amount{0, 10, 25, 40} { // zero, below, tie, and above stake
-		fact := evaluationFact(snapshot, "won", 25, prize)
+	for _, prize := range []points.Amount{0, 1000, 2500, 4000} { // zero, below, tie, and above stake
+		fact := evaluationFact(snapshot, "won", 2500, prize)
 		got, err := EvaluateOrder(snapshot, fact)
 		if err != nil || len(got) != 2 || got[0].Exact != (ExactAmount{"5", "4"}) || got[1].Exact != (ExactAmount{"5", "4"}) {
 			t.Fatalf("prize=%d allocations=%#v error=%v", prize, got, err)
 		}
 	}
 	setEvaluationMode(&snapshot, "loss")
-	zero, err := EvaluateOrder(snapshot, evaluationFact(snapshot, "won", 25, 0))
+	zero, err := EvaluateOrder(snapshot, evaluationFact(snapshot, "won", 2500, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestEvaluateOrderWonPrizeDoesNotChangeTurnoverAndLossIsZero(t *testing.T) {
 
 func TestEvaluateOrderDisabledFinancialPolicyAndDisabledNodes(t *testing.T) {
 	snapshot := snapshotFixture()
-	fact := evaluationFact(snapshot, "lost", 100, 0)
+	fact := evaluationFact(snapshot, "lost", 10000, 0)
 	first, err := EvaluateOrder(snapshot, fact)
 	if err != nil || len(first) != 2 || first[0].AgentID != snapshot.Path[0].ID {
 		t.Fatalf("disabled node should retain saved earnings: %#v, %v", first, err)
@@ -120,7 +120,7 @@ func TestEvaluateOrderDisabledFinancialPolicyAndDisabledNodes(t *testing.T) {
 func TestEvaluateOrderEmptyPathAndExactLargestBasis(t *testing.T) {
 	snapshot := snapshotFixture()
 	snapshot.Path = []AgentRule{}
-	got, err := EvaluateOrder(snapshot, evaluationFact(snapshot, "lost", 1, 0))
+	got, err := EvaluateOrder(snapshot, evaluationFact(snapshot, "lost", 100, 0))
 	if err != nil || got == nil || len(got) != 0 {
 		t.Fatalf("empty path = %#v, %v; want nonnil empty", got, err)
 	}
@@ -131,7 +131,7 @@ func TestEvaluateOrderEmptyPathAndExactLargestBasis(t *testing.T) {
 	snapshot.Agency.Config.LossRatioCap = "1"
 	snapshot.Agency.Config.TurnoverRatioCap = "1"
 	got, err = EvaluateOrder(snapshot, evaluationFact(snapshot, "lost", points.Amount(math.MaxInt64), 0))
-	want := ExactAmount{"9223372036854775807", "1"}
+	want := ExactAmount{"9223372036854775807", "100"}
 	if err != nil || len(got) != 1 || got[0].Exact != want {
 		t.Fatalf("largest exact basis = %#v, %v; want %#v", got, err, want)
 	}
@@ -139,7 +139,7 @@ func TestEvaluateOrderEmptyPathAndExactLargestBasis(t *testing.T) {
 
 func TestEvaluateOrderRejectsUnboundSnapshotAndUnverifiedBasis(t *testing.T) {
 	snapshot := snapshotFixture()
-	fact := evaluationFact(snapshot, "lost", 50, 0)
+	fact := evaluationFact(snapshot, "lost", 5000, 0)
 	cases := []struct {
 		name   string
 		mutate func(*BetSnapshot, *OrderFact)

@@ -8,6 +8,13 @@ let sequence = 0
 export const operationToasts = readonly(notices)
 
 export function showOperationToast(text: () => string, tone: OperationToastTone = 'info', source?: symbol, position: OperationToastPosition = 'corner', duration = 3600) {
+  // Concurrent requests and parent/child handlers can report the same failure.
+  // Keep the existing toast and its dismiss timer instead of stacking or renewing it.
+  const duplicate = tone === 'error' ? notices.value.find(item => item.tone === tone && item.position === position && item.text() === text()) : undefined
+  if (duplicate) {
+    notices.value = notices.value.filter(item => source === undefined || item.source !== source || item.id === duplicate.id)
+    return
+  }
   notices.value = [...notices.value.filter(item => source === undefined || item.source !== source), { id: ++sequence, text, tone, source, position, duration }]
 }
 export function dismissOperationToast(id?: number) {

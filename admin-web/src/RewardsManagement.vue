@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isPoints, pointsMinor } from "@lottery/shared";
 import ManagementList from "@lottery/shared/ManagementList.vue"
 import { useOperationToast } from "@lottery/shared";
 import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
@@ -33,12 +34,15 @@ import {
   rewardPermissions, rewardSessionGeneration, setPendingRewardIntent,
   type PendingRewardIntent, type RewardIntentScope,
 } from "./rewards-state";
+const historyPageSize = ref(20)
+const orderPageSize = ref(20)
+
 
 const props = defineProps<{ account: AdminAccount; brandId: string; brandStatus?: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const { t, message, locale } = useAdminI18n();
 const api = computed(() => createRewardsApi(fetch, props.account.id));
-const PAGE_SIZE = 20;
+
 const rights = computed(() => rewardPermissions(props.account, props.brandId));
 const scopeStamp = computed(() => JSON.stringify([props.account.id, props.account.super_admin, props.account.brand_ids,
   props.account.permissions, props.account.permissions_by_brand, props.account.platform_permissions, props.brandId, props.brandStatus, rights.value]));
@@ -65,12 +69,10 @@ const validGrant = computed(() => Boolean(memberID.value) && validPoints(points.
 const canGrant = computed(() => rights.value.grant && props.brandStatus !== "disabled" && !props.account.super_admin && !writing.value && !selectingMember.value && !hasUnresolvedIntent.value && !conflict.value && validGrant.value);
 const canRevoke = computed(() => Boolean(rights.value.revoke && props.brandStatus !== "disabled" && !props.account.super_admin && !writing.value && !hasUnresolvedIntent.value && !conflict.value && detail.value?.state === "granted" && detail.value.version < Number.MAX_SAFE_INTEGER && validReason(actionReason.value)));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const MAX_INT64 = 9_223_372_036_854_775_807n;
 
-function validPoints(value: string): boolean {
-  if (!/^[1-9][0-9]*$/.test(value)) return false;
-  try { return BigInt(value) <= MAX_INT64; } catch { return false; }
-}
+
+function validPoints(value: string): boolean { return isPoints(value) && pointsMinor(value)>0n; }
+
 function validReason(value: string): boolean {
   if (value.trim() !== value || Array.from(value).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
   for (let i = 0; i < value.length; i++) { const code = value.charCodeAt(i); if (code >= 0xd800 && code <= 0xdbff) { const next = value.charCodeAt(++i); if (!(next >= 0xdc00 && next <= 0xdfff)) return false; } else if (code >= 0xdc00 && code <= 0xdfff) return false; }
@@ -137,7 +139,7 @@ async function loadList(nextOffset = offset.value, preserveConflictReview = fals
   const ticket = ++listTicket, captured = scopeStamp.value, session = rewardSessionGeneration();
   loadingList.value = true; listError.value = "";
   try {
-    const fresh = await api.value.list(props.brandId, PAGE_SIZE, nextOffset);
+    const fresh = await api.value.list(props.brandId, orderPageSize.value, nextOffset);
     if (!current(ticket, "list", captured, session)) return false;
     page.value = fresh;
     return true;
@@ -168,7 +170,7 @@ async function loadHistory(id: string, nextOffset = history.value?.offset ?? 0, 
   const ticket = ++historyTicket, captured = scopeStamp.value, session = rewardSessionGeneration();
   loadingHistory.value = true; historyError.value = "";
   try {
-    const fresh = await api.value.actions(props.brandId, id, PAGE_SIZE, nextOffset);
+    const fresh = await api.value.actions(props.brandId, id, historyPageSize.value, nextOffset);
     if (!current(ticket, "history", captured, session) || fresh.order_id !== id) return false;
     history.value = fresh;
     return true;
@@ -324,14 +326,14 @@ useOperationToast(() => writeError.value, value => displayPublicError(value), 'e
 <template>
   <article class="rewards-management">
     <header class="console-page-heading page-heading"><h1 class="console-page-title">{{ t('admin.copy.23480b24') }}</h1></header>
-    <ManagementList v-if="rights.view" :busy="loadingList"><template #actions><div v-if="rights.view" class="console-page-actions rw-toolbar"><button data-testid="rewards-grant-open" tabindex="0" class="button button-primary" type="button" :disabled="!rights.grant || brandStatus === 'disabled' || account.super_admin || writing || hasUnresolvedIntent || conflict" @click="grantOpen = true">{{ t('admin.copy.b90c3979') }}</button><button v-refresh-button="loadingList ? t('admin.copy.27342bf3') : t('admin.copy.855b9442')" data-testid="rewards-list-refresh" class="button" type="button" :disabled="loadingList" @click="withGlobalLoading(loadList, 0)">{{ loadingList ? t('admin.copy.27342bf3') : t('admin.copy.855b9442') }}</button></div></template>
+    <ManagementList v-if="rights.view" :busy="loadingList"><template #actions><div v-if="rights.view" class="console-page-actions rw-toolbar"><button data-testid="rewards-grant-open" tabindex="0" class="button button-primary" type="button" :disabled="!rights.grant || brandStatus === 'disabled' || account.super_admin || writing || hasUnresolvedIntent || conflict" @click="grantOpen = true">{{ t('admin.copy.b90c3979') }}</button><button v-if="listError" v-refresh-button="loadingList ? t('admin.copy.27342bf3') : t('admin.copy.855b9442')" data-testid="rewards-list-refresh" class="button" type="button" :disabled="loadingList" @click="withGlobalLoading(loadList, 0)">{{ loadingList ? t('admin.copy.27342bf3') : t('admin.copy.855b9442') }}</button></div></template>
       <p v-if="brandStatus === 'disabled'" class="rw-callout" role="status">{{ t('admin.copy.1d27eb27') }}</p>
       <p v-else-if="brandStatus === 'paused'" class="rw-callout" role="status">{{ t('admin.copy.5606cd3a') }}</p>
 
       <DetailModal v-if="grantOpen" class="rw-grant-modal ui-form-dialog" :title="t('admin.copy.b90c3979')" :close-label="t('admin.copy.2bb2cb1d')" :close-disabled="writing || selectingMember" @close="grantOpen = false">
       <section class="rw-grant ui-form">
         <label>{{ t('admin.reward.memberUsername') }}<FilterAssociationSearch v-model="memberID" input-test-id="rewards-grant-member" :selected-name="memberUsername" :brand-id="brandId" surface="admin" resource="reward" action="grant" :label="t('admin.reward.memberUsername')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.grant" :disabled="writing || selectingMember || Boolean(unknownIntent) || conflict" @select="memberUsername = $event.name" /></label>
-        <label>{{ t('admin.copy.ec082fa7') }}<input data-testid="rewards-grant-points" v-model="points" inputmode="numeric" autocomplete="off" :disabled="!rights.grant || writing || selectingMember || Boolean(unknownIntent) || conflict" /></label>
+        <label>{{ t('admin.copy.ec082fa7') }}<input data-testid="rewards-grant-points" v-model="points" inputmode="decimal" autocomplete="off" :disabled="!rights.grant || writing || selectingMember || Boolean(unknownIntent) || conflict" /></label>
 
         <button data-testid="rewards-grant-review" class="button button-primary" type="button" :disabled="!canGrant" @click="withGlobalLoading(openReview, 'grant')">{{ t('admin.copy.da40d64c') }}</button>
       </section>
@@ -346,18 +348,19 @@ useOperationToast(() => writeError.value, value => displayPublicError(value), 'e
 
       <DetailModal v-if="selected || detail || loadingDetail" :open="!dialog" :title="t('admin.copy.01db40da')" :close-label="t('admin.copy.2bb2cb1d')" @close="closeDetails">
 <section v-global-loading v-if="loadingDetail" class="rw-detail rw-state" role="status">{{ t('admin.copy.c10840f3') }}</section>
-      <section v-else-if="detail" class="rw-detail">
-        <div class="rw-section-heading"><div><h2>{{ t('admin.copy.5fea6596') }}</h2><p>{{ stateLabel(detail.state) }}</p></div><button v-refresh-button="t('admin.copy.2afd7606')" data-testid="rewards-detail-refresh" class="button" type="button" :disabled="loadingDetail" @click="withGlobalLoading(loadDetail, detail.id)">{{ t('admin.copy.2afd7606') }}</button></div>
+      <button v-if="detailError && !detail && selected" v-refresh-button="t('admin.commission.ui.retryRead')" class="button button-secondary" type="button" :disabled="loadingDetail" @click="withGlobalLoading(loadDetail, selected.id)">{{ t('admin.commission.ui.retryRead') }}</button>
+      <section v-if="!loadingDetail && detail" class="rw-detail">
+        <div class="rw-section-heading"><div><h2>{{ t('admin.copy.5fea6596') }}</h2><p>{{ stateLabel(detail.state) }}</p></div><button v-if="detailError" v-refresh-button="t('admin.copy.2afd7606')" data-testid="rewards-detail-refresh" class="button" type="button" :disabled="loadingDetail" @click="withGlobalLoading(loadDetail, detail.id)">{{ t('admin.copy.2afd7606') }}</button></div>
 
         <dl class="rw-facts"><dt>ID</dt><dd>{{ detail.id }}</dd><dt>{{ t('admin.copy.2bb1f2b5') }}</dt><dd><AssociationName :record="detail" kind="brand" :id="detail.brand_id" :locale="associationLocale" /><br /><AssociationName :record="detail" kind="member" :id="detail.member_id" :locale="associationLocale" /></dd><dt>{{ t('admin.copy.b993a315') }}</dt><dd>{{ detail.points }} · {{ stateLabel(detail.state) }}</dd><dt>{{ t('admin.copy.a69844be') }}</dt><dd>{{ detail.grant_ledger_entry_id }}<br />{{ nullable(detail.revoke_ledger_entry_id) }}</dd><dt>{{ t('admin.copy.373c5abf') }}</dt><dd><AssociationName :record="detail" kind="admin" :id="detail.created_by" :locale="associationLocale" /><br />{{ detail.reason }}</dd><dt>{{ t('admin.copy.9efac6c5') }}</dt><dd>{{ formatDate(detail.created_at) }}<br />{{ formatDate(detail.updated_at) }}<br />{{ detail.revoked_at ? formatDate(detail.revoked_at) : t('admin.copy.c2b41b33') }}</dd></dl>
 
         <div class="rw-actions ui-form-actions"><button v-if="detail.state === 'granted'" data-testid="rewards-revoke" class="button button-primary" type="button" :disabled="!canRevoke" @click="withGlobalLoading(openReview, 'revoke')">{{ t('admin.copy.50cba90d') }}</button></div>
 
-        <ManagementList embedded class="rw-history"><div class="rw-section-heading"><div><h3>{{ t('admin.copy.07e3ef40') }}</h3></div><button v-refresh-button="loadingHistory ? t('admin.copy.27342bf3') : t('admin.copy.4f5df8c1')" data-testid="rewards-history-refresh" class="button" type="button" :disabled="loadingHistory" @click="withGlobalLoading(loadHistory, detail.id, 0)">{{ loadingHistory ? t('admin.copy.27342bf3') : t('admin.copy.4f5df8c1') }}</button></div>
+        <ManagementList embedded class="rw-history"><div class="rw-section-heading"><div><h3>{{ t('admin.copy.07e3ef40') }}</h3></div><button v-if="historyError" v-refresh-button="loadingHistory ? t('admin.copy.27342bf3') : t('admin.copy.4f5df8c1')" data-testid="rewards-history-refresh" class="button" type="button" :disabled="loadingHistory" @click="withGlobalLoading(loadHistory, detail.id, 0)">{{ loadingHistory ? t('admin.copy.27342bf3') : t('admin.copy.4f5df8c1') }}</button></div>
           <template v-if="historyError" /><p v-global-loading v-else-if="loadingHistory && !history" class="rw-state" role="status">{{ t('admin.copy.90608350') }}</p>
           <div class="table-wrap rw-table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ t('admin.copy.41b787d3') }}</th><th>{{ t('admin.copy.0e735405') }}</th><th>{{ t('admin.copy.ade69be3') }}</th><th>{{ t('admin.copy.96593f4b') }}</th><th>{{ t('admin.copy.0b62f6c4') }}</th></tr></thead><tbody><tr v-for="action in history?.items" :key="action.id"><td :data-label="t('admin.copy.41b787d3')">{{ operationLabel(action.operation) }}<small>{{ action.id }}</small></td><td :data-label="t('admin.copy.0e735405')">{{ action.state_before ? stateLabel(action.state_before) : t('admin.copy.c2b41b33') }} → {{ stateLabel(action.state_after) }}</td><td :data-label="t('admin.copy.ade69be3')"><AssociationName :record="action" kind="actor" :id="action.actor_id" :locale="associationLocale" /><small>{{ action.reason }}</small></td><td :data-label="t('admin.copy.96593f4b')"><small>{{ nullable(action.ledger_entry_id) }}</small></td><td :data-label="t('admin.copy.0b62f6c4')">{{ formatDate(action.created_at) }}</td></tr><tr v-if="!loadingHistory && !historyError && history?.items.length===0"><td colspan="5" class="empty-state">{{ t('admin.copy.a6f853c8') }}</td></tr></tbody></table></div>
 
-        <template #pagination><TablePagination :show-empty="Boolean(history)" v-if="history" class="rw-pagination" :total="history.total_count" :page="Math.floor(history.offset / PAGE_SIZE + 1)" :count="history.items.length" :locale="associationLocale" :page-size="PAGE_SIZE" :previous-disabled="history.offset === 0 || loadingHistory" :next-disabled="BigInt(history.offset + history.limit) >= BigInt(history.total_count) || loadingHistory" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadHistory(detail!.id, (target - 1) * PAGE_SIZE)" /></template></ManagementList>
+        <template #pagination><TablePagination v-if="history" class="rw-pagination" :total="history.total_count" :page="Math.floor(history.offset / historyPageSize + 1)" :count="history.items.length" :locale="associationLocale" :page-size="historyPageSize" :previous-disabled="history.offset === 0 || loadingHistory" :next-disabled="BigInt(history.offset + history.limit) >= BigInt(history.total_count) || loadingHistory" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadHistory(detail!.id, (target - 1) * historyPageSize)" :change-page-size="async (size: number) => { historyPageSize = size; await loadHistory(detail!.id, 0) }" /></template></ManagementList>
       </section>
 </DetailModal>
 
@@ -374,7 +377,7 @@ useOperationToast(() => writeError.value, value => displayPublicError(value), 'e
         <div class="rw-actions ui-form-actions"><button v-write-guard="writing" data-testid="rewards-confirm-submit" class="button button-primary" type="button" :disabled="writing || !confirmed" @click="withGlobalLoading(submit, dialog)">{{ writing ? t('admin.copy.46511dc0') : t('admin.copy.02c1e356') }}</button></div>
       </section>
       </DetailModal>
-    <template #pagination><TablePagination :show-empty="Boolean(page)" v-if="page" class="rw-pagination" :total="page.total_count" :page="Math.floor(page.offset / PAGE_SIZE + 1)" :count="page.items.length" :locale="associationLocale" :page-size="PAGE_SIZE" :previous-disabled="!hasPrevious || loadingList" :next-disabled="!hasNext || loadingList" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadList((target - 1) * PAGE_SIZE)" /></template></ManagementList>
+    <template #pagination><TablePagination v-if="page" class="rw-pagination" :total="page.total_count" :page="Math.floor(page.offset / orderPageSize + 1)" :count="page.items.length" :locale="associationLocale" :page-size="orderPageSize" :previous-disabled="!hasPrevious || loadingList" :next-disabled="!hasNext || loadingList" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadList((target - 1) * orderPageSize)" :change-page-size="async (size: number) => { orderPageSize = size; await loadList(0) }" /></template></ManagementList>
     <p v-else class="rw-state" role="status">{{ t('admin.copy.2ea8d38e') }}</p>
   </article>
 </template>

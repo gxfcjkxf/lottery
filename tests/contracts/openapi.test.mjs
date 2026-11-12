@@ -36,9 +36,12 @@ import * as reportArchiveTasks from "../../scripts/openapi-report-archive-tasks.
 import * as reportArchivePolicy from "../../scripts/openapi-report-archive-policy.mjs";
 import * as attributionReports from "../../scripts/openapi-attribution-reports.mjs";
 import * as agentPortal from "../../scripts/openapi-agent-portal.mjs";
+import * as cash from "../../scripts/openapi-cash.mjs";
+import * as announcements from "../../scripts/openapi-announcements.mjs";
+import * as brandContacts from "../../scripts/openapi-brand-contacts.mjs";
 
 const modules=[identity,finance,lottery,withdrawals,withdrawalReports,workbench,commissionPolicies,commissionCycles,commissionDiscovery,commissionPayments,commissionAdjustments,commissionCorrections,commissionReports,commissionAnalysis,rechargeUser,rewards,rewardReports,reportArchives,reportArchiveTasks,reportArchivePolicy,attributionReports];
-modules.push(bettingPreferences,bettingHistory,platformShared,configuredPreview,configuredBusiness,markSix,canada,sharedAutomation,platformSettings,memberSummary,associationNames,filterOptions,agentPortal);
+modules.push(bettingPreferences,bettingHistory,platformShared,configuredPreview,configuredBusiness,markSix,canada,sharedAutomation,platformSettings,memberSummary,associationNames,filterOptions,agentPortal,brandContacts,cash,announcements);
 const go=process.env.LOTTERY_GO_BIN??"go";
 const operation={method:"POST",path:"/api/v1/me/action",operationId:"performAction",summary:"Submit action",tag:"identity",auth:"user",idempotency:true,requestBody:{$ref:"#/components/schemas/EmptyObject"},data:{$ref:"#/components/schemas/EmptyObject"}};
 const routes=[{method:"POST",path:"/api/v1/me/action"},{method:"POST",path:"/api/v1/b/{brandCode}/me/action"}];

@@ -58,8 +58,8 @@ async function syncNow() {
   if (!alive) return
   if (cause instanceof PlatformLotteryError && cause.status >= 400 && cause.status < 500) {
    pendingKey.value = null
+   if (cause.status === 401) { emit('failure', cause); return }
    syncNotice.value = cause.code === 'HKJC_CALENDAR_BUSY' ? 'syncBusy' : cause.status === 403 ? 'syncDenied' : 'syncRejected'
-   if (cause.status === 401) emit('failure', cause)
   } else syncNotice.value = 'syncUnknown'
  } finally { if (alive) syncing.value = false }
 }
@@ -74,7 +74,7 @@ useOperationToast(() => syncNotice.value === 'syncFailed' ? syncNotice.value : '
   <div class="official-calendar-heading console-page-heading">
    <h2 id="official-calendar-title">{{ t('calendar.title') }}</h2>
    <span v-if="data" class="status-pill calendar-status" :class="`calendar-${data.status}`" role="status" :aria-label="t('calendar.status')">{{ t(`calendar.${data.status}`) }}</span>
-   <div class="calendar-actions console-page-actions"><button v-if="canManage" v-write-guard="syncing" type="button" class="button button-primary" :disabled="busy || syncing" @click="withGlobalLoading(syncNow)">{{ t(syncing ? 'calendar.syncing' : pendingKey ? 'calendar.syncRetry' : 'calendar.syncNow') }}</button><button v-if="!failed" type="button" class="button button-secondary" :disabled="busy || syncing" v-refresh-button="t('calendar.retry')" @click="withGlobalLoading(load)">{{ t('calendar.retry') }}</button></div>
+   <div class="calendar-actions console-page-actions"><button v-if="canManage" v-write-guard="syncing" type="button" class="button button-primary" :disabled="busy || syncing" @click="withGlobalLoading(syncNow)">{{ t(syncing ? 'calendar.syncing' : pendingKey ? 'calendar.syncRetry' : 'calendar.syncNow') }}</button></div>
   </div>
   <p v-if="busy && !data" v-global-loading role="status" class="calendar-note">{{ t('calendar.loading') }}</p>
   <div v-if="failed" role="alert" class="message error">{{ t('calendar.readFailed') }} <button type="button" class="button button-secondary" :disabled="busy || syncing" v-refresh-button="t('calendar.retry')" @click="withGlobalLoading(load)">{{ t('calendar.retry') }}</button></div>
@@ -108,7 +108,7 @@ useOperationToast(() => syncNotice.value === 'syncFailed' ? syncNotice.value : '
 .calendar-month-heading h3{font-size:var(--body-font-size);font-weight:650;text-align:center;margin:0}
 .calendar-month-arrow{width:44px;height:44px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--ink);font:inherit;font-size:24px;cursor:pointer}
 .calendar-month-arrow:hover:not(:disabled){background:var(--line-subtle)}.calendar-month-arrow:disabled{color:var(--muted);cursor:default}
-.calendar-month-view .calendar-grid{table-layout:fixed;width:100%;border-collapse:collapse;min-width:0;margin:0}
+.calendar-month-view .calendar-grid{--table-cell-padding-inline:0px;table-layout:fixed;width:100%;border-collapse:collapse;min-width:0;margin:0}
 .calendar-month-view .calendar-grid th,.calendar-month-view .calendar-grid td{width:calc(100% / 7);height:42px;padding:0;text-align:center;white-space:normal;font-size:var(--body-font-size);border:0;vertical-align:middle}
 .calendar-month-view .calendar-grid th{background:var(--table-header-bg);color:var(--ink-secondary);font-weight:650;border-bottom:1px solid var(--line)}
 .calendar-month-view .calendar-grid td{color:var(--muted)}

@@ -2,10 +2,12 @@ import type { TranslationCatalog } from '@lottery/shared'
 
 export const userExtraCatalog = {
   en: {
+    'announcements.title': 'Announcements',
+    'user.updates.title': 'Notifications',
     'user.lists.search': 'Search',
     'user.lists.clear': 'Clear',
     'auth.navigationRetry': 'Retry',
-    'auth.sessionReplaced': 'A new sign-in has ended this session. Please sign in again.',
+    'auth.sessionReplaced': 'Your account was signed in elsewhere. If this wasn’t you, sign in again and change your password.',
     'markSix.title': 'Mark Six',
 'canada.title':'Canada games',
     'user.selection.position': 'Position {position}',
@@ -52,10 +54,12 @@ export const userExtraCatalog = {
     "user.copy.f7216c0c": "Choose one or more candidates for each position",
   },
   'zh-CN': {
+    'announcements.title': '公告',
+    'user.updates.title': '通知',
     'user.lists.search': '查询',
     'user.lists.clear': '清空',
     'auth.navigationRetry': '重试',
-    'auth.sessionReplaced': '账号有新的登录，当前会话已失效，请重新登录。',
+    'auth.sessionReplaced': '账号在别处登录,如果不是本人行为,请重新登录后修改密码.',
     'markSix.title': '六合彩',
 'canada.title':'加拿大彩种',
     'user.selection.position': '位置 {position}',

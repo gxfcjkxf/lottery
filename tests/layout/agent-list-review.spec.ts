@@ -77,7 +77,21 @@ for (const locale of ['en', 'zh-CN'] as const)
         const create = page.getByRole('dialog', { name: zh ? '添加会员' : 'Add member', exact: true });
         await expect(create).toBeVisible();
         await expect(create.getByLabel(zh ? '账号' : 'Account', { exact: true })).toBeVisible();
+        await expectNoPageOverflow(page);
+        await create.screenshot({ path: info.outputPath(`member-create-${locale}.png`) });
         await expect(create.locator('button[type=submit]')).toBeDisabled();
+        const accountInput = create.getByLabel(zh ? '账号' : 'Account', { exact: true });
+        const passwordInput = create.getByLabel(zh ? '密码' : 'Password', { exact: true });
+        await expect(accountInput.locator('..')).toHaveText(zh ? '账号' : 'Account');
+        await expect(passwordInput.locator('..')).toHaveText(zh ? '密码' : 'Password');
+        await accountInput.fill('Bad!'); await passwordInput.fill('123456');
+        await create.locator('form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+        await expect(accountInput).toHaveAttribute('aria-invalid', 'true');
+        await accountInput.fill('review_member');
+        await passwordInput.fill('123');
+        await create.locator('form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+        await expect(passwordInput).toHaveAttribute('aria-invalid', 'true');
+        await expect(create.locator('.inline-validation-error')).toContainText('6');
         await create.locator('.detail-modal-close').click();
         await expect(list.locator('tbody tr')).toHaveCount(20);
         if (preset.width >= 1080) {
@@ -87,7 +101,7 @@ for (const locale of ['en', 'zh-CN'] as const)
         failMembers = true;
         await pager.getByRole('button', { name: zh ? '下一页' : 'Next', exact: true }).click();
         await expect(page.locator('.toast-error')).toBeVisible();
-        await expect(pager.locator('[aria-current=page]')).toHaveText('1');
+        await expect(pager.locator('[aria-current=page]')).toHaveAttribute('aria-label', /^(?:Page 1|第 1 页)$/);
         await expect(list.locator('tbody tr').first()).toContainText('member_0');
         await page.locator('.toast-error .toast-close').click();
         holdMembers = true;
@@ -95,13 +109,13 @@ for (const locale of ['en', 'zh-CN'] as const)
         try {
             await expect(pager.locator('.table-pagination-arrow').last()).toBeDisabled();
             await expect(pager.getByRole('textbox')).toBeDisabled();
-            await expect(pager.locator('[aria-current=page]')).toHaveText('1');
+            await expect(pager.locator('[aria-current=page]')).toHaveAttribute('aria-label', /^(?:Page 1|第 1 页)$/);
             await expect(list.locator('tbody tr').first()).toContainText('member_0');
         }
         finally {
             releaseMembers();
         }
-        await expect(pager.locator('[aria-current=page]')).toHaveText('2');
+        await expect(pager.locator('[aria-current=page]')).toHaveAttribute('aria-label', /^(?:Page 2|第 2 页)$/);
         await pager.getByRole('textbox').fill('3');
         await pager.getByRole('button', { name: 'GO', exact: true }).click();
         await expect(list.locator('tbody tr')).toHaveCount(1);
@@ -126,7 +140,8 @@ for (const locale of ['en', 'zh-CN'] as const)
             await expect(page.locator('.management-list tbody tr')).toHaveCount(1);
             await review(id);
             emptyRecords = true;
-            await page.locator('.management-list-toolbar [data-refresh-button]').click();
+            await expect(page.locator('.management-list-toolbar [data-refresh-button]')).toHaveCount(0);
+            await page.reload();
             await expect(page.locator('td.empty-state')).toBeVisible();
             await expect(page.locator('.management-list thead')).toHaveCount(1);
             await expect(page.locator('.table-pagination')).toHaveCount(0);

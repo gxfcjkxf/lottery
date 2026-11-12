@@ -13,7 +13,6 @@ import (
 
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var ErrPolicyLimit = errors.New("point policy limit exceeded")
@@ -132,25 +131,12 @@ type policyRow interface {
 
 func scanPolicy(row policyRow) (Policy, error) {
 	var policy Policy
-	var balance, recharge, adjustment pgtype.Int8
-	err := row.Scan(&policy.BrandID, &policy.Version, &balance, &recharge, &adjustment)
+	err := row.Scan(&policy.BrandID, &policy.Version, &policy.MaxBalancePoints, &policy.MaxRechargePoints, &policy.MaxAdjustmentPoints)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Policy{}, ErrNotFound
 	}
 	if err != nil {
 		return Policy{}, err
-	}
-	if balance.Valid {
-		value := Amount(balance.Int64)
-		policy.MaxBalancePoints = &value
-	}
-	if recharge.Valid {
-		value := Amount(recharge.Int64)
-		policy.MaxRechargePoints = &value
-	}
-	if adjustment.Valid {
-		value := Amount(adjustment.Int64)
-		policy.MaxAdjustmentPoints = &value
 	}
 	return policy, nil
 }
@@ -183,7 +169,7 @@ func policyCapArg(value *Amount) any {
 	if value == nil {
 		return nil
 	}
-	return int64(*value)
+	return *value
 }
 
 func (s Store) UpdatePolicy(ctx context.Context, tx pgx.Tx, brand string, in PolicyInput, meta Metadata) (Policy, error) {

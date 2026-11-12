@@ -89,10 +89,60 @@ test('Mark Six schedule belongs to the game, source has result fields only',asyn
  await page.screenshot({path:info.outputPath('game-schedule-integrated.png'),fullPage:true})
  await page.getByRole('button',{name:'返回彩种列表',exact:true}).click()
  await row.getByRole('button',{name:'开奖数据源',exact:true}).click()
+ await page.getByRole('button',{name:'新澳门公开来源',exact:true}).click()
  await expect(page.getByTestId('platform-brand-required')).toHaveCount(0)
  await expect(page.getByLabel('首期开奖时间',{exact:true})).toHaveCount(0)
  await expect(page.getByLabel('开奖前开盘（秒）',{exact:true})).toHaveCount(0)
  await expect(page.getByLabel('期次排期方式',{exact:true})).toHaveCount(0)
  await expect(page.getByRole('heading',{name:'字段映射'})).toBeVisible()
  await expectNoPageOverflow(page)
+})
+
+for(const locale of ['en','zh-CN'] as const)test(`Canada28 independent time settings and original-request retry ${locale}`,async({page},info)=>{
+ const zh=locale==='zh-CN',errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
+ const settings={timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
+ const game={id:gameId,name:zh?'加拿大28':'Canada28',code:'canada_28_trial',timezone:'America/Toronto',model:{model:'DIGITS_0_9',length:3,ordered:true,allow_repeat:true},version:1,status:'active',rule_published:true}
+ const mapping={format:'json',schedule:'source',time_format:'rfc3339',time_layout:'',timezone:'',period:{path:'/period_no',attribute:''},draw_time:{path:'/drawn_at',attribute:''},digits:{path:'/result/digits',attribute:'',separator:'',offset:0,count:3},regular:null,special:null,next_period:{path:'/next_period_no',attribute:''},next_draw_time:{path:'/next_draw_at',attribute:''},complete:null,period_query:'',game_query:''}
+ let plan={version:1,enabled:true,source_type:'mapped',source_url:'https://draw.example.test/latest',mapping,anchor_draw_at:null,anchor_period_no:null,interval_seconds:null,open_before_seconds:210,close_before_seconds:15,credential_ref:''}
+ const writes:Array<{key:string;body:Record<string,unknown>}>=[]
+ await page.route('**/api/**',route=>{
+  const req=route.request(),path=new URL(req.url()).pathname,ok=(data:unknown)=>route.fulfill({json:{success:true,data}})
+  if(req.method()==='POST'){
+   expect(path).toBe(`/api/v1/platform/platform-games/${gameId}/automation-timing`)
+   writes.push({key:req.headers()['idempotency-key']!,body:req.postDataJSON()})
+   if(writes.length===1)return route.fulfill({status:503,json:{success:false,error:{code:'SERVICE_UNAVAILABLE',message:'private detail'}}})
+   expect(writes[1]).toEqual(writes[0]);plan={...plan,open_before_seconds:180,close_before_seconds:20,version:2};return ok(plan)
+  }
+  if(path.endsWith('/automation'))return ok({schedule:null,plan,source_check:null,attempts:[],allowed_origins:['https://draw.example.test']})
+  if(path.endsWith('/draw-sources'))return ok({version:plan.version,active_source_id:gameId,active_source_revision:1,items:[{id:gameId,name:'JND28 Latest API',revision:1,plan}]})
+  if(path==='/api/v1/platform/platform-games')return ok({games:[game],limit:50,offset:0,total_count:'1'})
+  if(path.endsWith('/'+gameId))return ok({game,periods:[],total_count:'0'})
+  throw Error('Unexpected request '+path)
+ })
+ await page.route('**/__canada-time',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app" class="management-console" style="padding:12px"></div><script type="module">import {createApp,h} from '/node_modules/.vite/deps/vue.js';import C from '/@fs${resolve('shared/src/PlatformLottery.vue')}';import Host from '/@fs${resolve('shared/src/OperationToastHost.vue')}';import {setPlatformDisplaySettings} from '/@fs${resolve('shared/src/display-settings.ts')}';import '/@fs${resolve('shared/src/styles.css')}';import '/@fs${resolve('shared/src/management.css')}';import '/@fs${resolve('shared/src/controls.css')}';import '/@fs${resolve('shared/src/form-validation.css')}';setPlatformDisplaySettings(${JSON.stringify(settings)});createApp({render:()=>[h(C,${JSON.stringify({surface:'platform',brandId:'',initialGameId:gameId,drawsOnly:false,locale,canManage:true,canConnect:false,displaySettings:settings})}),h(Host,{locale:'${locale}'})]}).mount('#app')</script></html>`}))
+ await page.goto(origins.platform+'/__canada-time')
+ const row=page.getByRole('row').filter({hasText:game.name})
+ await row.getByRole('button',{name:zh?'开奖数据源':'Data sources',exact:true}).click()
+ await page.getByRole('button',{name:'JND28 Latest API',exact:true}).click()
+ const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible()
+ await expect(dialog.getByLabel(zh?'开奖前开盘（秒）':'Open before draw (seconds)',{exact:true})).toHaveCount(0)
+ await expect(dialog.getByLabel(zh?'开奖前封盘（秒）':'Close before draw (seconds)',{exact:true})).toHaveCount(0)
+ await dialog.getByRole('button',{name:zh?'关闭':'Close',exact:true}).click()
+ await page.getByRole('button',{name:zh?'返回彩种列表':'Back to game list',exact:true}).click()
+ await row.getByRole('button',{name:zh?'时间设置':'Time settings',exact:true}).click()
+ const open=page.getByLabel(zh?'开奖前开盘（秒）':'Open before draw (seconds)',{exact:true})
+ const close=page.getByLabel(zh?'开奖前封盘（秒）':'Close before draw (seconds)',{exact:true})
+ await expect(open).toHaveValue('210');await expect(close).toHaveValue('15')
+ await expect(page.getByLabel(zh?'首期开奖时间':'First draw time',{exact:true})).toHaveCount(0)
+ await expect(page.locator('input[type=url]')).toHaveCount(0)
+ if(info.project.name.endsWith('reflow'))for(const size of [{width:1440,height:900},{width:1024,height:768},{width:768,height:1024},{width:700,height:600},{width:320,height:640}]){await page.setViewportSize(size);await expectNoPageOverflow(page)}
+ await open.fill('180');await close.fill('20')
+ await page.screenshot({path:info.outputPath(`canada-time-${locale}.png`),fullPage:true})
+ await page.getByRole('button',{name:zh?'保存设置':'Save settings',exact:true}).click()
+ await expect(page.locator('.toast-error')).toBeVisible();await expect(open).toBeDisabled()
+ expect(writes[0]?.body).toEqual({version:1,open_before_seconds:180,close_before_seconds:20,anchor_draw_at:null,anchor_period_no:null,interval_seconds:null})
+ await page.locator('.toast-error button').click()
+ await page.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true}).click()
+ await expect(page.locator('.toast-success')).toBeVisible();await expect(open).toBeEnabled()
+ await expectNoPageOverflow(page);expect(errors).toEqual([])
 })

@@ -38,7 +38,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
     const expectToolbarSpacing = async () => {
       const toolbar = (await page.locator('.withdrawal-toolbar').boundingBox())!
       const records = (await page.locator('.withdrawal-records').boundingBox())!
-      expect(records.y - toolbar.y - toolbar.height).toBeCloseTo(12, 0)
+      const mobile=await page.evaluate(()=>matchMedia('(max-width:900px), (pointer:coarse)').matches)
+      expect(records.y - toolbar.y - toolbar.height).toBeCloseTo(mobile?8:12, 0)
     }
     await expectToolbarSpacing()
     await expect(page.locator('.workspace-sidebar a[href="/withdraw"]')).toHaveText(action)

@@ -80,7 +80,7 @@ func TestCorrectionExecutionDTOHasFrozenExactJSONShape(t *testing.T) {
 		ID: "12121212-1212-4212-8212-121212121212", BrandID: correctionExecutionTestBrand,
 		ExecutionID: value.ID, PlanTargetID: "13131313-1313-4313-8313-131313131313",
 		AgentID: "14141414-1414-4414-8414-141414141414", MemberID: "15151515-1515-4515-8515-151515151515",
-		PointsBefore: points.Amount(math.MaxInt64), PointsAfter: points.Amount(math.MaxInt64 - 1), DeltaPoints: -1,
+		PointsBefore: points.Amount(math.MaxInt64), PointsAfter: points.Amount(math.MaxInt64 - 1), DeltaPoints: -100,
 		State: CorrectionExecutionTargetPending, LedgerEntryID: nil, AuditLogID: nil, FinancialVersion: nil,
 		CreatedAt: stamp, AppliedAt: nil,
 	}
@@ -104,7 +104,7 @@ func TestCorrectionExecutionDTOHasFrozenExactJSONShape(t *testing.T) {
 			t.Errorf("target JSON missing %q: %s", field, targetRaw)
 		}
 	}
-	for _, field := range []string{`"points_before":"9223372036854775807"`, `"points_after":"9223372036854775806"`, `"delta_points":"-1"`, `"ledger_entry_id":null`, `"audit_log_id":null`, `"financial_version":null`, `"applied_at":null`} {
+	for _, field := range []string{`"points_before":"92233720368547758.07"`, `"points_after":"92233720368547758.06"`, `"delta_points":"-1"`, `"ledger_entry_id":null`, `"audit_log_id":null`, `"financial_version":null`, `"applied_at":null`} {
 		if !strings.Contains(string(targetRaw), field) {
 			t.Errorf("target JSON missing exact field %s: %s", field, targetRaw)
 		}

@@ -239,3 +239,11 @@ func (e *Engine) execute(ctx context.Context, brand, actor, operation, key, fing
 	}
 	return result, nil
 }
+
+// Settings secrets use a distinct authenticated domain from cached API responses.
+func (e *Engine) SealSecret(scope string, value []byte) ([]byte, error) {
+	return e.sealBound(value, []byte("settings-secret:"+scope))
+}
+func (e *Engine) OpenSecret(scope string, value []byte) ([]byte, error) {
+	return e.openBound(value, []byte("settings-secret:"+scope))
+}

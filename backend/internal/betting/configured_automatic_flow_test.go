@@ -22,7 +22,7 @@ func TestConfiguredAutomaticMappedFeedToWallet(t *testing.T) {
 		t.Run(schedule, func(t *testing.T) {
 			ctx := context.Background()
 			var c configuredFixture
-			expectedPrize := points.Amount(25)
+			expectedPrize := points.Amount(2500)
 			if schedule == "interval" {
 				catalog, err := rules.ConfiguredTemplateCatalog("canada_28")
 				if err != nil {
@@ -40,9 +40,9 @@ func TestConfiguredAutomaticMappedFeedToWallet(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				cases := []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{{PlayID: "sum_14", Options: []string{"sum_14"}, Plate: "A", Points: 10, Multiplier: 1}}, Draw: rules.Draw{Digits: []int{5, 4, 5}}, Bet: 10, Prize: 20}}
+				cases := []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{{PlayID: "sum_14", Options: []string{"sum_14"}, Plate: "A", Points: 1000, Multiplier: 1}}, Draw: rules.Draw{Digits: []int{5, 4, 5}}, Bet: 1000, Prize: 2000}}
 				c = configuredFixtureFrom(t, engine.Snapshot(), cases)
-				expectedPrize = 20
+				expectedPrize = 2000
 			} else {
 				c = newConfiguredFixture(t)
 			}
@@ -110,7 +110,7 @@ func TestConfiguredAutomaticMappedFeedToWallet(t *testing.T) {
 			if err := c.f.db.QueryRow(ctx, `SELECT id::text FROM platform_game_periods WHERE game_id=$1 AND period_no='920001' AND automation_version=1`, c.g.ID).Scan(&periodID); err != nil {
 				t.Fatal(err)
 			}
-			fundBettingWallet(t, c.f, 100)
+			fundBettingWallet(t, c.f, 10000)
 			c.input.PeriodID = periodID
 			first, err := configuredPlace(t, c, "automatic-flow-bet", c.input)
 			if err != nil {
@@ -128,7 +128,7 @@ func TestConfiguredAutomaticMappedFeedToWallet(t *testing.T) {
 				t.Fatal("no result must not settle", n, err)
 			}
 			wallet, err := (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, c.f.member)
-			if err != nil || wallet.AvailablePoints != 90 {
+			if err != nil || wallet.AvailablePoints != 9000 {
 				t.Fatal("funds after incomplete feed", wallet, err)
 			}
 			time.Sleep(5100 * time.Millisecond)
@@ -157,7 +157,7 @@ func TestConfiguredAutomaticMappedFeedToWallet(t *testing.T) {
 				t.Fatal("settlement replay", n, err)
 			}
 			wallet, err = (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, c.f.member)
-			if err != nil || wallet.AvailablePoints != 90+expectedPrize {
+			if err != nil || wallet.AvailablePoints != 9000+expectedPrize {
 				t.Fatal("settled wallet", wallet, err)
 			}
 			var entries int

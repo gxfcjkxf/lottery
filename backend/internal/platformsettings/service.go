@@ -30,6 +30,7 @@ type Settings struct {
 	LogoURL     string    `json:"logo_url"`
 	Timezone    string    `json:"timezone"`
 	DateFormat  string    `json:"date_format"`
+	Theme       string    `json:"theme"`
 	TimeFormat  string    `json:"time_format"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	AuditLogID  string    `json:"audit_log_id,omitempty"`
@@ -42,6 +43,7 @@ type Input struct {
 	LogoURL     string `json:"logo_url"`
 	Timezone    string `json:"timezone"`
 	DateFormat  string `json:"date_format"`
+	Theme       string `json:"theme"`
 	TimeFormat  string `json:"time_format"`
 }
 
@@ -53,6 +55,9 @@ func Allowed(a access.Account, action string) bool {
 }
 
 func validate(in Input) error {
+	if in.Theme != "jade" && in.Theme != "vermilion" && in.Theme != "ocean" && in.Theme != "obsidian" {
+		return ErrInvalid
+	}
 	if in.Version < 1 || !validText(in.DisplayName, 120) || strings.TrimSpace(in.DisplayName) == "" || !validText(in.LogoText, 8) || strings.TrimSpace(in.LogoText) == "" || !validText(in.LogoURL, 512) || !validText(in.Timezone, 100) {
 		return ErrInvalid
 	}
@@ -72,11 +77,11 @@ func validText(value string, max int) bool {
 	return utf8.ValidString(value) && utf8.RuneCountInString(value) <= max && !strings.ContainsAny(value, "\r\n")
 }
 
-const selectSQL = `SELECT version,display_name,logo_text,logo_url,timezone,date_format,time_format,updated_at,COALESCE((SELECT id::text FROM audit_logs WHERE action='platform_settings.update' ORDER BY created_at DESC,id DESC LIMIT 1),'') FROM platform_settings WHERE id=true`
+const selectSQL = `SELECT version,display_name,logo_text,logo_url,timezone,date_format,time_format,theme,updated_at,COALESCE((SELECT id::text FROM audit_logs WHERE action='platform_settings.update' ORDER BY created_at DESC,id DESC LIMIT 1),'') FROM platform_settings WHERE id=true`
 
 func scan(row pgx.Row) (Settings, error) {
 	var out Settings
-	err := row.Scan(&out.Version, &out.DisplayName, &out.LogoText, &out.LogoURL, &out.Timezone, &out.DateFormat, &out.TimeFormat, &out.UpdatedAt, &out.AuditLogID)
+	err := row.Scan(&out.Version, &out.DisplayName, &out.LogoText, &out.LogoURL, &out.Timezone, &out.DateFormat, &out.TimeFormat, &out.Theme, &out.UpdatedAt, &out.AuditLogID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Settings{}, ErrInvalid
 	}
@@ -107,7 +112,7 @@ func (s Service) Update(ctx context.Context, tx pgx.Tx, a access.Account, in Inp
 		return Settings{}, ErrVersion
 	}
 	var after Settings
-	err = tx.QueryRow(ctx, `UPDATE platform_settings SET version=version+1,display_name=$1,logo_text=$2,logo_url=$3,timezone=$4,date_format=$5,time_format=$6,updated_by=$7,updated_at=clock_timestamp() WHERE id=true RETURNING version,display_name,logo_text,logo_url,timezone,date_format,time_format,updated_at`, in.DisplayName, in.LogoText, in.LogoURL, in.Timezone, in.DateFormat, in.TimeFormat, a.ID).Scan(&after.Version, &after.DisplayName, &after.LogoText, &after.LogoURL, &after.Timezone, &after.DateFormat, &after.TimeFormat, &after.UpdatedAt)
+	err = tx.QueryRow(ctx, `UPDATE platform_settings SET version=version+1,display_name=$1,logo_text=$2,logo_url=$3,timezone=$4,date_format=$5,time_format=$6,theme=$8,updated_by=$7,updated_at=clock_timestamp() WHERE id=true RETURNING version,display_name,logo_text,logo_url,timezone,date_format,time_format,theme,updated_at`, in.DisplayName, in.LogoText, in.LogoURL, in.Timezone, in.DateFormat, in.TimeFormat, a.ID, in.Theme).Scan(&after.Version, &after.DisplayName, &after.LogoText, &after.LogoURL, &after.Timezone, &after.DateFormat, &after.TimeFormat, &after.Theme, &after.UpdatedAt)
 	if err != nil {
 		return Settings{}, err
 	}

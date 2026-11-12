@@ -38,7 +38,7 @@ async function loginAdminHarbor(page: Page, context: BrowserContext) {
 }
 
 async function registerHarborMember(page: Page, context: BrowserContext) {
-  const auth = await data<{ terms: { privacy_policy_version: string; service_terms_version: string }; auth?: { captcha_enabled?: boolean } }>(
+  const auth = await data<{ auth?: { captcha_enabled?: boolean } }>(
     await page.request.get(`${userApi}/context`), "Harbor public context");
   let captcha: { captcha_id: string; captcha_answer: string } | Record<string, never> = {};
   if (auth.auth?.captcha_enabled) {
@@ -50,7 +50,7 @@ async function registerHarborMember(page: Page, context: BrowserContext) {
   const password = `Commission-${unique()}-test`;
   const registration = await data<{ member: { id: string } }>(await page.request.post(`${userApi}/auth/register`, {
     headers: { Origin: platformUserOrigin, "Idempotency-Key": unique() },
-    data: { username, password, ...auth.terms, ...captcha },
+    data: { username, password, ...captcha },
   }), "Harbor public member registration", 201);
   const cookieName = `lottery_user_${harbor.replaceAll("-", "")}`;
   const userCookies = (await context.cookies(userApi)).filter((cookie) => cookie.name === cookieName);

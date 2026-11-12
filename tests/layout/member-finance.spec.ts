@@ -1,15 +1,7 @@
+import { resolve } from 'node:path'
 import { selectControl } from '../select-control'
-import { expect, test, type Locator } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { expectNoPageOverflow, gameId, installLayoutApi, origins } from './fixture'
-
-async function expectCenteredQuotaModal(dialog: Locator) {
-  const bounds = await dialog.evaluate(node => {
-    const rect = node.getBoundingClientRect()
-    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, viewportWidth: innerWidth, viewportHeight: innerHeight }
-  })
-  expect(Math.abs(bounds.x * 2 + bounds.width - bounds.viewportWidth)).toBeLessThanOrEqual(2)
-  expect(Math.abs(bounds.y * 2 + bounds.height - bounds.viewportHeight)).toBeLessThanOrEqual(2)
-}
 
 for (const locale of ['zh-CN', 'en'] as const) test(`member finance opens from row actions and preserves the member query (${locale})`, async ({ page }, info) => {
   test.setTimeout(120_000)
@@ -193,7 +185,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`member finance opens from r
         const pagination=detail.locator('.table-pagination')
         await pagination.scrollIntoViewIfNeeded()
         await expect(pagination).toBeInViewport()
-        await expect(pagination.locator('.table-pagination-summary')).toHaveText(zh?'第 1 页 · 本页 1 条 · 共 1 条':'Page 1 · 1 record on this page · Total: 1')
+        await expect(pagination.locator('.table-pagination-summary .table-pagination-desktop')).toHaveText(zh?'第 1 页 · 本页 1 条 · 共 1 条':'Page 1 · 1 record on this page · Total: 1')
         await expect(pagination.locator('.table-pagination-actions')).toHaveCSS('gap','12px')
         await pagination.screenshot({path:info.outputPath(`ledger-pagination-${locale}-${width}.png`)})
       }
@@ -216,38 +208,20 @@ for (const locale of ['zh-CN', 'en'] as const) test(`member finance opens from r
   await expect(records.locator('tbody tr')).toHaveCount(1)
   await expect(page.locator('.finance-management > .console-panel > .table-pagination')).toBeVisible()
   expect(quotaQueries).toEqual([])
-  const quotaButton = page.getByRole('button', {name:zh?'查看额度明细':'View quota details',exact:true})
-  await expect(quotaButton).toBeEnabled()
-  await expect(page.locator('.recharge-filters').getByRole('button', {name:zh?'查看额度明细':'View quota details',exact:true})).toBeVisible()
-  await expect(page.locator('.page-head [data-testid="recharge-quota"]')).toHaveCount(0)
-  await expect(page.locator('.quota-inline')).not.toContainText(zh?'品牌可用额度':'Brand available quota')
+  await expect(page.getByTestId('recharge-quota')).toHaveCount(0)
   const area = page.locator('.finance-management'), filter = area.locator('.recharge-filters')
   await expect(area.getByRole('heading', {name:zh?'充值单':'Recharge orders',exact:true})).toHaveCount(0)
   await filter.locator('input').fill('member001')
-  await filter.getByRole('button',{name:'member001',exact:true}).click()
+  await filter.getByRole('option',{name:'member001',exact:true}).click()
   await filter.getByRole('button', {name:zh?'查询':'Search',exact:true}).click()
   await expect.poll(()=>rechargeQueries.at(-1)).toBe(memberId)
-  await expect(quotaButton).toBeVisible()
   await filter.getByRole('button',{name:zh?'清空':'Clear',exact:true}).click()
   await expect.poll(()=>rechargeQueries.at(-1)).toBe('')
   for (const width of info.project.name.includes('reflow') ? [320,640,900,901,1440] : [preset.width]) {
     if (info.project.name.includes('reflow')) await page.setViewportSize({width,height:preset.height})
     await expectNoPageOverflow(page)
     await page.screenshot({path:info.outputPath(`recharge-records-${locale}-${width}.png`)})
-    await quotaButton.click()
-    const drawer = page.getByRole('dialog',{name:zh?'额度记录':'Quota records',exact:true})
-    await expect(drawer.locator('tbody tr')).toHaveCount(10)
-    await expectCenteredQuotaModal(drawer)
-    await expectNoPageOverflow(page)
-    expect(await drawer.evaluate(node=>node.scrollWidth<=node.clientWidth+1)).toBe(true)
-    await drawer.getByRole('button',{name:zh?'下一页':'Next',exact:true}).click()
-    await expect(drawer.locator('tbody tr')).toHaveCount(1)
-    expect(quotaQueries.at(-1)).toBe('10')
-    await expect(drawer.locator('.table-pagination-summary')).toHaveText(zh?'第 2 页 · 本页 1 条 · 共 11 条':'Page 2 · 1 record on this page · Total: 11')
-    await page.screenshot({path:info.outputPath(`quota-modal-${locale}-${width}.png`)})
-    await page.keyboard.press('Escape')
-    await expect(drawer).toHaveCount(0)
-    await expect(quotaButton).toBeFocused()
+
   }
   await records.getByRole('button', { name: zh ? '详情' : 'Details', exact: true }).click()
   const rechargeDetail = page.getByRole('dialog', { name: zh ? '详情' : 'Details', exact: true })
@@ -327,22 +301,36 @@ for (const locale of ['zh-CN', 'en'] as const) test(`reports load the default ra
       await expect(panel.locator('.report-results:visible .empty-state')).toHaveCount(1)
       await expect(panel.locator('h3')).toHaveCount(0)
       await expect(panel.locator('.reports-context, .context, .ar-context')).toHaveCount(0)
-      const filters = panel.locator('.report-filters:visible'), results = panel.locator('.report-results:visible')
+      const filters = panel.locator('.report-filters:visible, .reports-filter-grid:visible'), results = panel.locator('.report-results:visible')
       await expect(filters).toHaveCount(1)
       await expect(results).toHaveCount(1)
       await expect(filters.getByRole('button', { name: zh ? '查询' : 'Query', exact: true })).toBeVisible()
-      await expect(results.getByRole('button', { name: zh ? '导出完整 CSV' : 'Export full CSV', exact: true })).toHaveCount(1)
+      await expect(panel.getByRole('button', { name: zh ? '导出完整 CSV' : 'Export full CSV', exact: true })).toHaveCount(0)
       const boxes = await Promise.all([filters.boundingBox(), results.boundingBox()])
       expect(boxes[0]!.y + boxes[0]!.height).toBeLessThan(boxes[1]!.y)
       const labels = await results.locator('.report-metrics dt, .commission-metrics dt, .coverage dt').evaluateAll(nodes => nodes.map(label => {
         const value = label.nextElementSibling!, a = label.getBoundingClientRect(), b = value.getBoundingClientRect()
-        return { text: label.textContent, nowrap: getComputedStyle(label).whiteSpace, fits: label.scrollWidth <= label.clientWidth + 1, separated: a.right <= b.left + 1 }
+        return { text: label.textContent, nowrap: getComputedStyle(label).whiteSpace, fits: label.scrollWidth <= label.clientWidth + 1, separated: a.right <= b.left + 1 || a.bottom <= b.top + 1 }
       }))
       expect(labels.length).toBeGreaterThan(0)
       for (const label of labels) {
-        expect(label.nowrap, label.text!).toBe('nowrap')
+        expect(label.nowrap, label.text!).toBe('normal')
         expect(label.fits, label.text!).toBe(true)
         expect(label.separated, label.text!).toBe(true)
+      }
+      if(width === (info.project.name.includes('reflow') ? 320 : preset.width)) {
+        const summaryChoice=filters.getByRole('checkbox',{name:zh?'显示汇总':'Show summary',exact:true})
+        const detailsChoice=filters.getByRole('checkbox',{name:zh?'显示明细':'Show details',exact:true})
+        const readCount=reads.length
+        await expect(summaryChoice).toBeChecked();await expect(detailsChoice).toBeChecked()
+        await summaryChoice.uncheck();await expect(results.locator('.report-summary-tags')).toHaveCount(0)
+        await expect(results.locator('.empty-state')).toBeVisible()
+        await detailsChoice.uncheck();await expect(results).toBeHidden()
+        await summaryChoice.check();await expect(results.locator('.report-summary-tags').first()).toBeVisible()
+        await expect(results.locator('.empty-state')).toHaveCount(0)
+        await expect(panel.locator('.table-pagination')).toHaveCount(0)
+        await detailsChoice.check();await expect(results.locator('.empty-state')).toBeVisible()
+        expect(reads.length).toBe(readCount)
       }
       await expectNoPageOverflow(page)
       await page.locator('.reports-tabs button').evaluateAll(async buttons => { await Promise.all(buttons.flatMap(button => button.getAnimations().map(animation => animation.finished))) })
@@ -353,11 +341,10 @@ for (const locale of ['zh-CN', 'en'] as const) test(`reports load the default ra
   await page.locator('.reports-tabs').getByRole('tab', { name: zh ? '账本报表' : 'Ledger report', exact: true }).click()
   await expect(page.locator('#ledger-results').locator('.reports-summary').first()).toBeVisible()
   await page.locator('.reports-tabs').getByRole('tab').first().click()
-  const bettingFilters=page.locator('.reports-filters')
+  const bettingFilters=page.locator('.reports-filter-grid')
   const agentSearch=bettingFilters.getByRole('searchbox',{name:zh?'代理账号':'Agent account',exact:true})
   await agentSearch.fill('agent_trial')
-  const agentField=agentSearch.locator('..').locator('..')
-  await agentField.getByRole('button',{name:'agent_trial',exact:true}).click()
+  await page.getByRole('option',{name:'agent_trial',exact:true}).click()
   const agentQuery=page.waitForRequest(req=>req.url().includes('/reports/attribution?'))
   await bettingFilters.getByRole('button',{name:zh?'查询':'Query',exact:true}).click()
   expect(new URL((await agentQuery).url()).searchParams.get('agent_id')).toBe(gameId)
@@ -373,22 +360,22 @@ for (const locale of ['zh-CN', 'en'] as const) test(`reports load the default ra
   await page.keyboard.press('Enter')
   await expect(tabs.last()).toHaveAttribute('aria-selected', 'true')
   await expect(page.locator('.commission-report')).toBeVisible()
-  await expect(page.locator('.reports-filters')).toBeHidden()
+  await expect(page.locator('.reports-filter-grid')).toBeHidden()
   for (const index of [2, 3, 4]) {
     await tabs.nth(index).click()
     await expect(tabs.nth(index)).toHaveAttribute('aria-selected', 'true')
     await expect(page.getByRole('tabpanel')).toHaveCount(1)
-    await expect(page.locator('.reports-filters')).toBeHidden()
+    await expect(page.locator('.reports-filter-grid')).toBeHidden()
     await expectNoPageOverflow(page)
     await page.screenshot({ path: info.outputPath(`report-tab-${locale}-${index}.png`) })
   }
   await tabs.first().click()
-  await expect(page.locator('.reports-filters')).toBeVisible()
+  await expect(page.locator('.reports-filter-grid')).toBeVisible()
   expect(reads).toHaveLength(reportReads)
   expect(errors).toEqual([])
 })
 
-for (const locale of ['zh-CN','en'] as const) test(`platform recharge quota stays read-only in records (${locale})`, async ({page}, info) => {
+for (const locale of ['zh-CN','en'] as const) test(`platform quota management opens from its own menu (${locale})`, async ({page}, info) => {
   await installLayoutApi(page,locale)
   const zh=locale==='zh-CN', at='2026-10-24T00:00:00Z', historyReads:string[]=[], errors:string[]=[]
   page.on('pageerror',error=>errors.push(error.message))
@@ -414,27 +401,25 @@ for (const locale of ['zh-CN','en'] as const) test(`platform recharge quota stay
   if(await funds.getAttribute('aria-expanded')==='false') await funds.click()
   await page.getByTestId('platform-wallet-tabs').getByRole('button',{name:zh?'充值记录':'Recharge records',exact:true}).click()
   await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), gameId)
-  const records=page.getByTestId('platform-recharges'), open=records.getByRole('button',{name:zh?'查看额度明细':'View quota details',exact:true})
-  await expect(open).toBeEnabled()
+  const records=page.getByTestId('platform-recharges')
+  await expect(records).toBeVisible()
   expect(historyReads).toHaveLength(0)
-  await expect(records).not.toContainText('880')
-  await expect(records.locator('.wallet-query').getByRole('button',{name:zh?'查看额度明细':'View quota details',exact:true})).toBeVisible()
-  await expect(records.locator('.quota-form')).toHaveCount(0)
+  await expect(records.getByTestId('recharge-quota')).toHaveCount(0)
+  if(await toggle.isVisible() && await toggle.getAttribute('aria-expanded')==='false') await toggle.click()
+  await page.getByTestId('platform-wallet-tabs').getByRole('button',{name:zh?'额度管理':'Quota management',exact:true}).click()
+  const quota=page.getByTestId('recharge-quota')
+  await expect(quota).toContainText('880')
+  await expect(quota.locator('.quota-form')).toHaveCount(0)
+  await quota.getByRole('button',{name:locale==='en'?'Operation':'额度操作',exact:true}).click()
+  await expect(quota.locator('.quota-form')).toHaveCount(1)
+  await expect(page.getByRole('dialog')).toHaveCount(1)
   const preset=page.viewportSize()!
   for(const width of info.project.name.includes('reflow')?[320,640,900,901,1440]:[preset.width]) {
     if(info.project.name.includes('reflow')) await page.setViewportSize({width,height:preset.height})
     await expectNoPageOverflow(page)
     await page.screenshot({path:info.outputPath(`platform-recharges-${locale}-${width}.png`)})
-    await open.click()
-    const drawer=page.getByRole('dialog',{name:zh?'额度记录':'Quota records',exact:true})
-    await expect(drawer).toContainText(zh?'暂无额度记录。':'No quota records.')
-    await expectCenteredQuotaModal(drawer)
-    await expect(drawer.locator('.quota-form')).toHaveCount(0)
-    await expectNoPageOverflow(page)
-    await page.screenshot({path:info.outputPath(`platform-quota-modal-${locale}-${width}.png`)})
-    await drawer.getByRole('button',{name:zh?'关闭':'Close',exact:true}).click()
-    await expect(drawer).toHaveCount(0)
-    await expect(open).toBeFocused()
+    await expect(quota).toContainText(zh?'暂无额度记录。':'No quota records.')
+    await page.screenshot({path:info.outputPath(`platform-quota-page-${locale}-${width}.png`)})
   }
   expect(errors).toEqual([])
 })
@@ -484,4 +469,42 @@ for (const locale of ['zh-CN', 'en'] as const) test(`withdrawal query defaults t
   await expect.poll(() => queries.at(-1)).toBe('')
   await expect(area.locator('.empty-state')).toBeVisible()
   expect(errors).toEqual([])
+})
+
+for(const locale of ['en','zh-CN'] as const)test(`platform reports display summary tags and details independently (${locale})`,async({page},info)=>{
+ const fields=['order_count','stake_points','placed_count','won_count','lost_count','abnormal_count','cancelled_count','refund_points','settled_stake_points','unfinalized_stake_points','abnormal_stake_points','current_prize_points','correction_open_count']
+ const errors:string[]=[];let reads=0
+ page.on('pageerror',error=>errors.push(error.message))
+ const source=await(await page.request.get(origins.brand+'/src/ReportsManagement.vue')).text(),vuePath=source.match(/from "([^"]*deps\/vue\.js[^"]*)"/)![1]
+ await page.route('**/api/**',route=>{
+  expect(route.request().method()).toBe('GET')
+  const url=new URL(route.request().url())
+  if(url.pathname.endsWith('/filter-options'))return route.fulfill({json:{success:true,data:{brand_id:'11111111-1111-4111-8111-111111111111',items:[],limit:100,offset:0}}})
+  expect(url.pathname).toBe('/api/v1/platform/reports/betting');reads++
+  const summary=Object.fromEntries(fields.map(field=>[field,field==='stake_points'?'120':'1']))
+  return route.fulfill({json:{success:true,data:{brand_id:'11111111-1111-4111-8111-111111111111',snapshot_at:'2026-11-02T00:00:00Z',timezone:'Asia/Singapore',query:{from:url.searchParams.get('from'),to:url.searchParams.get('to'),group_by:'day',limit:Number(url.searchParams.get('limit')),offset:0,game_id:null,member_id:null},summary,items:[{key:'2026-11-02',label:'2026-11-02',totals:summary}],total_groups:'1'}}})
+ })
+ const url=origins.brand+'/__platform-report-display'
+ await page.route(url,route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'${vuePath}';import Harness from'/@fs/${resolve('tests/layout/NavFiltersHarness.vue')}';import'/@fs/${resolve('shared/src/styles.css')}';import'/@fs/${resolve('platform-web/src/style.css')}';import'/@fs/${resolve('shared/src/management.css')}';import'/@fs/${resolve('shared/src/controls.css')}';createApp(Harness,${JSON.stringify({locale,view:'platform'})}).mount('#app')</script></html>`}))
+ await page.goto(url)
+ const summary=page.getByTestId('platform-reports-summary'),details=page.getByTestId('platform-reports-list'),pagination=page.getByTestId('platform-reports-pages')
+ await expect(summary.locator('.report-summary-tags > div')).toHaveCount(fields.length)
+ await expect(details).toBeVisible();await expect(pagination).toBeVisible()
+ await expect(page.getByRole('button',{name:/导出|Export/})).toHaveCount(0)
+ await expect(page.getByRole('heading',{name:locale==='en'?'Grouped data':'分组数据',exact:true})).toHaveCount(0)
+ await expect(summary.getByRole('heading')).toHaveCount(0)
+ const showSummary=page.getByRole('checkbox',{name:locale==='en'?'Show summary':'显示汇总',exact:true}),showDetails=page.getByRole('checkbox',{name:locale==='en'?'Show details':'显示明细',exact:true})
+ const readCount=reads
+ await showSummary.uncheck();await expect(summary).toHaveCount(0);await expect(details).toBeVisible()
+ await showDetails.uncheck();await expect(details).toHaveCount(0);await expect(pagination).toHaveCount(0)
+ await showSummary.check();await expect(summary).toBeVisible();await expect(details).toHaveCount(0)
+ await showDetails.check();await expect(details).toContainText('120');await expect(pagination).toBeVisible()
+ expect(reads).toBe(readCount)
+ const preset=page.viewportSize()!
+ for(const width of info.project.name.includes('reflow')?[320,640,900,901,1440]:[preset.width]){
+  if(info.project.name.includes('reflow'))await page.setViewportSize({width,height:preset.height})
+  await expectNoPageOverflow(page)
+  await page.screenshot({path:info.outputPath(`report-display-${locale}-${width}.png`),fullPage:true})
+ }
+ expect(errors).toEqual([])
 })

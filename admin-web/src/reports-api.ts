@@ -1,3 +1,4 @@
+import { isPointTotal } from '@lottery/shared'
 import { readAdminEnvelope } from './admin-api'
 import { copyAssociationNames } from "@lottery/shared"
 import { AdminApiError, type AdminAccount } from "./admin-api";
@@ -172,7 +173,7 @@ function validateTotals<T extends object>(
     invalidResponse();
   for (const field of fields) {
     const raw = record[field as string];
-    const valid = signedFields.includes(field)
+    const valid = String(field).endsWith("_points") ? isPointTotal(raw,signedFields.includes(field)) : signedFields.includes(field)
       ? typeof raw === "string" && SIGNED_INTEGER_RE.test(raw)
       : typeof raw === "string" && INTEGER_RE.test(raw);
     if (!valid) invalidResponse();
@@ -231,7 +232,7 @@ function validateReport<T>(
     if (!isRecord(rawBalances)) invalidResponse();
     const balanceFields = ["account_count", "available_points", "frozen_points", "withdrawal_points", "total_points"] as const;
     if (Object.keys(rawBalances).length !== balanceFields.length ||
-        balanceFields.some((field) => typeof rawBalances[field] !== "string" || !INTEGER_RE.test(rawBalances[field] as string))) invalidResponse();
+        balanceFields.some((field) => typeof rawBalances[field] !== "string" || !(field.endsWith("_points") ? isPointTotal(rawBalances[field]) : INTEGER_RE.test(rawBalances[field] as string)))) invalidResponse();
     balances = rawBalances as LedgerReport["balances"];
   } else if ("balances" in value) invalidResponse();
   const seen = new Set<string>();

@@ -174,7 +174,12 @@ func TestPlatformLotteryHTTPPermissionsReplayAndSharedRead(t *testing.T) {
 		t.Fatal(e)
 	}
 	manualFuture := platformlottery.ManualResultInput{PeriodNo: future.PeriodNo, DrawDate: future.DrawAt.In(loc).Format("2006-01-02"), Result: rules.Draw{Digits: []int{1, 2, 3}}}
-	mustStatus(t, f.call("POST", manualPath, "manual-future", auth.AccessToken, "", manualFuture), 409)
+	// A future calendar date is invalid before the period publication check.
+	futureStatus := 409
+	if manualFuture.DrawDate > now.In(loc).Format("2006-01-02") {
+		futureStatus = 400
+	}
+	mustStatus(t, f.call("POST", manualPath, "manual-future", auth.AccessToken, "", manualFuture), futureStatus)
 	openingPath := "/api/v1/platform/platform-games/periods/" + future.ID + "/opening"
 	openingBody := platformlottery.PeriodOpeningInput{BetStartAt: now.Add(2 * time.Hour), ExpectedBetStartAt: future.BetStartAt}
 	mustStatus(t, f.call("POST", openingPath, "brand-opening-denied", f.token, "", openingBody), 403)

@@ -13,7 +13,6 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
-	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/jackc/pgx/v5"
@@ -32,7 +31,7 @@ const orderColumns = `id::text,brand_id::text,member_id::text,account_id::text,p
 
 func scanOrder(r row) (o Order, err error) {
 	var allocation, policy []byte
-	var amount int64
+	var amount points.Amount
 	err = r.Scan(&o.ID, &o.BrandID, &o.MemberID, &o.AccountID, &amount, &o.State, &o.Version, &allocation, &policy, &o.EligibilityEvidence, &o.CycleFromAt, &o.CycleFromVersion, &o.ReserveVersion, &o.ReserveEntryID, &o.ReleaseEntryID, &o.PaidEntryID, &o.CreatedAt, &o.UpdatedAt, &o.ReviewedAt, &o.CompletedAt, &o.DecisionReason)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return o, ErrNotFound
@@ -195,23 +194,7 @@ func (s OrderService) Create(ctx context.Context, tx pgx.Tx, brand, member strin
 			return empty, ErrIneligible
 		}
 	}
-	// Incomplete configured compliance adapters cannot be bypassed by a synthetic
-	// turnover checker. No real verification is claimed when checks are disabled.
-	var complianceRaw []byte
-	if err = tx.QueryRow(ctx, `SELECT config FROM brand_compliance_policies WHERE brand_id=$1 FOR SHARE`, brand).Scan(&complianceRaw); err != nil {
-		return empty, err
-	}
-	var complianceConfig compliance.Config
-	if err = json.Unmarshal(complianceRaw, &complianceConfig); err != nil {
-		return empty, err
-	}
-	decision, _, err := compliance.Evaluate(complianceConfig)
-	if err != nil {
-		return empty, err
-	}
-	if decision != "allow" {
-		return empty, ErrIneligible
-	}
+
 	if _, err = s.Points.LockedPolicy(ctx, tx, brand); err != nil {
 		return empty, err
 	}
@@ -289,7 +272,7 @@ func (s OrderService) Create(ctx context.Context, tx pgx.Tx, brand, member strin
 	out.ReserveVersion = entry.Version
 	allocation, _ := json.Marshal(out.SourceAllocation)
 	policyRaw, _ := json.Marshal(policy)
-	_, err = tx.Exec(ctx, `INSERT INTO withdrawal_orders(id,brand_id,member_id,account_id,points,state,version,source_allocation,policy_snapshot,eligibility_evidence,cycle_from_at,cycle_from_version,reserve_version,reserve_entry_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,'reviewing',1,$6,$7,$8,$9,$10,$11,$12,$13,$13)`, out.ID, brand, member, out.AccountID, int64(out.Points), allocation, policyRaw, out.EligibilityEvidence, cycleAt, cycleVersion, out.ReserveVersion, out.ReserveEntryID, out.CreatedAt)
+	_, err = tx.Exec(ctx, `INSERT INTO withdrawal_orders(id,brand_id,member_id,account_id,points,state,version,source_allocation,policy_snapshot,eligibility_evidence,cycle_from_at,cycle_from_version,reserve_version,reserve_entry_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,'reviewing',1,$6,$7,$8,$9,$10,$11,$12,$13,$13)`, out.ID, brand, member, out.AccountID, out.Points, allocation, policyRaw, out.EligibilityEvidence, cycleAt, cycleVersion, out.ReserveVersion, out.ReserveEntryID, out.CreatedAt)
 	if err != nil {
 		return empty, err
 	}

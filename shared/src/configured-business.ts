@@ -20,7 +20,7 @@ export function createConfiguredBusinessClient(surface:'platform'|'admin'|'user'
   games:()=>request<{games:Array<{id:string;name:string}>}>('/games'),catalog:(id:string)=>request<ConfiguredLiveCatalog>(`/games/${encodeURIComponent(id)}`),
   allOrders:(offset=0)=>request<{items:ConfiguredLiveOrder[]}>(`/orders?offset=${offset}`),
   orders:(id:string,offset=0)=>request<{items:ConfiguredLiveOrder[]}>(`/games/${encodeURIComponent(id)}/orders?offset=${offset}`),
-  preview:(input:ConfiguredLiveInput)=>request<ConfiguredLiveQuote>('/preview',input),place:(input:ConfiguredLiveInput,key:string)=>request<ConfiguredLiveOrder>('/orders',input,key),
+  preview:(input:ConfiguredLiveInput)=>request<ConfiguredLiveQuote>('/preview',input),place:(input:ConfiguredLiveInput,key:string)=>request<{items:ConfiguredLiveOrder[]}>('/orders',input,key),
   rules:(id:string)=>request<ConfiguredVersion|null>(`/${encodeURIComponent(id)}/configured/rules`),
   sales:(id:string)=>request<ConfiguredSales>(`/${encodeURIComponent(id)}/configured/sales`),
   adminOrders:(id:string,offset=0)=>request<{items:ConfiguredLiveOrder[]}>(`/${encodeURIComponent(id)}/configured/orders?offset=${offset}`),

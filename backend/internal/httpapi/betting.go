@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
-	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
@@ -18,9 +17,6 @@ import (
 func betService(d Dependencies) betting.Service { return betting.Service{DB: d.Admins.DB} }
 
 func betError(data any, err error) (mutation.Result, error) {
-	if result, ok := compliance.Rejection(err); ok {
-		return result, nil
-	}
 	switch {
 	case err == nil:
 		return mutation.OK(200, data), nil

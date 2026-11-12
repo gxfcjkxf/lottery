@@ -13,7 +13,7 @@ for(const locale of ['en','zh-CN'] as const)test(`four surfaces share filter and
   await page.goto(url)
   const search=page.locator('.ui-filter-bar input'),query=page.locator('.ui-filter-bar button[type=submit]')
   await search.fill('member001');await query.click();await expect(page.getByTestId('query-count')).toHaveText('1')
-  await page.locator('.ui-filter-bar').getByRole('button',{name:zh?'清除':'Clear',exact:true}).click();await expect(search).toHaveValue('')
+  await page.locator('.ui-filter-bar').getByRole('button',{name:zh?'清除输入':'Clear input',exact:true}).click();await expect(search).toHaveValue('');await expect(search).toBeFocused();await expect(page.getByTestId('query-count')).toHaveText('1')
   const viewportSizes=info.project.name.includes('reflow')?[320,640,900,901,1440]:[preset.width]
   for(const width of viewportSizes){
    if(info.project.name.includes('reflow'))await page.setViewportSize({width,height:preset.height})
@@ -22,8 +22,9 @@ for(const locale of ['en','zh-CN'] as const)test(`four surfaces share filter and
     const style=getComputedStyle(el),input=getComputedStyle(el.querySelector('input')!),button=getComputedStyle(el.querySelector('button')!)
     return {gap:style.gap,padding:style.padding,border:style.borderWidth,inputHeight:input.height,inputRadius:input.borderRadius,inputPadding:input.padding,buttonHeight:button.height,buttonRadius:button.borderRadius}
    })
+   const mobile=await page.evaluate(()=>matchMedia('(max-width:900px), (pointer:coarse)').matches)
    const shortLandscape=await page.evaluate(()=>matchMedia('(max-height:450px) and (orientation:landscape)').matches)
-   expect(geometry).toMatchObject({gap:shortLandscape?'4px 10px':'10px',padding:'0px',border:'0px'})
+   expect(geometry).toMatchObject({gap:mobile||shortLandscape?'4px 10px':'10px',padding:'0px',border:'0px'})
    const key=`filter-${width}`
    if(surface==='user')measured[key]=geometry;else expect(geometry).toEqual(measured[key])
    await page.getByRole('button',{name:zh?'创建会员':'Create member',exact:true}).click()
@@ -37,12 +38,12 @@ for(const locale of ['en','zh-CN'] as const)test(`four surfaces share filter and
     const heading=el.querySelector('.detail-modal-heading')!,content=el.querySelector('.detail-modal-content')!
     return {headingMargin:getComputedStyle(heading).margin,gap:content.getBoundingClientRect().top-heading.getBoundingClientRect().bottom,padding:getComputedStyle(content).paddingTop}
    })
-   expect(divider).toEqual({headingMargin:'0px',gap:0,padding:'12px'})
+   expect(divider).toEqual({headingMargin:'0px',gap:0,padding:mobile?'8px':'12px'})
    const form=await dialog.locator('.ui-form').evaluate(el=>{
     const s=getComputedStyle(el),label=getComputedStyle(el.querySelector('label')!),actions=getComputedStyle(el.querySelector('.ui-form-actions')!),input=getComputedStyle(el.querySelector('input')!)
-    return {gap:s.gap,labelGap:label.gap,actionsJustify:actions.justifyContent,actionsDirection:actions.flexDirection,inputHeight:input.height,inputRadius:input.borderRadius,labelLineHeight:label.lineHeight,close:(()=>{const st=getComputedStyle(el.closest('dialog')!.querySelector('.detail-modal-close')!);return {width:st.width,height:st.height,border:st.borderWidth,background:st.backgroundColor,shadow:st.boxShadow}})(),fields:[...el.querySelectorAll('input:not([data-select-validation])')].map(field=>{const st=getComputedStyle(field);return {width:st.width,fontFamily:st.fontFamily,fontSize:st.fontSize,fontWeight:st.fontWeight,padding:st.padding}})}
+    return {gap:s.rowGap,labelGap:label.rowGap,actionsJustify:actions.justifyContent,actionsDirection:actions.flexDirection,inputHeight:input.height,inputRadius:input.borderRadius,labelLineHeight:label.lineHeight,close:(()=>{const st=getComputedStyle(el.closest('dialog')!.querySelector('.detail-modal-close')!);return {width:st.width,height:st.height,border:st.borderWidth,background:st.backgroundColor,shadow:st.boxShadow}})(),fields:[...el.querySelectorAll('input:not([data-select-validation])')].map(field=>{const st=getComputedStyle(field);return {width:st.width,fontFamily:st.fontFamily,fontSize:st.fontSize,fontWeight:st.fontWeight,padding:st.padding}})}
    })
-   expect(form).toMatchObject({gap:'12px',labelGap:'6px',actionsJustify:'flex-end',actionsDirection:'row'})
+   expect(form).toMatchObject({gap:mobile?'8px':'12px',labelGap:mobile?'4px':'6px',actionsJustify:'flex-end',actionsDirection:'row'})
    const formKey=`form-${width}`
    if(surface==='user')measured[formKey]=form;else expect(form).toEqual(measured[formKey])
    const actions=dialog.locator('.ui-form-actions'),submit=actions.getByRole('button')

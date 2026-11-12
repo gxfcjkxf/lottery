@@ -25,7 +25,7 @@ func TestReportExportActualDatabaseGroupBoundary(t *testing.T) {
 		args []any
 	}{
 		{`INSERT INTO global_users(id,username)VALUES($1,'export_limit_member')`, []any{user}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version)VALUES($1,$2,$3,'domain','dev-1','dev-1')`, []any{member, testBrand, user}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method)VALUES($1,$2,$3,'domain')`, []any{member, testBrand, user}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id)VALUES($1,$2,$3)`, []any{account, testBrand, member}},
 		{`INSERT INTO point_buckets(brand_id,account_id,source,state)SELECT $1,$2,source,state FROM unnest(ARRAY['recharge','winning','gift','commission'])source CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])state ON CONFLICT DO NOTHING`, []any{testBrand, account}},
 	} {
@@ -40,10 +40,10 @@ func TestReportExportActualDatabaseGroupBoundary(t *testing.T) {
 	defer tx.Rollback(ctx)
 	store := points.Store{DB: db}
 	var delta points.Balance
-	delta[0][0] = 1
+	delta[0][0] = 100
 	post := func(i int) {
 		t.Helper()
-		_, e := store.Post(ctx, tx, points.Change{BrandID: testBrand, MemberID: member, EntryType: fmt.Sprintf("group_%05d", i), ReferenceType: "export_limit_fixture", OperationKey: fmt.Sprintf("export-limit:%05d", i), Reason: "Owned report export boundary fixture", ActorType: "system", RequestID: ids.New(), Delta: delta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 1}}})
+		_, e := store.Post(ctx, tx, points.Change{BrandID: testBrand, MemberID: member, EntryType: fmt.Sprintf("group_%05d", i), ReferenceType: "export_limit_fixture", OperationKey: fmt.Sprintf("export-limit:%05d", i), Reason: "Owned report export boundary fixture", ActorType: "system", RequestID: ids.New(), Delta: delta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 100}}})
 		if e != nil {
 			t.Fatal(e)
 		}

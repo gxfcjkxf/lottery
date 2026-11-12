@@ -1,3 +1,4 @@
+import { isPointTotal } from '@lottery/shared'
 import { readReportDownload } from "@lottery/shared";
 import { readAdminEnvelope } from './admin-api'
 import { readAdminErrorResponse } from './admin-api'
@@ -8,7 +9,6 @@ import { brandPermissionSet } from "./brand-permissions";
 // Match the backend's public UUID shape contract; legacy IDs need not carry RFC version/variant bits.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UINT = /^(0|[1-9]\d*)$/;
-const SINT = /^(0|-?[1-9]\d*)$/;
 const MAX_WINDOW_NS = 93n * 86_400n * 1_000_000_000n;
 const MIN_UTC_NS = BigInt(Date.parse("0001-01-01T00:00:00.000Z")) * 1_000_000n;
 const MAX_UTC_NS = BigInt(Date.parse("+010000-01-01T00:00:00.000Z")) * 1_000_000n;
@@ -75,7 +75,7 @@ function canonical(inputQuery: RewardReportQuery, kind: RewardReportKind, export
 function fields(kind: RewardReportKind): readonly string[] { return kind === "rewards" ? POSTING_FIELDS : ORDER_FIELDS; }
 function totals(value: unknown, kind: RewardReportKind): RewardReportTotals {
   const list = fields(kind);
-  if (!record(value) || !exact(value, list) || list.some((f) => typeof value[f] !== "string" || !(f === "net_points" ? SINT : UINT).test(value[f] as string))) return invalid();
+  if (!record(value) || !exact(value, list) || list.some((f) => typeof value[f] !== "string" || !(f.endsWith("_points") ? isPointTotal(value[f],f === "net_points") : UINT.test(value[f] as string)))) return invalid();
   const t = value as unknown as RewardReportTotals;
   return t;
 }

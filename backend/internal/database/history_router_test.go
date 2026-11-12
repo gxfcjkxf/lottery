@@ -62,7 +62,7 @@ func TestReplicaEligibility(t *testing.T) {
 	}
 }
 func TestHistoryRouteWhitelist(t *testing.T) {
-	for _, route := range []HistoryRoute{HistoryAudit, HistoryNotification, HistoryCompliance, HistoryPresentation, HistoryDomains, HistoryOperation} {
+	for _, route := range []HistoryRoute{HistoryAudit, HistoryNotification, HistoryPresentation, HistoryDomains, HistoryOperation} {
 		if !route.allowed() {
 			t.Fatal("missing history route", route)
 		}

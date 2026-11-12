@@ -7,10 +7,11 @@ const { parse } = require('vue/compiler-sfc');
 // Settings failures/conflicts deliberately offer a text recovery action (UI spec 48).
 // The same label outside a failure context is still a regular refresh candidate.
 export function isRecoveryRead(label, conditions, path = '') {
-  if (path === 'shared/src/DrawScheduleSettings.vue' && /t\(['"]reload['"]\)/.test(label)
+  if (['shared/src/DrawScheduleSettings.vue','shared/src/AutomationTimeSettings.vue'].includes(path) && /t\(['"]reload['"]\)/.test(label)
     && conditions.some(condition => /^failed\s*&&\s*!pending$/.test(condition))) return true;
-  return /['"](?:admin\.settings\.readAgain|security\.reread|brandOperation\.readLatest)['"]/.test(label)
-    && conditions.some(condition => /(?:^|&&|\|\||\()\s*(?:(?:error|readFailed|conflict|conflictedWrite)\s*(?=$|&&|\|\||\))|[\w.]+\.phase\s*===\s*['"]conflict['"])/.test(condition));
+  if (path === 'shared/src/AnnouncementsManagement.vue' && /t\(['"]reset['"]\)/.test(label) && conditions.includes('conflict')) return true;
+  return /['"](?:admin\.settings\.readAgain|security\.reread|brandOperation\.readLatest|cash\.reload)['"]/.test(label)
+    && conditions.some(condition => /(?:^|&&|\|\||\()\s*(?:(?:error|readFailed|needsRead|candidatesFailed|conflict|conflictedWrite)\s*(?=$|&&|\|\||\))|[\w.]+\.phase\s*===\s*['"]conflict['"])/.test(condition));
 }
 
 function filesUnder(dir) {

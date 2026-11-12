@@ -89,7 +89,7 @@ export function registerAssociationNameTests() {
     const path = new URL(route.request().url()).pathname
     const reply = (data:unknown) => route.fulfill({json:{success:true,data,associations:{[`role:${role}`]:{name:'Bootstrap administrator',built_in:true}}}})
     if(path==='/api/v1/platform/presentation')return reply({display_name:'Layout',logo_text:'L',logo_url:''})
-    if(path==='/api/v1/display-settings')return reply({timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'})
+    if(path==='/api/v1/display-settings')return reply({theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'})
     if(path==='/api/v1/platform/me')return reply({account:{...account,platform_permissions:['admin.view.platform']}})
     if(path==='/api/v1/platform/platform-settings')return reply({timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',display_name:'Layout',logo_text:'L',logo_url:'',version:1,updated_at:'2026-10-18T00:00:00Z'})
     if(path==='/api/v1/platform/brands')return reply({items:[]})

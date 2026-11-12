@@ -63,7 +63,7 @@ const directoryNodes = ref<AgentDirectoryNode[]>([]);
 const search = ref(''), query = ref('');
 const onlineFilter = ref<'' | 'true' | 'false'>(''), onlineQuery = ref<'' | 'true' | 'false'>('');
 async function searchAgents() { await loadTree(++generation, props.brandId, props.account.id, 0, search.value.trim(), onlineFilter.value); }
-async function clearSearch() { search.value = ''; onlineFilter.value = ''; await searchAgents(); }
+
 const hasNext = computed(() => BigInt(offset.value) + BigInt(nodes.value.length) < BigInt(total.value));
 const total = ref("0"), listLoaded = ref(false);
 const offset = ref(0);
@@ -90,7 +90,7 @@ let generation = 0;
 let writeGeneration = 0;
 let disposed = false;
 let activeAccountId = props.account.id;
-const pageSize = 20;
+const pageSize = ref(20);
 const policyRatioValid = computed(() => validAgentPercentage(policyLossPercentage.value) && validAgentPercentage(policyTurnoverPercentage.value));
 const nodeRatioValid = computed(() => Boolean(draftMode.value) && validAgentPercentage(draftRatio.value));
 const nodeParentMode = computed<Mode | null | undefined>(() => selected.value ? (selected.value.parent_id ? (selectedParentReady.value ? selectedParentMode.value ?? undefined : undefined) : policy.value?.config.mode) : (parentNode.value ? parentNode.value.effective_mode : parentId.value ? undefined : null));
@@ -113,6 +113,7 @@ watch(changingMode, async change => {
     if (ticket !== modeScopeGeneration || brand !== props.brandId || accountId !== props.account.id || selected.value?.id !== id) return;
     if (scope.policy_version !== policy.value?.version || scope.items.some(node => node.pending_change) || scope.items.find(node => node.id === id)?.version !== selected.value.version) throw new AdminApiError('Mode scope changed',409,'AGENT_VERSION_CONFLICT');
     modeLine.value = scope.items;
+    modeRatios.value = Object.fromEntries(scope.items.filter(node => node.id !== id).map(node => [node.id, "0"]));
   } catch(cause) { if(ticket === modeScopeGeneration) handleError(cause); }
   finally { if(ticket === modeScopeGeneration) modeScopeLoading.value = false; }
 });
@@ -140,7 +141,7 @@ async function loadTree(g = ++generation, brand = props.brandId, account = props
   if (!canViewAgents.value || !brand) { nodes.value = []; return; }
   loading.value = true; error.value = "";
   try {
-    const [result, parent] = await Promise.all([requestedView === 'list' ? api.list(brand, pageSize, requestedOffset, { query: requestedQuery, online: requestedOnline }) : api.tree(brand, requestedParent, pageSize, requestedOffset), requestedParent ? api.node(brand, requestedParent) : Promise.resolve(null)]);
+    const [result, parent] = await Promise.all([requestedView === 'list' ? api.list(brand, pageSize.value, requestedOffset, { query: requestedQuery, online: requestedOnline }) : api.tree(brand, requestedParent, pageSize.value, requestedOffset), requestedParent ? api.node(brand, requestedParent) : Promise.resolve(null)]);
     if (!sameScope(g, brand, account)) return;
     if (result.brand_id !== brand || (requestedView === 'hierarchy' && (!('parent_id' in result) || result.parent_id !== requestedParent))) throw new AdminApiError('', 502, 'INVALID_RESPONSE');
     listLoaded.value = true; viewMode.value = requestedView; parentId.value = requestedParent; offset.value = requestedOffset; query.value = requestedQuery; onlineQuery.value = requestedOnline;
@@ -288,7 +289,7 @@ async function confirmWrite() {
 async function retryFrozen() { await confirmWrite(); }
 function modeLabel(value: string | null | undefined) { return value === "loss" ? t('admin.copy.a13e79ef') : value === "turnover" ? t('admin.copy.89fd862d') : t('admin.copy.b8bd227c'); }
 
-async function changePage(d: number) { await loadTree(++generation, props.brandId, props.account.id, Math.max(0, offset.value + d * pageSize)); }
+async function changePage(d: number) { await loadTree(++generation, props.brandId, props.account.id, Math.max(0, offset.value + d * pageSize.value)); }
 onMounted(() => { restoreIntent(); void loadAll(); });
 onBeforeUnmount(() => { disposed = true; generation++; writeGeneration++; modeScopeGeneration++; });
 watch(() => [props.brandId, props.account.id, permissionSignature.value, props.mode] as const, () => {
@@ -327,12 +328,12 @@ useOperationToast(() => notice.value, value => display(value), 'info');
       </form></section>
       </DetailModal>
       <ManagementList v-if="mode !== 'settings' && canViewAgents" :busy="loading"><template #tabs><ConsoleTabs  class="am-view-switch" :items="[{id:'list',label:t('admin.agents.allLevels')},{id:'hierarchy',label:t('admin.agents.byHierarchy')}]" :value="viewMode" :disabled="loading || writing" :select="switchView" /></template><template v-if="(canWriteAgents && policy) || (viewMode === 'hierarchy' && parentId)" #actions><button v-if="viewMode === 'hierarchy' && parentId" type="button" class="am-secondary button button-secondary" :disabled="loading" @click="withGlobalLoading(goBack)">{{ t('admin.copy.2fbcdb10') }}</button><button v-if="canWriteAgents && policy" type="button" class="am-secondary button button-secondary" :disabled="writing || !!pending || Boolean(parentNode?.pending_change)" @click="startCreate">{{ t('admin.copy.b8713ea7') }}</button></template><template v-if="viewMode === 'hierarchy' && parentId" #summary><p class="muted">{{ associationLabel(parentNode, 'agent', parentId, associationLocale) }}</p></template>
-        <template #filters><DirectorySearch v-if="viewMode==='list'" v-model="search" :label="t('admin.members.search')" :query-label="t('admin.members.query')" :clear-label="t('admin.copy.b089734d')" :busy="loading" :active="Boolean(search||onlineFilter||query||onlineQuery)" :search="searchAgents" :clear="clearSearch"><SelectControl v-model="onlineFilter" :label="t('admin.members.onlineStatus')" :options="[{ value: '', label: (String(t('admin.members.allOnline'))).trim() }, { value: 'true', label: (String(t('admin.members.online'))).trim() }, { value: 'false', label: (String(t('admin.members.offline'))).trim() }]" /></DirectorySearch></template>
+        <template #filters><DirectorySearch :locale="associationLocale" v-if="viewMode==='list'" v-model="search" :label="t('admin.members.search')" :query-label="t('admin.members.query')" :busy="loading" :search="searchAgents"><SelectControl v-model="onlineFilter" :label="t('admin.members.onlineStatus')" :options="[{ value: '', label: (String(t('admin.members.allOnline'))).trim() }, { value: 'true', label: (String(t('admin.members.online'))).trim() }, { value: 'false', label: (String(t('admin.members.offline'))).trim() }]" /></DirectorySearch></template>
         <div v-if="viewMode === 'list'" class="table-wrap"><table class="agent-directory-table console-table console-responsive-table"><thead><tr><th>{{ t('admin.copy.851c6121') }}</th><th>{{ t('admin.members.onlineStatus') }}</th><th>{{ t('admin.members.points') }}</th><th>{{ t('admin.copy.ac22afab') }}</th><th>{{ t('admin.copy.4f39e60b') }}</th><th>{{ t('admin.copy.602b68c2') }}</th><th>{{ t('admin.copy.cf6d9c6d') }}</th><th>{{ t('admin.copy.d21fcbef') }}</th></tr></thead><tbody><tr v-for="node in directoryNodes" :key="node.id"><td :data-label="t('admin.copy.851c6121')"><button class="text-button member-account" type="button" @click="withGlobalLoading(selectNode, node)">{{ node.username || t('association.unnamed') }}</button></td><td :data-label="t('admin.members.onlineStatus')"><span class="member-presence" :class="{ 'is-online': node.online }"><i aria-hidden="true" />{{ t(node.online ? 'admin.members.online' : 'admin.members.offline') }}</span></td><td class="member-points" :data-label="t('admin.members.points')">{{ node.display_points === null ? t('admin.members.pointsRestricted') : node.display_points }}</td><td :data-label="t('admin.copy.ac22afab')">{{ node.depth }}</td><td :data-label="t('admin.copy.4f39e60b')">{{ agentRatioToPercentage(node.config.ratio) }}%</td><td :data-label="t('admin.copy.602b68c2')">{{ modeLabel(node.effective_mode) }}</td><td :data-label="t('admin.copy.cf6d9c6d')">{{ t(node.config.status === 'active' ? 'admin.copy.5eb01613' : 'admin.copy.5e3326db') }}</td><td :data-label="t('admin.copy.d21fcbef')"><MemberActionsMenu :id="`agent-actions-${node.id}`" :label="t('admin.agents.actions', { account: node.username })"><button role="menuitem" type="button" @click="withGlobalLoading(selectNode, node)">{{ t('admin.copy.01db40da') }}</button><button role="menuitem" type="button" @click="withGlobalLoading(openChildren, node)">{{ t('admin.copy.2e035a42') }}</button></MemberActionsMenu></td></tr><tr v-if="listLoaded && !loading && !error && !directoryNodes.length"><td colspan="8" class="empty-state">{{ t('admin.copy.a59f8381') }}</td></tr></tbody></table></div>
         <template v-else><div v-global-loading v-if="loading" class="am-note" role="status">{{ t('admin.copy.fed96ce5') }}</div><div class="am-node-list">
           <article v-for="node in nodes" :key="node.id" class="am-node"><div class="am-node-main"><strong><AssociationName :record="node" kind="agent" :id="node.id" :locale="associationLocale" /></strong><span>{{ t('admin.copy.ac22afab') }} {{ node.depth }} · {{ t('admin.copy.4f39e60b') }} {{ agentRatioToPercentage(node.config.ratio) }}% · {{ node.config.status === "active" ? t('admin.copy.5eb01613') : t('admin.copy.5e3326db') }}</span><small>{{ t('admin.copy.602b68c2') }}{{ node.effective_mode === "loss" ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d') }}</small></div><div class="am-actions ui-form-actions"><button type="button" class="am-secondary button button-secondary" @click="withGlobalLoading(selectNode, node)">{{ t('admin.copy.01db40da') }}</button><button v-if="viewMode === 'hierarchy'" type="button" class="am-secondary button button-secondary" @click="withGlobalLoading(openChildren, node)">{{ t('admin.copy.2e035a42') }}</button></div></article>
           <p v-if="!loading && !error && nodes.length === 0" class="am-note empty-state">{{ t('admin.copy.a59f8381') }}</p></div></template>
-      <template #pagination><TablePagination :show-empty="listLoaded" :total="total" :page="Math.floor(offset / pageSize + 1)" :count="nodes.length" :locale="associationLocale" :page-size="pageSize" :previous-disabled="loading || offset === 0" :next-disabled="loading || !hasNext" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => changePage(target - (Math.floor(offset / pageSize + 1)))" /></template></ManagementList><p v-else-if="mode !== 'settings'" class="am-note">{{ t('admin.copy.5d517450') }}</p>
+      <template #pagination><TablePagination :total="total" :page="Math.floor(offset / pageSize + 1)" :count="nodes.length" :locale="associationLocale" :page-size="pageSize" :previous-disabled="loading || offset === 0" :next-disabled="loading || !hasNext" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => changePage(target - (Math.floor(offset / pageSize + 1)))" :change-page-size="async (size: number) => { pageSize = size; await loadTree(++generation, props.brandId, props.account.id, 0) }" :busy="loading" /></template></ManagementList><p v-else-if="mode !== 'settings'" class="am-note">{{ t('admin.copy.5d517450') }}</p>
       <DetailModal class="agent-dialog ui-form-dialog" v-if="canWriteAgents && policy && canViewAgents && !selected && createOpen" :title="parentId ? t('admin.copy.512d8003') : t('admin.copy.fd71461b')" :close-label="t('association.close')" :close-disabled="writing" @close="!writing && (createOpen = false)">
 
       <section v-if="canWriteAgents && policy && canViewAgents && !selected && createOpen" class="am-card"><p v-if="parentNode" class="am-note">{{ t('admin.copy.ceac0bce') }} <AssociationName :record="parentNode" kind="agent" :id="parentNode.id" :locale="associationLocale" /> {{ t('admin.copy.ac22afab') }} {{ parentNode.depth }}</p><p v-else-if="parentId" class="am-note">{{ t('admin.copy.87e0d696') }}</p><form v-write-guard="writing" novalidate v-inline-validation class="am-form ui-form" @submit.prevent="withGlobalLoading(prepareNode)"><fieldset class="am-form am-edit-fields" :disabled="writing || !!pending">
@@ -356,7 +357,13 @@ useOperationToast(() => notice.value, value => display(value), 'info');
           <label>{{ t('admin.copy.94fca494') }}<SelectControl v-model="form.mode" :label="t('admin.copy.94fca494')" :required="isFirstLevel" :options="[{ value: '', label: (String(isFirstLevel ? t('admin.agents.selectMode') : t('admin.copy.b8bd227c'))).trim(), disabled: isFirstLevel }, ...((allowedModes).map((mode) => ({ value: mode, label: (String(mode === 'loss' ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d'))).trim() }))), ...((form.mode && !allowedModes.includes(form.mode)) ? [{ value: form.mode, label: (String(t('admin.copy.7a1e57b8')) + String(form.mode === 'loss' ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d'))).trim(), disabled: true }] : [])]" /></label><AgentRatioField v-if="draftMode==='loss'" v-model="form.loss_ratio" :label="t('admin.agents.lossRatio')" />
         <AgentRatioField v-if="draftMode==='turnover'" v-model="form.turnover_ratio" :label="t('admin.agents.turnoverRatio')" /><label>{{ t('admin.copy.054393be') }}<SelectControl v-model="form.status" :disabled="changingMode" :label="t('admin.copy.054393be')" :options="[{ value: 'active', label: (String(t('admin.copy.5eb01613'))).trim() }, { value: 'disabled', label: (String(t('admin.copy.5e3326db'))).trim() }]" /></label><label class="am-check"><span>{{ t('admin.copy.a78c6c73') }}</span><input v-model="form.can_create_children" :disabled="changingMode" type="checkbox" :aria-label="t('admin.copy.a78c6c73')"></label>
           <section v-if="changingMode" class="am-mode-line">
-            <p class="am-note">{{ t('admin.agents.changeHelp') }}</p>
+            <ul class="am-note am-mode-notes">
+              <li>{{ t('admin.agents.changeHelp') }}</li>
+              <li>{{ t('admin.agents.changeTiming') }}</li>
+              <li>{{ t('admin.agents.changeCurrentCycle') }}</li>
+              <li>{{ t('admin.agents.changeCalendar') }}</li>
+              <li>{{ t('admin.agents.changeSettings') }}</li>
+            </ul>
             <p v-global-loading v-if="modeScopeLoading" role="status">{{ t('admin.copy.fed96ce5') }}</p>
             <label v-for="node in modeLine.filter(item => item.id !== selected!.id)" :key="node.id">
               <AssociationName :record="node" kind="agent" :id="node.id" :locale="associationLocale" />
@@ -380,6 +387,7 @@ useOperationToast(() => notice.value, value => display(value), 'info');
 @media(max-width:640px){.am-head,.am-card-head,.am-node{flex-direction:column}.am-form{grid-template-columns:minmax(0,1fr)}.am-brand{white-space:normal}.am-actions{width:100%}.am-actions button{flex:1}.am-card{padding:14px}.am-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 .agent-management .agent-dialog { width:min(520px,calc(100vw - 24px)); }
+.am-mode-notes{padding-inline-start:30px}.am-mode-notes li + li{margin-top:4px}
 .am-edit-fields{border:0;padding:0;margin:0;min-width:0}.am-mode-line{display:grid;gap:12px;min-width:0}
 .agent-dialog .am-form { grid-template-columns:minmax(0,1fr); }
 .agent-dialog .am-form > label { justify-items:start; }

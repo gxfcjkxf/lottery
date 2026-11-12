@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import ThemeSwitcher from "@lottery/shared/ThemeSwitcher.vue"
+import AnnouncementsManagement from "@lottery/shared/AnnouncementsManagement.vue";
+import CashConsole from "@lottery/shared/CashConsole.vue"
+import { formatPoints } from "@lottery/shared";
+
+import ClearableInput from "@lottery/shared/ClearableInput.vue"
 import { readPaginationTotal } from '@lottery/shared'
 const auditTotal = ref('0')
 
@@ -63,6 +69,10 @@ import PlatformSettingsPanel from './PlatformSettingsPanel.vue'
 import OverviewPanel from './OverviewPanel.vue'
 import { securityIntents } from './security-settings-api'
 import { formatPlatformDateTime, type PlatformDisplaySettings } from './platform-format'
+const brandPageSize = ref(50)
+const auditPageSize = ref(50)
+const memberPageSize = ref(50)
+
 
 const api = createPlatformApi()
 const { locale, setLocale: updateLocale, t, message } = usePlatformI18n()
@@ -105,14 +115,14 @@ const filteredBrands = computed(() => {
   return brands.value.filter(brand => (!appliedBrandStatus.value || brand.status === appliedBrandStatus.value) &&
     (!query || `${brand.name} ${brand.code}`.toLowerCase().includes(query)))
 })
-const brandEntries = computed(() => filteredBrands.value.slice((brandPage.value - 1) * 50, brandPage.value * 50))
-watch(() => filteredBrands.value.length, count => { brandPage.value = Math.min(brandPage.value, Math.max(1, Math.ceil(count / 50))) })
+const brandEntries = computed(() => filteredBrands.value.slice((brandPage.value - 1) * brandPageSize.value, brandPage.value * brandPageSize.value))
+watch(() => filteredBrands.value.length, count => { brandPage.value = Math.min(brandPage.value, Math.max(1, Math.ceil(count / brandPageSize.value))) })
 async function queryBrands() {
   if (!await refreshBrandSummaries()) return
   appliedBrandQuery.value = brandQuery.value.trim(); appliedBrandStatus.value = brandStatus.value; brandPage.value = 1
 }
-async function clearBrandFilters() { brandQuery.value = ''; brandStatus.value = ''; await queryBrands() }
-async function pageBrands(target: number) { if (await refreshBrandSummaries()) brandPage.value = Math.min(target, Math.max(1, Math.ceil(filteredBrands.value.length / 50))) }
+
+async function pageBrands(target: number) { if (await refreshBrandSummaries()) brandPage.value = Math.min(target, Math.max(1, Math.ceil(filteredBrands.value.length / brandPageSize.value))) }
 function batchBrandDeleted(brand: PlatformBrand) {
   brands.value = brands.value.filter(item => item.id !== brand.id)
   if (selectedBrand.value === brand.id) { selectedBrand.value = ''; members.value = []; [auditRows.value, auditTotal.value] = [[], '0'] }
@@ -124,7 +134,6 @@ const directoryCopy = computed(() => locale.value === 'en' ? {
 })
 const members = ref<PlatformMember[]>([])
 const auditRows = ref<PlatformAudit[]>([])
-const pageSize = 50
 const memberOffset = ref(0)
 const auditOffset = ref(0)
 const memberTotal = ref('0')
@@ -135,7 +144,7 @@ const canViewMemberPoints = computed(() => account.value?.platform_permissions.i
 const moreMembers = computed(() => BigInt(memberOffset.value) + BigInt(members.value.length) < BigInt(memberTotal.value))
 function resetMemberFilters() { memberSearch.value = ''; memberQuery.value = ''; memberOnlineFilter.value = ''; memberOnlineQuery.value = ''; memberTotal.value = '0'; memberDetail.value = null }
 async function searchMembers() { memberQuery.value = memberSearch.value.trim(); memberOnlineQuery.value = memberOnlineFilter.value; await loadMembers(selectedBrand.value) }
-async function clearMemberFilters() { resetMemberFilters(); await searchMembers() }
+
 const moreAudit = ref(false)
 const previousPage = computed(() => t('platform.pagination.previous'))
 const nextPage = computed(() => t('platform.pagination.next'))
@@ -152,14 +161,14 @@ watch(selectedBrand, brandId => {
 }, { flush: 'sync' })
 const section = ref<'home' | 'brands' | 'users' | 'audit' | 'rewards' | 'wallets' | 'bets' | 'games' | 'draws' | 'withdrawals' | 'commission' | 'access' | 'settings'>('home')
 const withdrawalInitialState = ref<'' | 'reviewing'>('')
-const settingsTab = ref<'general' | 'auth' | 'commission'>('general')
-const showBrandPicker = computed(() => section.value === 'settings' ? settingsTab.value === 'auth' : section.value === 'audit' && ['archive-tasks', 'notifications', 'maintenance'].includes(auditView.value) ? false : section.value === 'access' ? accessScope.value === 'brand' : !['home', 'brands', 'settings', 'games', 'draws'].includes(section.value))
+const settingsTab = ref<'general' | 'auth' | 'commission' | 'currency'>('general')
+const showBrandPicker = computed(() => section.value === 'settings' ? settingsTab.value === 'auth' : section.value === 'audit' && ['archive-tasks', 'notifications', 'announcements', 'maintenance'].includes(auditView.value) ? false : section.value === 'access' ? accessScope.value === 'brand' : !['home', 'brands', 'settings', 'games', 'draws'].includes(section.value))
 const { games: brandGames, selectedGameId, loading: gamesLoading } = useBrandGames(selectedBrand, () => section.value === 'bets' ? section.value : '', handleFailure)
-const auditView = ref<'audit' | 'archives' | 'archive-tasks' | 'notifications' | 'deliveries' | 'maintenance'>('audit')
+const auditView = ref<'audit' | 'archives' | 'archive-tasks' | 'notifications' | 'announcements' | 'deliveries' | 'maintenance'>('audit')
 const brandsExpanded = ref(false)
 const brandSectionActive = computed(() => section.value === 'brands' || section.value === 'users' || (section.value === 'access' && accessScope.value === 'brand'))
 const operationsExpanded = ref(false)
-const walletView = ref<'recharges' | 'reports'>('recharges')
+const walletView = ref<'recharges' | 'quota' | 'reports'>('recharges')
 const walletsExpanded = ref(false)
 const commissionExpanded = ref(false)
 const accessTab = ref<'accounts'>('accounts')
@@ -181,8 +190,8 @@ const agentsLabel = computed(() => t('common.agents'))
 const commissionLabel = computed(() => t('common.commission'))
 const commissionPageLabel = computed(() => commissionTab.value === 'agents' ? agentsLabel.value : commissionTab.value === 'cycles' ? t('platform.copy.39ac5c23') : t('platform.copy.48f3ae6f'))
 const operationsLabel = computed(() => t('common.operations'))
-const operationLabel = computed(() => auditView.value === 'maintenance' ? t('maintenance.tools') : auditView.value === 'deliveries' ? t('platform.copy.42e5c206') : auditView.value === 'audit' ? lang.value.audit : auditView.value === 'archives' ? t('common.reportArchives') : auditView.value === 'archive-tasks' ? t('common.archiveTasks') : t('maintenance.notificationTemplates'))
-const walletViewLabel = computed(() => walletView.value === 'recharges' ? t('platform.copy.20be6d4c') : t('platform.copy.67516591'))
+const operationLabel = computed(() => auditView.value === 'announcements' ? t('announcements.title') : auditView.value === 'maintenance' ? t('maintenance.tools') : auditView.value === 'deliveries' ? t('platform.copy.42e5c206') : auditView.value === 'audit' ? lang.value.audit : auditView.value === 'archives' ? t('common.reportArchives') : auditView.value === 'archive-tasks' ? t('common.archiveTasks') : t('maintenance.notificationTemplates'))
+const walletViewLabel = computed(() => walletView.value === 'quota' ? t('platform.quota.management') : walletView.value === 'recharges' ? t('platform.copy.20be6d4c') : t('platform.copy.67516591'))
 const accountsLabel = computed(() => t('common.platformAccounts'))
 const accessLabel = computed(() => accessScope.value === 'brand' ? lang.value.brandAccounts : accountsLabel.value)
 const sectionLabel = computed(() => section.value === 'home' ? t('overview.home') : section.value === 'access' ? accessLabel.value : section.value === 'audit' ? operationLabel.value : section.value === 'commission' ? commissionPageLabel.value : section.value === 'wallets' ? walletViewLabel.value : section.value === 'bets' ? betLabel.value : section.value === 'games' ? gamesLabel.value : section.value === 'draws' ? drawsLabel.value : section.value === 'withdrawals' ? withdrawalLabel.value : lang.value[section.value])
@@ -405,7 +414,7 @@ async function loadMembers(brandId: string, offset = 0) {
   const generation = ++memberRequestGeneration
   loading.value = true; error.value = ''
   try {
-    const result = await api.users(brandId, pageSize, offset, '', { query: memberQuery.value, online: memberOnlineQuery.value })
+    const result = await api.users(brandId, memberPageSize.value, offset, '', { query: memberQuery.value, online: memberOnlineQuery.value })
     if (generation === memberRequestGeneration && selectedBrand.value === brandId && section.value === 'users') {
       members.value = result.items
       memberOffset.value = offset
@@ -422,18 +431,18 @@ function batchMemberDeleted(member: PlatformMember) {
   memberTotal.value = String(BigInt(memberTotal.value) - 1n)
 }
 async function refreshBatchMembers() {
-  const offset = BigInt(memberOffset.value) >= BigInt(memberTotal.value) ? Math.max(0, memberOffset.value - pageSize) : memberOffset.value
+  const offset = BigInt(memberOffset.value) >= BigInt(memberTotal.value) ? Math.max(0, memberOffset.value - memberPageSize.value) : memberOffset.value
   await loadMembers(selectedBrand.value, offset)
 }
 async function loadAudit(brandId: string, offset = 0) {
   const generation = ++auditRequestGeneration
   loading.value = true; error.value = ''
   try {
-    const result = await api.audit(brandId, pageSize + 1, offset)
+    const result = await api.audit(brandId, auditPageSize.value, offset)
     if (generation === auditRequestGeneration && selectedBrand.value === brandId && section.value === 'audit' && auditView.value === 'audit') {
-      [auditRows.value, auditTotal.value] = [result.items.slice(0, pageSize), readPaginationTotal(result)]
+      [auditRows.value, auditTotal.value] = [result.items, readPaginationTotal(result)]
       auditOffset.value = offset
-      moreAudit.value = result.items.length > pageSize
+      moreAudit.value = BigInt(offset + result.items.length) < BigInt(auditTotal.value)
     }
   } catch (cause) {
     if (cause instanceof PlatformApiError && cause.status === 401) handleFailure(cause)
@@ -594,12 +603,14 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
       <div v-if="operationsExpanded" class="nav-submenu" data-testid="platform-operations-tabs" role="group" :aria-label="operationsLabel">
         <button class="nav-subitem" :class="{ selected: auditView === 'audit' }" type="button" @click="withGlobalLoading(chooseAuditView, 'audit')">{{ lang.audit }}</button>
         <button class="nav-subitem" :class="{ selected: auditView === 'archives' }" type="button" @click="withGlobalLoading(chooseAuditView, 'archives')">{{ t('common.reportArchives') }}</button>
+        <button v-if="account.platform_permissions.includes('announcement.view.platform')" class="nav-subitem" :class="{ selected: auditView === 'announcements' }" type="button" @click="withGlobalLoading(chooseAuditView, 'announcements')">{{t('announcements.title')}}</button>
         <button class="nav-subitem" :class="{ selected: auditView === 'notifications' }" type="button" @click="withGlobalLoading(chooseAuditView, 'notifications')">{{ t('maintenance.notificationTemplates') }}</button>
       </div>
       <button :class="['nav-item', { selected: section === 'rewards' }]" @click="withGlobalLoading(chooseSection, 'rewards')"><span><SiteIcon name="gift" /></span>{{ lang.rewards }}</button>
       <button type="button" :class="['nav-item', { selected: section === 'wallets' }]" :aria-expanded="walletsExpanded" @click="withGlobalLoading(toggleWallets)"><span><SiteIcon name="wallet" /></span>{{ walletLabel }}</button>
       <div v-if="walletsExpanded" class="nav-submenu" data-testid="platform-wallet-tabs" role="group" :aria-label="walletLabel">
         <button class="nav-subitem" :class="{ selected: walletView === 'recharges' }" type="button" @click="withGlobalLoading(chooseWalletView, 'recharges')">{{ t('platform.copy.20be6d4c') }}</button>
+        <button v-if="canViewRechargeQuota" class="nav-subitem" :class="{ selected: walletView === 'quota' }" type="button" @click="withGlobalLoading(chooseWalletView, 'quota')">{{ t('platform.quota.management') }}</button>
         <button class="nav-subitem" :class="{ selected: walletView === 'reports' }" type="button" @click="withGlobalLoading(chooseWalletView, 'reports')">{{ t('platform.copy.67516591') }}</button>
       </div>
       <button :class="['nav-item', { selected: section === 'bets' }]" @click="withGlobalLoading(chooseSection, 'bets')"><span><SiteIcon name="ticket" /></span>{{ betLabel }}</button>
@@ -629,7 +640,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
           <SelectControl :disabled="accountWriteLocked" :model-value="selectedBrand" :label="lang.brandLabel" @change="withGlobalLoading(chooseBrand, $event)" :options="[{ value: '', label: ('\u2014 ' + String(lang.selectBrand) + ' \u2014').trim() }, ...((brands).map((brand) => ({ value: brand.id, label: (String(brand.name)).trim() })))]" />
         </label>
         <div class="top-actions">
-          <LanguageSwitcher :model-value="locale" :label="t('common.language')" :options="[{code:'zh-CN',label:nativeLocaleName('zh-CN')},{code:'en',label:nativeLocaleName('en')}]" @update:model-value="setLocale" />
+          <ThemeSwitcher :locale="locale" /><LanguageSwitcher :model-value="locale" :label="t('common.language')" :options="[{code:'zh-CN',label:nativeLocaleName('zh-CN')},{code:'en',label:nativeLocaleName('en')}]" @update:model-value="setLocale" />
           <AccountMenu :username="accountName"><button v-if="account.super_admin" type="button" role="menuitem" :disabled="accountWriteLocked" @click="withGlobalLoading(chooseAuditView, 'maintenance')">{{ t('maintenance.tools') }}</button><button type="button" role="menuitem" @click="accountProfileOpen = true">{{ t('common.profile') }}</button><button type="button" role="menuitem" @click="changePasswordOpen = true">{{ t('common.changePassword') }}</button><button v-write-guard="busy" type="button" role="menuitem" class="popover-logout" :disabled="busy" @click="withGlobalLoading(signOut)">{{ lang.logout }}</button></AccountMenu>
         </div>
       </header>
@@ -643,22 +654,22 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
             <form novalidate v-inline-validation class="wallet-query ui-filter-bar" @submit.prevent="withGlobalLoading(queryBrands)">
               <label class="query-field">
                 <div class="ui-filter-input">
-                  <input v-model="brandQuery" :aria-label="directoryCopy.search" :placeholder="directoryCopy.hint" type="search" />
+                  <ClearableInput :locale="locale" v-model="brandQuery" :aria-label="directoryCopy.search" :placeholder="directoryCopy.hint" />
                 </div>
               </label>
               <label class="query-field query-field-status">
                 <SelectControl :placeholder="directoryCopy.status" v-model="brandStatus" :label="directoryCopy.status" :options="[{ value: '', label: (String(directoryCopy.all)).trim() }, { value: 'active', label: (String(lang.statusActive)).trim() }, { value: 'paused', label: (String(lang.statusPaused)).trim() }, { value: 'disabled', label: (String(t('brandOperation.stopped'))).trim() }]" />
               </label>
-              
+
               <button class="button button-primary query-submit" type="submit" :disabled="loading || brandListLoading">{{ directoryCopy.submit }}</button>
-              <button v-if="brandQuery || brandStatus" type="button" class="button button-secondary clear-btn" :disabled="loading || brandListLoading" @click="withGlobalLoading(clearBrandFilters)">{{ directoryCopy.clear }}</button>
+
             </form></template>
             <BatchDelete subject="brands" :entry-label="brand => brand.name" :scope-key="JSON.stringify([brandPage, appliedBrandQuery, appliedBrandStatus])" :entries="brandEntries" :enabled="canDeleteBrand" :locale="locale" :loading="loading || brandListLoading" :warning="lang.deleteWarning" :delete-entry="(brand, key) => api.deleteBrand(brand.id, key)" :error-text="cause => displayPublicError(platformErrorMessage(cause, locale))" :is-unknown="cause => !(cause instanceof PlatformApiError) || cause.network || cause.status >= 500 || cause.code === 'INVALID_RESPONSE'" @deleted="batchBrandDeleted" @finished="withGlobalLoading(loadWorkspace)" v-slot="{ selected, toggle, selectLabel, locked }">
             <div class="table-wrap"><table class="console-table console-responsive-table platform-brand-table"><thead><tr><th>{{ lang.name }}</th><th><BusinessDetails :value="lang.status" :locale="locale" /></th><th>{{t('platform.brand.memberCount')}}</th><th>{{t('platform.brand.agentCount')}}</th><th>{{t('platform.brand.availableQuota')}}</th><th>{{t('platform.brand.created')}}</th><th>{{t('common.actions')}}</th></tr></thead><tbody>
               <tr v-for="brand in brandEntries" :key="brand.id"><td :data-label="lang.name"><span class="member-account-select"><label v-if="canDeleteBrand" class="member-select-control"><input type="checkbox" :checked="selected.includes(brand.id)" :aria-label="selectLabel(brand.name)" :disabled="locked" @change="toggle(brand.id)" /></label><strong>{{ brand.name }}</strong></span></td><td :data-label="lang.status"><span :class="['status-pill', brand.status]">{{ brand.status === 'disabled' ? t('brandOperation.stopped') : statusLabel(brand.status) }}</span></td>
               <td :data-label="t('platform.brand.memberCount')"><button type="button" class="text-button" :aria-label="t('platform.brand.openMembers', {brand:brand.name,count:new Intl.NumberFormat(locale).format(BigInt(brand.member_count))})" @click="withGlobalLoading(openBrandMembers, brand.id)">{{new Intl.NumberFormat(locale).format(BigInt(brand.member_count))}}</button></td>
               <td :data-label="t('platform.brand.agentCount')"><button type="button" class="text-button" :aria-label="t('platform.brand.openAgents', {brand:brand.name,count:new Intl.NumberFormat(locale).format(BigInt(brand.agent_count))})" @click="withGlobalLoading(openBrandAgents, brand.id)">{{new Intl.NumberFormat(locale).format(BigInt(brand.agent_count))}}</button></td>
-              <td :data-label="t('platform.brand.availableQuota')"><button v-if="brand.recharge_quota_available !== null" type="button" class="text-button" :disabled="!canViewRechargeQuota" :aria-label="t('platform.brand.openQuota', {brand:brand.name})" @click="quotaBrand = brand">{{new Intl.NumberFormat(locale).format(BigInt(brand.recharge_quota_available))}}</button><span v-else>{{t('platform.brand.quotaRestricted')}}</span></td>
+              <td :data-label="t('platform.brand.availableQuota')"><button v-if="brand.recharge_quota_available !== null" type="button" class="text-button" :disabled="!canViewRechargeQuota" :aria-label="t('platform.brand.openQuota', {brand:brand.name})" @click="quotaBrand = brand">{{formatPoints(brand.recharge_quota_available,locale)}}</button><span v-else>{{t('platform.brand.quotaRestricted')}}</span></td>
               <td :data-label="t('platform.brand.created')">{{formatPlatformDateTime(brand.created_at,displaySettings,locale)}}</td><td :data-label="t('common.actions')">
                 <MemberActionsMenu :id="`brand-actions-${brand.id}`" :label="t('platform.brand.actions', {brand:brand.name})">
                   <button type="button" role="menuitem" @click="withGlobalLoading(openBrandMembers, brand.id)">{{lang.membersAction}}</button>
@@ -673,7 +684,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
               <tr v-else-if="!loading && !brandListLoading && !error && !filteredBrands.length"><td colspan="7" class="empty-state" role="status">{{ directoryCopy.empty }}</td></tr>
             </tbody></table></div>
           </BatchDelete>
-          <template #pagination><TablePagination :show-empty="!loading && !brandListLoading && !error" :total="String(filteredBrands.length)" :page="brandPage" :count="brandEntries.length" :page-size="50" :previous-disabled="loading || brandListLoading || brandPage === 1" :next-disabled="loading || brandListLoading || brandPage * 50 >= filteredBrands.length" :go-to="pageBrands" :locale="locale" :aria-label="t('common.brandTableSummary')" /></template></ManagementList>
+          <template #pagination><TablePagination :total="String(filteredBrands.length)" :page="brandPage" :count="brandEntries.length" :page-size="brandPageSize" :previous-disabled="loading || brandListLoading || brandPage === 1" :next-disabled="loading || brandListLoading || brandPage * brandPageSize >= filteredBrands.length" :go-to="pageBrands" :locale="locale" :aria-label="t('common.brandTableSummary')" :change-page-size="async (size: number) => { brandPageSize = size; brandPage = 1; await pageBrands(1) }" :busy="loading || brandListLoading" /></template></ManagementList>
         </template>
         <template v-else-if="section === 'access'">
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ accessLabel }}</h1></div>
@@ -682,21 +693,21 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
         <template v-else-if="section === 'users'">
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ lang.users }}</h1></div>
           <ManagementList v-if="selectedBrand" :busy="loading"><template #filters>
-            <DirectorySearch  v-model="memberSearch" :label="t('members.search')" :query-label="t('members.query')" :clear-label="t('members.clear')" :busy="loading" :active="Boolean(memberSearch||memberOnlineFilter)" :search="searchMembers" :clear="clearMemberFilters"><SelectControl v-model="memberOnlineFilter" :label="t('members.onlineStatus')" :options="[{ value: '', label: (String(t('members.allOnline'))).trim() }, { value: 'true', label: (String(t('members.online'))).trim() }, { value: 'false', label: (String(t('members.offline'))).trim() }]" /></DirectorySearch></template>
+            <DirectorySearch :locale="locale"  v-model="memberSearch" :label="t('members.search')" :query-label="t('members.query')" :busy="loading" :search="searchMembers"><SelectControl v-model="memberOnlineFilter" :label="t('members.onlineStatus')" :options="[{ value: '', label: (String(t('members.allOnline'))).trim() }, { value: 'true', label: (String(t('members.online'))).trim() }, { value: 'false', label: (String(t('members.offline'))).trim() }]" /></DirectorySearch></template>
             <BatchDelete subject="accounts" :entry-label="member => member.username || member.phone" :scope-key="String(memberOffset) + JSON.stringify(memberSearch)" :key="account.id + ':' + selectedBrand" :entries="members" :enabled="canDeleteMember" :locale="locale" :loading="loading" :delete-entry="(member, key) => api.deleteMemberAccount(member.global_user_id, member.brand_id, key)" :error-text="cause => displayPublicError(platformErrorMessage(cause, locale))" :is-unknown="cause => !(cause instanceof PlatformApiError) || cause.network || cause.status >= 500 || cause.code === 'INVALID_RESPONSE'" @deleted="batchMemberDeleted" @finished="withGlobalLoading(refreshBatchMembers)" v-slot="{ selected, toggle, selectLabel, locked }">
             <ManagementTable :entries="members" :columns="memberColumns" :empty="!loading && !error && !members.length" :empty-label="t('members.empty')" table-class="platform-member-table">
               <template #account="{entry:member}"><span class="member-account-select"><label v-if="canDeleteMember" class="member-select-control"><input type="checkbox" :checked="selected.includes(member.id)" :aria-label="selectLabel(member.username || member.phone)" :disabled="locked" @change="toggle(member.id)" /></label><button type="button" class="text-button member-account" @click="memberDetail = member">{{ member.username || member.phone || t('association.unnamed') }}</button></span></template>
               <template #online="{entry:member}"><span class="member-presence" :class="{ 'is-online': member.online }"><i aria-hidden="true" />{{ t(member.online ? 'members.online' : 'members.offline') }}</span></template>
-              <template #points="{entry:member}">{{ member.display_points === null ? t('members.pointsRestricted') : member.display_points }}</template>
+              <template #points="{entry:member}">{{ member.display_points === null ? t('members.pointsRestricted') : formatPoints(member.display_points,locale) }}</template>
               <template #phone="{entry:member}">{{ member.phone || '—' }}</template>
               <template #status="{entry:member}"><span :class="['status-pill', member.status]">{{ statusLabel(member.status) }}</span></template>
               <template #joined="{entry:member}">{{ formatPlatformDateTime(member.joined_at, displaySettings, locale) }}</template>
               <template #actions="{entry:member}"><MemberActionsMenu :id="`platform-member-actions-${member.id}-table`" :label="t('members.actions', { account: member.username || member.phone })"><button type="button" role="menuitem" @click="memberDetail = member">{{ t('members.details') }}</button><button v-if="canViewMemberPoints" type="button" role="menuitem" @click="openWallet(member, 'wallet')">{{ t('common.memberPoints') }}</button><button v-if="canViewMemberPoints" type="button" role="menuitem" @click="openWallet(member, 'ledger')">{{ t('members.ledger') }}</button><button v-if="canDeleteMember" type="button" role="menuitem" class="danger-text" @click="beginMemberDelete(member)">{{ lang.deleteMember }}</button></MemberActionsMenu></template>
             </ManagementTable>
 
-            
+
             </BatchDelete>
-          <template #pagination><TablePagination :show-empty="!loading && !error" data-testid="platform-member-pages" :total="memberTotal" :page="Math.floor(memberOffset / pageSize + 1)" :count="members.length" :locale="locale" :page-size="pageSize" :previous-disabled="loading || memberOffset === 0" :next-disabled="loading || !moreMembers" :previous-label="previousPage" :next-label="nextPage" :go-to="(target: number) => loadMembers(selectedBrand, (target - 1) * pageSize)" /></template></ManagementList>
+          <template #pagination><TablePagination data-testid="platform-member-pages" :total="memberTotal" :page="Math.floor(memberOffset / memberPageSize + 1)" :count="members.length" :locale="locale" :page-size="memberPageSize" :previous-disabled="loading || memberOffset === 0" :next-disabled="loading || !moreMembers" :previous-label="previousPage" :next-label="nextPage" :go-to="(target: number) => loadMembers(selectedBrand, (target - 1) * memberPageSize)" :change-page-size="async (size: number) => { memberPageSize = size; await loadMembers(selectedBrand, 0) }" :busy="loading" /></template></ManagementList>
           <DetailModal v-if="memberDetail" :title="t('members.details')" :close-label="lang.close" @close="memberDetail = null"><dl class="member-details"><div><dt>{{ lang.username }}</dt><dd>{{ memberDetail.username || memberDetail.phone || t('association.unnamed') }}</dd></div><div><dt>{{ lang.displayName }}</dt><dd>{{ memberDetail.display_name || '—' }}</dd></div><div><dt>{{ t('members.onlineStatus') }}</dt><dd>{{ t(memberDetail.online ? 'members.online' : 'members.offline') }}</dd></div><div><dt>{{ pointsAction }}</dt><dd>{{ memberDetail.display_points === null ? t('members.pointsRestricted') : memberDetail.display_points }}</dd></div><div><dt>{{ lang.phone }}</dt><dd>{{ memberDetail.phone || '—' }}</dd></div><div><dt><BusinessDetails :value="lang.status" :locale="locale" /></dt><dd>{{ statusLabel(memberDetail.status) }}</dd></div><div><dt>{{ t('members.joined') }}</dt><dd>{{ formatPlatformDateTime(memberDetail.joined_at, displaySettings, locale) }}</dd></div><div><dt>{{ t('members.notes') }}</dt><dd>{{ memberDetail.notes || '—' }}</dd></div><div><dt>{{ t('members.tags') }}</dt><dd>{{ memberDetail.tags.join(' · ') || '—' }}</dd></div></dl></DetailModal>
         </template>
         <template v-else-if="section === 'audit'">
@@ -709,12 +720,13 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
           </section>
           <ArchivesPanel v-else-if="selectedBrand && auditView === 'archives'" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
           <ArchiveTasksPanel v-else-if="auditView === 'archive-tasks'" :key="account.id" :account-id="account.id" :can-manage="account.platform_permissions.includes('platform_settings.write.platform')" :locale="locale" @failure="handleFailure" />
+          <AnnouncementsManagement v-else-if="auditView === 'announcements'" platform base-path="/api/v1/platform" :key="`announcements:${account.id}`" :actor-id="account.id" :locale="locale" :permissions="account.platform_permissions" @failure="handleFailure" />
           <NotificationsPanel v-else-if="auditView === 'notifications' || (auditView === 'deliveries' && selectedBrand)" :key="account.id + ':' + auditView" :view="auditView === 'deliveries' ? 'deliveries' : 'templates'" :account-id="account.id" :can-manage="account.platform_permissions.includes('notification_template.write.platform')" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
           <template v-else-if="auditView === 'audit'">
           <ManagementList v-if="selectedBrand" :busy="loading">
-          <template #actions><button v-refresh-button="t('common.refresh')" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(loadAudit, selectedBrand)">{{ t('common.refresh') }}</button></template><div class="table-wrap"><table class="console-table"><thead><tr><th>{{ lang.action }}</th><th>{{ lang.actor }}</th><th>{{ lang.resource }}</th><th>{{ lang.reason }}</th><th>{{ lang.date }}</th></tr></thead><tbody><tr v-for="row in auditRows" :key="row.id"><td :data-label="String(lang.action)"><span class="action-label">{{ businessActionLabel(row.action, locale) }}</span></td><td :data-label="String(lang.actor)">{{ auditActorLabel(row) }}</td><td :data-label="String(lang.resource)">{{ businessResourceLabel(row.resource_type, locale, row.action) }}</td><td :data-label="String(lang.reason)" class="reason-cell" :title="auditReasonLabel(row.reason, locale)">{{ auditReasonLabel(row.reason, locale) }}</td><td :data-label="String(lang.date)">{{ formatPlatformDateTime(row.created_at, displaySettings, locale) }}</td></tr><tr v-if="!loading && !error && !auditRows.length"><td colspan="5" class="empty-state">{{ t('state.emptyAudit') }}</td></tr></tbody></table></div>
-          
-          <template #pagination><TablePagination :show-empty="!loading && !error" data-testid="platform-audit-pages" :total="auditTotal" :page="Math.floor(auditOffset / pageSize + 1)" :count="auditRows.length" :locale="locale" :page-size="pageSize" :previous-disabled="loading || auditOffset === 0" :next-disabled="loading || !moreAudit" :previous-label="previousPage" :next-label="nextPage" :go-to="(target: number) => loadAudit(selectedBrand, (target - 1) * pageSize)" /></template></ManagementList>
+          <template v-if="error" #actions><button v-refresh-button="t('common.refresh')" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(loadAudit, selectedBrand)">{{ t('common.refresh') }}</button></template><div class="table-wrap"><table class="console-table"><thead><tr><th>{{ lang.action }}</th><th>{{ lang.actor }}</th><th>{{ lang.resource }}</th><th>{{ lang.reason }}</th><th>{{ lang.date }}</th></tr></thead><tbody><tr v-for="row in auditRows" :key="row.id"><td :data-label="String(lang.action)"><span class="action-label">{{ businessActionLabel(row.action, locale) }}</span></td><td :data-label="String(lang.actor)">{{ auditActorLabel(row) }}</td><td :data-label="String(lang.resource)">{{ businessResourceLabel(row.resource_type, locale, row.action) }}</td><td :data-label="String(lang.reason)" class="reason-cell" :title="auditReasonLabel(row.reason, locale)">{{ auditReasonLabel(row.reason, locale) }}</td><td :data-label="String(lang.date)">{{ formatPlatformDateTime(row.created_at, displaySettings, locale) }}</td></tr><tr v-if="!loading && !error && !auditRows.length"><td colspan="5" class="empty-state">{{ t('state.emptyAudit') }}</td></tr></tbody></table></div>
+
+          <template #pagination><TablePagination data-testid="platform-audit-pages" :total="auditTotal" :page="Math.floor(auditOffset / auditPageSize + 1)" :count="auditRows.length" :locale="locale" :page-size="auditPageSize" :previous-disabled="loading || auditOffset === 0" :next-disabled="loading || !moreAudit" :previous-label="previousPage" :next-label="nextPage" :go-to="(target: number) => loadAudit(selectedBrand, (target - 1) * auditPageSize)" :change-page-size="async (size: number) => { auditPageSize = size; await loadAudit(selectedBrand, 0) }" :busy="loading" /></template></ManagementList>
           </template>
         </template>
         <template v-else-if="section === 'rewards'">
@@ -723,7 +735,11 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
         </template>
         <template v-else-if="section === 'wallets'">
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ walletViewLabel }}</h1></div>
+          <CashConsole v-if="selectedBrand && walletView === 'recharges'" :key="`cash:${account.id}:${selectedBrand}`" base-path="/api/v1/platform" platform mode="deposit" :actor-id="account.id" :brand-id="selectedBrand" :locale="locale" :permissions="account.platform_permissions" @failure="handleFailure" />
           <RechargesPanel v-if="selectedBrand && walletView === 'recharges'" :brand-id="selectedBrand" member-id="" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
+          <RechargeQuotaPanel v-else-if="selectedBrand && walletView === 'quota' && canViewRechargeQuota" standalone
+            :key="`${account.id}:${selectedBrand}`" :brand-id="selectedBrand" :actor-id="account.id" :locale="locale"
+            base-path="/api/v1/platform" :can-grant="canGrantRechargeQuota" @updated="updateBrandQuota" @failure="handleFailure" />
           <ReportsPanel v-else-if="selectedBrand && walletView === 'reports'" :brand-id="selectedBrand" member-id="" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
         </template>
         <template v-else-if="section === 'bets'">
@@ -746,6 +762,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
         </template>
         <template v-else>
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ withdrawalLabel }}</h1></div>
+          <CashConsole v-if="selectedBrand" :key="`cash-withdraw:${account.id}:${selectedBrand}`" base-path="/api/v1/platform" platform mode="withdrawal" :actor-id="account.id" :brand-id="selectedBrand" :locale="locale" :permissions="account.platform_permissions" @failure="handleFailure" />
           <WithdrawalsPanel v-if="selectedBrand" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" :initial-state="withdrawalInitialState || undefined" @failure="handleFailure" />
         </template>
         <p v-if="showBrandPicker && !selectedBrand && !['games', 'draws'].includes(section) && !(section === 'settings')" class="empty-state" role="status" data-testid="platform-brand-required">{{ t('common.selectBrandFirst') }}</p>

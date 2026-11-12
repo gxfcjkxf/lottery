@@ -45,7 +45,7 @@ func TestWithdrawalPolicyHTTPHistoryCheckedReplayAndNoFinancialMutation(t *testi
 	config := current.Config
 	config.Enabled = true
 	config.TurnoverMultiple = "2.5"
-	body := withdrawal.BrandInput{PointsStep: 1, Version: 1, Config: config, Reason: "configured withdrawal rules"}
+	body := withdrawal.BrandInput{PointsStep: 100, Version: 1, Config: config, Reason: "configured withdrawal rules"}
 	first := f.call("PUT", base, "withdraw-policy-first-01", f.token, managedBrand, body)
 	mustStatus(t, first, 200)
 	var updated withdrawal.BrandPolicy
@@ -116,6 +116,6 @@ func TestWithdrawalPolicyHTTPHistoryCheckedReplayAndNoFinancialMutation(t *testi
 	if e := f.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM point_ledger_entries),(SELECT count(*) FROM configured_orders),(SELECT count(*) FROM audit_logs WHERE action IN ('withdrawal_policy.brand.update','withdrawal_policy.game.update'))`).Scan(&entries, &orders, &audits); e != nil || entries != 0 || orders != 0 || audits != 2 {
 		t.Fatal(entries, orders, audits, e)
 	}
-	// Enabling policy cannot replace a member session or formal qualification.
-	mustStatus(t, f.call("POST", "/api/v1/withdrawals", "withdraw-no-user-session", "", managedBrand, map[string]any{"points": "1", "source_allocation": []map[string]string{{"source": "recharge", "state": "available", "points": "1"}}}), 401)
+	// The former point-withdrawal creation route remains retired after policy changes.
+	mustStatus(t, f.call("POST", "/api/v1/withdrawals", "withdraw-no-user-session", "", managedBrand, map[string]any{"points": "1", "source_allocation": []map[string]string{{"source": "recharge", "state": "available", "points": "1"}}}), 409)
 }

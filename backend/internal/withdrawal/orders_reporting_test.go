@@ -23,7 +23,7 @@ func TestWithdrawalReportsRealOrdersExactLargeSumsAndCurrentProjection(t *testin
 		args []any
 	}{
 		{`INSERT INTO global_users(id,username) VALUES($1,$2)`, []any{g.user, "report_" + g.user}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, []any{g.member, orderTestBrand, g.user}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, []any{g.member, orderTestBrand, g.user}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{ids.New(), orderTestBrand, g.member}},
 		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,id,s,t FROM point_accounts CROSS JOIN unnest(ARRAY['recharge','winning','gift','commission']) s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) t WHERE brand_id=$1 AND brand_member_id=$2 ON CONFLICT DO NOTHING`, []any{orderTestBrand, g.member}},
 	} {

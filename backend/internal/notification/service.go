@@ -9,7 +9,6 @@ import (
 	"errors"
 	"io"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -260,8 +259,8 @@ func positive(v *string) bool {
 	if v == nil {
 		return false
 	}
-	n, e := strconv.ParseInt(*v, 10, 64)
-	return e == nil && n > 0 && strconv.FormatInt(n, 10) == *v
+	n, e := points.ParseAmount(*v)
+	return e == nil && n > 0 && n.String() == *v
 }
 
 func exactEventJSONKeys(raw []byte, expected ...string) bool {
@@ -358,7 +357,7 @@ func validateEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate string
 			return "", p, ErrInvalid
 		}
 		var ok bool
-		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM recharge_orders WHERE brand_id=$1 AND id=$2 AND member_id=$3 AND state='confirmed' AND points=$4::bigint)`, brand, aggregate, in.MemberID, *in.Points).Scan(&ok)
+		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM recharge_orders WHERE brand_id=$1 AND id=$2 AND member_id=$3 AND state='confirmed' AND points=$4::numeric)`, brand, aggregate, in.MemberID, *in.Points).Scan(&ok)
 		if err != nil {
 			return "", p, err
 		}

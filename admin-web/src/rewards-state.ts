@@ -1,3 +1,5 @@
+import { isPoints } from '@lottery/shared'
+import { pointsMinor } from '@lottery/shared'
 import type { AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 import type { RewardActionBody, RewardGrantBody } from "./rewards-api";
@@ -43,8 +45,8 @@ function validIntent(intent: PendingRewardIntent, scope: RewardIntentScope): boo
     !intent.body || typeof intent.body !== "object" || Array.isArray(intent.body) || !validReason(intent.body.reason)) return false;
   if (scope.operation === "grant") {
     const body = intent.body as RewardGrantBody;
-    if (Object.keys(body).sort().join(",") !== "member_id,points,reason" || !UUID.test(body.member_id) || typeof body.points !== "string" || !/^[1-9][0-9]*$/.test(body.points)) return false;
-    try { return BigInt(body.points) <= MAX_INT64; } catch { return false; }
+    if (Object.keys(body).sort().join(",") !== "member_id,points,reason" || !UUID.test(body.member_id) || typeof body.points !== "string" || !(isPoints(body.points) && pointsMinor(body.points)>0n)) return false;
+    try { return pointsMinor(body.points) <= MAX_INT64; } catch { return false; }
   }
   const body = intent.body as RewardActionBody;
   return Object.keys(body).sort().join(",") === "reason,version" && Number.isSafeInteger(body.version) && body.version >= 1 && body.version < Number.MAX_SAFE_INTEGER;

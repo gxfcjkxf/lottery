@@ -64,7 +64,7 @@ function mount(initial = account) {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("RewardReports real Vue component", () => {
-  it("renders and queries both complete report modes, then exports the committed filter scope", async () => {
+  it("renders and queries both complete report modes, without export actions", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     const fetcher = vi.fn<typeof fetch>(async (input, init) => { const url = new URL(String(input), "http://local"); calls.push({ url: url.toString(), init }); return url.pathname.endsWith(".csv") ? new Response("unavailable", { status: 503 }) : new Response(JSON.stringify(report(url)), { status: 200 }); });
     vi.stubGlobal("fetch", fetcher); vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
@@ -76,21 +76,15 @@ describe("RewardReports real Vue component", () => {
     for (const label of ["入账条目", "发放条目", "发放积分", "撤销条目", "撤销积分", "净积分变化"]) expect(postingSummary).toContain(label);
     expect(postingSummary).toContain(huge.replace(/\B(?=(\d{3})+(?!\d))/g, ","));
     expect(postingSummary).toContain("−7");
-    const committedFrom = new URL(calls[0]!.url).searchParams.get("from");
-    const filters = testId(mounted.root, "reward-report-filters")!, dateInput = find(filters, (n) => n.tag === "input" && n.props.type === "date");
-    setModel(dateInput, "2026-10-01"); await flush(); click(testId(mounted.root, "reward-report-export")); await flush();
-    expect(new URL(calls[1]!.url).searchParams.get("from")).toBe(committedFrom);
-    expect(new URL(calls[1]!.url).pathname).toBe("/api/v1/admin/reports/rewards.csv");
-    expect(new URL(calls[1]!.url).searchParams.has("offset")).toBe(false);
-
+    expect(testId(mounted.root, "reward-report-export")).toBeNull();
     click(testId(mounted.root, "reward-report-mode-orders")); await flush();
     const groupSelect = testId(mounted.root, "reward-report-group");
     expect(groupSelect?.options.map((option) => option.value)).toEqual(["day", "member", "state"]);
     const orders = text(mounted.root);
     expect(orders).not.toContain("按订单创建时间筛选，并展示当前状态。");
     setModel(groupSelect, "state"); await flush(); click(testId(mounted.root, "reward-report-query")); await flush();
-    expect(new URL(calls[2]!.url).pathname).toBe("/api/v1/admin/reports/reward-orders");
-    expect(new URL(calls[2]!.url).searchParams.get("group_by")).toBe("state");
+    expect(new URL(calls[1]!.url).pathname).toBe("/api/v1/admin/reports/reward-orders");
+    expect(new URL(calls[1]!.url).searchParams.get("group_by")).toBe("state");
     const orderSummary = text(testId(mounted.root, "reward-report-summary")!);
     for (const label of ["订单数", "原始积分", "已发放订单", "已发放积分", "已撤销订单", "已撤销积分"]) expect(orderSummary).toContain(label);
     expect(orderSummary).toContain(huge.replace(/\B(?=(\d{3})+(?!\d))/g, ","));
@@ -101,47 +95,27 @@ describe("RewardReports real Vue component", () => {
     expect(testId(mounted.root, "reward-report-group")?.options.map((option) => option.value)).toEqual(["day", "member", "order"]);
     mounted.app.unmount();
   });
-  it("allows report-only view, revokes stale read/export generations on mode or scope changes, and emits on 401", async () => {
-    let resolveRead!: (response: Response) => void, resolveExport!: (response: Response) => void, firstRead = true, firstExport = true;
-    const readWait = new Promise<Response>((resolve) => { resolveRead = resolve; }), exportWait = new Promise<Response>((resolve) => { resolveExport = resolve; });
+  it("allows read-only reports, discards stale reads, and emits on 401 without export", async () => {
+    let resolveRead!: (response: Response) => void, firstRead = true, failRead = false;
+    const readWait = new Promise<Response>(resolve => { resolveRead = resolve; });
     const calls: { url: URL; init?: RequestInit }[] = [];
     const fetcher = vi.fn<typeof fetch>(async (input, init) => {
-      const url = new URL(String(input), "http://local"); calls.push({ url, init });
-      if (url.pathname.endsWith(".csv")) { if (firstExport) { firstExport = false; return exportWait; } return new Response(JSON.stringify({ success: false, error: { code: "AUTH_UNAUTHENTICATED", message: "sensitive server detail" } }), { status: 401 }); }
-      if (firstRead) { firstRead = false; return readWait; }
-      if (calls.filter((call) => !call.url.pathname.endsWith(".csv")).length >= 4) return new Response(JSON.stringify({ success: false, error: { code: "AUTH_UNAUTHENTICATED", message: "sensitive server detail" } }), { status: 401 });
-      return new Response(JSON.stringify(report(url)), { status: 200 });
+      const url = new URL(String(input), "http://local"); calls.push({url, init});
+      if(firstRead){firstRead=false;return readWait;}
+      if(failRead)return new Response(JSON.stringify({success:false,error:{code:"AUTH_UNAUTHENTICATED",message:"sensitive server detail"}}),{status:401});
+      return new Response(JSON.stringify(report(url)),{status:200});
     });
     vi.stubGlobal("fetch", fetcher); vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
-    const reportOnly = { ...account, permissions: [], permissions_by_brand: { [brand]: ["report_reward.view.brand"] } };
-    const mounted = mount(reportOnly); await flush();
-    expect(testId(mounted.root, "reward-report-query")?.props.disabled).toBe(true);
-    const staleReadSignal = calls[0]!.init?.signal as AbortSignal;
-    click(testId(mounted.root, "reward-report-mode-orders")); await flush();
-    expect(staleReadSignal.aborted).toBe(true);
-    resolveRead(new Response(JSON.stringify(report(new URL(calls[0]!.url))), { status: 200 })); await flush();
-    expect(testId(mounted.root, "reward-report-summary")).toBeNull();
-    click(testId(mounted.root, "reward-report-query")); await flush();
-    expect(testId(mounted.root, "reward-report-summary")).not.toBeNull();
-    expect(testId(mounted.root, "reward-report-export")?.props.disabled).toBe(true);
-
-    mounted.scope.value = { account: { ...account, permissions_by_brand: { [brand]: ["report_reward.view.brand", "report_reward.export.brand"] } }, brandId: brand }; await flush();
-    expect(testId(mounted.root, "reward-report-summary")).toBeNull();
-    click(testId(mounted.root, "reward-report-query")); await flush();
-    click(testId(mounted.root, "reward-report-export")); await flush();
-    expect(calls.at(-1)?.url.pathname).toContain(".csv");
-    const staleExportSignal = calls.at(-1)!.init?.signal as AbortSignal;
-    click(testId(mounted.root, "reward-report-mode-postings")); await flush();
-    expect(staleExportSignal.aborted).toBe(true);
-    resolveExport(new Response("late export should be ignored", { status: 200 })); await flush();
-    expect(find(mounted.root, (n) => n.props.role === "alert")).toBeNull();
-    expect(testId(mounted.root, "reward-report-summary")).toBeNull();
-
-    click(testId(mounted.root, "reward-report-query")); await flush();
-    expect(mounted.emitted).toContain("session-invalid");
-    expect(text(mounted.root)).not.toContain("sensitive server detail");
-    expect(testId(mounted.root, "reward-report-summary")).toBeNull();
-    mounted.app.unmount();
+    const mounted=mount({...account,permissions:[],permissions_by_brand:{[brand]:["report_reward.view.brand"]}});await flush();
+    const signal=calls[0]!.init?.signal as AbortSignal;
+    click(testId(mounted.root,"reward-report-mode-orders"));await flush();expect(signal.aborted).toBe(true);
+    resolveRead(new Response(JSON.stringify(report(calls[0]!.url)),{status:200}));await flush();
+    expect(testId(mounted.root,"reward-report-summary")).toBeNull();
+    click(testId(mounted.root,"reward-report-query"));await flush();
+    expect(testId(mounted.root,"reward-report-summary")).not.toBeNull();expect(testId(mounted.root,"reward-report-export")).toBeNull();
+    failRead=true;click(testId(mounted.root,"reward-report-query"));await flush();
+    expect(mounted.emitted).toContain("session-invalid");expect(text(mounted.root)).not.toContain("sensitive server detail");
+    expect(testId(mounted.root,"reward-report-summary")).toBeNull();mounted.app.unmount();
   });
   it("aborts an in-flight read and discards its response when the selected brand and grants change", async () => {
     const otherBrand = "66666666-6666-4666-8666-666666666666";

@@ -1,3 +1,4 @@
+import { installInputNormalization } from '@lottery/shared'
 import { setInlineValidationLocale } from '@lottery/shared'
 import '@lottery/shared/form-validation.css'
 import { createApp, h, watch, shallowRef } from "vue";
@@ -19,6 +20,9 @@ import '@lottery/shared/login-entry.css'
 import '@lottery/shared/controls.css';
 import '@lottery/shared/refresh-button.css';
 
+const stopInputNormalization = installInputNormalization(document)
+if (import.meta.hot) import.meta.hot.dispose(stopInputNormalization)
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -37,7 +41,9 @@ const router = createRouter({
     { path: "/recharge", component: Page },
     { path: "/withdraw", component: Page },
     { path: "/notifications", component: Page },
+    { path: "/announcements", component: Page },
     { path: "/invites", component: Page },
+    { path: "/contacts", component: Page },
     { path: "/help", component: Page },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
@@ -68,3 +74,5 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
     void navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" });
   });
 }
+
+import "@lottery/shared/themes.css"

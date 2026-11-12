@@ -6,13 +6,10 @@ test("only the implemented immutable history reads advertise routing headers", a
   const doc = JSON.parse(await readFile(new URL("../../docs/openapi.json", import.meta.url), "utf8"));
   const expected = new Set([
     "/api/v1/admin/audit",
-    "/api/v1/admin/compliance-policy/history",
     "/api/v1/admin/brand-operation/history",
     "/api/v1/admin/brand-presentation/history",
-    "/api/v1/admin/brand-domains/history",
     "/api/v1/platform/audit",
     "/api/v1/platform/notification-templates/{key}/history",
-    "/api/v1/platform/compliance-policy/history",
     "/api/v1/platform/brand-operation/history",
     "/api/v1/platform/brand-presentation/history",
     "/api/v1/platform/brand-domains/history",
@@ -38,5 +35,5 @@ test("only the implemented immutable history reads advertise routing headers", a
     }
   }
   assert.deepEqual(actual, expected);
-  assert.equal(routingHeaderCount, 11);
+  assert.equal(routingHeaderCount, 8);
 });

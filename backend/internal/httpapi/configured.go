@@ -37,6 +37,30 @@ func registerConfiguredAdminRoutes(register func(string, string, http.HandlerFun
 	})
 
 	if !platform {
+		register("GET", "/bet-distribution/games", func(w http.ResponseWriter, r *http.Request) {
+			a, brand, ok := managementActor(w, r, d, "bet", "view")
+			if !ok {
+				return
+			}
+			games, err := betService(d).DistributionGames(r.Context(), brand)
+			if err == nil && !adminReadAudit(w, r, d, a, brand, "bet.view") {
+				return
+			}
+			out, err := configuredResult(map[string]any{"games": games}, err)
+			outputMutation(w, r, out, err)
+		})
+		register("GET", "/bet-distribution", func(w http.ResponseWriter, r *http.Request) {
+			a, brand, ok := managementActor(w, r, d, "bet", "view")
+			if !ok {
+				return
+			}
+			data, err := betService(d).BetDistribution(r.Context(), brand, r.URL.Query().Get("game_id"), r.URL.Query().Get("period_no"))
+			if err == nil && !adminReadAudit(w, r, d, a, brand, "bet.view") {
+				return
+			}
+			out, err := configuredResult(data, err)
+			outputMutation(w, r, out, err)
+		})
 		register("GET", "/platform-games/{id}/configured/orders", func(w http.ResponseWriter, r *http.Request) {
 			a, b, ok := platformLotteryActor(w, r, d, "view")
 			if !ok {

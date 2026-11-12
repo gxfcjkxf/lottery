@@ -83,32 +83,11 @@ export function renderNotification(
   const points = item.payload.points === null
     ? null
     : formatIntegerString(item.payload.points, locale);
-  const withdrawalEvent = item.event_type.startsWith("withdrawal.order.");
-  const commissionEvent = item.event_type === "commission.paid" || item.event_type === "commission.adjusted" || item.event_type === "commission.corrected";
-  const rewardEvent = item.event_type.startsWith("reward.order.");
   const replacePlaceholders = (value: string) => value
     .replaceAll("{points}", points ?? "")
     .replaceAll("{resource_id}", item.payload.resource_id);
   const title = replacePlaceholders(source.title);
   const body = replacePlaceholders(source.body);
-  const protectedNote = withdrawalEvent || commissionEvent || rewardEvent || item.event_type === "bet.order.won" || item.event_type === "bet.order.prize_reversed"
-    ? (() => {
-        const params = { points: points ?? "" };
-        if (withdrawalEvent) {
-          const status = item.event_type.slice("withdrawal.order.".length);
-          const statusKey = `user.notification.withdrawal.${status}`;
-          return translate('user.notification.withdrawalNote', { ...params, status: messages[statusKey] ?? status });
-        }
-        const key = item.event_type === "bet.order.won" ? "user.notification.betWonNote"
-          : item.event_type === "bet.order.prize_reversed" ? "user.notification.betReversedNote"
-          : item.event_type === "reward.order.granted" ? "user.notification.rewardGrantedNote"
-          : item.event_type === "reward.order.revoked" ? "user.notification.rewardRevokedNote"
-          : item.event_type === "commission.paid" ? "user.notification.commissionPaidNote"
-          : item.event_type === "commission.adjusted" ? "user.notification.commissionAdjustedNote"
-          : "user.notification.commissionCorrectedNote";
-        return translate(key, params);
-      })()
-    : null;
   const createdAt = formatDisplayDateTime(item.created_at, locale);
   return {
     ...source,
@@ -117,6 +96,31 @@ export function renderNotification(
     createdAt,
     points,
     reference: item.event_type === "member.joined" ? null : item.payload.resource_id,
-    protectedNote,
+    protectedNote: null,
+  };
+}
+
+
+/** Event amounts describe the saved event, never the current wallet balance. */
+export function notificationAmount(item: NotificationPresentationItem, locale: Language) {
+  if (item.payload.points === null) return null;
+  const event = item.event_type;
+  let kind: 'credit' | 'reversal' | 'refund' | 'adjustment' | 'stake' | 'withdrawal' | 'points';
+  if (['recharge.confirmed', 'bet.order.won', 'reward.order.granted', 'commission.paid'].includes(event)) kind = 'credit';
+  else if (['bet.order.prize_reversed', 'reward.order.revoked'].includes(event)) kind = 'reversal';
+  else if (['bet.order.cancelled', 'bet.order.judged_cancelled'].includes(event)) kind = 'refund';
+  else if (['commission.adjusted', 'commission.corrected'].includes(event)) kind = 'adjustment';
+  else if (event.startsWith('withdrawal.order.')) kind = 'withdrawal';
+  else if (event === 'bet.order.placed') kind = 'stake';
+  else kind = 'points';
+  const raw = item.payload.points;
+  const positive = kind === 'credit' || kind === 'refund' || (kind === 'adjustment' && !raw.startsWith('-'));
+  const negative = kind === 'reversal' || (kind === 'adjustment' && raw.startsWith('-'));
+  const magnitude = raw.replace(/^[+-]/, '');
+  const sign = /^0(?:\.0+)?$/.test(magnitude) ? '' : negative ? '-' : positive ? '+' : '';
+  return {
+    label: userUiCatalog[locale === 'zh' ? 'zh-CN' : 'en'][`user.notification.amount.${kind}`],
+    value: sign + formatIntegerString(magnitude, locale),
+    tone: negative ? 'negative' : positive ? 'positive' : 'neutral',
   };
 }

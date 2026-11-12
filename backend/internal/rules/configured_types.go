@@ -143,7 +143,7 @@ type ConfiguredPlay struct {
 	Selection      ConfiguredSelectionRule  `json:"selection"`
 	StakeMode      string                   `json:"stake_mode"` // per_line / unit_multiplier
 	UnitPoints     points.Amount            `json:"unit_points,omitempty"`
-	MaxMultiplier  points.Amount            `json:"max_multiplier"`
+	MaxMultiplier  points.Integer           `json:"max_multiplier"`
 	Settlement     string                   `json:"settlement"` // tiers / product_of_legs
 	PushWhen       *ConfiguredCondition     `json:"push_when,omitempty"`
 	Tiers          []ConfiguredTier         `json:"tiers,omitempty"`
@@ -166,11 +166,11 @@ type ConfiguredPrices struct {
 }
 
 type ConfiguredRequest struct {
-	PlayID     string        `json:"play_id"`
-	Options    []string      `json:"options"`
-	Plate      string        `json:"plate"`
-	Points     points.Amount `json:"points"`
-	Multiplier points.Amount `json:"multiplier"`
+	PlayID     string         `json:"play_id"`
+	Options    []string       `json:"options"`
+	Plate      string         `json:"plate"`
+	Points     points.Amount  `json:"points"`
+	Multiplier points.Integer `json:"multiplier"`
 }
 
 type ConfiguredQuoteLine struct {

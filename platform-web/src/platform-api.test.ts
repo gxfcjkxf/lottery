@@ -175,3 +175,11 @@ it('requires precise brand summary fields and allows quota only as an explicit v
  await expect(api.brands()).resolves.toEqual([{...brand,recharge_quota_available:null}])
  await expect(api.brands()).rejects.toMatchObject({code:'INVALID_RESPONSE'})
 })
+
+it('accepts fractional brand recharge quota while keeping directory counts integral', async () => {
+  const data={...brand,recharge_quota_available:'9007199254740993.25'}
+  await expect(createPlatformApi(vi.fn<typeof fetch>().mockResolvedValue(reply({items:[data]}))).brands()).resolves.toEqual([data])
+  for(const change of [{member_count:'1.5'},{agent_count:'0.25'},{recharge_quota_available:'1.001'}]) {
+    await expect(createPlatformApi(vi.fn<typeof fetch>().mockResolvedValue(reply({items:[{...data,...change}]}))).brands()).rejects.toThrow()
+  }
+})

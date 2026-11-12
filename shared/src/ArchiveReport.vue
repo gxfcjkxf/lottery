@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatPoints as displayPoints } from './points'
+
 import { computed, watch } from 'vue'
 import { createCatalogI18n } from './localization'
 import { auditReasonLabel } from './audit-details'
@@ -26,7 +28,7 @@ const groups = computed(() => [
   { key: 'wallet', values: props.record.snapshot.wallet_snapshot.balances, fields: ['total_points', 'available_points', 'frozen_points', 'withdrawal_points', 'account_count'] },
 ])
 const withdrawalRows = ['reviewing', 'processing', 'paid', 'rejected', 'failed', 'cancelled'] as const
-const formatPoints = (input: string) => BigInt(input).toLocaleString(props.locale)
+const formatPoints = (input: string) => displayPoints(input,props.locale)
 </script>
 
 <template>

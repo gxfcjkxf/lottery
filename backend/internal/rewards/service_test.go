@@ -46,7 +46,7 @@ func newRewardFixture(t *testing.T) rewardFixture {
 		args []any
 	}{
 		{`INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'reward-test-only')`, []any{globalID, "reward_member_" + globalID[:8]}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,display_name,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'Reward test member','operator','1','1')`, []any{memberID, rewardTestBrand, globalID}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,display_name,join_method) VALUES($1,$2,$3,'Reward test member','operator')`, []any{memberID, rewardTestBrand, globalID}},
 		{`INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,$2,'reward-test-only')`, []any{adminID, "reward_admin_" + adminID[:8]}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{accountID, rewardTestBrand, memberID}},
 		{`INSERT INTO point_buckets(brand_id,account_id,source,state,points)
@@ -204,16 +204,16 @@ func rewardRevoke(t *testing.T, f rewardFixture, order Order, actor access.Accou
 func TestRewardGrantIsAtomicAndAudited(t *testing.T) {
 	f := newRewardFixture(t)
 	before := rewardBalance(t, f)
-	order := rewardGrant(t, f, 125)
+	order := rewardGrant(t, f, 12500)
 	assertRewardOrder(t, order, "granted", 1)
 	want := before
-	want[2][0] += 125
+	want[2][0] += 12500
 	if after := rewardBalance(t, f); after != want {
 		t.Fatalf("grant did not credit only gift.available: before=%v after=%v", before, after)
 	}
 
 	ctx, err := f.points.Read(context.Background(), f.brand, f.member)
-	if err != nil || ctx.BySource[2][0] != 125 || ctx.Version != 1 {
+	if err != nil || ctx.BySource[2][0] != 12500 || ctx.Version != 1 {
 		t.Fatalf("formal points ledger snapshot=%+v err=%v", ctx, err)
 	}
 	var grants int
@@ -255,7 +255,7 @@ func rewardPageItems(t *testing.T, page any) []reflect.Value {
 
 func TestRewardConcurrentRevokeCreatesAtMostOneReversal(t *testing.T) {
 	f := newRewardFixture(t)
-	order := rewardGrant(t, f, 77)
+	order := rewardGrant(t, f, 7700)
 	start := make(chan struct{})
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -329,7 +329,7 @@ CREATE TRIGGER %s BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION %s()
 			before := rewardBalance(t, f)
 			tx := rewardTx(t, f.db)
 			_, err := f.service.GrantTx(context.Background(), tx, f.brand, f.actor,
-				GrantInput{MemberID: f.member, Points: 44, Reason: "fault injection"}, points.Metadata{ActorType: "admin", ActorID: f.admin, RequestID: requestID})
+				GrantInput{MemberID: f.member, Points: 4400, Reason: "fault injection"}, points.Metadata{ActorType: "admin", ActorID: f.admin, RequestID: requestID})
 			_ = tx.Rollback(context.Background())
 			if err == nil {
 				t.Fatal("injected ledger/audit failure was ignored")
@@ -350,7 +350,7 @@ func TestRewardPermissionsBrandsVersionsAndBrandStatus(t *testing.T) {
 	grant := func(actor access.Account, brand string) error {
 		tx := rewardTx(t, f.db)
 		_, err := f.service.GrantTx(context.Background(), tx, brand, actor,
-			GrantInput{MemberID: f.member, Points: 10, Reason: "permission test"}, rewardMeta(actor.ID))
+			GrantInput{MemberID: f.member, Points: 1000, Reason: "permission test"}, rewardMeta(actor.ID))
 		_ = tx.Rollback(context.Background())
 		return err
 	}
@@ -369,7 +369,7 @@ func TestRewardPermissionsBrandsVersionsAndBrandStatus(t *testing.T) {
 	if err := grant(foreignBrandActor, rewardTestOtherBrand); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-brand member lookup error=%v, want rewards.ErrNotFound", err)
 	}
-	order := rewardGrant(t, f, 10)
+	order := rewardGrant(t, f, 1000)
 	for _, actor := range []access.Account{f.viewOnly, f.super} {
 		tx := rewardTx(t, f.db)
 		_, err := f.service.RevokeTx(context.Background(), tx, f.brand, rewardID(t, order), actor, ActionInput{Version: 1, Reason: "not permitted"}, rewardMeta(actor.ID))
@@ -411,7 +411,7 @@ func TestRewardPermissionsBrandsVersionsAndBrandStatus(t *testing.T) {
 
 func TestRewardOrdinarySQLCannotBypassImmutableAuditAndReversalGuard(t *testing.T) {
 	f := newRewardFixture(t)
-	order := rewardGrant(t, f, 25)
+	order := rewardGrant(t, f, 2500)
 	for _, statement := range []string{
 		`UPDATE reward_orders SET state='revoked' WHERE id=$1`,
 		`DELETE FROM reward_orders WHERE id=$1`,
@@ -429,13 +429,13 @@ func TestRewardOrdinarySQLCannotBypassImmutableAuditAndReversalGuard(t *testing.
 		t.Fatalf("expected original grant: %+v", grantRows)
 	}
 	delta := points.Balance{}
-	delta[2][0] = -24
+	delta[2][0] = -2400
 	tx := rewardTx(t, f.db)
 	_, err := f.points.Post(context.Background(), tx, points.Change{
 		BrandID: f.brand, MemberID: f.member, EntryType: "reward_reversal", ReferenceType: "reward_order",
 		ReferenceID: rewardID(t, order), OperationKey: "unauthorized-partial-reversal-" + ids.New(),
 		Reason: "partial bypass", ActorType: "admin", ActorID: f.admin, RequestID: ids.New(), Delta: delta,
-		Allocation: []points.Allocation{{Source: "gift", State: "available", Points: 25}}, ReversalOf: grantRows[0].id,
+		Allocation: []points.Allocation{{Source: "gift", State: "available", Points: 2500}}, ReversalOf: grantRows[0].id,
 	})
 	_ = tx.Rollback(context.Background())
 	if err == nil {

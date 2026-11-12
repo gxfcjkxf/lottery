@@ -1,20 +1,43 @@
 #!/usr/bin/env bash
 # Build a source snapshot locally, then activate a release over SSH.
 set -Eeuo pipefail
-[[ $# == 1 || ( $# == 2 && $2 == --upgrade-fixed-entries ) || ( $# == 2 && $2 == --upgrade-manual-results ) || ( $# == 3 && $2 == --initial ) ]] || {
-  echo "Usage: $0 SSH_HOST [--upgrade-fixed-entries|--upgrade-manual-results]   (first deployment: 02-deploy.sh SSH_HOST CONFIG.json)" >&2; exit 1;
+[[ $# == 1 || ( $# == 2 && $2 == --web-only ) || ( $# == 2 && $2 == --upgrade-agent-wallet ) || ( $# == 2 && $2 == --upgrade-themes ) || ( $# == 2 && $2 == --upgrade-unique-usdt ) || ( $# == 2 && $2 == --remove-announcement-timezone ) || ( $# == 2 && $2 == --remove-auth-consent ) || ( $# == 2 && $2 == --remove-dedicated-wallet ) || ( $# == 2 && $2 == --upgrade-tron-key-pool ) || ( $# == 2 && $2 == --upgrade-tron-deposits ) || ( $# == 2 && $2 == --upgrade-release-20261111 ) || ( $# == 2 && $2 == --upgrade-cash-wallet ) || ( $# == 2 && $2 == --upgrade-brand-contacts ) || ( $# == 2 && $2 == --upgrade-profile-contacts ) || ( $# == 2 && $2 == --upgrade-fixed-entries ) || ( $# == 2 && $2 == --upgrade-manual-results ) || ( $# == 3 && $2 == --initial ) ]] || {
+  echo "Usage: $0 SSH_HOST [--web-only|--upgrade-agent-wallet|--upgrade-themes|--upgrade-unique-usdt|--remove-announcement-timezone|--remove-auth-consent|--remove-dedicated-wallet|--upgrade-tron-key-pool|--upgrade-tron-deposits|--upgrade-release-20261111|--upgrade-cash-wallet|--upgrade-brand-contacts|--upgrade-fixed-entries|--upgrade-manual-results|--upgrade-profile-contacts]   (first deployment: 02-deploy.sh SSH_HOST CONFIG.json)" >&2; exit 1;
 }
 host=$1
 [[ $host =~ ^[a-zA-Z0-9][a-zA-Z0-9_.@-]*$ ]] || { echo 'Invalid SSH host.' >&2; exit 1; }
 mode=update
 consolidate=false
+web_only=false
+api_release=none
 if [[ $# == 3 ]]; then mode=initial; elif [[ $# == 2 ]]; then consolidate=true; fi
+if [[ $# == 2 && $2 == --web-only ]]; then web_only=true; consolidate=false; fi
 upgrade_script=upgrade-fixed-entries.py
+if [[ $# == 2 && $2 == --upgrade-themes ]]; then upgrade_script=upgrade-themes.py; fi
+if [[ $# == 2 && $2 == --upgrade-unique-usdt ]]; then upgrade_script=upgrade-unique-usdt-remote.py; fi
+if [[ $# == 2 && $2 == --remove-announcement-timezone ]]; then upgrade_script=remove-announcement-timezone.py; fi
+if [[ $# == 2 && $2 == --remove-auth-consent ]]; then upgrade_script=remove-auth-consent.py; fi
+if [[ $# == 2 && $2 == --remove-dedicated-wallet ]]; then upgrade_script=remove-dedicated-wallet.py; fi
 if [[ $# == 2 && $2 == --upgrade-manual-results ]]; then upgrade_script=upgrade-manual-results.py; fi
+if [[ $# == 2 && $2 == --upgrade-profile-contacts ]]; then upgrade_script=upgrade-profile-contacts.py; fi
+if [[ $# == 2 && $2 == --upgrade-brand-contacts ]]; then upgrade_script=upgrade-brand-contacts.py; fi
+if [[ $# == 2 && $2 == --upgrade-cash-wallet ]]; then upgrade_script=upgrade-cash-wallet-remote.py; fi
+if [[ $# == 2 && $2 == --upgrade-release-20261111 ]]; then upgrade_script=upgrade-release-20261111.py; fi
+if [[ $# == 2 && $2 == --upgrade-tron-deposits ]]; then upgrade_script=upgrade-tron-deposits-remote.py; fi
+if [[ $# == 2 && $2 == --upgrade-tron-key-pool ]]; then upgrade_script=upgrade-tron-key-pool-remote.py; fi
+if [[ $# == 2 && $2 == --upgrade-agent-wallet ]]; then upgrade_script=upgrade-agent-wallet.py; fi
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/source" "$work/release/web"
+if [[ $web_only == true ]]; then
+  api_release=$(ssh -o BatchMode=yes "$host" 'readlink -f /opt/lottery/current')
+  [[ $api_release =~ ^/opt/lottery/releases/[a-zA-Z0-9-]+$ ]] || { echo 'Invalid API source release.' >&2; exit 1; }
+  scp -o BatchMode=yes "$host:$api_release/platform" "$work/current-api"
+  scp -o BatchMode=yes "$host:$api_release/ops/0001_baseline.up.sql" "$work/current-baseline.sql"
+  printf '%s\n' "$api_release" > "$work/release/API_SOURCE_RELEASE"
+  echo "Explicit web-only release: retaining API and baseline from $api_release"
+fi
 if [[ $mode == initial ]]; then
   cp "$3" "$work/release/deploy.json"
 else
@@ -75,23 +98,44 @@ VITE_USER_APP_ORIGIN="$user_origin" pnpm dlx "$pnpm_version" -r --workspace-conc
 for app in user admin platform agent; do
   cp -R "$app-web/dist" "$work/release/web/$app"
 done
+if [[ $web_only == true ]]; then
+  cp "$work/current-api" "$work/release/platform"
+else
 (cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
   -ldflags "-s -w -X main.buildVersion=$release" -o "$work/release/platform" ./cmd/platform)
+fi
 cp -R deploy/systemd "$work/release/systemd"
 mkdir "$work/release/ops"
 cp deploy/test-host/namecom-dns.py deploy/test-host/render-nginx.py deploy/test-host/upgrade-fixed-entries.py deploy/test-host/upgrade-manual-results.py "$work/release/ops/"
-cp backend/migrations/0001_baseline.up.sql "$work/release/ops/"
+cp deploy/test-host/upgrade-profile-contacts.py deploy/test-host/upgrade-profile-contacts.sql "$work/release/ops/"
+cp deploy/test-host/upgrade-brand-contacts.py deploy/test-host/upgrade-brand-contacts.sql "$work/release/ops/"
+cp deploy/test-host/upgrade-cash-wallet-remote.py deploy/test-host/upgrade-cash-wallet.sql "$work/release/ops/"
+cp deploy/test-host/upgrade-unique-usdt-remote.py deploy/test-host/upgrade-unique-usdt.sql "$work/release/ops/"
+cp deploy/test-host/upgrade-release-20261111.py deploy/test-host/upgrade-release-20261111.sql "$work/release/ops/"
+cp deploy/test-host/upgrade-tron-deposits-remote.py deploy/test-host/upgrade-tron-deposits.sql "$work/release/ops/"
+cp deploy/test-host/upgrade-tron-key-pool-remote.py deploy/test-host/upgrade-tron-key-pool.sql "$work/release/ops/"
+cp deploy/test-host/upgrade-agent-wallet.py deploy/test-host/upgrade-agent-wallet.sql "$work/release/ops/"
+cp deploy/test-host/remove-announcement-timezone.py deploy/test-host/remove-announcement-timezone.sql "$work/release/ops/"
+cp deploy/test-host/remove-auth-consent.py deploy/test-host/remove-auth-consent.sql "$work/release/ops/"
+cp deploy/test-host/remove-dedicated-wallet.py "$work/release/ops/"
+cp deploy/test-host/upgrade-themes.py "$work/release/ops/"
+if [[ $web_only == true ]]; then
+  cp "$work/current-baseline.sql" "$work/release/ops/0001_baseline.up.sql"
+else
+  cp backend/migrations/0001_baseline.up.sql "$work/release/ops/"
+fi
 (cd "$work/release" && COPYFILE_DISABLE=1 tar --no-xattrs -czf "$work/release.tgz" .)
 shasum -a 256 "$work/release.tgz" | awk '{print $1}' > "$work/release.sha256"
 scp -o IPQoS=none "$work/release.tgz" "$host:/opt/lottery/incoming/$release.tgz"
 scp -o IPQoS=none "$work/release.sha256" "$host:/opt/lottery/incoming/$release.sha256"
-ssh -o BatchMode=yes "$host" "bash -s -- $release $mode $consolidate $upgrade_script" <<'REMOTE'
+ssh -o BatchMode=yes "$host" "bash -s -- $release $mode $consolidate $upgrade_script $api_release" <<'REMOTE'
 set -Eeuo pipefail
 umask 077
 release=$1
 mode=$2
 consolidate=$3
 upgrade_script=$4
+api_release=$5
 exec 9>/run/lock/lottery-deploy.lock
 flock -n 9 || { echo 'Another deployment is running.' >&2; exit 1; }
 candidate=/opt/lottery/releases/$release
@@ -113,6 +157,11 @@ tar -xzf "$release.tgz" -C "$candidate"
 chown -R root:root "$candidate"
 chmod -R u=rwX,go=rX "$candidate"
 chmod 755 "$candidate/platform"
+if [[ $api_release != none ]]; then
+  [[ $(readlink -f /opt/lottery/current) == "$api_release" ]] || { echo 'API release changed during the web build; refusing activation.' >&2; exit 1; }
+  cmp "$candidate/platform" "$api_release/platform"
+  cmp "$candidate/ops/0001_baseline.up.sql" "$api_release/ops/0001_baseline.up.sql"
+fi
 if [[ $mode == update ]]; then
   python3 - "$candidate/deploy.json" /etc/lottery/deploy.json <<'PY_CONFIG'
 import json,sys
@@ -189,6 +238,18 @@ else
   # Baseline consolidation must follow the reviewed copy/verify procedure.
   app check
 fi
+# Baseline objects must remain owned by the application role after privileged migrations.
+runuser -u postgres -- psql -X -d lottery -v ON_ERROR_STOP=1 <<'SQL'
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+             WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','S')
+               AND pg_get_userbyid(c.relowner) <> 'lottery')
+     OR EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                WHERE n.nspname='public' AND pg_get_userbyid(p.proowner) <> 'lottery') THEN
+    RAISE EXCEPTION 'public schema objects must be owned by lottery';
+  END IF;
+END $$;
+SQL
 # The three management applications share fixed, explicitly trusted entries.
 mapfile -t management_domains < <(python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); print("\n".join(c[k] for k in ("platform_domain","admin_domain","agent_domain")))' "$candidate/deploy.json")
 runuser -u postgres -- psql -X -d lottery -v ON_ERROR_STOP=1 \

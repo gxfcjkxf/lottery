@@ -132,3 +132,80 @@ func TestDrawSourceRuntimeChecksAndProbeAreReadOnly(t *testing.T) {
 		t.Fatal("denied collection mislabeled", code, err)
 	}
 }
+
+func TestSourceScheduleRestAndResume(t *testing.T) {
+	ctx := context.Background()
+	db := testdb.New(t)
+	s := Service{DB: db}
+	a := access.Account{ID: ids.New(), Type: access.AccountAdmin, SuperAdmin: true, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "platform_game", Action: "write", Scope: access.ScopePlatform}}}}}
+	if _, e := db.Exec(ctx, `INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,'rest_source','test-only')`, a.ID); e != nil {
+		t.Fatal(e)
+	}
+	resting := true
+	nextAt := time.Now().Add(5 * time.Minute).UTC().Truncate(time.Second)
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var nextNo, nextTime any
+		if !resting {
+			nextNo = "8"
+			nextTime = nextAt.Format(time.RFC3339)
+		}
+		json.NewEncoder(w).Encode(map[string]any{"rows": []any{map[string]any{"issue": "7", "time": time.Now().Add(-time.Hour).Format(time.RFC3339), "balls": []int{1, 2, 3, 4, 5, 6, 49}}}, "next_period_no": nextNo, "next_draw_at": nextTime})
+	}))
+	defer feed.Close()
+	tx, e := db.Begin(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tx.Rollback(ctx)
+	raw, model := configuredModelFixture(t)
+	g, e := s.Create(ctx, tx, a, GameInput{Code: "rest_resume", Name: "Rest test", Timezone: "UTC", Model: model}, points.Metadata{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.SaveConfiguredRules(ctx, tx, a, g.ID, ConfiguredRulesInput{Snapshot: raw}, points.Metadata{}); e != nil {
+		t.Fatal(e)
+	}
+	m := testFeedMapping("json")
+	m.Schedule = "source"
+	m.Regular.Count = 6
+	m.Special.Offset = 6
+	m.NextPeriod = &FeedField{Path: "/next_period_no"}
+	m.NextDrawTime = &FeedField{Path: "/next_draw_at"}
+	opening := 210
+	p, e := publishTestAutomation(ctx, s, tx, a, g.ID, AutomationInput{AutomationPlan: AutomationPlan{Enabled: true, SourceType: "mapped", SourceURL: feed.URL, Mapping: &m, OpenBeforeSeconds: &opening, CloseBeforeSeconds: 15}}, points.Metadata{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = tx.Commit(ctx); e != nil {
+		t.Fatal(e)
+	}
+	sources := AutomationSources{Origins: []string{feed.URL}, Client: feed.Client()}
+	if e = s.CheckDrawSources(ctx, sources, true); e != nil {
+		t.Fatal("rest probe", e)
+	}
+	if _, e = s.SyncMappedSources(ctx, sources); e != nil {
+		t.Fatal("rest sync", e)
+	}
+	var n int
+	var code string
+	var nextNo *string
+	var last []byte
+	if e = db.QueryRow(ctx, `SELECT code,next_period_no,last_result FROM platform_hk_source_checks WHERE game_id=$1 AND version=$2`, g.ID, p.Version).Scan(&code, &nextNo, &last); e != nil || code != "ready" || nextNo != nil || len(last) == 0 {
+		t.Fatal("rest status", code, nextNo, string(last), e)
+	}
+	if e = db.QueryRow(ctx, `SELECT count(*) FROM platform_game_periods WHERE game_id=$1`, g.ID).Scan(&n); e != nil || n != 0 {
+		t.Fatal("invented resting period", n, e)
+	}
+	resting = false
+	if _, e = db.Exec(ctx, `UPDATE platform_hk_source_checks SET checked_at=now()-interval '10 seconds' WHERE game_id=$1`, g.ID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.SyncMappedSources(ctx, sources); e != nil {
+		t.Fatal("resume sync", e)
+	}
+	var period string
+	var at time.Time
+	if e = db.QueryRow(ctx, `SELECT period_no,draw_at FROM platform_game_periods WHERE game_id=$1`, g.ID).Scan(&period, &at); e != nil || period != "8" || !at.Equal(nextAt) {
+		t.Fatal("resume schedule", period, at, e)
+	}
+}

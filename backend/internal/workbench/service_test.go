@@ -128,7 +128,7 @@ func fund(t *testing.T, db *pgxpool.Pool, brand string, amount points.Amount) st
 		args []any
 	}{
 		{`INSERT INTO global_users(id,username) VALUES($1,$2)`, []any{user, "bench_" + user}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, []any{member, brand, user}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, []any{member, brand, user}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{account, brand, member}},
 		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,v FROM unnest(ARRAY['recharge','winning','gift'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])v`, []any{brand, account}},
 	}
@@ -153,7 +153,7 @@ func TestUnboundedExactSumsBrandIsolationAndTimezone(t *testing.T) {
 	ctx := context.Background()
 	fund(t, db, brandA, 9000000000000000000)
 	fund(t, db, brandA, 9000000000000000000)
-	fund(t, db, brandB, 71)
+	fund(t, db, brandB, 7100)
 	if _, e := db.Exec(ctx, `UPDATE brands SET timezone='Pacific/Kiritimati' WHERE id=$1`, brandA); e != nil {
 		t.Fatal(e)
 	}

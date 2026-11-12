@@ -87,18 +87,10 @@ test("one global user has isolated Aurora and Harbor memberships, wallets, and r
     await harborPage.goto(`${harborOrigin}/login`);
     await harborPage.getByLabel("Account", { exact: true }).fill(username);
     await harborPage.getByLabel("Password", { exact: true }).fill(password);
-    const initialLogin = harborPage.waitForResponse(response =>
-      response.url().endsWith("/api/v1/auth/login") && response.request().method() === "POST" && response.status() === 409,
-    );
-    await harborPage.getByRole("button", { name: /^Log in$/ }).click();
-    await initialLogin;
-    const joinTerms = harborPage.locator(".join-terms");
-    await expect(joinTerms).toContainText("This account already exists. Joining this brand requires accepting its terms:");
-    await joinTerms.locator('input[type="checkbox"]').check();
     const joined = harborPage.waitForResponse(response =>
       response.url().endsWith("/api/v1/auth/login") && response.request().method() === "POST" && response.status() === 200,
     );
-    await joinTerms.getByRole("button", { name: /Accept and join brand/ }).click();
+    await harborPage.getByRole("button", { name: /^Log in$/ }).click();
     expect((await joined).status()).toBe(200);
     await expect(harborPage).toHaveURL(/\/$/);
 

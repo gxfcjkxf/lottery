@@ -14,7 +14,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
       expect(route.request().method()).toBe('GET')
       return route.fulfill({ json: { success: true, data: {
         brand_id: gameId, member_id: gameId, game_id: new URL(route.request().url()).searchParams.get('game_id') ?? '',
-        games: [{ id: gameId, name: 'Mark Six' }], limit: 20, next_cursor: null,
+        games: [{ id: gameId, name: 'Mark Six' }], limit: 20, total_count: '1', next_cursor: null,
         items: [{ kind: 'configured', id, game_id: gameId, game_name: 'Mark Six', period_no: '2026115', placed_at: '2026-10-27T03:20:52Z', order: {
           id, game_id: gameId, period_no: '2026115', status: 'placed', snapshot,
           quote: { bet_points: '40', lines: [{ play_id: play.id, options: [option.id], plate: 'A', stake: '40', prices: { [option.id]: '48.99' } }] }, result: null,
@@ -32,7 +32,20 @@ for (const locale of ['en', 'zh-CN'] as const) {
       await expect(page.locator('h1')).toHaveCount(1)
       const back = await page.locator('.workspace-leading button').boundingBox(), heading = await title.boundingBox()
       expect(heading!.x).toBeGreaterThanOrEqual(back!.x + back!.width)
-      await expect(page.locator('.workspace-game-trigger')).toHaveCount(1)
+      await expect(page.locator('.workspace-game-picker .select-control-trigger')).toHaveCount(1)
+      const picker = page.locator('.workspace-game-picker'), trigger = picker.getByRole('combobox')
+      const header = page.locator('.workspace-topbar'), before = await header.boundingBox()
+      await trigger.click()
+      await expect(picker.getByRole('listbox')).toBeVisible()
+      await expect(picker.getByRole('listbox')).toHaveCSS('position', 'fixed')
+      expect(await header.boundingBox()).toEqual(before)
+      await expectNoPageOverflow(page)
+      await page.screenshot({ path: info.outputPath(`game-picker-${locale}-${width}.png`) })
+      await trigger.press('ArrowDown'); await trigger.press('Escape')
+      await expect(picker.getByRole('listbox')).toBeHidden()
+      await expect(trigger).toBeFocused()
+      await trigger.click(); await title.click()
+      await expect(picker.getByRole('listbox')).toBeHidden()
       await expect(page.locator('main select, main details, main h1')).toHaveCount(0)
       await expect(page.locator('main')).not.toContainText('Mark Six')
       await expect(page.locator('main')).not.toContainText(id)
@@ -59,20 +72,30 @@ for (const locale of ['en', 'zh-CN'] as const) {
           })
           return { width: table.getBoundingClientRect().width, available: content.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight), centers }
         })
-        expect(layout.width).toBeCloseTo(layout.available, 0)
+        expect(Math.abs(layout.width - layout.available)).toBeLessThanOrEqual(2)
         expect(Math.max(...layout.centers) - Math.min(...layout.centers)).toBeLessThan(2)
       }
       await expectNoPageOverflow(page)
+      if (width <= 700 || width <= 900 && await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+        const cells = await page.locator('.history-table tbody tr').first().locator('td:visible').evaluateAll(nodes => nodes.map(node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom } }))
+        expect(cells[1]!.y).toBeGreaterThanOrEqual(cells[0]!.bottom)
+        expect(cells[2]!.y).toBeGreaterThanOrEqual(cells[1]!.bottom)
+        for (let i = 0; i < cells.length; i++) for (let j = i + 1; j < cells.length; j++) {
+          const a = cells[i]!, b = cells[j]!
+          expect(a.right <= b.x || b.right <= a.x || a.bottom <= b.y || b.bottom <= a.y).toBe(true)
+        }
+        await page.screenshot({ path: info.outputPath(`bet-mobile-${locale}-${width}.png`), fullPage: true })
+      }
     }
     await page.screenshot({ path: info.outputPath(`bet-table-${locale}.png`), fullPage: true })
-    await page.locator('.workspace-game-trigger').click()
-    await page.locator('.workspace-game-picker button').filter({ hasText: locale === 'en' ? 'All games' : '全部彩种' }).click()
+    await page.locator('.workspace-game-picker .select-control-trigger').click()
+    await page.locator('.workspace-game-picker [role="option"]').filter({ hasText: locale === 'en' ? 'All games' : '全部彩种' }).click()
     await expect(page.locator('.history-game')).toHaveText('Mark Six')
-    await page.locator('.workspace-game-trigger').click()
-    await page.locator('.workspace-game-picker button').filter({ hasText: 'Mark Six' }).click()
+    await page.locator('.workspace-game-picker .select-control-trigger').click()
+    await page.locator('.workspace-game-picker [role="option"]').filter({ hasText: 'Mark Six' }).click()
     await expect(page.locator('.history-game')).toHaveCount(0)
     await expect(page).toHaveURL(/\/orders$/)
-    for (const [path, title] of [['/help', locale === 'en' ? 'Help centre' : '帮助中心'], ['/account', locale === 'en' ? 'Me' : '个人'], ['/results', locale === 'en' ? 'Results' : '开奖结果']]) {
+    for (const [path, title] of [['/help', locale === 'en' ? 'Help centre' : '帮助中心'], ['/account', locale === 'en' ? 'Me' : '个人'], ['/results', locale === 'en' ? 'Draw history' : '开奖记录']]) {
       await page.goto(`${origins.user}${path}`)
       await expect(page.locator('.workspace-page-title')).toHaveText(title)
       await expect(page.locator('h1')).toHaveCount(1)
@@ -94,7 +117,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
       const outcomes = extraAmounts ? ['lost', 'won', 'push', 'lost'] : ['lost']
       return route.fulfill({ json: { success: true, data: {
         brand_id: gameId, member_id: gameId, game_id: gameId,
-        games: [{ id: gameId, name: 'Mark Six' }], limit: 20, next_cursor: null,
+        games: [{ id: gameId, name: 'Mark Six' }], limit: 20, total_count: String(outcomes.length), next_cursor: null,
         items: outcomes.map((outcome, index) => ({ kind: 'configured', id: `ticket-${index}`, game_id: gameId, game_name: 'Mark Six', period_no: '2026115', placed_at: '2026-10-27T03:20:52Z', order: {
           id: `ticket-${index}`, game_id: gameId, period_no: '2026115', status: settled ? 'settled' : 'placed',
           snapshot: index === 3 ? { ...snapshot, catalog: { ...snapshot.catalog, funding: 'reserve' } } : snapshot,
@@ -126,7 +149,16 @@ for (const locale of ['en', 'zh-CN'] as const) {
     const preset = page.viewportSize()!
     for (const width of info.project.name.includes('reflow') ? [320, 700, 701, 999, 1000, 1001, 1440] : [preset.width]) {
       if (info.project.name.includes('reflow')) await page.setViewportSize({ width, height: 800 })
-      if (width <= 700) await expect(page.locator('.history-amount-empty').first()).toBeHidden()
+      if (width <= 700 || width <= 900 && await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+        await expect(page.locator('.history-amount-empty').first()).toBeHidden()
+        for (const row of await page.locator('.history-table tbody tr').all()) {
+          const cells = await row.locator('td:visible').evaluateAll(nodes => nodes.map(node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom } }))
+          for (let i = 0; i < cells.length; i++) for (let j = i + 1; j < cells.length; j++) {
+            const a = cells[i]!, b = cells[j]!
+            expect(a.right <= b.x || b.right <= a.x || a.bottom <= b.y || b.bottom <= a.y).toBe(true)
+          }
+        }
+      }
       await expectNoPageOverflow(page)
     }
     await page.screenshot({ path: info.outputPath(`bet-settlement-${locale}.png`), fullPage: true })

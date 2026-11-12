@@ -218,10 +218,11 @@ describe("finance API client", () => {
     expect(formatIntegerAmount("-9007199254740993123456789")).toBe(
       "−9,007,199,254,740,993,123,456,789",
     );
-    expect(isPositiveAmount("9007199254740993123456789")).toBe(true);
+    expect(isPositiveAmount("9007199254740993.12")).toBe(true);
     expect(isPositiveAmount("0")).toBe(false);
-    expect(isPositiveAmount("1.5")).toBe(false);
-    expect(isSignedAmount("-9007199254740993123456789")).toBe(true);
+    expect(isPositiveAmount("1.5")).toBe(true)
+    expect(isPositiveAmount("1.555")).toBe(false);
+    expect(isSignedAmount("-9007199254740993.12")).toBe(true);
     expect(isSignedAmount("0")).toBe(false);
     expect(isSignedAmount("+1")).toBe(false);
   });
@@ -279,8 +280,8 @@ describe("finance API client", () => {
 });
 
 it('manual recharge validates an immediate credit receipt and retains explicit request identity',async()=>{
- const body={member_id:wallet.member_id,points:'70',remark:'',reason:''}
- const receipt={id:'44444444-4444-4444-8444-444444444444',brand_id:wallet.brand_id,member_id:wallet.member_id,points:'70',method:'manual',state:'confirmed',ledger_entry_id:'55555555-5555-4555-8555-555555555555',confirmed_at:'2026-10-24T00:00:00Z'}
+ const body={member_id:wallet.member_id,points:'70.50',remark:'',reason:''}
+ const receipt={id:'44444444-4444-4444-8444-444444444444',brand_id:wallet.brand_id,member_id:wallet.member_id,points:'70.5',method:'manual',state:'confirmed',ledger_entry_id:'55555555-5555-4555-8555-555555555555',confirmed_at:'2026-10-24T00:00:00Z'}
  const fetcher=vi.fn<typeof fetch>().mockResolvedValueOnce(ok(receipt)).mockResolvedValueOnce(ok({...receipt,state:'pending'}))
  const api=createFinanceApi(fetcher)
  await expect(api.manualRecharge(wallet.brand_id,body,'manual-original-key')).resolves.toEqual(receipt)

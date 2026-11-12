@@ -59,7 +59,7 @@ test("real member recharge records reflect manual confirmation and cancellation 
   // A new browser sign-in cookie must not let the old mounted member scope
   // display the new account's data, even when both belong to the same brand.
   const switched = await page.evaluate(async (identifier: string) => {
-    const r = await fetch("/api/v1/auth/register", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ username: identifier, password: "recharge-switch-password-2026", privacy_policy_version: "dev-1", service_terms_version: "dev-1" }) });
+    const r = await fetch("/api/v1/auth/register", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ username: identifier, password: "recharge-switch-password-2026", }) });
     return { status: r.status, body: await r.json() };
   }, `recharge_other_${uid().replaceAll("-", "").slice(0, 10)}`);
   expect(switched.status).toBe(201); expect(switched.body.data.member.id).not.toBe(member.id);

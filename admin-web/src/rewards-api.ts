@@ -1,3 +1,4 @@
+import { isPoints, pointsMinor } from '@lottery/shared'
 import { readAdminEnvelope } from './admin-api'
 
 import { AdminApiError } from "./admin-api";
@@ -169,7 +170,7 @@ function isReason(value: unknown): value is string {
 
 function validOrder(value: unknown, brand: string): value is RewardOrder {
   if (!isObject(value) || !hasExactKeys(value, ORDER_KEYS) || value.brand_id !== brand ||
-    !isUuid(value.id) || !isUuid(value.brand_id) || !isUuid(value.member_id) || !isUnsigned(value.points, true) ||
+    !isUuid(value.id) || !isUuid(value.brand_id) || !isUuid(value.member_id) || !(isPoints(value.points) && pointsMinor(value.points)>0n) ||
     !REWARD_STATES.includes(String(value.state)) || !isSafeVersion(value.version) ||
     !isUuid(value.grant_ledger_entry_id) || !isUuid(value.creation_audit_log_id) || !isUuid(value.last_audit_log_id) ||
     !isUuid(value.created_by) || !isReason(value.reason) || !isUnsigned(value.point_policy_version, true) ||
@@ -251,7 +252,7 @@ function validateKey(key: string): void {
 
 function validateGrantBody(body: Readonly<RewardGrantBody>): void {
   if (!isObject(body) || !hasExactKeys(body, ["member_id", "points", "reason"]) || !isUuid(body.member_id) ||
-    !isUnsigned(body.points, true) || !isReason(body.reason)) invalidInput();
+    !(isPoints(body.points) && pointsMinor(body.points)>0n) || !isReason(body.reason)) invalidInput();
 }
 
 function validateActionBody(body: Readonly<RewardActionBody>): void {
@@ -341,7 +342,7 @@ export function createRewardsApi(fetcher: typeof fetch = fetch, actorID = "") {
       });
       validateKey(key);
       const data = await request(brand, ORDERS, "POST", 201,
-        (value): value is RewardOrder => validOrder(value, brand) && value.member_id === snapshot.member_id && value.points === snapshot.points &&
+        (value): value is RewardOrder => validOrder(value, brand) && value.member_id === snapshot.member_id && pointsMinor(value.points) === pointsMinor(snapshot.points) &&
           value.state === "granted" && value.version === 1 && value.created_by === capturedActorID,
         snapshot, key);
       return data;

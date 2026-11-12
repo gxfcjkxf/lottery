@@ -12,6 +12,8 @@ import ManagementTable from '@lottery/shared/ManagementTable.vue'
 import { AdminApiError, type AdminAccount } from './admin-api'
 import { createCommissionAdjustmentsApi, commissionAdjustmentPermissions, type CommissionPaymentBeneficiaryPage } from './commission-adjustments-api'
 import { useAdminI18n } from './i18n'
+const pageSize = ref(20)
+
 const props=defineProps<{account:AdminAccount;brandId:string;paymentId:string}>()
 const emit=defineEmits<{'session-invalid':[]}>()
 const {t,locale,displayError,errorMessage}=useAdminI18n()
@@ -31,7 +33,7 @@ async function load(offset=0) {
  const ticket=++generation,captured=scope.value
  error.value='';busy.value=true
  try {
-  const result=await api.listBeneficiaries(props.brandId,props.paymentId,20,offset,committed.value)
+  const result=await api.listBeneficiaries(props.brandId,props.paymentId, pageSize.value,offset,committed.value)
   if(alive && generation===ticket && scope.value===captured) page.value=result
  } catch(cause) {
   if(!alive || generation!==ticket || scope.value!==captured)return
@@ -44,7 +46,7 @@ async function search(){
 watch(scope,()=>{generation++;page.value=null;agent.value=state.value='';committed.value={};if(rights.value.view)void load()},{immediate:true})
 onBeforeUnmount(()=>{alive=false;generation++})
 useOperationToast(error,v=>v,'error')
-async function clearFilters(){agent.value=state.value='';await search()}
+
 </script>
 <template>
  <ManagementList embedded class="commission-detail" data-testid="commission-payment-targets">
@@ -52,7 +54,7 @@ async function clearFilters(){agent.value=state.value='';await search()}
    <label><FilterAssociationSearch v-model="agent" v-model:pending="agentSearchPending" :brand-id="brandId" surface="admin" resource="commission" kind="agent" :label="t('admin.commission.ui.agent')" :locale="locale" :scope-key="scope" :enabled="rights.view" /></label>
    <label><SelectControl :placeholder="t('admin.commission.ui.targetStatus')" v-model="state" :label="String(t('admin.commission.ui.targetStatus'))" :options="[{ value: '', label: (String(t('admin.commission.ui.all'))).trim() }, { value: 'pending', label: (String(t('admin.commission.ui.targetPending'))).trim() }, { value: 'paid', label: (String(t('admin.commission.ui.targetPaid'))).trim() }]" /></label>
    <button class="button button-primary" type="submit" :disabled="agentSearchPending || busy">{{ t('admin.commission.ui.query') }}</button>
-<button type="button" class="button button-secondary" :disabled="busy" @click="withGlobalLoading(clearFilters)">{{t('admin.copy.b089734d')}}</button></form></template>
+</form></template>
   <p v-if="error" class="commission-warning" role="alert">{{ error }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(load)">{{ t('admin.commission.ui.retryRead') }}</button></p>
   <p v-if="busy" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
   <ManagementTable :entries="page?.items??[]" :columns="columns" :empty="!!page && !page.items.length" :empty-label="t('admin.commission.ui.empty')">
@@ -61,6 +63,6 @@ async function clearFilters(){agent.value=state.value='';await search()}
    <template #state="{entry}"><span class="commission-status" :class="entry.state">{{ entry.state==='paid'?t('admin.commission.ui.targetPaid'):t('admin.commission.ui.targetPending') }}</span></template>
    <template #paidAt="{entry}">{{ formatDisplayDateTime(entry.paid_at,locale) }}</template>
   </ManagementTable>
-  
- <template #pagination><TablePagination :show-empty="Boolean(page)" v-if="page" class="commission-pager" :total="page.total_count" :page="Math.floor(page.offset / 20 + 1)" :count="page.items.length" :locale="locale" :page-size="20" :previous-disabled="busy || page.offset===0" :next-disabled="busy || BigInt(page.offset+20)>=BigInt(page.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => load((target - 1) * 20)" /></template></ManagementList>
+
+ <template #pagination><TablePagination v-if="page" class="commission-pager" :total="page.total_count" :page="Math.floor(page.offset / pageSize + 1)" :count="page.items.length" :locale="locale" :page-size="pageSize" :previous-disabled="busy || page.offset===0" :next-disabled="busy || BigInt(page.offset+pageSize)>=BigInt(page.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => load((target - 1) * pageSize)" :change-page-size="async (size: number) => { pageSize = size; await load(0) }" :busy="busy" /></template></ManagementList>
 </template>

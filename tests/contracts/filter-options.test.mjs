@@ -23,7 +23,8 @@ test('both registered filter-options entries are generated with distinct identit
     const scope = entry === 'admin' ? 'brand' : 'platform';
     assert.ok(operation['x-permissions'].includes(`report_reward.view.${scope}`));
     assert.ok(operation['x-permissions'].includes(`report_commission.view.${scope}`));
-    assert.ok(operation['x-permissions'].every(grant => grant.endsWith(`.view.${scope}`)));
+    assert.ok(operation['x-permissions'].every(grant => grant.endsWith(`.view.${scope}`) || entry === 'admin' && grant === 'reward.grant.brand'));
+    assert.equal(operation['x-permissions'].includes('reward.grant.brand'), entry === 'admin');
     assert.ok(operation.parameters.some(parameter => parameter.name === 'X-Brand-ID' && parameter.required));
     assert.equal(operation.responses['200'].headers['Cache-Control'].schema.const, 'no-store');
     assert.match(operation.description, /filter.options.view audit/);
@@ -33,7 +34,9 @@ test('both registered filter-options entries are generated with distinct identit
 test('documented query is bounded and distinguishes target resource from option kind', () => {
   for (const operation of operations) {
     const parameters = Object.fromEntries(operation.parameters.map(parameter => [parameter.name, parameter]));
-    assert.deepEqual(Object.keys(parameters).sort(), ['kind', 'limit', 'offset', 'resource', 'search']);
+    assert.deepEqual(Object.keys(parameters).sort(), ['action', 'kind', 'limit', 'offset', 'resource', 'search']);
+    assert.deepEqual(parameters.action.schema.enum, ['view', 'grant']);
+    assert.equal(parameters.action.schema.default, 'view');
     assert.equal(parameters.resource.required, true);
     assert.equal(parameters.kind.required, true);
     assert.ok(parameters.resource.schema.enum.includes('report_reward_orders'));

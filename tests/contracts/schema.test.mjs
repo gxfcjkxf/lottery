@@ -119,25 +119,16 @@ test("wallet and ledger snapshots require all four current sources",()=>{
 test("admin logout uses admin authentication while unsupported payout operations remain absent",()=>{
   assert.deepEqual(doc.paths["/api/v1/admin/auth/logout"].post.security,[{adminBearer:[]},{adminCookie:[]}]);
   const create=doc.paths["/api/v1/withdrawals"].post;
-  assert.ok(create.parameters.some(p=>p.name==="X-Withdrawal-Actor-Context"&&p.required));
-  const body=doc.components.schemas.WithdrawalCreateRequest;
-  assert.deepEqual(body.required,["points","source_allocation"]);
-  assert.equal(body.additionalProperties,false);
-  assert.ok(create.responses["409"].description);
-  assert.match(create.description,/WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED/);
+  assert.equal(create.deprecated,true);
+  assert.ok(!create.parameters.some(p=>p.name==="X-Withdrawal-Actor-Context"));
+  assert.match(create.description,/409 CASH_EXCHANGE_REQUIRED/);
+  assert.ok(doc.paths["/api/v1/cash/exchanges"].post);
+  assert.ok(doc.paths["/api/v1/cash/withdrawals"].post);
   assert.ok(!doc.paths["/api/v1/admin/commissions/pay"]);
 });
-test("compliance admission records cannot claim anonymous users or disabled-check reviews",()=>{
-  const id="11111111-1111-4111-8111-111111111111";
-  const config={age_enabled:false,minimum_age:null,region_enabled:false,allowed_countries:[],identity_enabled:true,account_risk_enabled:false,betting_risk_enabled:false,exclusion_enabled:false,responsible_gambling_enabled:false};
-  const row={id,brand_id:id,policy_version:2,config,operation:"registration",action:"register",decision:"review",checks:[{check:"age",enabled:false,decision:"allow",reason_code:"CHECK_DISABLED"},{check:"region",enabled:false,decision:"allow",reason_code:"CHECK_DISABLED"},{check:"identity",enabled:true,decision:"review",reason_code:"ADAPTER_NOT_CONFIGURED"}],adapter_mode:"stub",actor_type:"anonymous",actor_id:null,member_id:null,request_id:id,audit_log_id:id,created_at:"2026-10-07T00:00:00Z"};
-  row.checks.push(...["account_risk","betting_risk","exclusion","responsible_gambling"].map(check=>({check,enabled:false,decision:"allow",reason_code:"CHECK_DISABLED"})));
-  const check=validate("ComplianceGateRecord");assert.ok(check(row),JSON.stringify(check.errors));
-  assert.ok(!check({...row,actor_id:id}));assert.ok(!check({...row,operation:"betting",action:"bet_place"}));
-  assert.ok(!check({...row,config:{...config,identity_enabled:false}}));assert.ok(!check({...row,password:"not-an-admission-field"}));
-  assert.ok(check({...row,actor_type:"admin",actor_id:id,action:"operator_join"}));
-  assert.ok(check({...row,actor_type:"user",actor_id:id,member_id:id,operation:"betting",action:"bet_place"}));
-  assert.ok(!check({...row,actor_type:"user",actor_id:id,operation:"betting",action:"bet_place"}));
+test("retired compliance records and write contracts remain absent",()=>{
+  for(const schema of ["ComplianceGateRecord","CompliancePolicy","ComplianceConfig"]) assert.equal(doc.components.schemas[schema],undefined);
+  for(const path of Object.keys(doc.paths)) assert.doesNotMatch(path,/\/compliance-(?:checks|policy)/);
 });
 
 test('draw archive preserves unknown historical dates while validating recorded timestamps',()=>{

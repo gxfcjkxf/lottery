@@ -19,6 +19,29 @@ describe('platform overview', () => {
     expect(fetcher.mock.calls[0][0]).toBe('/api/v1/platform/overview')
     expect(new Headers(fetcher.mock.calls[0][1]?.headers).has('X-Brand-ID')).toBe(false)
   })
+  it('accepts exact decimal totals while keeping counts integral', () => {
+    const data = fixture()
+    Object.assign(data, { unsettled_points: '9007199254740993.25', available_points: '100.00', frozen_points: '0.50', withdrawal_points: '5.01', yesterday_same_time_stake: '60.25' })
+    Object.assign(data.days[0]!, { stake_points: '9007199254740993.25', net_points: '-30.75', refund_points: '0.25' })
+    Object.assign(data.brands[0]!, { stake_points: '100.25', net_points: '-30.75' })
+    expect(validateOverview(data)).toBe(data)
+    for (const key of ['total_members', 'online_members', 'withdrawal_count'] as const) {
+      expect(() => validateOverview({ ...data, [key]: '1.5' })).toThrow()
+    }
+    for (const key of ['unsettled_points', 'available_points', 'frozen_points', 'withdrawal_points', 'yesterday_same_time_stake'] as const) {
+      for (const invalid of ['-0.01', '1.001', '01.25', '1e2', 'NaN']) {
+        expect(() => validateOverview({ ...data, [key]: invalid })).toThrow()
+      }
+    }
+    for (const key of ['order_count', 'bettor_count', 'new_members'] as const) {
+      const malformed = { ...data, days: data.days.map(day => ({ ...day, [key]: '1.5' })) }
+      expect(() => validateOverview(malformed)).toThrow()
+    }
+    for (const [key, invalid] of [['stake_points', '-1.5'], ['refund_points', '1.001'], ['net_points', '-0.00']] as const) {
+      const malformed = { ...data, days: data.days.map(day => ({ ...day, [key]: invalid })) }
+      expect(() => validateOverview(malformed)).toThrow()
+    }
+  })
   it('rejects malformed counts, incomplete dates and anonymous brand labels', () => {
     expect(() => validateOverview({ ...fixture(), online_members: 0 })).toThrow()
     expect(() => validateOverview({ ...fixture(), days: fixture().days.slice(1) })).toThrow()

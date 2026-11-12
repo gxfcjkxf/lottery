@@ -23,7 +23,7 @@ var (
 // TurnoverChecker reads only authoritative, final settlement facts. It must be
 // called in the transaction while the member's wallet is locked (exclusive for
 // an application, shared for the non-mutating qualification preview).
-// Policy, identity, compliance and available-source checks remain OrderService
+// Policy, identity and available-source checks remain OrderService
 // responsibilities. This checker never moves points or changes cycle cutoffs.
 type TurnoverChecker struct{}
 
@@ -88,7 +88,8 @@ func (TurnoverChecker) Check(ctx context.Context, tx pgx.Tx, in EligibilityInput
 	digest := sha256.New()
 	for rows.Next() {
 		var order, game, period, rule string
-		var amount, version int64
+		var amount points.Amount
+		var version int64
 		var raw []byte
 		var result string
 		var valid bool
@@ -99,16 +100,18 @@ func (TurnoverChecker) Check(ctx context.Context, tx pgx.Tx, in EligibilityInput
 		if !valid || amount < 0 || decodeBetTurnoverSnapshot(raw, &snapshot) != nil {
 			return empty, ErrTurnoverEvidence
 		}
-		if amount == 0 { continue }
+		if amount == 0 {
+			continue
+		}
 		if err = addTurnoverCredit(credit, TurnoverContribution{ValidPoints: points.Amount(amount), Multiple: snapshot.Multiple}); err != nil {
 			return empty, ErrTurnoverEvidence
 		}
-		validPoints.Add(validPoints, big.NewInt(amount))
+		validPoints.Add(validPoints, big.NewInt(int64(amount)))
 		count.Add(count, big.NewInt(1))
 		// Stable, delimited immutable IDs and exact strings bind the summary to
 		// its original bet/rule/ledger and settlement generation. Neither current
 		// policy values nor mutable wallet balances enter this digest.
-		line, err := json.Marshal([]string{order, game, period, rule, strconv.FormatInt(amount, 10), strconv.FormatInt(version, 10), snapshot.Multiple, snapshot.Source, snapshot.BrandVersion, snapshot.GameVersion, snapshot.BrandRevisionID, snapshot.GameRevisionID, result})
+		line, err := json.Marshal([]string{order, game, period, rule, amount.String(), strconv.FormatInt(version, 10), snapshot.Multiple, snapshot.Source, snapshot.BrandVersion, snapshot.GameVersion, snapshot.BrandRevisionID, snapshot.GameRevisionID, result})
 		if err != nil {
 			return empty, err
 		}
@@ -121,7 +124,7 @@ func (TurnoverChecker) Check(ctx context.Context, tx pgx.Tx, in EligibilityInput
 	result := turnoverCreditResult(base.Points, credit)
 	evidence, err := json.Marshal(map[string]any{"turnover_qualification": map[string]any{
 		"schema_version": 1, "algorithm": "bet_snapshot_credit_v1", "valid_order_count": count.String(),
-		"valid_points": validPoints.String(), "credit_numerator": result.Numerator, "credit_denominator": result.Denominator,
+		"valid_points": points.Amount(validPoints.Int64()).String(), "credit_numerator": result.Numerator, "credit_denominator": result.Denominator,
 		"cycle_from_version": strconv.FormatInt(in.CycleFromVersion, 10), "cutoff_version": strconv.FormatInt(in.CutoffVersion, 10),
 		"order_snapshot_digest": hex.EncodeToString(digest.Sum(nil)),
 	}})

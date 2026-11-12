@@ -1,15 +1,6 @@
 import {describe,expect,it} from 'vitest'
-import {createQuickAmountsApi,readBettingPreferences,writeBettingPreferences} from './betting-preferences'
-function storage(){const values=new Map<string,string>();return {getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>{values.set(key,value)}}}
+import {createQuickAmountsApi} from './betting-preferences'
 describe('account betting preferences',()=>{
- it('remembers only the last input locally, scoped by brand and member',()=>{
-  const store=storage()
-  expect(readBettingPreferences(store,'brand','member')).toEqual({lastPoints:''})
-  writeBettingPreferences(store,'brand','member',{lastPoints:'75'})
-  expect(readBettingPreferences(store,'brand','member')).toEqual({lastPoints:'75'})
-  expect(readBettingPreferences(store,'other','member').lastPoints).toBe('')
-  expect(readBettingPreferences(store,'brand','other').lastPoints).toBe('')
- })
  it('saves exact quick amounts on the server and reads them from a separate client',async()=>{
   let values:string[]=[];const paths:string[]=[]
   const fetcher:typeof fetch=async(url,init)=>{
@@ -29,4 +20,12 @@ describe('account betting preferences',()=>{
   const fetcher:typeof fetch=async()=>new Response(JSON.stringify({success:false,error:{code:'SERVICE_UNAVAILABLE',message:'Unavailable'}}),{status:503})
   await expect(createQuickAmountsApi({fetcher}).read('brand','member')).rejects.toThrow()
  })
+})
+
+it('accepts decimal per-line points and preserves integral quick-chip settings', async () => {
+  const {validBetAmount,validQuickAmount}=await import('./betting-preferences')
+  expect(validBetAmount('0.25')).toBe(true)
+  expect(validBetAmount('9007199254740993.25')).toBe(true)
+  expect(validQuickAmount('0.25')).toBe(false)
+  for(const value of ['0','1.001','01.25','-0.25','92233720368547758.08']) expect(validBetAmount(value)).toBe(false)
 })

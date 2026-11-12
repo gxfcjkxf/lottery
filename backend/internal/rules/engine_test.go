@@ -10,9 +10,9 @@ import (
 )
 
 func ip(v int) *int                 { return &v }
-func amount(v int64) *points.Amount { p := points.Amount(v); return &p }
+func amount(v int64) *points.Amount { p := points.Amount(v * 100); return &p }
 func specialDefinition() Definition {
-	return Definition{SchemaVersion: 1, Model: Model{Type: "X_PLUS_Y", RegularPool: Pool{Min: 1, Max: 49}, SpecialPool: Pool{Min: 1, Max: 49}, RegularCount: 6, SpecialCount: 1}, Selection: SelectionRule{Mode: "numbers", SpecialCount: 1}, UnitPoints: 1, PrizeTiers: []Tier{{Code: "SPECIAL_MATCH", Condition: Condition{Op: "equals", Field: "special_match", Value: ip(1)}, Odds: "35", Exclusive: true}}, Rounding: "half_up", RoundingScope: "order", Limits: Limits{MaxCombinations: 100, MaxMultiplier: 10}}
+	return Definition{SchemaVersion: 1, Model: Model{Type: "X_PLUS_Y", RegularPool: Pool{Min: 1, Max: 49}, SpecialPool: Pool{Min: 1, Max: 49}, RegularCount: 6, SpecialCount: 1}, Selection: SelectionRule{Mode: "numbers", SpecialCount: 1}, UnitPoints: 100, PrizeTiers: []Tier{{Code: "SPECIAL_MATCH", Condition: Condition{Op: "equals", Field: "special_match", Value: ip(1)}, Odds: "35", Exclusive: true}}, Rounding: "half_up", RoundingScope: "order", Limits: Limits{MaxCombinations: 100, MaxMultiplier: 10}}
 }
 func specialInput() SimulationInput {
 	return SimulationInput{Definition: specialDefinition(), Selection: Selection{Special: []int{7, 19, 31, 43}}, Draw: Draw{Regular: []int{1, 2, 3, 4, 5, 6}, Special: []int{7}}, Multiplier: 2}
@@ -20,7 +20,7 @@ func specialInput() SimulationInput {
 func TestSpecialOnlyCombinationMultiplierAndExactTrace(t *testing.T) {
 	in := specialInput()
 	out, err := Simulate(in)
-	if err != nil || !out.Won || out.CombinationCount != 4 || out.BetPoints != 8 || out.PrizePoints != 70 {
+	if err != nil || !out.Won || out.CombinationCount != 4 || out.BetPoints != 800 || out.PrizePoints != 7000 {
 		t.Fatal(out, err)
 	}
 	if out.Lines[0].Points != "70" || !out.Lines[0].Hits[0].Selected || out.Lines[0].Hits[0].Trace.Actual != 1 {
@@ -46,13 +46,13 @@ func TestPrizeExclusivityUsesMoneyNotTierOrderOrPriority(t *testing.T) {
 	large.Odds = "9"
 	in.Definition.PrizeTiers = []Tier{small, large}
 	out, err := Simulate(in)
-	if err != nil || out.PrizePoints != 9 || out.Lines[0].Hits[0].Selected || !out.Lines[0].Hits[1].Selected {
+	if err != nil || out.PrizePoints != 900 || out.Lines[0].Hits[0].Selected || !out.Lines[0].Hits[1].Selected {
 		t.Fatal(out, err)
 	}
 	in.Definition.PrizeTiers[0].Exclusive = false
 	in.Definition.PrizeTiers[1].Exclusive = false
 	out, err = Simulate(in)
-	if err != nil || out.PrizePoints != 11 {
+	if err != nil || out.PrizePoints != 1100 {
 		t.Fatal(out, err)
 	}
 	in.Definition.PrizeTiers[1].Exclusive = true
@@ -61,18 +61,18 @@ func TestPrizeExclusivityUsesMoneyNotTierOrderOrPriority(t *testing.T) {
 	}
 	in.Definition.MixedTierPolicy = "max_all"
 	out, err = Simulate(in)
-	if err != nil || out.PrizePoints != 9 {
+	if err != nil || out.PrizePoints != 900 {
 		t.Fatal(out, err)
 	}
 	in.Definition.MixedTierPolicy = "max_exclusive_plus_additive"
 	out, err = Simulate(in)
-	if err != nil || out.PrizePoints != 11 {
+	if err != nil || out.PrizePoints != 1100 {
 		t.Fatal(out, err)
 	}
 	in.Definition.PrizeTiers[1].CapPoints = amount(1)
 	in.Definition.MixedTierPolicy = "max_all"
 	out, err = Simulate(in)
-	if err != nil || out.PrizePoints != 2 || !out.Lines[0].Hits[0].Selected {
+	if err != nil || out.PrizePoints != 200 || !out.Lines[0].Hits[0].Selected {
 		t.Fatal("highest capped money not selected", out, err)
 	}
 }
@@ -82,7 +82,7 @@ func TestExplicitRoundingScopeAndGlobalCapBeforeIntegerOverflow(t *testing.T) {
 	in.Selection.Special = []int{7, 19}
 	in.Definition.PrizeTiers[0].Condition = Condition{Op: "equals", Field: "draw_sum", Target: "all", Value: ip(28)}
 	in.Definition.PrizeTiers[0].Odds = "1.5"
-	for scope, want := range map[string]points.Amount{"order": 3, "line": 4, "tier": 4} {
+	for scope, want := range map[string]points.Amount{"order": 300, "line": 300, "tier": 300} {
 		in.Definition.RoundingScope = scope
 		out, err := Simulate(in)
 		if err != nil || out.PrizePoints != want {
@@ -93,14 +93,14 @@ func TestExplicitRoundingScopeAndGlobalCapBeforeIntegerOverflow(t *testing.T) {
 	in.Definition.PrizeTiers[0].Odds = "0.49"
 	in.Selection.Special = []int{7}
 	out, err := Simulate(in)
-	if err != nil || !out.Won || out.PrizePoints != 0 {
+	if err != nil || !out.Won || out.PrizePoints != 49 {
 		t.Fatal("matching condition is not erased by zero rounded payout", out, err)
 	}
 	in.Definition.UnitPoints = points.Amount(math.MaxInt64)
 	in.Definition.PrizeTiers[0].Odds = "2"
 	in.Definition.CapPoints = amount(100)
 	out, err = Simulate(in)
-	if err != nil || out.PrizePoints != 100 || out.BetPoints != points.Amount(math.MaxInt64) {
+	if err != nil || out.PrizePoints != 10000 || out.BetPoints != points.Amount(math.MaxInt64) {
 		t.Fatal(out, err)
 	}
 	in.Definition.CapPoints = nil
@@ -161,7 +161,7 @@ func TestThreeModelsFeaturesExclusionAndMultiAttributeIntegration(t *testing.T) 
 	in.Selection = Selection{Digits: [][]int{{1}, {2}, {1}}}
 	in.Draw = Draw{Digits: []int{1, 2, 1}}
 	out, err := Simulate(in)
-	if err != nil || !out.Won || out.PrizePoints != 35 {
+	if err != nil || !out.Won || out.PrizePoints != 3500 {
 		t.Fatal("digits121", out, err)
 	}
 	in.Selection = Selection{Digits: [][]int{{1}, {1}, {1}}}
@@ -209,7 +209,7 @@ func TestThreeModelsFeaturesExclusionAndMultiAttributeIntegration(t *testing.T) 
 	in.Definition.PrizeTiers[0].Condition = Condition{Op: "all", Children: []Condition{{Op: "between", Field: "attribute_match", Target: "special", AttributeGroup: "color", AttributeValue: "$selection", Min: ip(1), Max: ip(1)}, {Op: "equals", Field: "attribute_match", Target: "special", AttributeGroup: "zodiac", AttributeValue: "$selection", Value: ip(1)}}}
 	in.Selection = Selection{Attributes: map[string][]string{"color": {"red", "blue"}, "zodiac": {"rat"}}}
 	out, err = Simulate(in)
-	if err != nil || !out.Won || out.CombinationCount != 2 || out.PrizePoints != 35 {
+	if err != nil || !out.Won || out.CombinationCount != 2 || out.PrizePoints != 3500 {
 		t.Fatal("multiple attributes per number and cartesian attribute tickets", out, err)
 	}
 }

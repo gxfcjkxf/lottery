@@ -48,7 +48,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .button-primary, .button-dark, button.primary, .jc-primary {
   background: var(--primary) !important;
   border-color: var(--primary) !important;
-  color: white !important;
+  color: var(--on-primary) !important;
   box-shadow: var(--shadow-sm);
 }
 .button-primary:hover, .button-dark:hover, button.primary:hover, .jc-primary:hover {
@@ -58,7 +58,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .button-secondary { border-color: var(--line); background: var(--surface); color: var(--ink-secondary); }
 #app .button.button-secondary { border-color:var(--line); background:var(--surface); color:var(--ink-secondary); }
 #app .button.button-secondary:hover:not(:disabled) { background:var(--canvas); color:var(--ink); }
-.button-danger { border-color: var(--danger); color: var(--danger); }
+.button-danger { border-color: var(--danger); color: var(--danger-text, var(--danger)); background: var(--surface); }
+.button-danger:hover:not(:disabled) { background: var(--danger-bg); border-color: var(--danger-text); }
 
 /* Both back offices use the same panel hierarchy and space scale. */
 :is(.app-shell, .app-frame) :is(.panel-heading h2, .panel-header h2) { font-size: 16px; line-height: 1.5; }
@@ -202,7 +203,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   #app input[autocomplete="one-time-code"] { --input-width:12ch; }
   #app .input-with-icon { width:max-content; max-width:100%; flex:0 1 auto; }
   #app .button:not([data-refresh-button]) {
-    width:max-content !important;
+    width:var(--button-width,max-content) !important;
     min-width:0;
     max-width:100%;
     flex:0 1 auto !important;
@@ -246,3 +247,25 @@ button[data-write-locked], form[data-write-locked] button[type=submit], form[dat
   padding-block: 4px !important;
   line-height: 22px !important;
 }
+
+/* Mobile rhythm reduces empty space without shrinking type or touch targets. */
+@media (max-width: 900px), (pointer: coarse) {
+  #app .ui-filter-bar { row-gap: 4px; margin-bottom: 8px; }
+  #app .ui-filter-bar > label { row-gap: 4px; }
+  #app .ui-form, #app .ui-form > fieldset { row-gap: 8px; }
+  #app .ui-form label:has(> :is(input:not([type="checkbox"], [type="radio"]), textarea, .select-control, .association-filter, .platform-temporal-input)) { row-gap: 4px; }
+  /* Opt in short fields; long/complex editors retain their existing structure. */
+  #app .ui-form label.ui-field-row { grid-template-columns: fit-content(38%) minmax(0, 1fr); align-items: center; gap: 4px 8px; }
+  #app .ui-form label.ui-field-row > :is(input, .select-control) { width: 100%; min-width: 0; }
+  #app .ui-form label.ui-field-row > :is(small, .field-error) { grid-column: 2; }
+  #app .ui-form-actions { row-gap: 4px; margin-top: 8px; }
+  #app :is(.app-shell, .app-frame) :is(.panel-heading, .panel-header, .form-actions, .filter-actions) { row-gap: 4px; }
+  #app :is(.app-shell, .app-frame) .panel:not(.management-list):not(.user-record-list) { padding-block: 8px; }
+  #app :is(.app-shell, .app-frame) .stat-card { padding-block: 8px; }
+  #app .detail-modal-heading { padding-block: 4px; }
+  #app :is(.detail-modal-content, .detail-modal-footer) { padding-block: 8px; row-gap: 8px; }
+}
+
+/* Keep aligned cell contents away from the table edge on all four clients. */
+#app table :is(th, td) { padding-inline: var(--table-cell-padding-inline); }
+#app [role="table"] [role="row"] > :is([role="cell"], [role="columnheader"]) { padding-inline: var(--table-cell-padding-inline); }

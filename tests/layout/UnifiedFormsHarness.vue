@@ -9,13 +9,12 @@ const props=defineProps<{locale:'en'|'zh-CN';surface:'user'|'brand'|'platform'|'
 const copy={en:{account:'Member account',password:'Password',points:'Points',search:'Search',clear:'Clear',add:'Create member',save:'Save',cancel:'Cancel',close:'Close',status:'Status',all:'All members'},'zh-CN':{account:'会员账号',password:'密码',points:'积分',search:'查询',clear:'清除',add:'创建会员',save:'保存',cancel:'取消',close:'关闭',status:'状态',all:'全部会员'}}[props.locale]
 const query=ref(''),account=ref(''),password=ref(''),points=ref(''),status=ref('all'),open=ref(false),searches=ref(0)
 async function search(){searches.value++}
-async function clear(){query.value='';await search()}
 </script>
 <template>
  <main class="unified-forms-demo" :class="surface==='user'?'workspace-frame':'management-console'">
   <section class="panel console-panel console-stack">
    <header class="console-page-heading page-heading"><h1 class="console-page-title">{{copy.account}}</h1><div class="console-page-actions"><button class="button button-primary" tabindex="0" @click="open=true">{{copy.add}}</button></div></header>
-   <DirectorySearch v-model="query" :label="copy.account" :query-label="copy.search" :clear-label="copy.clear" :busy="false" :active="Boolean(query)" :search="search" :clear="clear" />
+   <DirectorySearch :locale="locale" v-model="query" :label="copy.account" :query-label="copy.search" :busy="false" :search="search" />
    <output data-testid="query-count">{{searches}}</output>
   </section>
   <DetailModal class="ui-form-dialog" v-if="open" :title="copy.add" :close-label="copy.close" @close="open=false">

@@ -17,7 +17,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await page.route('**/api/v1/configured/preview', route => {
    expect(route.request().method()).toBe('POST')
    const body = route.request().postDataJSON(), request = body.requests[0]
-   return route.fulfill({json:{success:true,data:{...body,actor_context:'review-fixture',definition_hash:'review-fixture',game_id:gameId,lines:request.options.map((option:string)=>({play_id:request.play_id,options:[option],plate:request.plate,stake:'10',prices:{hit:'48.99'}})),bet_points:String(request.options.length * 10)}}})
+   return route.fulfill({json:{success:true,data:{...body,actor_context:'review-fixture',definition_hash:'review-fixture',game_id:gameId,lines:request.options.map((option:string)=>({play_id:request.play_id,options:[option],plate:request.plate,stake:request.points,prices:{hit:'48.99'}})),bet_points:String(request.options.length * 0.25)}}})
   })
   await page.goto(origins.user)
   const prices = page.locator('.configured-option-price')
@@ -39,13 +39,13 @@ for (const locale of ['en', 'zh-CN'] as const) {
   }
   await page.screenshot({path:info.outputPath(`decimal-odds-${locale}.png`),fullPage:true})
   for (let index = 0; index < 4; index++) await page.locator('.configured-options button').nth(index).click()
-  await page.locator('.configured-points-control input').fill('10')
+  await page.locator('.configured-points-control input').fill('0.25')
   await page.locator('.configured-dock-actions .button-primary').click()
   const dialog = page.getByRole('dialog'), table = dialog.locator('.bet-review-table')
   await expect(table.locator('tbody tr')).toHaveCount(4)
   const totals = dialog.locator('.configured-review-totals'), actions = dialog.locator('.configured-review-actions')
   await expect(totals).toContainText(locale === 'en' ? 'Entries: 4' : '注数: 4')
-  await expect(totals).toContainText(locale === 'en' ? 'Total stake: 40' : '总投注积分: 40')
+  await expect(totals).toContainText(locale === 'en' ? 'Total stake: 1' : '总投注积分: 1')
   await expect(dialog.locator('.detail-modal-content .configured-review-totals')).toHaveCount(0)
   const totalBox = (await totals.boundingBox())!, actionBox = (await actions.boundingBox())!
   if (totalBox.y + totalBox.height <= actionBox.y) expect(totalBox.y + totalBox.height).toBeLessThanOrEqual(actionBox.y)
@@ -53,7 +53,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
 
   await expect(table.locator('thead th')).toHaveText(locale === 'en' ? ['Bet details','Odds','Stake points'] : ['投注内容','赔率','投注积分'])
   for (const row of await table.locator('tbody tr').all()) {
-   await expect(row.locator('td').nth(2)).toHaveText('10')
+   await expect(row.locator('td').nth(2)).toHaveText('0.25')
    await expect(row.locator('td').nth(1)).toHaveText('48.99')
    await expect(row.locator('td').first()).not.toContainText('48.99')
   }
@@ -184,11 +184,14 @@ for (const locale of ['en', 'zh-CN'] as const) {
     return box.y>=offset+7 && box.y+box.height<=anchor.y-7
    }).toBe(true)
    await expect(popup.getByRole('button')).toHaveCount(5)
+   expect(await popup.evaluate(el=>el.offsetParent?.classList.contains('configured-stakes--dock'))).toBe(true)
+   const rows=await popup.getByRole('button').evaluateAll(buttons=>buttons.map(button=>Math.round(button.getBoundingClientRect().top+button.getBoundingClientRect().height/2)))
+   expect(new Set(rows).size).toBe(1)
    await expectNoPageOverflow(page)
    await page.screenshot({path:info.outputPath(`keyboard-${offset}-${locale}.png`)})
   }
-  await popup.getByRole('button',{name:'50',exact:true}).click()
-  await expect(points).toHaveValue('50');await expect(popup).toHaveCount(0)
+  await popup.getByRole('button',{name:'999,999',exact:true}).click()
+  await expect(points).toHaveValue('999999');await expect(popup).toHaveCount(0)
   await page.evaluate(()=>{const viewport=window.visualViewport!;delete (viewport as any).height;delete (viewport as any).offsetTop;viewport.dispatchEvent(new Event('resize'))})
   await points.click();await expect(popup).toBeInViewport({ratio:1})
   if(info.project.name.endsWith('reflow'))await page.setViewportSize(preset)

@@ -1,3 +1,5 @@
+import { pointsMinor } from '@lottery/shared'
+import { isPoints } from '@lottery/shared'
 import { readPlatformEnvelope } from './platform-api'
 
 import { PlatformApiError } from './platform-api'
@@ -72,7 +74,7 @@ const actionKeys = ['id', 'brand_id', 'order_id', 'version', 'operation', 'state
 function invalid(label: string): never { throw new PlatformApiError(`Invalid ${label} response`, 0, 'INVALID_RESPONSE') }
 function validOrder(value: unknown, brandId: string): value is RewardOrder {
   if (!isObj(value) || !keysAre(value, orderKeys) || value.brand_id !== brandId || !isUuid(value.id) || !isUuid(value.brand_id) ||
-    !isUuid(value.member_id) || typeof value.points !== 'string' || !/^[1-9][0-9]*$/.test(value.points) || !states.includes(String(value.state)) ||
+    !isUuid(value.member_id) || typeof value.points !== 'string' || !(isPoints(value.points) && pointsMinor(value.points)>0n) || !states.includes(String(value.state)) ||
     typeof value.version !== 'number' || !Number.isSafeInteger(value.version) || value.version < 1 || !isUuid(value.grant_ledger_entry_id) ||
     !(value.revoke_ledger_entry_id === null || isUuid(value.revoke_ledger_entry_id)) || !isUuid(value.creation_audit_log_id) ||
     !isUuid(value.last_audit_log_id) ||

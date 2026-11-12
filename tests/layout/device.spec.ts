@@ -93,51 +93,31 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await page.screenshot({ path: info.outputPath(`help-${locale}.png`), fullPage: true })
     await page.goto(`${origins.user}/orders`)
     const layouts: unknown[] = []
-    const gameFilter = page.locator('.workspace-game-trigger')
+    const gameFilter = page.locator('.workspace-game-picker .select-control-trigger')
     await expect(page.locator('.history-filters select')).toHaveCount(0)
     for (const index of [0, 1, 2, 3]) {
       await gameFilter.click()
-      const choices = page.locator('.workspace-game-picker button')
+      const choices = page.locator('.workspace-game-picker [role="option"]')
       await expect(choices).toHaveCount(4)
       await choices.nth(index).click()
       const empty = page.locator('.order-history-empty')
       await expect(empty).toHaveText(locale === 'en' ? 'No bet orders match the current game and filters.' : '当前彩种和筛选条件下暂无投注记录。')
-      const refresh = page.locator('#user-page-refresh > button')
-      await expect(refresh).toHaveClass('button button-secondary')
-      await expect(refresh).toBeEnabled()
-      await page.locator('.workspace-trailing > button.icon-button').click();
-      await refresh.click()
-      await expect(empty).toBeVisible()
-      await expect(refresh).toBeEnabled()
-      await refresh.evaluate(async el => { await Promise.all(el.getAnimations().map(animation => animation.finished)) })
+      await expect(page.locator('#user-page-refresh > button')).toHaveCount(0)
       await expectRefreshControls(page)
-      if (index === 1) {
-        await page.keyboard.press('Tab')
-        await refresh.focus()
-        await expect(refresh).toBeFocused()
-        await expect(refresh).toHaveCSS('outline-style', 'solid')
-      }
-      // Compare each game filter in the same idle pointer state after hover transitions finish.
-      await page.mouse.move(0, 0)
-      await refresh.evaluate(async el => {
-        getComputedStyle(el).backgroundColor
-        await Promise.all(el.getAnimations().map(animation => animation.finished))
-      })
       layouts.push(await page.locator('.order-history').evaluate(el => {
-        const button = document.querySelector('#user-page-refresh > button')!
         const empty = el.querySelector('.order-history-empty')!
         const rect = empty.getBoundingClientRect()
         // Browser transforms can introduce sub-pixel floating-point noise.
         const px = (value: number) => Math.round(value * 1000) / 1000
-        return { left: px(rect.left), top: px(rect.top), width: px(rect.width), height: px(rect.height), gap: getComputedStyle(el).gap, align: getComputedStyle(empty).textAlign, background: getComputedStyle(button).backgroundColor, border: getComputedStyle(button).borderColor, buttonHeight: px(button.getBoundingClientRect().height) }
+        return { left: px(rect.left), top: px(rect.top), width: px(rect.width), height: px(rect.height), gap: getComputedStyle(el).gap, align: getComputedStyle(empty).textAlign }
       }))
-      await page.locator('.workspace-menu-close').click();
       await expectNoPageOverflow(page)
     }
     expect(layouts[1]).toEqual(layouts[0])
     expect(layouts[2]).toEqual(layouts[0])
     expect(layouts[3]).toEqual(layouts[0])
-    expect(layouts[0]).toMatchObject({ align: 'center', gap: '12px' })
+    const compactSpacing = await page.evaluate(() => matchMedia('(max-width:900px), (pointer:coarse)').matches)
+    expect(layouts[0]).toMatchObject({ align: 'center', gap: compactSpacing ? '8px' : '12px' })
     await page.screenshot({ path: info.outputPath(`orders-${locale}.png`), fullPage: true })
     await page.goto(`${origins.user}/wallet`)
     const zeroWallet = page.locator('.wallet-summary')
@@ -183,7 +163,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await page.goto(`${origins.user}/wallet`);
     const wallet = page.locator('.wallet-summary');
     const headerRefresh = page.locator('#user-page-refresh > button');
-    await expect(headerRefresh).toHaveCount(1);
+    await expect(headerRefresh).toHaveCount(0);
     await expect(wallet.locator('[data-refresh-button]')).toHaveCount(0);
     await expect(page.locator('.workspace-topbar')).toBeVisible();
     await expect(page.locator('.workspace-overview')).toBeHidden();
@@ -200,7 +180,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await page.screenshot({ path: info.outputPath(`wallet-overview-${locale}.png`) });
     await wallet.locator('a[href="/wallet/buckets"]').click();
     await expect(page).toHaveURL(`${origins.user}/wallet/buckets`);
-    await expect(headerRefresh).toHaveCount(1);
+    await expect(headerRefresh).toHaveCount(0);
     await expect(wallet.locator('.totals, .ledger-panel, .wallet-links')).toHaveCount(0);
     await expect(wallet.locator('.source-head h3')).toHaveCount(4);
     expect(ledgerRequests).toBe(0);
@@ -215,7 +195,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await page.goto(`${origins.user}/wallet`);
     await wallet.locator('a[href="/wallet/ledger"]').click();
     await expect(page).toHaveURL(`${origins.user}/wallet/ledger`);
-    await expect(headerRefresh).toHaveCount(1);
+    await expect(headerRefresh).toHaveCount(0);
     await expect(wallet.locator('.totals, .bucket-grid, .wallet-links')).toHaveCount(0);
     await expect(wallet.locator('.totals p, .source-head p, .panel-title p')).toHaveCount(0);
     await expect(wallet.locator('.entry-head b')).toHaveText(locale === 'en' ? 'Points frozen' : '积分冻结');

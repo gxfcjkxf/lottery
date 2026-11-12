@@ -18,13 +18,13 @@ const api=createPlatformLotteryClient('platform',()=> '')
 const form=ref<DrawSchedule>({version:0,enabled:true,mode:'daily',draw_time:'',open_before_hours:24,close_before_seconds:15,collect_after_seconds:0})
 const busy=ref(false),loaded=ref(false),failed=ref(false),pending=ref<{key:string;body:DrawSchedule}|null>(null)
 let generation=0,alive=true
-async function load(){const g=++generation;busy.value=true;failed.value=false;try{const result=await api.automation(props.gameId);if(!alive||g!==generation)return;if(result.schedule)form.value={...result.schedule};else form.value={version:0,enabled:true,mode:props.timezone==='Asia/Hong_Kong'?'hkjc':'daily',draw_time:'',open_before_hours:24,close_before_seconds:15,collect_after_seconds:0};loaded.value=true}catch(cause){if(alive&&g===generation){failed.value=true;showOperationToast(()=>t('loadFailure'),'error');if(cause instanceof PlatformLotteryError&&cause.status===401)emit('failure',cause)}}finally{if(alive&&g===generation)busy.value=false}}
+async function load(){const g=++generation;busy.value=true;failed.value=false;try{const result=await api.automation(props.gameId);if(!alive||g!==generation)return;if(result.schedule)form.value={...result.schedule};else form.value={version:0,enabled:true,mode:props.timezone==='Asia/Hong_Kong'?'hkjc':'daily',draw_time:'',open_before_hours:24,close_before_seconds:15,collect_after_seconds:0};loaded.value=true}catch(cause){if(alive&&g===generation){if(cause instanceof PlatformLotteryError&&cause.status===401){emit('failure',cause);return}failed.value=true;showOperationToast(()=>t('loadFailure'),'error')}}finally{if(alive&&g===generation)busy.value=false}}
 async function save(){
  if(busy.value)return
  if(!pending.value)pending.value={key:crypto.randomUUID(),body:{...form.value}}
  const snapshot=pending.value,g=generation;busy.value=true
  try{const result=await api.write('/'+props.gameId+'/draw-schedule',snapshot.body,snapshot.key) as DrawSchedule;if(!alive||g!==generation)return;form.value=result;pending.value=null;showOperationToast(()=>t('saved'),'success');emit('saved')}
- catch(cause){if(!alive||g!==generation)return;if(cause instanceof PlatformLotteryError&&cause.status>=400&&cause.status<500)pending.value=null;showOperationToast(()=>t(cause instanceof PlatformLotteryError&&cause.code==='DRAW_CALENDAR_UNAVAILABLE'?'calendarMissing':'saveFailure'),'error');if(cause instanceof PlatformLotteryError&&cause.status===401)emit('failure',cause)}finally{if(alive&&g===generation)busy.value=false}
+ catch(cause){if(!alive||g!==generation)return;if(cause instanceof PlatformLotteryError&&cause.status>=400&&cause.status<500)pending.value=null;if(cause instanceof PlatformLotteryError&&cause.status===401){emit('failure',cause);return}showOperationToast(()=>t(cause instanceof PlatformLotteryError&&cause.code==='DRAW_CALENDAR_UNAVAILABLE'?'calendarMissing':'saveFailure'),'error')}finally{if(alive&&g===generation)busy.value=false}
 }
 watch(()=>props.gameId,()=>{pending.value=null;loaded.value=false;void withGlobalLoading(load)},{immediate:true})
 onUnmounted(()=>{alive=false;generation++})

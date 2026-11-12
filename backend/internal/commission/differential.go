@@ -37,7 +37,7 @@ func DifferentialSameBasis(base points.Amount, ratios []string) ([]ExactAmount, 
 			rate -= rates[i+1]
 		}
 		numerator := new(big.Int).Mul(big.NewInt(int64(base)), big.NewInt(rate))
-		value := new(big.Rat).SetFrac(numerator, big.NewInt(1000000))
+		value := new(big.Rat).SetFrac(numerator, big.NewInt(100000000))
 		out[i] = ExactAmount{Numerator: value.Num().String(), Denominator: value.Denom().String()}
 	}
 	return out, nil

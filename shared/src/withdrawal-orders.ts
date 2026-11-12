@@ -1,3 +1,4 @@
+import { pointsMinor, isPoints } from './points'
 import { WALLET_SOURCES, type WalletSource } from "./wallet";
 
 export type WithdrawalSource = WalletSource;
@@ -126,7 +127,7 @@ function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boo
 function validAllocation(value: unknown): value is WithdrawalAllocation[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > SOURCES.length || value.some((item) =>
     !record(item) || !exactKeys(item, ["source", "state", "points"]) ||
-    !SOURCES.includes(item.source as WithdrawalSource) || item.state !== "available" || !decimal(item.points) || BigInt(item.points) === 0n)) return false;
+    !SOURCES.includes(item.source as WithdrawalSource) || item.state !== "available" || !isPoints(item.points) || pointsMinor(item.points) === 0n)) return false;
   const indexes = value.map((item) => SOURCES.indexOf((item as WithdrawalAllocation).source));
   return new Set(indexes).size === indexes.length && indexes.every((index, position) => position === 0 || indexes[position - 1]! < index);
 }
@@ -136,13 +137,13 @@ export function isWithdrawalOrder(value: unknown): value is WithdrawalOrder {
   const allocation = value.source_allocation;
   if (!validAllocation(allocation)) return false;
   const common = uuid(value.id) && uuid(value.brand_id) && uuid(value.member_id) && uuid(value.account_id) &&
-    decimal(value.points) && BigInt(value.points) > 0n && STATES.includes(value.state as WithdrawalState) &&
+    isPoints(value.points) && pointsMinor(value.points) > 0n && STATES.includes(value.state as WithdrawalState) &&
     Number.isSafeInteger(value.version) && Number(value.version) > 0 && uuid(value.reserve_entry_id) &&
     (value.release_entry_id === null || uuid(value.release_entry_id)) && (value.paid_entry_id === null || uuid(value.paid_entry_id)) &&
     nullableDate(value.cycle_from_at) && decimal(value.cycle_from_version) && decimal(value.reserve_version) &&
     dateTime(value.created_at) && dateTime(value.updated_at) && nullableDate(value.reviewed_at) && nullableDate(value.completed_at) &&
     typeof value.decision_reason === "string" && uuid(value.audit_log_id) &&
-    allocation.reduce((sum, item) => sum + BigInt(item.points), 0n) === BigInt(value.points) &&
+    allocation.reduce((sum, item) => sum + pointsMinor(item.points), 0n) === pointsMinor(value.points) &&
     BigInt(value.reserve_version) > 0n && BigInt(value.reserve_version) > BigInt(value.cycle_from_version) &&
     ((value.cycle_from_at === null) === (BigInt(value.cycle_from_version) === 0n));
   if (!common) return false;
@@ -170,8 +171,8 @@ export function isWithdrawalAvailability(value: unknown): value is WithdrawalAva
       : reason === "WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED"
         ? value.can_apply === false && value.policy_enabled === true && value.eligibility_configured === false
         : reason === "WITHDRAWAL_ACCOUNT_RESTRICTED" && value.can_apply === false;
-  if (!decimal(value.points_step) || BigInt(value.points_step) <= 0n || !decimal(value.available_points) || !Array.isArray(value.source_balances) || !value.source_balances.every(isWithdrawalAllocation) || new Set(value.source_balances.map(item => item.source)).size !== value.source_balances.length || !value.source_balances.every(item => Array.isArray(sources) && sources.includes(item.source)) || value.source_balances.reduce((sum, item) => sum + BigInt(item.points), 0n) !== BigInt(value.available_points)) return false;
-  return typeof value.actor_context === "string" && /^[0-9a-f]{64}$/i.test(value.actor_context) && uuid(value.brand_id) && uuid(value.member_id) && typeof value.policy_enabled === "boolean" && typeof value.eligibility_configured === "boolean" && typeof value.can_apply === "boolean" && validReasons.includes(String(reason)) && decimal(value.min_points) && BigInt(value.min_points) > 0n && (value.max_points === null || decimal(value.max_points) && BigInt(value.max_points) >= BigInt(value.min_points)) && Array.isArray(sources) && sources.length >= 1 && sources.length <= SOURCES.length && sources.every((source) => SOURCES.includes(source as WithdrawalSource)) && new Set(sources).size === sources.length && value.real_payments === false && validReason;
+  if (!isPoints(value.points_step) || pointsMinor(value.points_step) <= 0n || !isPoints(value.available_points) || !Array.isArray(value.source_balances) || !value.source_balances.every(isWithdrawalAllocation) || new Set(value.source_balances.map(item => item.source)).size !== value.source_balances.length || !value.source_balances.every(item => Array.isArray(sources) && sources.includes(item.source)) || value.source_balances.reduce((sum, item) => sum + pointsMinor(item.points), 0n) !== pointsMinor(value.available_points)) return false;
+  return typeof value.actor_context === "string" && /^[0-9a-f]{64}$/i.test(value.actor_context) && uuid(value.brand_id) && uuid(value.member_id) && typeof value.policy_enabled === "boolean" && typeof value.eligibility_configured === "boolean" && typeof value.can_apply === "boolean" && validReasons.includes(String(reason)) && isPoints(value.min_points) && pointsMinor(value.min_points) > 0n && (value.max_points === null || isPoints(value.max_points) && pointsMinor(value.max_points) >= pointsMinor(value.min_points)) && Array.isArray(sources) && sources.length >= 1 && sources.length <= SOURCES.length && sources.every((source) => SOURCES.includes(source as WithdrawalSource)) && new Set(sources).size === sources.length && value.real_payments === false && validReason;
 }
 
 export function isWithdrawalPage(value: unknown): value is WithdrawalPage {
@@ -191,10 +192,10 @@ export function isWithdrawalHistory(value: unknown): value is WithdrawalHistory 
 }
 
 export function isWithdrawalAllocation(value: unknown): value is WithdrawalAllocation {
-  return record(value) && exactKeys(value, ["source", "state", "points"]) && SOURCES.includes(value.source as WithdrawalSource) && value.state === "available" && decimal(value.points) && BigInt(value.points) > 0n;
+  return record(value) && exactKeys(value, ["source", "state", "points"]) && SOURCES.includes(value.source as WithdrawalSource) && value.state === "available" && isPoints(value.points) && pointsMinor(value.points) > 0n;
 }
 
 export function validateWithdrawalBody(body: CreateWithdrawalBody): boolean {
-  if (!decimal(body.points) || BigInt(body.points) === 0n || !validAllocation(body.source_allocation)) return false;
-  return body.source_allocation.reduce((sum, entry) => sum + BigInt(entry.points), 0n) === BigInt(body.points);
+  if (!isPoints(body.points) || pointsMinor(body.points) === 0n || !validAllocation(body.source_allocation)) return false;
+  return body.source_allocation.reduce((sum, entry) => sum + pointsMinor(entry.points), 0n) === pointsMinor(body.points);
 }

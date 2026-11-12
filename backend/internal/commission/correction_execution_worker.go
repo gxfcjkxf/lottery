@@ -3,7 +3,6 @@ package commission
 import (
 	"context"
 	"errors"
-	"strconv"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
@@ -273,7 +272,7 @@ func (s Service) correctionExecutionWork(ctx context.Context, tx pgx.Tx, x corre
 		financialVersion = *t.FinancialVersion + 1
 	}
 	targetLog, err := audit.Append(ctx, tx, audit.Record{BrandID: x.Brand, ActorType: "system", Action: "commission.correction_execution.target", ResourceType: "commission_correction_target", ResourceID: id, Reason: "witness exact difference and resulting actual awarded net; zero differences do not post a ledger", RequestID: meta.RequestID,
-		Before: map[string]any{"state": "pending"}, After: map[string]any{"state": "applied", "execution_id": x.ID, "plan_target_id": t.ID, "points_before": strconv.FormatInt(int64(t.PointsBefore), 10), "points_after": strconv.FormatInt(int64(t.PointsAfter), 10), "delta_points": strconv.FormatInt(int64(t.DeltaPoints), 10), "ledger_entry_id": ledger, "financial_version": financialVersion}})
+		Before: map[string]any{"state": "pending"}, After: map[string]any{"state": "applied", "execution_id": x.ID, "plan_target_id": t.ID, "points_before": t.PointsBefore.String(), "points_after": t.PointsAfter.String(), "delta_points": t.DeltaPoints.String(), "ledger_entry_id": ledger, "financial_version": financialVersion}})
 	if err != nil {
 		return err
 	}

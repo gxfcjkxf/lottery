@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { nextTick } from 'vue'
 const filterReset = ref(0)
 
 import ManagementList from "@lottery/shared/ManagementList.vue"
@@ -23,7 +22,6 @@ const displayPublicError = publicErrorI18n.displayError;
 import { withGlobalLoading } from '@lottery/shared';
 import PlatformTemporalInput from "@lottery/shared/PlatformTemporalInput.vue";
 import { vGlobalLoading } from "@lottery/shared";
-const displayDate = (value: string | null | undefined) => formatDisplayDateTime(value, displayLocale.value);
 import { formatDisplayDateTime } from "@lottery/shared";
 const displayLocale = useAdminI18n().locale;
 import { vInlineValidation } from '@lottery/shared'
@@ -37,7 +35,7 @@ const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const { t, locale } = useAdminI18n();
 const tr = (key: string) => t(adminKey(key));
 const api = createAuditApi();
-const PAGE_SIZE = 100;
+const PAGE_SIZE = ref(100);
 const permissions = computed(() => auditPermissions(props.account, props.brandId));
 const fromDraft = ref("");
 const toDraft = ref("");
@@ -51,11 +49,8 @@ const expandedRecord = computed(() => records.value.find(entry => entry.id === e
 const offset = ref(0);
 const filters = ref<AuditFilters | null>(null);
 const loading = ref(false);
-const exporting = ref(false);
 const error = ref<string | import("@lottery/shared").LocalizedMessage>("");
-const receipt = ref<{ exportId: string; snapshotAt: string; rowCount: number; sha256: string } | null>(null);
 let readGeneration = 0;
-let exportGeneration = 0;
 let alive = true;
 
 const scopeKey = computed(() => JSON.stringify([
@@ -65,27 +60,20 @@ const scopeKey = computed(() => JSON.stringify([
 ]));
 watch(scopeKey, () => {
   readGeneration++;
-  exportGeneration++;
   [records.value,recordTotal.value]=[[],'0'];
   filters.value = null;
   offset.value = 0;
-  loading.value = exporting.value = false;
+  loading.value = false;
   error.value = "";
-  receipt.value = null;
 });
 onMounted(() => { fromDraft.value = new Date().toISOString().slice(0, 10); toDraft.value = fromDraft.value; if (permissions.value.view) void withGlobalLoading(readPage, 0, true); });
-onBeforeUnmount(() => { alive = false; readGeneration++; exportGeneration++; });
+onBeforeUnmount(() => { alive = false; readGeneration++; });
 function currentRead(ticket: number, scope: string): boolean { return alive && ticket === readGeneration && scope === scopeKey.value; }
-function currentExport(ticket: number, scope: string): boolean { return alive && ticket === exportGeneration && scope === scopeKey.value; }
 function reportError(cause: unknown): string | import("@lottery/shared").LocalizedMessage {
   if (cause instanceof AdminApiError) return publicErrorMessage(cause);
   return cause instanceof Error ? publicErrorMessage(cause) : tr('admin.copy.6fef6157');
 }
-async function clearFilters() { filterReset.value++;
-  fromDraft.value = new Date().toISOString().slice(0, 10); toDraft.value = fromDraft.value;
-  actorDraft.value = actionDraft.value = resourceTypeDraft.value = requestIdDraft.value = '';
-  await nextTick(); await readPage(0, true);
-}
+
 function submitFilters(): AuditFilters | null {
   let from: string, to: string;
   try { from = filterDateBoundary(fromDraft.value, false, 'utc').toISOString(); to = filterDateBoundary(toDraft.value, true, 'utc').toISOString() } catch { error.value = tr('admin.copy.3e7f7074'); return null }
@@ -115,13 +103,11 @@ async function readPage(nextOffset: number, newFilters = false) {
   const chosen = newFilters ? submitFilters() : filters.value;
   if (!chosen) return;
   const ticket = ++readGeneration, scope = scopeKey.value;
-  exportGeneration++;
   if (newFilters) { filters.value = chosen; offset.value = 0; }
   loading.value = true;
   error.value = "";
-  receipt.value = null;
   try {
-    const result = await api.list(props.brandId, { ...chosen, limit: PAGE_SIZE, offset: newFilters ? 0 : nextOffset });
+    const result = await api.list(props.brandId, { ...chosen, limit: PAGE_SIZE.value, offset: newFilters ? 0 : nextOffset });
     if (!currentRead(ticket, scope)) return;
     offset.value = newFilters ? 0 : nextOffset;
     [records.value, recordTotal.value] = [result.items, readPaginationTotal(result)];
@@ -131,32 +117,6 @@ async function readPage(nextOffset: number, newFilters = false) {
     error.value = reportError(cause);
     if (cause instanceof AdminApiError && cause.status === 401) emit("session-invalid");
   } finally { if (currentRead(ticket, scope)) loading.value = false; }
-}
-async function exportCsv() {
-  if (!permissions.value.export) { error.value = tr('admin.copy.af86866a'); return; }
-  const chosen = filters.value ?? submitFilters();
-  if (!chosen) return;
-  filters.value = chosen;
-  const ticket = ++exportGeneration, scope = scopeKey.value;
-  exporting.value = true;
-  error.value = "";
-  receipt.value = null;
-  try {
-    const result = await api.exportCsv(props.brandId, chosen);
-    if (!currentExport(ticket, scope)) return;
-    receipt.value = { exportId: result.exportId, snapshotAt: result.snapshotAt, rowCount: result.rowCount, sha256: result.sha256 };
-    const url = URL.createObjectURL(new Blob([result.bytes], { type: "text/csv;charset=utf-8" }));
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = result.filename;
-    anchor.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-  } catch (cause) {
-    if (!currentExport(ticket, scope)) return;
-    receipt.value = null;
-    error.value = reportError(cause);
-    if (cause instanceof AdminApiError && cause.status === 401) emit("session-invalid");
-  } finally { if (currentExport(ticket, scope)) exporting.value = false; }
 }
 function hasChanges(entry: AdminAuditRecord): boolean {
   return !isAuditRead(entry.action, entry.resource_type) && (hasAuditDetails(entry.before_json) || hasAuditDetails(entry.after_json));
@@ -186,7 +146,6 @@ useOperationToast(() => error.value, value => displayPublicError(value), 'error'
 
 <template>
   <ManagementList class="audit-page" :aria-label="tr('admin.copy.315a9366')">
-    <template v-if="permissions.view" #actions><button type="button" class="button button-secondary" :disabled="!filters || exporting || !permissions.export" @click="withGlobalLoading(exportCsv)">{{ exporting ? tr('admin.copy.da3845f1') : tr('admin.copy.800c75fc') }}</button></template>
     <template v-if="permissions.view" #filters>
       <form novalidate v-inline-validation class="audit-filters ui-filter-bar" @submit.prevent="withGlobalLoading(readPage, 0, true)">
         <label><PlatformTemporalInput :label="t('filter.fromDateUTC')" :placeholder="t('filter.fromDateUTC')" v-model="fromDraft" type="date" required :locale="displayLocale" /></label>
@@ -197,14 +156,13 @@ useOperationToast(() => error.value, value => displayPublicError(value), 'error'
 
         <div class="audit-actions">
           <button class="button button-primary" type="submit" :disabled="loading || actorDraftSearchPending">{{ loading ? tr('admin.copy.dea7c355') : tr('admin.copy.2d2b9232') }}</button>
-          <button type="button" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(clearFilters)">{{ t('admin.copy.b089734d') }}</button>
+
         </div>
       </form>
     </template>
     <p v-if="!permissions.view" class="audit-notice" role="status">{{ tr('admin.copy.792805a5') }}</p>
     <template v-else>
 
-      <p v-if="!permissions.export" class="audit-notice" role="status">{{ tr('admin.copy.418a8d77') }}</p>
 
       <p v-global-loading v-if="loading" class="audit-state" role="status">{{ tr('admin.copy.9b68f2d5') }}</p>
       <div v-if="filters" class="audit-results">
@@ -239,13 +197,8 @@ useOperationToast(() => error.value, value => displayPublicError(value), 'error'
       <DetailModal v-if="expandedRecord" :title="t('admin.audit.changes')" :close-label="tr('admin.copy.2bb2cb1d')" @close="expandedId = null">
         <div :id="`audit-change-${expandedRecord.id}`" class="audit-snapshots"><section v-if="hasAuditDetails(expandedRecord.before_json)"><h3>{{ tr('admin.copy.f85d9f7f') }}</h3><BusinessDetails :value="redacted(expandedRecord.before_json)" :locale="associationLocale" /></section><section v-if="hasAuditDetails(expandedRecord.after_json)"><h3>{{ tr('admin.copy.6db1d337') }}</h3><BusinessDetails :value="redacted(expandedRecord.after_json)" :locale="associationLocale" /></section></div>
       </DetailModal>
-      <aside v-if="receipt" class="audit-receipt" role="status" aria-live="polite">
-        <strong>{{ tr('admin.copy.2014d47e') }}</strong>
-        <span>{{ tr('admin.copy.a39460be') }}: {{ receipt.rowCount }} · {{ tr('admin.copy.82d4e9bd') }}: {{ displayDate(receipt.snapshotAt) }}</span>
-        <code>{{ receipt.sha256 }}</code><small>{{ tr('admin.copy.71a032cb') }}: {{ receipt.exportId }}</small>
-      </aside>
     </template>
-  <template #pagination v-if="(filters)"><TablePagination :show-empty="Boolean(filters) && !loading && !error" class="audit-pagination" :aria-label="tr('admin.copy.e2f05ca9')" :total="recordTotal" :page="Math.floor(offset / PAGE_SIZE + 1)" :count="records.length" :locale="locale" :page-size="PAGE_SIZE" :reachable-page="Math.floor(100_000 / PAGE_SIZE) + 1" :previous-disabled="actorDraftSearchPending || loading || offset === 0" :next-disabled="loading || records.length < PAGE_SIZE || offset + PAGE_SIZE > 100_000" :previous-label="tr('admin.copy.dbe7a5d7')" :next-label="tr('admin.copy.2e9c9e7a')" :go-to="(target: number) => readPage((target - 1) * PAGE_SIZE)" /></template></ManagementList>
+  <template #pagination v-if="(filters)"><TablePagination class="audit-pagination" :aria-label="tr('admin.copy.e2f05ca9')" :total="recordTotal" :page="Math.floor(offset / PAGE_SIZE + 1)" :count="records.length" :locale="locale" :page-size="PAGE_SIZE" :reachable-page="Math.floor(100_000 / PAGE_SIZE) + 1" :previous-disabled="actorDraftSearchPending || loading || offset === 0" :next-disabled="loading || records.length < PAGE_SIZE || offset + PAGE_SIZE > 100_000" :previous-label="tr('admin.copy.dbe7a5d7')" :next-label="tr('admin.copy.2e9c9e7a')" :go-to="(target: number) => readPage((target - 1) * PAGE_SIZE)" :change-page-size="async (size: number) => { PAGE_SIZE = size; await readPage(0) }" :busy="actorDraftSearchPending || loading" /></template></ManagementList>
 </template>
 
 <style scoped>

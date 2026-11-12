@@ -70,9 +70,9 @@ func TestBetLimitsHTTPScopesReplayAndSalesIsolation(t *testing.T) {
 	}
 	mustStatus(t, f.call("GET", "/api/v1/admin/bet-limits", "", f.token, pointsBrandB, nil), 403)
 	mustStatus(t, f.call("GET", path, "", f.token, pointsBrandB, nil), 403)
-	in.MaxPoints = 20
-	in.MaxPeriodPoints = 200
-	in.MaxUserPeriodPoints = 100
+	in.MaxPoints = 2000
+	in.MaxPeriodPoints = 20000
+	in.MaxUserPeriodPoints = 10000
 	saved := f.call("POST", path, "limit-write-001", f.token, managedBrand, in)
 	mustStatus(t, saved, 200)
 	var out, replay platformlottery.BetLimits
@@ -80,7 +80,7 @@ func TestBetLimitsHTTPScopesReplayAndSalesIsolation(t *testing.T) {
 	again := f.call("POST", path, "limit-write-001", f.token, managedBrand, in)
 	mustStatus(t, again, 200)
 	managedData(t, again, &replay)
-	if out.Version != 2 || out != replay || out.MaxPoints != 20 {
+	if out.Version != 2 || out != replay || out.MaxPoints != 2000 {
 		t.Fatal("idempotent receipt", out, replay)
 	}
 	if items := readCatalog(); len(items) != 1 || !items[0].Configured {
@@ -95,10 +95,10 @@ func TestBetLimitsHTTPScopesReplayAndSalesIsolation(t *testing.T) {
 	}
 	mustStatus(t, f.call("POST", path, "limit-write-stale", f.token, managedBrand, in), 409)
 	changed := in
-	changed.MaxPoints = 21
+	changed.MaxPoints = 2100
 	mustStatus(t, f.call("POST", path, "limit-write-001", f.token, managedBrand, changed), 409)
 	invalid := out
-	invalid.MaxUserPeriodPoints = 1
+	invalid.MaxUserPeriodPoints = 100
 	mustStatus(t, f.call("POST", path, "limit-invalid-001", f.token, managedBrand, invalid), 400)
 	spoof := out
 	spoof.BrandID = pointsBrandB

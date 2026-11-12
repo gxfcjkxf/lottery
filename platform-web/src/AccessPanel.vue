@@ -24,6 +24,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { createPlatformAccessApi, PlatformAccessApiError } from './access-api'
 import { permissionLabel } from '@lottery/shared'
 import { platformErrorMessage } from './platform-error-message'
+const pageSize = ref(50)
+
 
 const props = defineProps<{ brandId: string; locale: 'en' | 'zh-CN'; scope: 'brand' | 'platform'; accountId: string; grants: string[]; initialTab?: Tab }>()
 const emit = defineEmits<{ failure: [cause: unknown]; locked: [value: boolean] }>()
@@ -119,17 +121,17 @@ async function load(requestedOffset = offset.value) {
   loading.value = true
   try {
     if (currentTab === 'accounts') {
-      const result = await (props.scope === 'platform' ? api.platformAccounts(51, currentOffset) : api.accounts(brand, 51, currentOffset))
+      const result = await (props.scope === 'platform' ? api.platformAccounts(pageSize.value, currentOffset) : api.accounts(brand, pageSize.value, currentOffset))
       if (request !== generation || props.brandId !== brand || tab.value !== currentTab) return
-      [accounts.value, recordTotal.value] = [result.items.slice(0, 50), readPaginationTotal(result)]
+      [accounts.value, recordTotal.value] = [result.items, readPaginationTotal(result)]
       offset.value = currentOffset
-      more.value = result.items.length > 50
+      more.value = BigInt(currentOffset + result.items.length) < BigInt(recordTotal.value)
     } else if (currentTab === 'roles') {
-      const result = await (props.scope === 'platform' ? api.platformRoles(51, currentOffset) : api.roles(brand, 51, currentOffset))
+      const result = await (props.scope === 'platform' ? api.platformRoles(pageSize.value, currentOffset) : api.roles(brand, pageSize.value, currentOffset))
       if (request !== generation || props.brandId !== brand || tab.value !== currentTab) return
-      [roles.value, recordTotal.value] = [result.items.slice(0, 50), readPaginationTotal(result)]
+      [roles.value, recordTotal.value] = [result.items, readPaginationTotal(result)]
       offset.value = currentOffset
-      more.value = result.items.length > 50
+      more.value = BigInt(currentOffset + result.items.length) < BigInt(recordTotal.value)
     }
   } catch (cause) {
     if (request === generation && props.brandId === brand && tab.value === currentTab) report(cause)
@@ -150,7 +152,7 @@ function batchDeleted(item: AccessItem) {
 }
 
 async function refreshAfterBatch() {
-  await load(BigInt(offset.value) >= BigInt(recordTotal.value) ? Math.max(0, offset.value - 50) : offset.value)
+  await load(BigInt(offset.value) >= BigInt(recordTotal.value) ? Math.max(0, offset.value - pageSize.value) : offset.value)
 }
 
 function chooseTab(next: Tab) {
@@ -260,10 +262,10 @@ useOperationToast(error, value => displayError(value), 'error');
         <button :disabled="locked" :class="tab === 'accounts' ? 'button button-primary' : 'button button-secondary'" role="tab" :aria-selected="tab === 'accounts'" @click="chooseTab('accounts')">{{ copy.accounts }}</button>
         <button :disabled="locked" :class="tab === 'roles' ? 'button button-primary' : 'button button-secondary'" role="tab" :aria-selected="tab === 'roles'" @click="chooseTab('roles')">{{ copy.roles }}</button>
       </div></template>
-      <template #actions>
+      <template v-if="error || (tab === 'accounts' ? canWriteAccounts : canWriteRoles)" #actions>
         <button v-if="tab === 'accounts' && canWriteAccounts" class="button button-primary" :disabled="loading || locked" @click="withGlobalLoading(beginForm, 'account-create')">{{ writeCopy.create }}</button>
         <button v-if="tab === 'roles' && canWriteRoles" class="button button-primary" :disabled="loading || locked" @click="withGlobalLoading(beginForm, 'role-create')">{{ writeCopy.createRole }}</button>
-        <button v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading || !ready || locked" @click="withGlobalLoading(load)">{{ copy.refresh }}</button>
+        <button v-if="error" v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading || !ready || locked" @click="withGlobalLoading(load)">{{ copy.refresh }}</button>
       </template>
       <BatchDelete :key="scope + ':' + brandId + ':' + tab" :subject="tab" :entry-label="item => isAccount(item) ? item.username : item.name" :scope-key="String(offset)" :entries="entries" :selectable="item => isAccount(item) ? item.id !== accountId : !item.is_bootstrap" :enabled="tab === 'accounts' ? canDeleteAccounts : canDeleteRoles" :locale="locale" :loading="loading" :delete-entry="deleteBatchItem" :error-text="cause => platformErrorMessage(cause, locale)" :is-unknown="cause => !(cause instanceof PlatformAccessApiError) || cause.status === 0 || cause.status >= 500 || cause.code === 'INVALID_RESPONSE'" @locked="batchOpen = $event" @deleted="batchDeleted" @finished="withGlobalLoading(refreshAfterBatch)" v-slot="{selected: checked, toggle, selectLabel, locked: batchLocked}">
         <ManagementTable table-class="account-directory-table" :entries="entries" :columns="[{key:'account',label:tab === 'accounts' ? copy.username : copy.name}, ...(tab === 'accounts' ? [{key:'roles',label:copy.roles}] : []), {key:'status',label:copy.status},{key:'actions',label:writeCopy.actions,cellClass:'access-actions'}]" :empty="!loading && !error && !(entries).length" :empty-label="tab === 'accounts' ? copy.emptyAccounts : copy.emptyRoles">
@@ -274,7 +276,7 @@ useOperationToast(error, value => displayError(value), 'error');
         </ManagementTable>
 
       </BatchDelete>
-    <template #pagination><TablePagination :show-empty="!loading && !error" class="wallet-pagination" data-testid="platform-access-pages" :total="recordTotal" :page="Math.floor(offset / 50 + 1)" :count="(entries).length" :locale="locale" :page-size="50" :previous-disabled="loading || offset === 0 || !ready || locked || batchOpen" :next-disabled="loading || !more || locked || batchOpen" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => page((target - 1) * 50)" /></template></ManagementList>
+    <template #pagination><TablePagination class="wallet-pagination" data-testid="platform-access-pages" :total="recordTotal" :page="Math.floor(offset / pageSize + 1)" :count="(entries).length" :locale="locale" :page-size="pageSize" :previous-disabled="loading || offset === 0 || !ready || locked || batchOpen" :next-disabled="loading || !more || locked || batchOpen" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => page((target - 1) * pageSize)" :change-page-size="async (size: number) => { pageSize = size; await load(0) }" :busy="loading || locked || batchOpen" /></template></ManagementList>
     <DetailModal v-if="selected" :title="isAccount(selected) ? copy.accountDetail : copy.roleDetail" :close-label="copy.close" :open="!formMode" @close="selected = null">
 <section v-if="selected" class="detail-section" data-testid="platform-access-detail">
       <dl v-if="isAccount(selected)" class="confirm-list reward-fields">

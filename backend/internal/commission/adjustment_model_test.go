@@ -13,7 +13,7 @@ const adjustmentBrandID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
 func TestAdjustmentInputIsClosedAndValidatesNetAmount(t *testing.T) {
 	var input AdjustmentInput
-	if err := json.Unmarshal([]byte(`{"version":9007199254740991,"points":"9223372036854775807","reason":"manual review"}`), &input); err != nil || input.Validate() != nil {
+	if err := json.Unmarshal([]byte(`{"version":9007199254740991,"points":"92233720368547758.07","reason":"manual review"}`), &input); err != nil || input.Validate() != nil {
 		t.Fatalf("valid maximum adjustment input rejected: %+v, %v", input, err)
 	}
 	var withoutReason AdjustmentInput
@@ -40,10 +40,10 @@ func TestAdjustmentInputIsClosedAndValidatesNetAmount(t *testing.T) {
 			t.Errorf("invalid adjustment input accepted: %s", raw)
 		}
 	}
-	if (AdjustmentInput{Version: 1, Points: 1, Reason: strings.Repeat("界", 501)}).Validate() == nil {
+	if (AdjustmentInput{Version: 1, Points: 100, Reason: strings.Repeat("界", 501)}).Validate() == nil {
 		t.Fatal("reason longer than 500 characters accepted")
 	}
-	if (AdjustmentInput{Version: 1, Points: 1, Reason: "x\x00y"}).Validate() == nil {
+	if (AdjustmentInput{Version: 1, Points: 100, Reason: "x\x00y"}).Validate() == nil {
 		t.Fatal("reason containing NUL accepted")
 	}
 }
@@ -92,8 +92,8 @@ func TestAllowedAdjustmentRequiresViewAndDedicatedBrandWrite(t *testing.T) {
 func TestAdjustmentDTOUsesSanitizedSnakeCaseAndExactAmounts(t *testing.T) {
 	value := Adjustment{
 		ID: batchAnchorID, BrandID: adjustmentBrandID, TargetID: batchAdminID, PaymentID: batchAnchorID,
-		Version: maxCycleVersion, PointsBefore: points.Amount(9007199254740993), PointsAfter: points.Amount(9007199254740994),
-		DeltaPoints: 1, LedgerEntryID: batchAdminID, AuditLogID: batchAdminID, CreatedBy: batchAdminID,
+		Version: maxCycleVersion, PointsBefore: points.Amount(900719925474099300), PointsAfter: points.Amount(900719925474099400),
+		DeltaPoints: 100, LedgerEntryID: batchAdminID, AuditLogID: batchAdminID, CreatedBy: batchAdminID,
 		Reason: "manual review", PointPolicyVersion: "9007199254740993",
 	}
 	raw, err := json.Marshal(value)
@@ -112,7 +112,7 @@ func TestAdjustmentDTOUsesSanitizedSnakeCaseAndExactAmounts(t *testing.T) {
 		}
 	}
 
-	target, err := json.Marshal(Target{ID: batchAnchorID, OriginalPoints: 9, State: "pending"})
+	target, err := json.Marshal(Target{ID: batchAnchorID, OriginalPoints: 900, State: "pending"})
 	if err != nil {
 		t.Fatal(err)
 	}

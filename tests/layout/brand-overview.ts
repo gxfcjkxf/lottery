@@ -20,7 +20,7 @@ export function registerBrandOverviewTests(reflow = false) {
         if (path.endsWith('/withdrawals')) {
           expect(new URL(route.request().url()).searchParams.get('state')).toBe('reviewing')
           expect(route.request().headers()['x-brand-id']).toBe(gameId)
-          return reply({ brand_id: gameId, items: [], limit: 100, offset: 0, has_more: false })
+          return reply({ brand_id: gameId, items: [], limit: 100, offset: 0, has_more: false, total_count: '0' })
         }
         if (path.endsWith('/overview')) {
           expect(route.request().headers()['x-brand-id']).toBe(gameId)
@@ -58,6 +58,8 @@ export function registerBrandOverviewTests(reflow = false) {
       await expect(overview.locator('.overview-tasks')).toHaveCount(1)
       await expect(overview.locator('.overview-tasks + .overview-stats')).toBeVisible()
       await expect(overview).toContainText('9,007,199,254,740,993')
+      await expect(overview.locator('.overview-current')).toContainText('6,482,150.25')
+      await expect(overview.locator('.overview-business').first()).toContainText('+100,000.25')
       const preset = page.viewportSize()!
       const widths = reflow ? [...new Set([
         ...Array.from({ length: 9 }, (_, i) => 320 + i * 20),

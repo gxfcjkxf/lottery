@@ -37,7 +37,7 @@ func TestVerifyRS256IDToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
-	if got != (Claims{ID: "987654321", Subject: "subject-123", Name: "Jane Telegram"}) {
+	if got != (Claims{ID: "987654321", Subject: "subject-123", Name: "Jane Telegram", Username: "Jane_Telegram"}) {
 		t.Fatalf("Verify() claims = %#v", got)
 	}
 }
@@ -46,7 +46,7 @@ func TestVerifyRejectsInvalidTokens(t *testing.T) {
 	key := mustRSAKey(t, 2048)
 	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
 	base := func(issuer, audience, nonce string, issuedAt, expires time.Time) string {
-		return makeToken(t, key, "key-1", "RS256", fmt.Sprintf(`{"iss":%q,"aud":%s,"sub":"subject-123","id":987654321,"name":"Jane Telegram","nonce":%q,"iat":%d,"exp":%d}`,
+		return makeToken(t, key, "key-1", "RS256", fmt.Sprintf(`{"iss":%q,"aud":%s,"sub":"subject-123","id":987654321,"name":"Jane Telegram","preferred_username":"Jane_Telegram","nonce":%q,"iat":%d,"exp":%d}`,
 			issuer, audience, nonce, issuedAt.Unix(), expires.Unix()))
 	}
 	valid := base(issuer, `"`+testClientID+`"`, testNonce, now, now.Add(time.Hour))
@@ -143,7 +143,7 @@ func TestParseJWKSRejectsInvalidRSAParameters(t *testing.T) {
 }
 
 func claimsJSON(now time.Time, issuer, audience, nonce, id string) string {
-	return fmt.Sprintf(`{"iss":%q,"aud":%s,"sub":"subject-123","id":%s,"name":"Jane Telegram","nonce":%q,"iat":%d,"exp":%d}`,
+	return fmt.Sprintf(`{"iss":%q,"aud":%s,"sub":"subject-123","id":%s,"name":"Jane Telegram","preferred_username":"Jane_Telegram","nonce":%q,"iat":%d,"exp":%d}`,
 		issuer, audience, id, nonce, now.Unix(), now.Add(time.Hour).Unix())
 }
 

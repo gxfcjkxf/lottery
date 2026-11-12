@@ -73,7 +73,7 @@ func TestBatchHistorySerializersExposeOnlyApprovedFields(t *testing.T) {
 	calc, err := json.Marshal(CalculationHistoryItem{
 		ID: historyCycleID, BrandID: historyBrandID, CycleID: historyCycleID, RunID: historyRunID,
 		OrderID: historyCycleID, MemberID: historyBrandID, Reason: "eligible", Status: "won",
-		StakePoints: points.Amount(9007199254740993), PrizePoints: 0, BasePoints: 44,
+		StakePoints: points.Amount(900719925474099300), PrizePoints: 0, BasePoints: 4400,
 		AuditLogID: historyRunID, CreatedAt: at,
 	})
 	if err != nil {

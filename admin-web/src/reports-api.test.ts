@@ -206,3 +206,11 @@ it("preserves authorized association names after report validation rebuilds the 
   expect(associationLabel(report, "brand", brand, "zh-CN")).toBe("Aurora");
   expect(Object.keys(report)).not.toContain("associations");
 });
+
+it('accepts decimal ledger balances while rejecting decimal account counts and malformed points', async () => {
+ const balances={account_count:'1',available_points:'9007199254740993.25',frozen_points:'0.50',withdrawal_points:'6.25',total_points:'9007199254741000.00'}
+ await expect(createReportsApi(fetcher(payload('ledger',{balances}))).ledger(brand,query)).resolves.toMatchObject({balances})
+ for(const change of [{account_count:'1.5'},{available_points:'0.001'},{frozen_points:'-0.01'}]) {
+  await expect(createReportsApi(fetcher(payload('ledger',{balances:{...balances,...change}}))).ledger(brand,query)).rejects.toMatchObject({code:'INVALID_RESPONSE'})
+ }
+})

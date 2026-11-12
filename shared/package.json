@@ -5,6 +5,10 @@
   "type": "module",
   "dependencies": {
     "@lucide/vue": "^1.58.0",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "@scure/bip32": "^2.4.0",
+    "@scure/bip39": "^2.4.0",
     "qrcode": "^1.5.4",
     "vue": "^3.5.13"
   },
@@ -72,6 +76,7 @@
     "./OrderHistoryRecord.vue": "./src/OrderHistoryRecord.vue",
     "./ManagementTable.vue": "./src/ManagementTable.vue",
     "./ManagementFrame.vue": "./src/ManagementFrame.vue",
+    "./ClearableInput.vue": "./src/ClearableInput.vue",
     "./DirectorySearch.vue": "./src/DirectorySearch.vue",
     "./ConsoleTabs.vue": "./src/ConsoleTabs.vue",
     "./PaginationControls.vue": "./src/PaginationControls.vue",
@@ -87,6 +92,13 @@
     "./LoginCaptcha.vue": "./src/LoginCaptcha.vue",
     "./PuzzleCaptcha.vue": "./src/PuzzleCaptcha.vue",
     "./ManagementList.vue": "./src/ManagementList.vue",
-    "./BatchDelete.vue": "./src/BatchDelete.vue"
+    "./BatchDelete.vue": "./src/BatchDelete.vue",
+    "./CashConsole.vue": "./src/CashConsole.vue",
+    "./AnnouncementsManagement.vue": "./src/AnnouncementsManagement.vue",
+    "./ThemeSwitcher.vue": "./src/ThemeSwitcher.vue",
+    "./theme": "./src/theme.ts",
+    "./themes.css": "./src/themes.css",
+    "./BettingHistoryTable.vue": "./src/BettingHistoryTable.vue",
+    "./OrderOutcome.vue": "./src/OrderOutcome.vue"
   }
 }

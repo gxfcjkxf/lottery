@@ -8,7 +8,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 
- "github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestPhoneRegistrationAndLoginWithOptionalCountryCode(t *testing.T) {
@@ -38,7 +38,7 @@ func TestPhoneRegistrationAndLoginWithOptionalCountryCode(t *testing.T) {
 	}
 	for _, phone := range []string{"09171234567", "13455676549", "+8613455676549"} {
 		t.Run(phone, func(t *testing.T) {
-			input := RegisterInput{Phone: phone, Password: "phone-test-password", Privacy: "dev-1", Terms: "dev-1"}
+			input := RegisterInput{Phone: phone, Password: "phone-test-password", }
 			registered := run(func(tx pgx.Tx) (mutation.Result, error) {
 				return s.Register(ctx, tx, operatorTestBrand, input, Metadata{})
 			})

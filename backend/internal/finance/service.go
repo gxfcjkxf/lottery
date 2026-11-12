@@ -7,7 +7,6 @@ import (
 	"errors"
 	"math"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -73,9 +72,9 @@ func (s Service) CreateRecharge(ctx context.Context, tx pgx.Tx, brand, member st
 	if err != nil {
 		return Recharge{}, err
 	}
-	record := Recharge{ID: ids.New(), BrandID: brand, MemberID: member, AccountID: accountID, Points: strconv.FormatInt(int64(amount), 10), Method: "manual", State: "pending", ProofReference: proof, Remark: remark, CreatedBy: meta.ActorID, Version: 1}
+	record := Recharge{ID: ids.New(), BrandID: brand, MemberID: member, AccountID: accountID, Points: amount.String(), Method: "manual", State: "pending", ProofReference: proof, Remark: remark, CreatedBy: meta.ActorID, Version: 1}
 	err = tx.QueryRow(ctx, `INSERT INTO recharge_orders(id,brand_id,member_id,account_id,points,state,proof_reference,remark,created_by,version)
-		VALUES($1,$2,$3,$4,$5,'pending',$6,$7,$8,1) RETURNING created_at`, record.ID, brand, member, accountID, int64(amount), proof, remark, meta.ActorID).Scan(&record.CreatedAt)
+		VALUES($1,$2,$3,$4,$5,'pending',$6,$7,$8,1) RETURNING created_at`, record.ID, brand, member, accountID, amount, proof, remark, meta.ActorID).Scan(&record.CreatedAt)
 	if isUnique(err) {
 		return Recharge{}, points.ErrConflict
 	}
@@ -264,11 +263,11 @@ type rechargeScanner interface{ Scan(...any) error }
 
 func scanRecharge(row rechargeScanner) (Recharge, error) {
 	var record Recharge
-	var amount int64
+	var amount points.Amount
 	err := row.Scan(&record.ID, &record.BrandID, &record.MemberID, &record.MemberUsername, &record.AccountID, &amount, &record.Method, &record.State,
 		&record.ProofReference, &record.Remark, &record.CreatedBy, &record.CreatedByName, &record.ConfirmedBy, &record.ConfirmedByName, &record.Version,
 		&record.CreatedAt, &record.ConfirmedAt, &record.LedgerEntryID)
-	record.Points = strconv.FormatInt(amount, 10)
+	record.Points = amount.String()
 	return record, err
 }
 
@@ -295,13 +294,11 @@ func validText(value string, max int) bool {
 }
 
 func parseAmount(value string) (points.Amount, error) {
-	var amount int64
-	var err error
-	amount, err = strconv.ParseInt(value, 10, 64)
+	amount, err := points.ParseAmount(value)
 	if err != nil || amount <= 0 {
 		return 0, points.ErrCorrupt
 	}
-	return points.Amount(amount), nil
+	return amount, nil
 }
 
 func isUnique(err error) bool {

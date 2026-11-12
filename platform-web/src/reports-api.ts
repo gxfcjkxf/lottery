@@ -1,3 +1,4 @@
+import { isPointTotal } from '@lottery/shared'
 import { readPlatformEnvelope } from './platform-api'
 
 import { PlatformApiError } from './platform-api'
@@ -66,7 +67,6 @@ export interface ReportResult {
 const BASE = '/api/v1/platform/reports'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const UINT = /^(0|[1-9][0-9]*)$/
-const SINT = /^(0|-?[1-9][0-9]*)$/
 const UTC_SECOND = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/
 const SNAPSHOT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/
 const FILTERS: Record<ReportKind, readonly string[]> = {
@@ -134,7 +134,7 @@ function validTimestamp(value: unknown): value is string {
 
 function validateTotals(value: unknown, kind: ReportKind): Record<string, string> {
   const fields = REPORT_FIELDS[kind]
-  if (!isObj(value) || !exact(value, fields) || fields.some(field => typeof value[field] !== 'string' || !(field === 'net_points' ? SINT : UINT).test(value[field] as string))) invalidResponse()
+  if (!isObj(value) || !exact(value, fields) || fields.some(field => typeof value[field] !== 'string' || !(field.endsWith('_points') ? isPointTotal(value[field],field === 'net_points') : UINT.test(value[field] as string)))) invalidResponse()
   return value as Record<string, string>
 }
 
@@ -172,7 +172,7 @@ function validateReport(value: unknown, brandId: string, kind: ReportKind, q: Re
   if (kind === 'ledger') {
     const raw = value.balances
     const balanceFields = ['account_count', 'available_points', 'frozen_points', 'withdrawal_points', 'total_points'] as const
-    if (!isObj(raw) || !exact(raw, balanceFields) || balanceFields.some(field => typeof raw[field] !== 'string' || !UINT.test(raw[field] as string))) invalidResponse()
+    if (!isObj(raw) || !exact(raw, balanceFields) || balanceFields.some(field => typeof raw[field] !== 'string' || !(field.endsWith('_points') ? isPointTotal(raw[field]) : UINT.test(raw[field] as string)))) invalidResponse()
     balances = raw as ReportResult['balances']
   }
   return { brand_id: brandId, snapshot_at: value.snapshot_at, timezone: value.timezone, query: echo as ReportResult['query'], summary, items, total_groups: value.total_groups, ...(balances ? { balances } : {}) }

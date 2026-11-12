@@ -20,7 +20,7 @@ describe('user business routes require the real session', () => {
       expect(check).toHaveBeenCalledOnce();
     });
   }
-  for (const path of ['/login', '/register', '/terms', '/privacy']) {
+  for (const path of ['/login', '/register', '/terms', '/privacy', '/announcements']) {
     it(`allows public ${path} without a session request`, async () => {
       const check = vi.fn();
       const router = routerFor(check);

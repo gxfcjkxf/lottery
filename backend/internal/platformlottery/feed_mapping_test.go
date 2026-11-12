@@ -145,3 +145,24 @@ func TestMappedBrowserConfigurationAndNoStaticFallback(t *testing.T) {
 		t.Fatal("invalid timeout accepted")
 	}
 }
+
+func TestMappedSourceExplicitNullScheduleKeepsLatestResult(t *testing.T) {
+	m := testFeedMapping("json")
+	m.Schedule = "source"
+	m.NextPeriod = &FeedField{Path: "/next_period_no"}
+	m.NextDrawTime = &FeedField{Path: "/next_draw_at"}
+	latest := `"rows":[{"issue":"7","time":"2026-11-10T10:56:30Z","balls":[1,23,49]}]`
+	r, e := ParseFeed(m, []byte(`{`+latest+`,"next_period_no":null,"next_draw_at":null}`))
+	if e != nil || r.Completed == nil || r.Completed.PeriodNo != "7" || r.NextPeriodNo != nil || r.NextDrawAt != nil {
+		t.Fatal(r, e)
+	}
+	for _, next := range []string{`"next_period_no":"8","next_draw_at":null`, `"next_period_no":null,"next_draw_at":"2026-11-10T11:00:00Z"`, `"next_period_no":null`, `"next_period_no":"","next_draw_at":""`} {
+		if _, e = ParseFeed(m, []byte(`{`+latest+`,`+next+`}`)); e == nil {
+			t.Fatal("invalid schedule accepted", next)
+		}
+	}
+	r, e = ParseFeed(m, []byte(`{`+latest+`,"next_period_no":"8","next_draw_at":"2026-11-10T11:00:00Z"}`))
+	if e != nil || r.NextPeriodNo == nil || *r.NextPeriodNo != "8" || r.NextDrawAt == nil {
+		t.Fatal("resume", r, e)
+	}
+}

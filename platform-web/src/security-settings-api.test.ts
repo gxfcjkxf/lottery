@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createSecuritySettingsApi, securityIntents, type SecurityIntent } from './security-settings-api';
 const brand='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const auth={version:3,inherit_platform:false,captcha_enabled:true,telegram_enabled:false,telegram_client_id:'',privacy_policy_version:'terms-1',service_terms_version:'terms-1',audit_log_id:brand};
+const auth={version:3,inherit_platform:false,captcha_enabled:true,telegram_enabled:false,telegram_client_id:'',audit_log_id:brand};
 const intent:SecurityIntent={kind:'auth',body:JSON.stringify({version:2,inherit_platform:false,captcha_enabled:true,telegram_enabled:false,telegram_client_id:'',reason:''}),key:'original-key',phase:'unknown'};
 describe('platform security settings',()=>{
  it('keeps the original body and key for an uncertain write and validates its receipt',async()=>{

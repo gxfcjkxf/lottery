@@ -1,3 +1,4 @@
+import { isPointTotal } from '@lottery/shared'
 import { readReportDownload } from "@lottery/shared";
 import { readAdminEnvelope } from './admin-api'
 import { copyAssociationNames } from "@lottery/shared"
@@ -7,7 +8,6 @@ import { brandPermissionSet } from "./brand-permissions";
 const BASE = "/api/v1/admin/reports/commission";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UNSIGNED = /^(0|[1-9]\d*)$/;
-const SIGNED = /^(0|-?[1-9]\d*)$/;
 const MAX_WINDOW_NS = 93n * 24n * 60n * 60n * 1_000_000_000n;
 const FIELDS = ["entry_count", "paid_entry_count", "paid_points", "adjustment_entry_count", "adjustment_credit_points", "adjustment_debit_points", "correction_entry_count", "correction_credit_points", "correction_debit_points", "net_points"] as const;
 const GROUPS = ["day", "agent", "cycle"] as const;
@@ -55,7 +55,7 @@ function canonical(q: CommissionReportQuery): CanonicalQuery {
   return { from: utc(start), to: utc(end), group_by: q.group_by, limit, offset, agent_id: q.agent_id?.toLowerCase() ?? null, member_id: q.member_id?.toLowerCase() ?? null, cycle_id: q.cycle_id?.toLowerCase() ?? null };
 }
 function totals(value: unknown): CommissionTotals {
-  if (!isRecord(value) || !exactKeys(value, FIELDS) || FIELDS.some((field) => typeof value[field] !== "string" || !(field === "net_points" ? SIGNED : UNSIGNED).test(value[field] as string))) return fail();
+  if (!isRecord(value) || !exactKeys(value, FIELDS) || FIELDS.some((field) => typeof value[field] !== "string" || !(field.endsWith("_points") ? isPointTotal(value[field],field === "net_points") : UNSIGNED.test(value[field] as string)))) return fail();
   const v = value as unknown as CommissionTotals;
   return v;
 }

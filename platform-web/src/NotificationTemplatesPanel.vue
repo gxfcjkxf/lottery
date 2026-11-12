@@ -64,7 +64,7 @@ useOperationToast(notice, value => displayError(value), 'success')
 </script>
 <template>
  <ManagementList :busy="loading" data-testid="platform-template-list">
-  <template #actions><button v-refresh-button="t('common.refresh')" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load)">{{ t('common.refresh') }}</button></template>
+  <template v-if="error && !selected" #actions><button v-refresh-button="t('common.refresh')" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load)">{{ t('common.refresh') }}</button></template>
   <div class="table-wrap"><table class="console-table template-table console-responsive-table"><thead><tr><th>{{ t('platform.copy.c772d98c') }}</th><th>{{ t('platform.copy.4eca7621') }}</th></tr></thead><tbody>
    <tr v-for="item in templates" :key="item.key"><td :data-label="String(t('platform.copy.c772d98c'))"><button class="text-button row-action" @click="open(item)">{{ label(item.key) }}</button></td><td :data-label="String(t('platform.copy.4eca7621'))">{{ formatPlatformDateTime(item.updated_at, displaySettings, locale) }}</td></tr>
    <tr v-if="!loading && !error && !templates.length"><td colspan="2" class="empty-state">{{ t('platform.copy.bf688a4b') }}</td></tr>

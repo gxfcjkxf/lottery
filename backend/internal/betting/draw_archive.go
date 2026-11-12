@@ -40,9 +40,9 @@ type DrawArchive struct {
 }
 
 // DrawArchive exposes only the selected game's current published results.
-func (s Service) DrawArchive(ctx context.Context, brand, game, kind, selected string, offset int) (DrawArchive, error) {
+func (s Service) DrawArchive(ctx context.Context, brand, game, kind, selected string, limit, offset int) (DrawArchive, error) {
 	out := DrawArchive{TotalCount: "0", GameID: game, Choices: []string{}, Items: []DrawArchiveRow{}}
-	if !validIDs(game) || kind != "configured" || offset < 0 || offset > 1000000 {
+	if !validIDs(game) || kind != "configured" || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
 		return out, ErrInvalid
 	}
 	tx, _, now, err := s.catalogTx(ctx, brand)
@@ -134,7 +134,7 @@ func (s Service) DrawArchive(ctx context.Context, brand, game, kind, selected st
 		return out, err
 	}
 
-	rows, err := tx.Query(ctx, `SELECT `+resultFields+from+` AND `+bucket+`=$5 ORDER BY CASE WHEN p.period_no ~ '^[0-9]+$' THEN p.period_no::numeric END DESC NULLS LAST,p.period_no DESC,`+orderID+` DESC LIMIT 51 OFFSET $6`, brand, game, out.Timezone, now, selected, offset)
+	rows, err := tx.Query(ctx, `SELECT `+resultFields+from+` AND `+bucket+`=$5 ORDER BY CASE WHEN p.period_no ~ '^[0-9]+$' THEN p.period_no::numeric END DESC NULLS LAST,p.period_no DESC,`+orderID+` DESC LIMIT $7 OFFSET $6`, brand, game, out.Timezone, now, selected, offset, limit+1)
 	if err != nil {
 		return out, err
 	}
@@ -181,9 +181,9 @@ func (s Service) DrawArchive(ctx context.Context, brand, game, kind, selected st
 	if err != nil {
 		return out, err
 	}
-	if len(out.Items) > 50 {
+	if len(out.Items) > limit {
 		out.HasMore = true
-		out.Items = out.Items[:50]
+		out.Items = out.Items[:limit]
 	}
 	if out.MarkSix {
 		for i := range out.Items {
@@ -272,7 +272,7 @@ func (s Service) LatestConfiguredDraw(ctx context.Context, brand, game string) (
 	if bucket == nil {
 		return nil, nil
 	}
-	archive, err := s.DrawArchive(ctx, brand, game, "configured", *bucket, 0)
+	archive, err := s.DrawArchive(ctx, brand, game, "configured", *bucket, 50, 0)
 	if err != nil {
 		return nil, err
 	}

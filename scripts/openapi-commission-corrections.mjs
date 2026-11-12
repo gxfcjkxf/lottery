@@ -49,8 +49,8 @@ export const schemas = {
       id: ref('UUID'), brand_id: ref('UUID'), plan_id: ref('UUID'), agent_id: ref('UUID'), member_id: ref('UUID'),
       original_target_id: nullable(ref('UUID')), earning_id: nullable(ref('UUID')),
       adjustment_version: nullable(version), previous_correction_target_id: nullable(ref('UUID')),
-      financial_version: nullable(version), points_before: ref('NonnegativeInt64String'),
-      points_after: ref('NonnegativeInt64String'), delta_points: ref('Int64String'),
+      financial_version: nullable(version), points_before: ref('NonnegativePoints'),
+      points_after: ref('NonnegativePoints'), delta_points: ref('Points'),
       creation_audit_log_id: ref('UUID'), created_at: ref('DateTime'),
     }),
     description: 'Privacy-limited saved beneficiary projection. Per-target amounts and signed delta use exact int64 decimal strings; no account, raw rule, or wallet bucket details are exposed. Timestamps preserve nanoseconds.',
@@ -75,8 +75,8 @@ export const schemas = {
   CommissionCorrectionExecutionTarget: {
     ...obj({
       id: ref('UUID'), brand_id: ref('UUID'), execution_id: ref('UUID'), plan_target_id: ref('UUID'),
-      agent_id: ref('UUID'), member_id: ref('UUID'), points_before: ref('NonnegativeInt64String'),
-      points_after: ref('NonnegativeInt64String'), delta_points: ref('Int64String'),
+      agent_id: ref('UUID'), member_id: ref('UUID'), points_before: ref('NonnegativePoints'),
+      points_after: ref('NonnegativePoints'), delta_points: ref('Points'),
       state: { type: 'string', enum: ['pending', 'applied'] }, ledger_entry_id: nullable(ref('UUID')),
       audit_log_id: nullable(ref('UUID')), financial_version: nullable(version),
       created_at: ref('DateTime'), applied_at: nullable(ref('DateTime')),

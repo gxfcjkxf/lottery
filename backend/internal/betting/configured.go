@@ -6,11 +6,9 @@ import (
 	"errors"
 	"math"
 	"math/big"
-	"strconv"
 	"time"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
-	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/platformlottery"
@@ -50,6 +48,10 @@ type ConfiguredOrder struct {
 	Status       string                  `json:"status"`
 	PlacedAt     time.Time               `json:"placed_at"`
 	SettledAt    *time.Time              `json:"settled_at"`
+}
+
+type ConfiguredOrdersReceipt struct {
+	Items []ConfiguredOrder `json:"items"`
 }
 
 type ConfiguredGameSummary struct {
@@ -130,7 +132,9 @@ func configuredWindow(ctx context.Context, tx pgx.Tx, brand, game, period, membe
 		raw   string
 		limit points.Amount
 	}{{all, sale.MaxPeriodPoints}, {user, sale.MaxUserPeriodPoints}} {
-		n, ok := new(big.Int).SetString(c.raw, 10)
+		parsed, parseErr := points.ParseAmount(c.raw)
+		n := big.NewInt(int64(parsed))
+		ok := parseErr == nil
 		if !ok {
 			return ErrSnapshot
 		}
@@ -214,30 +218,62 @@ func (s Service) configuredQuote(ctx context.Context, tx pgx.Tx, brand string, v
 	if e = configuredWindow(ctx, tx, brand, game, in.PeriodID, v.Member.ID, quote.BetPoints, sales); e != nil {
 		return q, nil, sales, e
 	}
-	e = compliance.AssessTx(ctx, tx, brand, "bet_preview", compliance.GateSubject{ActorType: "user", ActorID: v.User.ID, MemberID: v.Member.ID, RequestID: meta.RequestID, IP: meta.IP})
 	return ConfiguredQuote{ConfiguredQuote: quote, GameID: game, PeriodID: period, RuleID: publication.ID, SalesVersion: sales.Version}, engine, sales, e
 }
 func (s Service) PreviewConfigured(ctx context.Context, tx pgx.Tx, brand string, v identity.Session, in ConfiguredInput, meta points.Metadata) (ConfiguredQuote, error) {
 	q, _, _, e := s.configuredQuote(ctx, tx, brand, v, in, meta, false)
 	return q, e
 }
-func (s Service) PlaceConfigured(ctx context.Context, tx pgx.Tx, brand string, v identity.Session, in ConfiguredInput, meta points.Metadata) (ConfiguredOrder, error) {
+func (s Service) PlaceConfigured(ctx context.Context, tx pgx.Tx, brand string, v identity.Session, in ConfiguredInput, meta points.Metadata) (ConfiguredOrdersReceipt, error) {
 	q, engine, sales, e := s.configuredQuote(ctx, tx, brand, v, in, meta, true)
 	if e != nil {
-		return ConfiguredOrder{}, e
+		return ConfiguredOrdersReceipt{}, e
 	}
 	ps := points.Store{DB: s.DB}
 	wallet, e := ps.LockedSnapshot(ctx, tx, brand, v.Member.ID)
 	if e != nil {
-		return ConfiguredOrder{}, e
+		return ConfiguredOrdersReceipt{}, e
 	}
 	if e = eligibility(ctx, tx, brand, v, true); e != nil {
-		return ConfiguredOrder{}, e
+		return ConfiguredOrdersReceipt{}, e
 	}
 	if e = configuredWindow(ctx, tx, brand, q.GameID, q.PeriodID, v.Member.ID, q.BetPoints, sales); e != nil {
-		return ConfiguredOrder{}, e
+		return ConfiguredOrdersReceipt{}, e
 	}
-	if e = compliance.AssessTx(ctx, tx, brand, "bet_place", compliance.GateSubject{ActorType: "user", ActorID: v.User.ID, MemberID: v.Member.ID, RequestID: meta.RequestID, IP: meta.IP}); e != nil {
+
+	// Validate total funding before writing any item; each item owns its ledger entry.
+	if _, e = wallet.BySource.Allocate(engine.FundingAmount(q.ConfiguredQuote), "available"); e != nil {
+		return ConfiguredOrdersReceipt{}, e
+	}
+	receipt := ConfiguredOrdersReceipt{Items: []ConfiguredOrder{}}
+	for _, request := range in.Requests {
+		expanded, err := engine.Prepare(ctx, []rules.ConfiguredRequest{request})
+		if err != nil {
+			return ConfiguredOrdersReceipt{}, err
+		}
+		for _, line := range expanded.Lines {
+			itemRequest := request
+			itemRequest.Options = line.Options
+			item, err := engine.PrepareItem(ctx, itemRequest)
+			if err != nil {
+				return ConfiguredOrdersReceipt{}, err
+			}
+			itemQuote := q
+			itemQuote.ConfiguredQuote = item
+			order, err := s.placeConfiguredItem(ctx, tx, brand, v, itemQuote, engine, sales, meta)
+			if err != nil {
+				return ConfiguredOrdersReceipt{}, err
+			}
+			receipt.Items = append(receipt.Items, order)
+		}
+	}
+	return receipt, nil
+}
+
+func (s Service) placeConfiguredItem(ctx context.Context, tx pgx.Tx, brand string, v identity.Session, q ConfiguredQuote, engine *rules.ConfiguredEngine, sales platformlottery.ConfiguredSales, meta points.Metadata) (ConfiguredOrder, error) {
+	ps := points.Store{DB: s.DB}
+	wallet, e := ps.LockedSnapshot(ctx, tx, brand, v.Member.ID)
+	if e != nil {
 		return ConfiguredOrder{}, e
 	}
 	alloc, e := wallet.BySource.Allocate(engine.FundingAmount(q.ConfiguredQuote), "available")
@@ -385,7 +421,7 @@ func (s Service) processConfiguredSettlement(ctx context.Context) (bool, error) 
 			WHERE o.period_id=$1 AND line->>'play_id'=ANY($2::text[]) AND o.brand_id=$3 AND o.member_id=$4`, o.PeriodID, playIDs, brand, member).Scan(&raw); e != nil {
 			return false, e
 		}
-		amount, err := strconv.ParseInt(raw, 10, 64)
+		amount, err := points.ParseAmount(raw)
 		if err != nil || amount < 0 {
 			return false, ErrSnapshot
 		}
@@ -396,11 +432,11 @@ func (s Service) processConfiguredSettlement(ctx context.Context) (bool, error) 
 		if e = tx.QueryRow(ctx, `SELECT COALESCE(sum((result->>'prize_points')::numeric),0)::text FROM configured_orders WHERE period_id=$1 AND status='settled' AND brand_id=$2 AND member_id=$3`, o.PeriodID, brand, member).Scan(&raw); e != nil {
 			return false, e
 		}
-		paid, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || paid < 0 || paid > int64(*settlement.PrizeRemaining) {
+		paid, err := points.ParseAmount(raw)
+		if err != nil || paid < 0 || paid > *settlement.PrizeRemaining {
 			return false, ErrSnapshot
 		}
-		remaining := points.Amount(int64(*settlement.PrizeRemaining) - paid)
+		remaining := *settlement.PrizeRemaining - paid
 		settlement.PrizeRemaining = &remaining
 	}
 	result, e := engine.SettleWithContext(ctx, o.Quote, draw, settlement)

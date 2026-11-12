@@ -12,39 +12,39 @@ import (
 
 func TestValidateOrderInput(t *testing.T) {
 	valid := OrderInput{
-		Points: 17,
+		Points: 1700,
 		SourceAllocation: []points.Allocation{
-			{Source: "recharge", State: "available", Points: 10},
-			{Source: "gift", State: "available", Points: 7},
+			{Source: "recharge", State: "available", Points: 1000},
+			{Source: "gift", State: "available", Points: 700},
 		},
 		ClientKey: "client_123",
 	}
 	if err := ValidateOrderInput(valid); err != nil {
 		t.Fatalf("valid order input: %v", err)
 	}
-	fourSource := OrderInput{Points: 4, SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 1}, {Source: "winning", State: "available", Points: 1}, {Source: "gift", State: "available", Points: 1}, {Source: "commission", State: "available", Points: 1}}, ClientKey: "client_123"}
+	fourSource := OrderInput{Points: 400, SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 100}, {Source: "winning", State: "available", Points: 100}, {Source: "gift", State: "available", Points: 100}, {Source: "commission", State: "available", Points: 100}}, ClientKey: "client_123"}
 	if err := ValidateOrderInput(fourSource); err != nil {
 		t.Fatalf("canonical four-source order rejected: %v", err)
 	}
 
 	cases := map[string]OrderInput{
-		"missing key":         {Points: 17, SourceAllocation: valid.SourceAllocation},
-		"short key":           {Points: 17, SourceAllocation: valid.SourceAllocation, ClientKey: "1234567"},
-		"long key":            {Points: 17, SourceAllocation: valid.SourceAllocation, ClientKey: strings.Repeat("a", 129)},
-		"non-ascii key":       {Points: 17, SourceAllocation: valid.SourceAllocation, ClientKey: "clienté12"},
-		"invalid key char":    {Points: 17, SourceAllocation: valid.SourceAllocation, ClientKey: "client 12"},
+		"missing key":         {Points: 1700, SourceAllocation: valid.SourceAllocation},
+		"short key":           {Points: 1700, SourceAllocation: valid.SourceAllocation, ClientKey: "1234567"},
+		"long key":            {Points: 1700, SourceAllocation: valid.SourceAllocation, ClientKey: strings.Repeat("a", 129)},
+		"non-ascii key":       {Points: 1700, SourceAllocation: valid.SourceAllocation, ClientKey: "clienté12"},
+		"invalid key char":    {Points: 1700, SourceAllocation: valid.SourceAllocation, ClientKey: "client 12"},
 		"zero amount":         {Points: 0, SourceAllocation: valid.SourceAllocation, ClientKey: "client_123"},
-		"negative amount":     {Points: -1, SourceAllocation: valid.SourceAllocation, ClientKey: "client_123"},
-		"empty allocation":    {Points: 1, ClientKey: "client_123"},
-		"too many":            {Points: 5, SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 1}, {Source: "winning", State: "available", Points: 1}, {Source: "gift", State: "available", Points: 1}, {Source: "commission", State: "available", Points: 1}, {Source: "commission", State: "available", Points: 1}}, ClientKey: "client_123"},
-		"wrong order":         {Points: 2, SourceAllocation: []points.Allocation{{Source: "winning", State: "available", Points: 1}, {Source: "recharge", State: "available", Points: 1}}, ClientKey: "client_123"},
-		"duplicate source":    {Points: 2, SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 1}, {Source: "recharge", State: "available", Points: 1}}, ClientKey: "client_123"},
-		"unknown source":      {Points: 1, SourceAllocation: []points.Allocation{{Source: "bonus", State: "available", Points: 1}}, ClientKey: "client_123"},
-		"wrong state":         {Points: 1, SourceAllocation: []points.Allocation{{Source: "gift", State: "withdrawal", Points: 1}}, ClientKey: "client_123"},
-		"zero allocation":     {Points: 1, SourceAllocation: []points.Allocation{{Source: "gift", State: "available", Points: 0}}, ClientKey: "client_123"},
-		"negative allocation": {Points: 1, SourceAllocation: []points.Allocation{{Source: "gift", State: "available", Points: -1}}, ClientKey: "client_123"},
-		"sum mismatch":        {Points: 2, SourceAllocation: []points.Allocation{{Source: "gift", State: "available", Points: 1}}, ClientKey: "client_123"},
-		"sum overflow":        {Points: points.Amount(math.MaxInt64), SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: points.Amount(math.MaxInt64 - 1)}, {Source: "winning", State: "available", Points: 2}}, ClientKey: "client_123"},
+		"negative amount":     {Points: -100, SourceAllocation: valid.SourceAllocation, ClientKey: "client_123"},
+		"empty allocation":    {Points: 100, ClientKey: "client_123"},
+		"too many":            {Points: 500, SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 100}, {Source: "winning", State: "available", Points: 100}, {Source: "gift", State: "available", Points: 100}, {Source: "commission", State: "available", Points: 100}, {Source: "commission", State: "available", Points: 100}}, ClientKey: "client_123"},
+		"wrong order":         {Points: 200, SourceAllocation: []points.Allocation{{Source: "winning", State: "available", Points: 100}, {Source: "recharge", State: "available", Points: 100}}, ClientKey: "client_123"},
+		"duplicate source":    {Points: 200, SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 100}, {Source: "recharge", State: "available", Points: 100}}, ClientKey: "client_123"},
+		"unknown source":      {Points: 100, SourceAllocation: []points.Allocation{{Source: "bonus", State: "available", Points: 100}}, ClientKey: "client_123"},
+		"wrong state":         {Points: 100, SourceAllocation: []points.Allocation{{Source: "gift", State: "withdrawal", Points: 100}}, ClientKey: "client_123"},
+		"zero allocation":     {Points: 100, SourceAllocation: []points.Allocation{{Source: "gift", State: "available", Points: 0}}, ClientKey: "client_123"},
+		"negative allocation": {Points: 100, SourceAllocation: []points.Allocation{{Source: "gift", State: "available", Points: -100}}, ClientKey: "client_123"},
+		"sum mismatch":        {Points: 200, SourceAllocation: []points.Allocation{{Source: "gift", State: "available", Points: 100}}, ClientKey: "client_123"},
+		"sum overflow":        {Points: points.Amount(math.MaxInt64), SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: points.Amount(math.MaxInt64 - 1)}, {Source: "winning", State: "available", Points: 200}}, ClientKey: "client_123"},
 	}
 	for name, input := range cases {
 		t.Run(name, func(t *testing.T) {

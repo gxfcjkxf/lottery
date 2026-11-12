@@ -133,7 +133,7 @@ useOperationToast(() => notice.value, value => value, 'success')
       </div>
       <form v-else-if="record" v-write-guard="saving" v-inline-validation class="editor-grid ui-form" novalidate @submit.prevent="withGlobalLoading(save)">
         <label v-for="key in limitFields" :key="key">{{ t(fieldLabels[key]) }}
-          <input v-model.trim="draft[key]" inputmode="numeric" autocomplete="off" :disabled="!canWrite || saving || !!pending" />
+          <input v-model.trim="draft[key]" inputmode="decimal" autocomplete="off" :disabled="!canWrite || saving || !!pending" />
         </label>
         <p v-if="!valid" class="field-error wide" role="alert">{{ t('admin.limits.invalid') }}</p>
         <p v-if="pending && !saving" class="muted wide" role="status">{{ t('admin.limits.unknown') }}</p>

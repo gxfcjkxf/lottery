@@ -1,5 +1,6 @@
+import { isPoints, pointsMinor } from '@lottery/shared'
 import { AdminApiError, readAdminEnvelope } from './admin-api'
-const isPositivePoints=(value:string)=>/^[1-9]\d*$/.test(value)&&BigInt(value)<=9223372036854775807n
+const isPositivePoints=(value:string)=>isPoints(value)&&pointsMinor(value)>0n
 
 export interface BetLimitGame { id: string; name: string; configured: boolean }
 export interface BetLimits {
@@ -12,7 +13,7 @@ export function validBetLimits(value: unknown): value is BetLimits {
   const v = value as BetLimits
   return typeof v.brand_id === 'string' && typeof v.game_id === 'string' && Number.isSafeInteger(v.version) && v.version > 0 &&
     limitFields.every(key => typeof v[key] === 'string' && isPositivePoints(v[key])) &&
-    BigInt(v.max_points) >= BigInt(v.min_points) && BigInt(v.max_period_points) >= BigInt(v.max_points) && BigInt(v.max_user_period_points) >= BigInt(v.max_points)
+    pointsMinor(v.max_points) >= pointsMinor(v.min_points) && pointsMinor(v.max_period_points) >= pointsMinor(v.max_points) && pointsMinor(v.max_user_period_points) >= pointsMinor(v.max_points)
 }
 export function createBetLimitsApi(fetcher: typeof fetch = fetch) {
   async function request(brandId: string, path: string, body?: BetLimits, key?: string): Promise<unknown> {

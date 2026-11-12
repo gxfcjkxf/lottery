@@ -8,7 +8,6 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/attribution"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
-	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/events"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
@@ -43,6 +42,9 @@ type User struct {
 	ID         string `json:"id"`
 	Username   string `json:"username,omitempty"`
 	Phone      string `json:"phone,omitempty"`
+	Wechat     string `json:"wechat,omitempty"`
+	Telegram   string `json:"telegram,omitempty"`
+	Whatsapp   string `json:"whatsapp,omitempty"`
 	TelegramID string `json:"telegram_user_id,omitempty"`
 	Status     string `json:"status"`
 }
@@ -75,8 +77,6 @@ type RegisterInput struct {
 	Username      string `json:"username"`
 	Phone         string `json:"phone"`
 	Password      string `json:"password"`
-	Privacy       string `json:"privacy_policy_version"`
-	Terms         string `json:"service_terms_version"`
 }
 type LoginInput struct {
 	AgentCode     string `json:"agent_code,omitempty"`
@@ -85,20 +85,19 @@ type LoginInput struct {
 	CaptchaAnswer string `json:"captcha_answer,omitempty"`
 	Identifier    string `json:"identifier"`
 	Password      string `json:"password"`
-	Privacy       string `json:"privacy_policy_version,omitempty"`
-	Terms         string `json:"service_terms_version,omitempty"`
 }
 type ProfileInput struct {
 	Username string `json:"username,omitempty"`
 	Phone    string `json:"phone,omitempty"`
+	Wechat   string `json:"wechat,omitempty"`
+	Telegram string `json:"telegram,omitempty"`
+	Whatsapp string `json:"whatsapp,omitempty"`
 }
 type Metadata struct{ RequestID, IP, Domain string }
 type Settings struct {
 	CaptchaEnabled   bool   `json:"captcha_enabled"`
 	TelegramEnabled  bool   `json:"telegram_enabled"`
 	TelegramClientID string `json:"telegram_client_id,omitempty"`
-	Privacy          string `json:"privacy_policy_version"`
-	Terms            string `json:"service_terms_version"`
 }
 
 var usernamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,31}$`)
@@ -178,8 +177,6 @@ func (s *Store) ReadAuthSettings(ctx context.Context, brand string) (AuthSetting
 	record.CaptchaEnabled = cfg.CaptchaEnabled
 	record.TelegramEnabled = cfg.TelegramEnabled
 	record.TelegramClientID = cfg.TelegramClientID
-	record.PrivacyPolicyVersion = cfg.Privacy
-	record.ServiceTermsVersion = cfg.Terms
 	return record, err
 }
 
@@ -194,9 +191,6 @@ func settings(ctx context.Context, tx pgx.Tx, brand string) (Settings, error) {
 		err = json.Unmarshal(raw, &cfg)
 	}
 	return cfg, err
-}
-func accept(cfg Settings, privacy, terms string) bool {
-	return privacy != "" && terms != "" && privacy == cfg.Privacy && terms == cfg.Terms
 }
 func (s *Store) issue(ctx context.Context, tx pgx.Tx, v View, meta Metadata, action string) (mutation.Result, error) {
 	token, err := authcrypto.NewSessionToken()
@@ -244,13 +238,6 @@ func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in Regist
 	if in.Username == "" && in.Phone == "" {
 		return mutation.Fail(400, "PROFILE_INVALID", "需要用户名或手机号"), nil
 	}
-	cfg, err := settings(ctx, tx, brand)
-	if err != nil {
-		return mutation.Result{}, err
-	}
-	if !accept(cfg, in.Privacy, in.Terms) {
-		return mutation.Fail(400, "TERMS_REQUIRED", "请接受当前品牌隐私条款和服务协议"), nil
-	}
 	hash, err := s.PasswordHash(ctx, in.Password)
 	if err == ErrBusy {
 		return mutation.Fail(429, "AUTH_BUSY", "登录繁忙，请稍后重试"), nil
@@ -261,9 +248,7 @@ func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in Regist
 	if err != nil {
 		return mutation.Result{}, err
 	}
-	if result, err, blocked := complianceAdmission(ctx, tx, brand, "register", "anonymous", "", "", meta); blocked {
-		return result, err
-	}
+
 	u := User{ID: ids.New(), Username: in.Username, Phone: in.Phone, Status: "active"}
 	_, err = tx.Exec(ctx, `INSERT INTO global_users(id,username,phone,password_hash,username_set_at,phone_set_at) VALUES($1,NULLIF($2,''),NULLIF($3,''),$4,CASE WHEN $2<>'' THEN now() END,CASE WHEN $3<>'' THEN now() END)`, u.ID, u.Username, u.Phone, hash)
 	if unique(err) {
@@ -272,7 +257,7 @@ func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in Regist
 	if err != nil {
 		return mutation.Result{}, err
 	}
-	m, err := s.joinCode(ctx, tx, brand, u.ID, in.Privacy, in.Terms, kind, code, meta)
+	m, err := s.joinCode(ctx, tx, brand, u.ID, kind, code, meta)
 	if err != nil {
 		if errors.Is(attribution.DatabaseError(err), attribution.ErrUnavailable) {
 			return mutation.Fail(400, "JOIN_CODE_UNAVAILABLE", "加入码不可用，请核对当前品牌、编码及有效期"), nil
@@ -283,33 +268,26 @@ func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in Regist
 	result.Status = 201
 	return result, err
 }
-func (s *Store) joinCode(ctx context.Context, tx pgx.Tx, brand, user, privacy, terms, kind, code string, meta Metadata) (Member, error) {
+func (s *Store) joinCode(ctx context.Context, tx pgx.Tx, brand, user, kind, code string, meta Metadata) (Member, error) {
 	method := "domain"
 	if kind != "" {
 		method = kind + "_code"
 	}
-	return s.createMember(ctx, tx, brand, user, privacy, terms, meta, memberCreateOptions{joinMethod: method, termsAccepted: true, codeKind: kind, code: code})
+	return s.createMember(ctx, tx, brand, user, meta, memberCreateOptions{joinMethod: method, codeKind: kind, code: code})
 }
 
 type memberCreateOptions struct {
-	codeKind      string
-	code          string
-	joinMethod    string
-	createdBy     string
-	displayName   string
-	notes         string
-	termsAccepted bool
+	codeKind    string
+	code        string
+	joinMethod  string
+	createdBy   string
+	displayName string
+	notes       string
 }
 
-func (s *Store) createMember(ctx context.Context, tx pgx.Tx, brand, user, privacy, terms string, meta Metadata, opts memberCreateOptions) (Member, error) {
+func (s *Store) createMember(ctx context.Context, tx pgx.Tx, brand, user string, meta Metadata, opts memberCreateOptions) (Member, error) {
 	var m Member
-	actorType, actor, action := "user", user, "join"
-	if opts.createdBy != "" {
-		actorType, actor, action = "admin", opts.createdBy, "operator_join"
-	}
-	if err := compliance.AssessTx(ctx, tx, brand, action, compliance.GateSubject{ActorType: actorType, ActorID: actor, RequestID: meta.RequestID, IP: meta.IP}); err != nil {
-		return m, err
-	}
+
 	m.ID = ids.New()
 	m.BrandID = brand
 	selected := json.RawMessage(`{}`)
@@ -317,10 +295,9 @@ func (s *Store) createMember(ctx context.Context, tx pgx.Tx, brand, user, privac
 		selected, _ = json.Marshal(map[string]string{"kind": opts.codeKind, "code": opts.code})
 	}
 	err := tx.QueryRow(ctx, `INSERT INTO brand_members
-		(id,brand_id,global_user_id,join_method,join_domain,privacy_policy_version,service_terms_version,
-		 terms_accepted,accepted_at,created_by,display_name,notes,attribution_snapshot)
-		VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7,$8,CASE WHEN $8 THEN now() ELSE NULL END,NULLIF($9,'')::uuid,$10,$11,$12)
-		RETURNING status,display_name,joined_at`, m.ID, brand, user, opts.joinMethod, meta.Domain, privacy, terms, opts.termsAccepted, opts.createdBy, opts.displayName, opts.notes, selected).Scan(&m.Status, &m.DisplayName, &m.JoinedAt)
+		(id,brand_id,global_user_id,join_method,join_domain,created_by,display_name,notes,attribution_snapshot)
+		VALUES($1,$2,$3,$4,NULLIF($5,''),NULLIF($6,'')::uuid,$7,$8,$9)
+		RETURNING status,display_name,joined_at`, m.ID, brand, user, opts.joinMethod, meta.Domain, opts.createdBy, opts.displayName, opts.notes, selected).Scan(&m.Status, &m.DisplayName, &m.JoinedAt)
 	if err != nil {
 		return m, err
 	}
@@ -338,44 +315,15 @@ func (s *Store) createMember(ctx context.Context, tx pgx.Tx, brand, user, privac
 	return m, err
 }
 
-// acceptPendingMember records the end user's current consent; administrative
-// provisioning deliberately never calls this helper.
-func acceptPendingMember(ctx context.Context, tx pgx.Tx, brand, user string, m *Member, cfg Settings, privacy, terms string, meta Metadata) (bool, error) {
-	var accepted bool
-	if err := tx.QueryRow(ctx, `SELECT terms_accepted FROM brand_members WHERE id=$1 AND brand_id=$2`, m.ID, brand).Scan(&accepted); err != nil {
-		return false, err
-	}
-	if accepted {
-		return true, nil
-	}
-	if !accept(cfg, privacy, terms) {
-		return false, nil
-	}
-	if err := compliance.AssessTx(ctx, tx, brand, "join", compliance.GateSubject{ActorType: "user", ActorID: user, MemberID: m.ID, RequestID: meta.RequestID, IP: meta.IP}); err != nil {
-		return false, err
-	}
-	if _, err := tx.Exec(ctx, `UPDATE brand_members SET terms_accepted=true,accepted_at=now(),privacy_policy_version=$2,service_terms_version=$3 WHERE id=$1`, m.ID, cfg.Privacy, cfg.Terms); err != nil {
-		return false, err
-	}
-	if _, err := audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "user", ActorID: user, Action: "member.terms_accept", ResourceType: "member", ResourceID: m.ID, RequestID: meta.RequestID, IP: meta.IP, Before: map[string]bool{"terms_accepted": false}, After: map[string]any{"terms_accepted": true, "privacy_policy_version": cfg.Privacy, "service_terms_version": cfg.Terms}}); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
 func (s *Store) Login(ctx context.Context, tx pgx.Tx, brand string, in LoginInput, meta Metadata) (mutation.Result, error) {
 	kind, code, joinErr := attribution.Normalize(in.AgentCode, in.ReferralCode)
 	if joinErr != nil {
 		return mutation.Fail(400, "JOIN_CODE_INPUT_INVALID", "加入码格式不正确，且代理码与推荐码不能同时使用"), nil
 	}
-	cfg, err := settings(ctx, tx, brand)
-	if err != nil {
-		return mutation.Result{}, err
-	}
 	identifier := strings.ToLower(strings.TrimSpace(in.Identifier))
 	var u User
 	var hash string
-	err = tx.QueryRow(ctx, `SELECT id::text,coalesce(username,''),coalesce(phone,''),coalesce(telegram_user_id,''),status,coalesce(password_hash,'') FROM global_users WHERE username=$1 OR phone=$1 FOR UPDATE`, identifier).Scan(&u.ID, &u.Username, &u.Phone, &u.TelegramID, &u.Status, &hash)
+	err := tx.QueryRow(ctx, `SELECT id::text,coalesce(username,''),coalesce(phone,''),coalesce(wechat,''),coalesce(telegram,''),coalesce(whatsapp,''),coalesce(telegram_user_id,''),status,coalesce(password_hash,'') FROM global_users WHERE username=$1 OR phone=$1 FOR UPDATE`, identifier).Scan(&u.ID, &u.Username, &u.Phone, &u.Wechat, &u.Telegram, &u.Whatsapp, &u.TelegramID, &u.Status, &hash)
 	found := err == nil
 	if err != nil && err != pgx.ErrNoRows {
 		return mutation.Result{}, err
@@ -396,29 +344,13 @@ func (s *Store) Login(ctx context.Context, tx pgx.Tx, brand string, in LoginInpu
 		return mutation.Fail(409, "JOIN_ATTRIBUTION_FIXED", "当前品牌成员已存在，加入归属不能更改；请去掉编码再正常登录"), nil
 	}
 	if err == pgx.ErrNoRows {
-		if !accept(cfg, in.Privacy, in.Terms) {
-			return mutation.Fail(409, "BRAND_JOIN_REQUIRED", "请接受当前品牌条款后加入"), nil
-		}
-		m, err = s.joinCode(ctx, tx, brand, u.ID, in.Privacy, in.Terms, kind, code, meta)
+		m, err = s.joinCode(ctx, tx, brand, u.ID, kind, code, meta)
 	}
 	if err != nil {
-		if result, ok := compliance.Rejection(err); ok {
-			return result, nil
-		}
 		if errors.Is(attribution.DatabaseError(err), attribution.ErrUnavailable) {
 			return mutation.Fail(400, "JOIN_CODE_UNAVAILABLE", "加入码不可用，请核对当前品牌、编码及有效期"), nil
 		}
 		return mutation.Result{}, err
-	}
-	accepted, err := acceptPendingMember(ctx, tx, brand, u.ID, &m, cfg, in.Privacy, in.Terms, meta)
-	if err != nil {
-		if result, ok := compliance.Rejection(err); ok {
-			return result, nil
-		}
-		return mutation.Result{}, err
-	}
-	if !accepted {
-		return mutation.Fail(409, "BRAND_JOIN_REQUIRED", "请接受当前品牌条款后加入"), nil
 	}
 	if m.Status != "normal" && m.Status != "frozen" {
 		return mutation.Fail(403, "MEMBER_DISABLED", "当前品牌账号不可登录"), nil
@@ -430,9 +362,9 @@ func (s *Store) Authenticate(ctx context.Context, brand, token string) (Session,
 	if len(token) != 43 {
 		return v, ErrSession
 	}
-	err := s.DB.QueryRow(ctx, `SELECT s.id::text,u.id::text,coalesce(u.username,''),coalesce(u.phone,''),coalesce(u.telegram_user_id,''),u.status,m.id::text,m.brand_id::text,m.status,m.display_name,m.joined_at
+	err := s.DB.QueryRow(ctx, `SELECT s.id::text,u.id::text,coalesce(u.username,''),coalesce(u.phone,''),coalesce(u.wechat,''),coalesce(u.telegram,''),coalesce(u.whatsapp,''),coalesce(u.telegram_user_id,''),u.status,m.id::text,m.brand_id::text,m.status,m.display_name,m.joined_at
  FROM sessions s JOIN global_users u ON u.id=s.user_id JOIN brand_members m ON m.id=s.member_id AND m.brand_id=s.brand_id JOIN brands b ON b.id=m.brand_id
- WHERE s.token_hash=$1 AND s.brand_id=$2 AND s.admin_id IS NULL AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active' AND m.status IN ('normal','frozen') AND m.terms_accepted=true AND b.status<>'disabled'`, tokenHash(token), brand).Scan(&v.ID, &v.User.ID, &v.User.Username, &v.User.Phone, &v.User.TelegramID, &v.User.Status, &v.Member.ID, &v.Member.BrandID, &v.Member.Status, &v.Member.DisplayName, &v.Member.JoinedAt)
+ WHERE s.token_hash=$1 AND s.brand_id=$2 AND s.admin_id IS NULL AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active' AND m.status IN ('normal','frozen') AND b.status<>'disabled'`, tokenHash(token), brand).Scan(&v.ID, &v.User.ID, &v.User.Username, &v.User.Phone, &v.User.Wechat, &v.User.Telegram, &v.User.Whatsapp, &v.User.TelegramID, &v.User.Status, &v.Member.ID, &v.Member.BrandID, &v.Member.Status, &v.Member.DisplayName, &v.Member.JoinedAt)
 	if err == pgx.ErrNoRows {
 		return v, ErrSession
 	}
@@ -454,12 +386,15 @@ func (s *Store) Logout(ctx context.Context, tx pgx.Tx, brand, token string, meta
 	return mutation.OK(200, map[string]string{"audit_log_id": auditID}), err
 }
 func (s *Store) FillProfile(ctx context.Context, tx pgx.Tx, brand, user string, in ProfileInput, meta Metadata) (mutation.Result, error) {
-	var oldUsername, oldPhone string
-	err := tx.QueryRow(ctx, "SELECT coalesce(username,''),coalesce(phone,'') FROM global_users WHERE id=$1 FOR UPDATE", user).Scan(&oldUsername, &oldPhone)
+	var oldUsername, oldPhone, oldWechat, oldTelegram, oldWhatsapp string
+	err := tx.QueryRow(ctx, "SELECT coalesce(username,''),coalesce(phone,''),coalesce(wechat,''),coalesce(telegram,''),coalesce(whatsapp,'') FROM global_users WHERE id=$1 FOR UPDATE", user).Scan(&oldUsername, &oldPhone, &oldWechat, &oldTelegram, &oldWhatsapp)
 	if err != nil {
 		return mutation.Result{}, err
 	}
-	if in.Username == "" && in.Phone == "" {
+	in.Wechat = strings.TrimSpace(in.Wechat)
+	in.Telegram = strings.TrimSpace(in.Telegram)
+	in.Whatsapp = strings.TrimSpace(in.Whatsapp)
+	if in.Username == "" && in.Phone == "" && in.Wechat == "" && in.Telegram == "" && in.Whatsapp == "" {
 		return mutation.Fail(400, "PROFILE_INVALID", "没有需要补充的资料"), nil
 	}
 	if in.Username != "" {
@@ -480,13 +415,21 @@ func (s *Store) FillProfile(ctx context.Context, tx pgx.Tx, brand, user string, 
 			return mutation.Fail(400, "PROFILE_INVALID", "手机号格式不正确"), nil
 		}
 	}
-	_, err = tx.Exec(ctx, `UPDATE global_users SET username=coalesce(username,NULLIF($2,'')),phone=coalesce(phone,NULLIF($3,'')),username_set_at=CASE WHEN username IS NULL AND $2<>'' THEN now() ELSE username_set_at END,phone_set_at=CASE WHEN phone IS NULL AND $3<>'' THEN now() ELSE phone_set_at END,updated_at=now() WHERE id=$1`, user, in.Username, in.Phone)
+	for _, contact := range []struct{ old, next string }{{oldWechat, in.Wechat}, {oldTelegram, in.Telegram}, {oldWhatsapp, in.Whatsapp}} {
+		if contact.next != "" && contact.old != "" {
+			return mutation.Fail(409, "PROFILE_IMMUTABLE", "联系方式填写后不能修改"), nil
+		}
+		if len([]rune(contact.next)) > 120 {
+			return mutation.Fail(400, "PROFILE_INVALID", "联系方式过长"), nil
+		}
+	}
+	_, err = tx.Exec(ctx, `UPDATE global_users SET username=coalesce(username,NULLIF($2,'')),phone=coalesce(phone,NULLIF($3,'')),wechat=coalesce(wechat,NULLIF($4,'')),telegram=coalesce(telegram,NULLIF($5,'')),whatsapp=coalesce(whatsapp,NULLIF($6,'')),username_set_at=CASE WHEN username IS NULL AND $2<>'' THEN now() ELSE username_set_at END,phone_set_at=CASE WHEN phone IS NULL AND $3<>'' THEN now() ELSE phone_set_at END,updated_at=now() WHERE id=$1`, user, in.Username, in.Phone, in.Wechat, in.Telegram, in.Whatsapp)
 	if unique(err) {
 		return mutation.Fail(409, "IDENTITY_EXISTS", "用户名或手机号已被使用"), nil
 	}
 	if err != nil {
 		return mutation.Result{}, err
 	}
-	auditID, err := audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "user", ActorID: user, Action: "user.profile_fill", ResourceType: "user", ResourceID: user, RequestID: meta.RequestID, IP: meta.IP, Before: map[string]bool{"username_present": oldUsername != "", "phone_present": oldPhone != ""}, After: map[string]bool{"username_present": oldUsername != "" || in.Username != "", "phone_present": oldPhone != "" || in.Phone != ""}})
+	auditID, err := audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "user", ActorID: user, Action: "user.profile_fill", ResourceType: "user", ResourceID: user, RequestID: meta.RequestID, IP: meta.IP, Before: map[string]bool{"username_present": oldUsername != "", "phone_present": oldPhone != "", "wechat_present": oldWechat != "", "telegram_present": oldTelegram != "", "whatsapp_present": oldWhatsapp != ""}, After: map[string]bool{"username_present": oldUsername != "" || in.Username != "", "phone_present": oldPhone != "" || in.Phone != "", "wechat_present": oldWechat != "" || in.Wechat != "", "telegram_present": oldTelegram != "" || in.Telegram != "", "whatsapp_present": oldWhatsapp != "" || in.Whatsapp != ""}})
 	return mutation.OK(200, map[string]string{"audit_log_id": auditID}), err
 }

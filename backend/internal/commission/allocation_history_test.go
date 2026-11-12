@@ -21,7 +21,7 @@ func allocationFixture(t *testing.T) allocationHistoryRow {
 	return allocationHistoryRow{Allocation: Allocation{
 		BrandID: s.BrandID, CycleID: ids.New(), RunID: ids.New(), CalculationID: ids.New(), OrderID: ids.New(),
 		AgentID: s.Path[0].ID, MemberID: s.Path[0].MemberID, BettorMemberID: s.MemberID,
-		BasePoints: 3, ExactAmount: ExactAmount{"3", "20"}, CreatedAt: s.CapturedAt,
+		BasePoints: 300, ExactAmount: ExactAmount{"3", "20"}, CreatedAt: s.CapturedAt,
 	}, Snapshot: raw, PlacedAt: s.CapturedAt, Reason: "eligible", SnapshotMatches: true}
 }
 
@@ -52,7 +52,7 @@ func TestAllocationProjectionFailsClosedOnBrokenSavedEvidence(t *testing.T) {
 		"wrong bettor":              func(r *allocationHistoryRow) { r.BettorMemberID = ids.New() },
 		"wrong exact amount":        func(r *allocationHistoryRow) { r.ExactAmount = ExactAmount{"1", "1"} },
 		"excluded calculation":      func(r *allocationHistoryRow) { r.Reason = "cancelled" },
-		"negative base":             func(r *allocationHistoryRow) { r.BasePoints = -1 },
+		"negative base":             func(r *allocationHistoryRow) { r.BasePoints = -100 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := allocationFixture(t)

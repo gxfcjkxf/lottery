@@ -24,7 +24,7 @@ func TestJoinCodeLifecycleAndImmutableAudit(t *testing.T) {
 		args []any
 	}{
 		{`INSERT INTO global_users(id,username)VALUES($1,$2)`, []any{user, "jc_" + user}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version)VALUES($1,$2,$3,'domain','dev-1','dev-1')`, []any{member, brand, user}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method)VALUES($1,$2,$3,'domain')`, []any{member, brand, user}},
 		{`INSERT INTO admin_accounts(id,username,password_hash)VALUES($1,$2,'unused-test-hash')`, []any{admin, "jc_" + admin}},
 	} {
 		if _, e := db.Exec(ctx, q.sql, q.args...); e != nil {

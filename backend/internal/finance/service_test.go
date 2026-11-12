@@ -39,8 +39,8 @@ func newFinanceFixture(t *testing.T) financeFixture {
 	if _, err := p.Exec(ctx, `INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'not-a-login-secret')`, globalID, "finance_member_"+memberID[:8]); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,display_name,join_method,privacy_policy_version,service_terms_version)
-		VALUES($1,$2,$3,'Finance member','operator','1','1')`, memberID, financeBrandA, globalID); err != nil {
+	if _, err := p.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,display_name,join_method)
+		VALUES($1,$2,$3,'Finance member','operator')`, memberID, financeBrandA, globalID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.Exec(ctx, `INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,$2,'not-a-password-hash')`, adminID, "finance_admin_"+adminID[:8]); err != nil {
@@ -88,7 +88,7 @@ func TestRechargeCreateConfirmCreditsExactlyOnce(t *testing.T) {
 	ctx := context.Background()
 	meta := financeMeta(f.adminID)
 	tx := financeTx(t, f.pool)
-	created, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, points.Amount(725), "bank slip ref", "manual top-up", "verified deposit", meta)
+	created, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, points.Amount(72500), "bank slip ref", "manual top-up", "verified deposit", meta)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestRechargeCreateConfirmCreditsExactlyOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = tx.Rollback(ctx)
-	if wallet.MemberID != f.memberID || wallet.BrandID != f.brandID || wallet.AccountID != f.accountID || wallet.BySource[0][0] != points.Amount(725) {
+	if wallet.MemberID != f.memberID || wallet.BrandID != f.brandID || wallet.AccountID != f.accountID || wallet.BySource[0][0] != points.Amount(72500) {
 		t.Fatalf("confirmed points missing from recharge/available bucket: %+v", wallet)
 	}
 
@@ -155,7 +155,7 @@ func TestRechargeValidationBrandIsolationAndList(t *testing.T) {
 		proof  string
 		remark string
 		reason string
-	}{{"zero amount", 0, "ref", "note", "reason"}, {"negative amount", -1, "ref", "note", "reason"}, {"long proof", 1, string(make([]byte, 501)), "note", "reason"}, {"long remark", 1, "ref", string(make([]byte, 2001)), "reason"}} {
+	}{{"zero amount", 0, "ref", "note", "reason"}, {"negative amount", -100, "ref", "note", "reason"}, {"long proof", 100, string(make([]byte, 501)), "note", "reason"}, {"long remark", 100, "ref", string(make([]byte, 2001)), "reason"}} {
 		t.Run(tc.name, func(t *testing.T) {
 			tx := financeTx(t, f.pool)
 			_, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, tc.amount, tc.proof, tc.remark, tc.reason, meta)
@@ -166,7 +166,7 @@ func TestRechargeValidationBrandIsolationAndList(t *testing.T) {
 		})
 	}
 	tx := financeTx(t, f.pool)
-	_, err := f.service.CreateRecharge(ctx, tx, f.otherBrand, f.memberID, 10, "ref", "note", "wrong brand", meta)
+	_, err := f.service.CreateRecharge(ctx, tx, f.otherBrand, f.memberID, 1000, "ref", "note", "wrong brand", meta)
 	_ = tx.Rollback(ctx)
 	if !errors.Is(err, points.ErrNotFound) {
 		t.Fatalf("cross-brand recharge error=%v, want points.ErrNotFound", err)
@@ -181,7 +181,7 @@ func TestRechargeValidationBrandIsolationAndList(t *testing.T) {
 		t.Fatalf("oversized list offset error=%v, want points.ErrInvalid", err)
 	}
 	tx = financeTx(t, f.pool)
-	pending, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 42, "proof-42", "memo-42", "valid reason", meta)
+	pending, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 4200, "proof-42", "memo-42", "valid reason", meta)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,8 +198,8 @@ func TestRechargeValidationBrandIsolationAndList(t *testing.T) {
 	if _, err := f.pool.Exec(ctx, `INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'not-a-login-secret')`, secondGlobal, "finance_member_extra_"+strings.ReplaceAll(secondMember, "-", "")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.pool.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,display_name,join_method,privacy_policy_version,service_terms_version)
-		VALUES($1,$2,$3,'Second finance member','operator','1','1')`, secondMember, f.brandID, secondGlobal); err != nil {
+	if _, err := f.pool.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,display_name,join_method)
+		VALUES($1,$2,$3,'Second finance member','operator')`, secondMember, f.brandID, secondGlobal); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.pool.Exec(ctx, `INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, secondAccount, f.brandID, secondMember); err != nil {
@@ -213,7 +213,7 @@ func TestRechargeValidationBrandIsolationAndList(t *testing.T) {
 		}
 	}
 	tx = financeTx(t, f.pool)
-	second, err := f.service.CreateRecharge(ctx, tx, f.brandID, secondMember, 7, "second-proof", "second memo", "second request", meta)
+	second, err := f.service.CreateRecharge(ctx, tx, f.brandID, secondMember, 700, "second-proof", "second memo", "second request", meta)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestConfirmAndCancelRejectMaxInt64Version(t *testing.T) {
 	f := newFinanceFixture(t)
 	ctx := context.Background()
 	tx := financeTx(t, f.pool)
-	pending, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 15, "overflow-proof", "overflow remark", "create order", financeMeta(f.adminID))
+	pending, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 1500, "overflow-proof", "overflow remark", "create order", financeMeta(f.adminID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestRechargeAuditsDoNotContainPointLedgerSecrets(t *testing.T) {
 	f := newFinanceFixture(t)
 	ctx := context.Background()
 	tx := financeTx(t, f.pool)
-	recharge, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 90, "proof-ref", "manual remark", "deposit verified", financeMeta(f.adminID))
+	recharge, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 9000, "proof-ref", "manual remark", "deposit verified", financeMeta(f.adminID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestCancelPendingRechargeLeavesWalletUntouchedAndAuditsTransition(t *testin
 	ctx := context.Background()
 	meta := financeMeta(f.adminID)
 	tx := financeTx(t, f.pool)
-	created, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 725, "immutable-proof", "immutable remark", "manual request", meta)
+	created, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 72500, "immutable-proof", "immutable remark", "manual request", meta)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestCancelRechargeRejectsDuplicateAndConfirmedOrders(t *testing.T) {
 	create := func(key string) Recharge {
 		t.Helper()
 		tx := financeTx(t, f.pool)
-		r, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 10, "proof-"+key, "remark", "create reason", meta)
+		r, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 1000, "proof-"+key, "remark", "create reason", meta)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -388,7 +388,7 @@ func TestConcurrentConfirmAndCancelOnlyOneWins(t *testing.T) {
 	ctx := context.Background()
 	meta := financeMeta(f.adminID)
 	tx := financeTx(t, f.pool)
-	created, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 37, "race-proof", "race remark", "race create", meta)
+	created, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 3700, "race-proof", "race remark", "race create", meta)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -482,13 +482,13 @@ func TestRechargePolicyIsCheckedAtCreateAndConfirm(t *testing.T) {
 		t.Fatal(err)
 	}
 	tx := financeTx(t, f.pool)
-	_, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 51, "too-large", "remark", "over limit", meta)
+	_, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 5100, "too-large", "remark", "over limit", meta)
 	_ = tx.Rollback(ctx)
 	if !errors.Is(err, points.ErrPolicyLimit) {
 		t.Fatalf("over-limit create error=%v, want points.ErrPolicyLimit", err)
 	}
 	tx = financeTx(t, f.pool)
-	pending, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 50, "within-limit", "remark", "within limit", meta)
+	pending, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 5000, "within-limit", "remark", "within limit", meta)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -28,12 +28,13 @@ func registerPublicDisplaySettings(mux *routeMux, d Dependencies) {
 			Timezone   string `json:"timezone"`
 			DateFormat string `json:"date_format"`
 			TimeFormat string `json:"time_format"`
+			Theme      string `json:"theme"`
 		}
 		if d.Admins.DB == nil {
 			failure(w, r, 503, "SERVICE_UNAVAILABLE", "暂时无法加载显示设置")
 			return
 		}
-		err := d.Admins.DB.QueryRow(r.Context(), `SELECT timezone,date_format,time_format FROM platform_settings WHERE id=true`).Scan(&out.Timezone, &out.DateFormat, &out.TimeFormat)
+		err := d.Admins.DB.QueryRow(r.Context(), `SELECT timezone,date_format,time_format,theme FROM platform_settings WHERE id=true`).Scan(&out.Timezone, &out.DateFormat, &out.TimeFormat, &out.Theme)
 		if err != nil {
 			failure(w, r, 503, "SERVICE_UNAVAILABLE", "暂时无法加载显示设置")
 			return

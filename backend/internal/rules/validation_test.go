@@ -13,14 +13,14 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 )
 
-func validationAmount(n int64) *points.Amount { v := points.Amount(n); return &v }
+func validationAmount(n int64) *points.Amount { v := points.Amount(n * 100); return &v }
 func validationBool(v bool) *bool             { return &v }
 
 func validationDefinition() Definition {
 	return Definition{
 		SchemaVersion: 1,
 		Model:         Model{Type: "DIGITS_0_9", Length: 1, Ordered: true, AllowRepeat: true},
-		Selection:     SelectionRule{Mode: "numbers"}, UnitPoints: 2,
+		Selection:     SelectionRule{Mode: "numbers"}, UnitPoints: 200,
 		PrizeTiers: []Tier{{Code: "DIGIT", Condition: Condition{Op: "equals", Field: "draw_digit", Target: "digits", Position: ip(0), Value: ip(5)}, Odds: "3", Exclusive: true}},
 		Rounding:   "half_up", RoundingScope: "order",
 		Limits: Limits{MaxCombinations: 100, MaxMultiplier: 10},
@@ -46,7 +46,7 @@ func validationHasFinding(report ValidationReport, code string, blocking bool) b
 func TestValidateCasesExactComparisonAndMismatchReport(t *testing.T) {
 	d := validationDefinition()
 	c := validationCase()
-	d.UnitPoints = 9_007_199_254_740_993
+	d.UnitPoints = 900719925474099300
 	d.PrizeTiers[0].Odds = "1"
 	c.Multiplier = 1
 	c.ExpectedBetPoints = validationAmount(9_007_199_254_740_993)
@@ -61,7 +61,7 @@ func TestValidateCasesExactComparisonAndMismatchReport(t *testing.T) {
 		t.Fatalf("valid simulation mismatch must be a failed report: %+v, %v", report, err)
 	}
 	result := report.Cases[0]
-	if result.ActualBetPoints != 9_007_199_254_740_993 || result.ExpectedBetPoints != 9_007_199_254_740_994 || !result.ActualWon || !result.ExpectedWon {
+	if result.ActualBetPoints != 900719925474099300 || result.ExpectedBetPoints != 900719925474099400 || !result.ActualWon || !result.ExpectedWon {
 		t.Fatalf("expected/actual details lost: %+v", result)
 	}
 	raw, err := json.Marshal(report)
@@ -191,8 +191,8 @@ func TestValidationReportPreservesOriginalInputForReviewer(t *testing.T) {
 		t.Fatalf("persisted report lacks complete original case: %s, %v", raw, err)
 	}
 	c.Selection.Digits[0][0], c.Draw.Digits[0] = 9, 4
-	*c.ExpectedBetPoints, *c.ExpectedPrizePoints, *c.ExpectedWon = 99, 99, false
-	if input.Selection.Digits[0][0] != 5 || input.Draw.Digits[0] != 5 || *input.ExpectedBetPoints != 8 || *input.ExpectedPrizePoints != 24 || !*input.ExpectedWon || input.Multiplier != 2 {
+	*c.ExpectedBetPoints, *c.ExpectedPrizePoints, *c.ExpectedWon = 9900, 9900, false
+	if input.Selection.Digits[0][0] != 5 || input.Draw.Digits[0] != 5 || *input.ExpectedBetPoints != 800 || *input.ExpectedPrizePoints != 2400 || !*input.ExpectedWon || input.Multiplier != 2 {
 		t.Fatalf("report shares mutable original input: %+v", input)
 	}
 }
@@ -276,7 +276,7 @@ func TestValidateCasesFiniteSetHolesAndReachableAnyBranch(t *testing.T) {
 
 func TestValidateCasesSharesAggregateExecutionBudget(t *testing.T) {
 	d := validationDefinition()
-	d.UnitPoints = 1
+	d.UnitPoints = 100
 	d.Model.Length = 4
 	d.Limits.MaxCombinations = MaxCombinations
 	d.PrizeTiers[0].Odds = "1"

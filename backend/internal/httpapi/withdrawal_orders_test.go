@@ -80,47 +80,48 @@ func withdrawalHTTPPost(f pointsHTTPFixture, key, actorContext, body string) *ht
 
 const withdrawalHTTPBody = `{"points":"50","source_allocation":[{"source":"recharge","state":"available","points":"50"}]}`
 
+// Historical point orders are seeded through the domain service. The public
+// creation route is retired; HTTP coverage below retains reads and completion.
 func withdrawalHTTPCreate(t *testing.T, f pointsHTTPFixture, key string) withdrawal.OrderView {
 	t.Helper()
-	available := withdrawalHTTPAvailability(t, f)
-	r := withdrawalHTTPPost(f, key, available.ActorContext, withdrawalHTTPBody)
-	mustStatus(t, r, 201)
-	var o withdrawal.OrderView
-	managedData(t, r, &o)
-	return o
+	ctx := context.Background()
+	identityService, e := identity.New(f.pool)
+	if e != nil {
+		t.Fatal(e)
+	}
+	session, e := identityService.Authenticate(ctx, managedBrand, f.userToken)
+	if e != nil {
+		t.Fatal(e)
+	}
+	tx, e := f.pool.Begin(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tx.Rollback(ctx)
+	service := withdrawal.OrderService{DB: f.pool, Points: points.Store{DB: f.pool}, Eligibility: withdrawalHTTPChecker{}}
+	o, e := service.Create(ctx, tx, managedBrand, f.memberID, withdrawal.OrderInput{Points: 5000, SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 5000}}, ClientKey: key}, points.Metadata{ActorType: "user", ActorID: session.User.ID, RequestID: ids.New()})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = tx.Commit(ctx); e != nil {
+		t.Fatal(e)
+	}
+	return withdrawal.ToOrderView(o)
 }
 
-func TestWithdrawalHTTPDefaultQualificationIsClosedAndClientCannotOverrideIt(t *testing.T) {
+func TestWithdrawalHTTPPointCreationIsRetired(t *testing.T) {
 	f := pointsFixture(t)
 	configureWithdrawalHTTP(t, f)
-	available := withdrawalHTTPAvailability(t, f)
-	if available.CanApply || available.EligibilityConfigured || available.ReasonCode != "WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED" || len(available.ActorContext) != 64 {
-		t.Fatalf("default availability wrong: %+v", available)
-	}
-	rejected := withdrawalHTTPPost(f, "default-qualification", ""+available.ActorContext, withdrawalHTTPBody)
-	mustStatus(t, rejected, 409)
-	if !strings.Contains(rejected.Body.String(), "WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED") {
-		t.Fatal(rejected.Body.String())
-	}
-	mustStatus(t, withdrawalHTTPPost(f, "missing-actor-proof", "", withdrawalHTTPBody), 403)
-	mustStatus(t, withdrawalHTTPPost(f, "wrong-actor-proof", strings.Repeat("0", 64), withdrawalHTTPBody), 403)
-	for _, raw := range []string{
-		strings.Replace(withdrawalHTTPBody, `"points":"50"`, `"points":"50","points":"50"`, 1),
-		strings.Replace(withdrawalHTTPBody, `"source":"recharge"`, `"source":"recharge","source":"winning"`, 1),
-		strings.Replace(withdrawalHTTPBody, `"state":"available"`, `"state":"available","qualified":true`, 1),
-		strings.Replace(withdrawalHTTPBody, `"points":"50"`, `"points":50`, 1),
-		strings.Replace(withdrawalHTTPBody, `"points":"50"`, `"points":"50","member_id":"`+f.memberID+`"`, 1),
-		strings.Replace(withdrawalHTTPBody, `"points":"50"`, `"points":"50","eligibility_evidence":{}`, 1),
-	} {
-		mustStatus(t, withdrawalHTTPPost(f, ids.New(), available.ActorContext, raw), 400)
+	for _, body := range []string{withdrawalHTTPBody, `{"points":50}`, `{"qualified":true}`} {
+		r := withdrawalHTTPPost(f, ids.New(), "", body)
+		mustStatus(t, r, 409)
+		if !strings.Contains(r.Body.String(), "CASH_EXCHANGE_REQUIRED") {
+			t.Fatal(r.Body.String())
+		}
 	}
 	wallet := pointWallet(t, f)
-	if wallet.AvailablePoints != 150 || wallet.WithdrawalPoints != 0 {
-		t.Fatal("closed qualification changed wallet", wallet)
-	}
-	var n int
-	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM withdrawal_orders`).Scan(&n); err != nil || n != 0 {
-		t.Fatalf("unexpected orders=%d %v", n, err)
+	if wallet.AvailablePoints != 15000 || wallet.WithdrawalPoints != 0 {
+		t.Fatal(wallet)
 	}
 }
 
@@ -129,15 +130,12 @@ func TestWithdrawalHTTPApplicationApprovalPaidAndOriginalReceipts(t *testing.T) 
 	configureWithdrawalHTTP(t, f)
 	f.http = withdrawalHTTP(t, f, withdrawalHTTPChecker{})
 	available := withdrawalHTTPAvailability(t, f)
-	created := withdrawalHTTPPost(f, "http-application-original", available.ActorContext, withdrawalHTTPBody)
-	mustStatus(t, created, 201)
-	var order withdrawal.OrderView
-	managedData(t, created, &order)
+	order := withdrawalHTTPCreate(t, f, "http-application-original")
 	wallet := pointWallet(t, f)
-	if wallet.AvailablePoints != 100 || wallet.WithdrawalPoints != 50 {
+	if wallet.AvailablePoints != 10000 || wallet.WithdrawalPoints != 5000 {
 		t.Fatal(wallet)
 	}
-	if order.Points != 50 || order.State != "reviewing" || order.ReleaseEntryID != nil || order.ReserveVersion == "" {
+	if order.Points != 5000 || order.State != "reviewing" || order.ReleaseEntryID != nil || order.ReserveVersion == "" {
 		t.Fatal(order)
 	}
 	approveBody := map[string]any{"version": 1, "reason": "internal confidential review note"}
@@ -150,16 +148,11 @@ func TestWithdrawalHTTPApplicationApprovalPaidAndOriginalReceipts(t *testing.T) 
 	}
 	mustStatus(t, f.call("POST", "/api/v1/admin/withdrawals/"+order.ID+"/mark-paid", "http-paid-original", f.token, managedBrand, map[string]any{"version": 2, "reason": "internal-only simulated payout"}), 200)
 	wallet = pointWallet(t, f)
-	if wallet.AvailablePoints != 100 || wallet.WithdrawalPoints != 0 {
+	if wallet.AvailablePoints != 10000 || wallet.WithdrawalPoints != 0 {
 		t.Fatal(wallet)
 	}
 	replay := withdrawalHTTPPost(f, "http-application-original", available.ActorContext, withdrawalHTTPBody)
-	mustStatus(t, replay, 201)
-	var original withdrawal.OrderView
-	managedData(t, replay, &original)
-	if original.State != "reviewing" || original.Version != 1 || original.ID != order.ID {
-		t.Fatal("cached creation returned live state", original)
-	}
+	mustStatus(t, replay, 409)
 	approveReplay := f.call("POST", "/api/v1/admin/withdrawals/"+order.ID+"/approve", "http-approve-original", f.token, managedBrand, approveBody)
 	mustStatus(t, approveReplay, 200)
 	var originalApproval withdrawal.OrderView
@@ -176,7 +169,7 @@ func TestWithdrawalHTTPApplicationApprovalPaidAndOriginalReceipts(t *testing.T) 
 	}
 	history := f.call("GET", "/api/v1/withdrawals/"+order.ID+"/history", "", f.userToken, managedBrand, nil)
 	mustStatus(t, history, 200)
-	for _, response := range []*httptest.ResponseRecorder{created, live, history, f.call("GET", "/api/v1/withdrawals", "", f.userToken, managedBrand, nil)} {
+	for _, response := range []*httptest.ResponseRecorder{live, history, f.call("GET", "/api/v1/withdrawals", "", f.userToken, managedBrand, nil)} {
 		for _, secret := range []string{"private_internal_note", "eligibility_evidence", "turnover_base_snapshot", "policy_snapshot", "actor_id", "client_key", "internal confidential", "internal-only"} {
 			if strings.Contains(response.Body.String(), secret) {
 				t.Fatalf("user response leaked %q: %s", secret, response.Body.String())
@@ -241,7 +234,7 @@ func TestWithdrawalHTTPChangedUserContextCannotReplayOrReadAnotherMember(t *test
 		MemberID string `json:"member_id"`
 	}
 	managedData(t, created, &member)
-	login := f.call("POST", "/api/v1/auth/login", "second-withdrawal-login", "", managedBrand, map[string]string{"identifier": "withdrawal_other", "password": "withdrawal-other-tes-test-2026", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"})
+	login := f.call("POST", "/api/v1/auth/login", "second-withdrawal-login", "", managedBrand, map[string]string{"identifier": "withdrawal_other", "password": "withdrawal-other-tes-test-2026", })
 	mustStatus(t, login, 200)
 	var auth identity.Authentication
 	managedData(t, login, &auth)
@@ -251,8 +244,8 @@ func TestWithdrawalHTTPChangedUserContextCannotReplayOrReadAnotherMember(t *test
 		t.Fatal("actor context did not bind distinct member")
 	}
 	r := withdrawalHTTPPost(f, "first-member-intent", oldContext, withdrawalHTTPBody)
-	mustStatus(t, r, 403)
-	if !strings.Contains(r.Body.String(), "WITHDRAWAL_CONFIRMATION_ACCOUNT_CHANGED") {
+	mustStatus(t, r, 409)
+	if !strings.Contains(r.Body.String(), "CASH_EXCHANGE_REQUIRED") {
 		t.Fatal(r.Body.String())
 	}
 	mustStatus(t, f.call("GET", "/api/v1/withdrawals/"+order.ID, "", f.userToken, managedBrand, nil), 404)
@@ -303,7 +296,7 @@ func TestWithdrawalHTTPForeignOriginClosedActionsAndNoImplicitPlatformRead(t *te
 	mustStatus(t, f.call("GET", "/api/v1/platform/withdrawals", "", platformToken, pointsBrandB, nil), 200)
 }
 
-func TestWithdrawalHTTPExpiryDuringQualificationRollsBackReservation(t *testing.T) {
+func TestWithdrawalHTTPExpiredSessionCannotUseRetiredCreation(t *testing.T) {
 	f := pointsFixture(t)
 	configureWithdrawalHTTP(t, f)
 	f.http = withdrawalHTTP(t, f, withdrawalHTTPChecker{delay: 180 * time.Millisecond})
@@ -312,9 +305,9 @@ func TestWithdrawalHTTPExpiryDuringQualificationRollsBackReservation(t *testing.
 		t.Fatal(err)
 	}
 	r := withdrawalHTTPPost(f, "expired-qualification-intent", available.ActorContext, withdrawalHTTPBody)
-	mustStatus(t, r, 401)
+	mustStatus(t, r, 409)
 	w, err := (points.Store{DB: f.pool}).Read(context.Background(), managedBrand, f.memberID)
-	if err != nil || w.AvailablePoints != 150 || w.WithdrawalPoints != 0 {
+	if err != nil || w.AvailablePoints != 15000 || w.WithdrawalPoints != 0 {
 		t.Fatal(w, err)
 	}
 	var n int

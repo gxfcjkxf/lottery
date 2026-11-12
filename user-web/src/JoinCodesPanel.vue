@@ -19,6 +19,8 @@ import {
   type ReferralPage,
   type ReferredMember,
 } from "./join-codes-api";
+const pageSize = ref(20)
+
 
 const props = defineProps<{
   locale: "en" | "zh";
@@ -80,7 +82,7 @@ async function load(offset = 0): Promise<void> {
     };
     signedIn.value = true;
     const joinApi = createJoinCodesApi({ brandCode: requestBrandCode });
-    const page = requestTab === 'list' ? await joinApi.referrals(context, 20, offset) : await joinApi.list(context, 20, offset);
+    const page = requestTab === 'list' ? await joinApi.referrals(context, pageSize.value, offset) : await joinApi.list(context, pageSize.value, offset);
     if (
       disposed ||
       requestGeneration !== generation ||
@@ -149,7 +151,7 @@ onUnmounted(() => {
         <p v-if="codes.length === 0" class="muted empty-state">{{ t().noCodes }}</p>
         <RegistrationLink :share-title="brandName" :locale="localeCode" v-for="code in codes" :key="code.id" class="join-code-card" :url="registerShareLink(code)" :disabled="!code.usable" :unavailable-label="t().unavailable" :copy-label="t().copyLink" :copied-label="t().copied" :failed-label="t().copyFailed" />
         </template>
-        <TablePagination show-empty v-if="currentPage" class="join-code-pagination" :total="currentPage?.total_count ?? '0'" :page="Math.floor(pageNumber())" :count="activeTab === 'list' ? referrals.length : codes.length" :locale="localeCode" :page-size="currentPage.limit" :previous-disabled="loading || !hasPrevious()" :next-disabled="loading || !hasNext()" :previous-label="t().previous" :next-label="t().next" :go-to="(target: number) => load((target - 1) * currentPage!.limit)" />
+        <TablePagination v-if="activeTab === 'list'" class="join-code-pagination" :total="currentPage.total_count" :page="Math.floor(pageNumber())" :count="referrals.length" :locale="localeCode" :page-size="pageSize" :previous-disabled="loading || !hasPrevious()" :next-disabled="loading || !hasNext()" :previous-label="t().previous" :next-label="t().next" :go-to="(target: number) => load((target - 1) * currentPage!.limit)" :change-page-size="async (size: number) => { pageSize = size; await load(0) }" :busy="loading" />
       </section>
     </template>
     </div>

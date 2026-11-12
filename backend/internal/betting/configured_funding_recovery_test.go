@@ -15,7 +15,7 @@ import (
 func TestConfiguredConcurrentRetriesUseSingleDebit(t *testing.T) {
 	c := newConfiguredFixture(t)
 	ctx := context.Background()
-	fundBettingWallet(t, c.f, 100)
+	fundBettingWallet(t, c.f, 10000)
 	type response struct {
 		data   []byte
 		status int
@@ -41,7 +41,7 @@ func TestConfiguredConcurrentRetriesUseSingleDebit(t *testing.T) {
 		}
 	}
 	wallet, err := (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, c.f.member)
-	if err != nil || wallet.AvailablePoints != 90 {
+	if err != nil || wallet.AvailablePoints != 9000 {
 		t.Fatal("concurrent retry balance", wallet, err)
 	}
 	var orders, debits int
@@ -54,7 +54,7 @@ func TestConfiguredConcurrentRetriesUseSingleDebit(t *testing.T) {
 func TestConfiguredFundingGuardRecoveryRetriesFailedSettlementOnce(t *testing.T) {
 	c := newConfiguredFixture(t)
 	ctx := context.Background()
-	fundBettingWallet(t, c.f, 100)
+	fundBettingWallet(t, c.f, 10000)
 	first, err := configuredPlace(t, c, "migration-retry", c.input)
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestConfiguredFundingGuardRecoveryRetriesFailedSettlementOnce(t *testing.T)
 			t.Fatal("ledger evidence", debits, credits, err)
 		}
 	}
-	assertEvidence(90, "placed", 0)
+	assertEvidence(9000, "placed", 0)
 	if _, err = c.f.db.Exec(ctx, currentGuard); err != nil {
 		t.Fatal(err)
 	}
@@ -110,6 +110,6 @@ func TestConfiguredFundingGuardRecoveryRetriesFailedSettlementOnce(t *testing.T)
 	if replay, err := configuredPlace(t, c, "migration-retry", c.input); err != nil || string(replay.Data) != string(first.Data) {
 		t.Fatal("purchase replay after recovery", err)
 	}
-	assertEvidence(115, "settled", 1)
+	assertEvidence(11500, "settled", 1)
 	t.Log("SQL failure rolls back payout; restoring the installed guard retries the original order once: balance 90 -> 115, debit=1, prize=1")
 }

@@ -3,14 +3,14 @@ import { withGlobalLoading } from '@lottery/shared';
 import { vRefreshButton } from '@lottery/shared';
 import { useUserI18n } from './i18n';
 
-defineProps<{ title: string; loading: boolean; empty: boolean }>();
+defineProps<{ title: string; loading: boolean; empty: boolean; error: boolean }>();
 defineEmits<{ refresh: [] }>();
 const ui = useUserI18n().t;
 </script>
 
 <template>
   <section class="order-history user-record-list" :aria-busy="loading" :aria-label="title">
-      <Teleport defer to="#user-page-refresh"><button type="button" v-refresh-button="ui('betting.refresh')" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(async () => { return $emit('refresh') })">
+      <Teleport v-if="error" defer to="#user-page-refresh"><button type="button" v-refresh-button="ui('betting.refresh')" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(async () => { return $emit('refresh') })">
         {{ ui('betting.refresh') }}
       </button></Teleport>
     <slot name="filters" />

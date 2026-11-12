@@ -62,7 +62,7 @@ func (s OrderService) QualificationTx(ctx context.Context, tx pgx.Tx, brand, mem
 	}
 	var cycle *time.Time
 	var cycleVersion int64
-	err = tx.QueryRow(ctx, `SELECT cutoff_at,cutoff_version FROM withdrawal_turnover_cycles WHERE brand_id=$1 AND member_id=$2`, brand, member).Scan(&cycle, &cycleVersion)
+	err = tx.QueryRow(ctx, `SELECT cutoff_at,cutoff_version FROM (SELECT cutoff_at,cutoff_version FROM withdrawal_turnover_cycles WHERE brand_id=$1 AND member_id=$2 UNION ALL SELECT cutoff_at,cutoff_version FROM cash_turnover_cycles WHERE brand_id=$1 AND member_id=$2) c ORDER BY cutoff_version DESC LIMIT 1`, brand, member).Scan(&cycle, &cycleVersion)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return out, err
 	}
@@ -97,14 +97,17 @@ func (s OrderService) QualificationTx(ctx context.Context, tx pgx.Tx, brand, mem
 	if q.SchemaVersion != 1 || q.Algorithm != "bet_snapshot_credit_v1" || q.From != strconv.FormatInt(cycleVersion, 10) || q.Cutoff != strconv.FormatInt(wallet.Version, 10) {
 		return out, ErrTurnoverEvidence
 	}
-	for _, value := range []string{q.Count, q.Points, q.Numerator, q.Denominator} {
+	for _, value := range []string{q.Count, q.Numerator, q.Denominator} {
 		if _, ok := canonicalTurnoverInteger(value); !ok {
 			return out, ErrTurnoverEvidence
 		}
 	}
+	if _, err := points.ParseAmount(q.Points); err != nil {
+		return out, ErrTurnoverEvidence
+	}
 	numerator, _ := canonicalTurnoverInteger(q.Numerator)
 	denominator, _ := canonicalTurnoverInteger(q.Denominator)
-	if denominator.Sign() == 0 || decision.Allowed != (numerator.Cmp(new(big.Int).Mul(big.NewInt(int64(base.Points)), denominator)) >= 0) {
+	if denominator.Sign() == 0 || decision.Allowed != (new(big.Int).Mul(numerator, big.NewInt(100)).Cmp(new(big.Int).Mul(big.NewInt(int64(base.Points)), denominator)) >= 0) {
 		return out, ErrTurnoverEvidence
 	}
 	out = QualificationView{BrandID: brand, MemberID: member, AccountID: wallet.AccountID, BasePoints: base.Points, ValidPoints: q.Points, ValidOrderCount: q.Count, CreditNumerator: q.Numerator, CreditDenominator: q.Denominator, MeetsTurnover: decision.Allowed, CycleFromAt: cycle, CycleFromVersion: q.From, CutoffAt: cutoff, CutoffVersion: q.Cutoff}

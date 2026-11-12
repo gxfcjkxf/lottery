@@ -18,6 +18,8 @@ const ui = usePlatformI18n().t
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { createPlatformNotificationsApi, type Delivery } from './notifications-api'
 import { formatPlatformDateTime, type PlatformDisplaySettings } from './platform-format'
+const pageSize = ref(50)
+
 
 const props = defineProps<{ view: 'deliveries' | 'templates'; brandId: string; accountId: string; canManage: boolean; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
@@ -53,9 +55,9 @@ async function loadDeliveries(offset = 0) {
   if (!brandId) return
   loading.value = true
   try {
-    const rows = await api.deliveries(brandId, 51, offset)
+    const rows = await api.deliveries(brandId, pageSize.value, offset)
     if (request !== generation || brandId !== props.brandId) return
-    [deliveries.value, deliveryTotal.value] = [rows.items.slice(0, 50), readPaginationTotal(rows)]; deliveryMore.value = rows.items.length > 50; deliveryOffset.value = offset
+    [deliveries.value, deliveryTotal.value] = [rows.items, readPaginationTotal(rows)]; deliveryMore.value = BigInt(offset + rows.items.length) < BigInt(deliveryTotal.value); deliveryOffset.value = offset
   } catch (cause) {
     if (request === generation) { error.value = messageOf(cause); emit('failure', cause) }
   } finally { if (request === generation) loading.value = false }
@@ -75,13 +77,13 @@ useOperationToast(error, value => displayPublicError(value), 'error');
   <div data-testid="platform-notifications">
     <template v-if="view === 'deliveries'">
       <ManagementList class="reward-detail" data-testid="platform-delivery-list">
-      <template #actions><button v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading || !brandId" @click="withGlobalLoading(loadDeliveries, deliveryOffset)">{{ copy.refresh }}</button></template>
+      <template v-if="error" #actions><button v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading || !brandId" @click="withGlobalLoading(loadDeliveries, deliveryOffset)">{{ copy.refresh }}</button></template>
         <div class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ copy.event }}</th><th><BusinessDetails :value="copy.status" :locale="props.locale" /></th><th>{{ copy.attempts }}</th><th>{{ copy.lastError }}</th><th>{{ copy.nextAttempt }}</th><th>{{ copy.sent }}</th></tr></thead><tbody>
           <tr v-for="delivery in deliveries" :key="delivery.event_id"><td :data-label="String(copy.event)">{{ delivery.event_id }}</td><td :data-label="copy.status">{{ statusLabel(delivery.status) }}</td><td :data-label="String(copy.attempts)">{{ delivery.attempt_count }}</td><td :data-label="String(copy.lastError)">{{ delivery.last_error ? displayPublicError(publicErrorMessage({ code: delivery.last_error })) : "—" }}</td><td :data-label="String(copy.nextAttempt)">{{ formatPlatformDateTime(delivery.next_attempt_at, props.displaySettings, props.locale) }}</td><td :data-label="String(copy.sent)">{{ formatPlatformDateTime(delivery.sent_at, props.displaySettings, props.locale) }}</td></tr>
           <tr v-if="!loading && !error && !deliveries.length"><td colspan="6" class="empty-state">{{ copy.emptyDeliveries }}</td></tr>
         </tbody></table></div>
 
-      <template #pagination><TablePagination :show-empty="!loading && !error" class="wallet-pagination" data-testid="platform-delivery-pages" :total="deliveryTotal" :page="Math.floor(deliveryOffset / 50 + 1)" :count="deliveries.length" :locale="locale" :page-size="50" :previous-disabled="loading || deliveryOffset === 0 || !brandId" :next-disabled="loading || !deliveryMore" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => loadDeliveries((target - 1) * 50)" /></template></ManagementList>
+      <template #pagination><TablePagination class="wallet-pagination" data-testid="platform-delivery-pages" :total="deliveryTotal" :page="Math.floor(deliveryOffset / pageSize + 1)" :count="deliveries.length" :locale="locale" :page-size="pageSize" :previous-disabled="loading || deliveryOffset === 0 || !brandId" :next-disabled="loading || !deliveryMore" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => loadDeliveries((target - 1) * pageSize)" :change-page-size="async (size: number) => { pageSize = size; await loadDeliveries(0) }" :busy="loading" /></template></ManagementList>
     </template>
 
     <NotificationTemplatesPanel v-else :key="accountId" :account-id="accountId" :can-manage="canManage" :locale="locale" :display-settings="displaySettings" @failure="emit('failure', $event)" />

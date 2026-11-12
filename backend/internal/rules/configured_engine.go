@@ -429,6 +429,16 @@ func (e *ConfiguredEngine) maximumLine(p ConfiguredPlay, line ConfiguredQuoteLin
 }
 
 func (e *ConfiguredEngine) Prepare(ctx context.Context, requests []ConfiguredRequest) (ConfiguredQuote, error) {
+	return e.prepare(ctx, requests, false)
+}
+
+// PrepareItem validates one expanded betting item. Selection minimums constrain
+// the user's selection, while a purchased combination contains exactly PerLine options.
+func (e *ConfiguredEngine) PrepareItem(ctx context.Context, request ConfiguredRequest) (ConfiguredQuote, error) {
+	return e.prepare(ctx, []ConfiguredRequest{request}, true)
+}
+
+func (e *ConfiguredEngine) prepare(ctx context.Context, requests []ConfiguredRequest, item bool) (ConfiguredQuote, error) {
 	q := ConfiguredQuote{DefinitionHash: e.definitionHash, SnapshotHash: e.hash, Lines: []ConfiguredQuoteLine{}}
 	budget := &configuredBudget{ctx: ctx, remaining: maxTraceNodes}
 	if err := budget.use(0); err != nil {
@@ -449,7 +459,14 @@ func (e *ConfiguredEngine) Prepare(ctx context.Context, requests []ConfiguredReq
 		if _, ok := e.snapshot.Prices.Plates[r.Plate]; !ok {
 			return q, ErrInvalid
 		}
-		if len(r.Options) < p.Selection.Min || len(r.Options) > p.Selection.Max || r.Multiplier < 1 || r.Multiplier > p.MaxMultiplier {
+		minimum := p.Selection.Min
+		if item && p.Selection.Mode != "as_selected" {
+			minimum = p.Selection.PerLine
+			if len(r.Options) != minimum {
+				return q, ErrInvalid
+			}
+		}
+		if len(r.Options) < minimum || len(r.Options) > p.Selection.Max || r.Multiplier < 1 || r.Multiplier > p.MaxMultiplier {
 			return q, ErrInvalid
 		}
 		stake := r.Points
@@ -598,7 +615,7 @@ func (e *ConfiguredEngine) settleLine(line ConfiguredQuoteLine, draw Draw, budge
 			return out, ErrInvalid
 		}
 		out.Outcome = "won"
-		out.Raw = value.RatString()
+		out.Raw = rawPointsText(value)
 		out.Prize, err = exactPoints(value, nil)
 		return out, err
 	}
@@ -612,7 +629,7 @@ func (e *ConfiguredEngine) settleLine(line ConfiguredQuoteLine, draw Draw, budge
 			out.Outcome = "push"
 			out.Effective = 0
 			out.Refund = line.Stake
-			out.Raw = big.NewInt(int64(line.Stake)).String()
+			out.Raw = line.Stake.String()
 			return out, nil
 		}
 	}
@@ -645,7 +662,7 @@ func (e *ConfiguredEngine) settleLine(line ConfiguredQuoteLine, draw Draw, budge
 			}
 		}
 		v := configuredCap(raw, t.Cap)
-		out.Tiers = append(out.Tiers, ConfiguredTierResult{ID: t.ID, Matched: trace.Matched, Price: line.Prices[t.ID], Raw: raw.RatString(), Capped: v.RatString(), Trace: trace})
+		out.Tiers = append(out.Tiers, ConfiguredTierResult{ID: t.ID, Matched: trace.Matched, Price: line.Prices[t.ID], Raw: rawPointsText(raw), Capped: rawPointsText(v), Trace: trace})
 		if p.RoundingScope == "tier" {
 			v.SetInt(roundedInteger(v))
 		}
@@ -660,7 +677,7 @@ func (e *ConfiguredEngine) settleLine(line ConfiguredQuoteLine, draw Draw, budge
 			total.Add(total, amounts[i])
 		}
 	}
-	out.Raw = total.RatString()
+	out.Raw = rawPointsText(total)
 	out.Prize, err = exactPoints(total, p.Cap)
 	return out, err
 }
@@ -685,7 +702,7 @@ func (e *ConfiguredEngine) SettleWithContext(ctx context.Context, q ConfiguredQu
 	}
 	// Re-derive the quote using the immutable purchase snapshot. Caller-supplied
 	// prices, stakes, legs, counts and normalized lines are never trusted.
-	expected, err := e.Prepare(ctx, q.Requests)
+	expected, err := e.prepare(ctx, q.Requests, len(q.Requests) == 1 && len(q.Lines) == 1)
 	if err != nil {
 		return out, err
 	}
@@ -723,6 +740,9 @@ func (e *ConfiguredEngine) SettleWithContext(ctx context.Context, q ConfiguredQu
 				orderTotals[key] = new(big.Rat)
 			}
 			raw, ok := new(big.Rat).SetString(v.Raw)
+			if ok {
+				raw.Mul(raw, big.NewRat(100, 1))
+			}
 			if !ok {
 				return out, ErrInvalid
 			}
@@ -753,7 +773,7 @@ func (e *ConfiguredEngine) SettleWithContext(ctx context.Context, q ConfiguredQu
 			return out, points.ErrOverflow
 		}
 		out.PrizePoints += prize
-		summary.Raw, summary.Capped, summary.Prize = v.RatString(), configuredCap(v, cap).RatString(), prize
+		summary.Raw, summary.Capped, summary.Prize = rawPointsText(v), rawPointsText(configuredCap(v, cap)), prize
 		out.Rounding = append(out.Rounding, summary)
 	}
 	if e.snapshot.Catalog.PeriodPrizeCap != nil {

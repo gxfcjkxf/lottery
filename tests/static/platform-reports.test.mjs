@@ -26,15 +26,11 @@ test('report review accounts are created explicitly and retain ordinary authenti
   assert.doesNotMatch(spec + fixture, /auth_rate_limits|X-Forwarded-For|DELETE FROM/);
 });
 
-test('platform CSV download uses a frozen confirmed query and the shared response reader', () => {
-  const client = read('platform-web/src/report-export-api.ts');
+test('platform reports keep scoped queries and omit export confirmation and download flows in phase one', () => {
   const panel = read('platform-web/src/ReportsPanel.vue');
-  assert.match(client, /normalizeReportQuery\(kind/);
-  assert.match(client, /readReportDownload/);
-  assert.match(panel, /Object\.freeze\(\{ brandId: props\.brandId/);
-  assert.ok(panel.indexOf('await exportApi.export') < panel.indexOf('URL.createObjectURL'));
-  assert.match(panel, /request !== generation \|\| props\.brandId !== frozen\.brandId/);
-  assert.match(panel, /limit: _limit, offset: _offset, \.\.\.query/);
+  assert.match(panel, /props\.brandId/);
+  assert.match(panel, /generation/);
+  assert.doesNotMatch(panel, /exportApi|URL\.createObjectURL|confirmExport|reviewExport|\.download\s*=/);
 });
 
 test('CSV review uses explicit isolated export accounts without changing old viewer grants', () => {

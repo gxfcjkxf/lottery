@@ -86,7 +86,7 @@ func TestMemberRechargeHTTPProjectionIsolationAuditAndReadOnly(t *testing.T) {
 		MemberID string `json:"member_id"`
 	}
 	managedData(t, created, &other)
-	login := f.call("POST", "/api/v1/auth/login", "member-recharge-other-login", "", managedBrand, map[string]string{"identifier": "recharge_other", "password": "recharge-other-password-2026", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"})
+	login := f.call("POST", "/api/v1/auth/login", "member-recharge-other-login", "", managedBrand, map[string]string{"identifier": "recharge_other", "password": "recharge-other-password-2026", })
 	mustStatus(t, login, 200)
 	var otherAuth identity.Authentication
 	managedData(t, login, &otherAuth)

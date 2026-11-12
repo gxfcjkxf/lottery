@@ -15,9 +15,9 @@ export interface PlatformGameDetail { total_count: string;
   game: PlatformGame
   periods: PlatformPeriod[]
 }
-export interface PlatformDrawOverview { total_count: string;
+export interface PlatformDrawOverview { total_count: string; mark_six: boolean;
  years: string[]; year: string; has_more: boolean; pending_has_more: boolean
- items: Array<{ period_no: string; draw_date: string | null; result: NonNullable<PlatformPeriod['result']>; source: 'hkjc' | '6hch_123565_agreement' | 'published' | 'manual' }>
+ items: Array<{ period_no: string; draw_date: string | null; result: NonNullable<PlatformPeriod['result']>; source: 'hkjc' | '6hch_123565_agreement' | 'published' | 'manual'; attributes: Record<string, {wave: string; zodiac: string; element: string}> }>
  pending: Array<PlatformPeriod & { state: 'scheduled' | 'open' | 'closed' | 'waiting' }>
 }
 export interface OfficialDrawCalendar {
@@ -46,11 +46,11 @@ export function createPlatformLotteryClient(surface: 'platform' | 'admin' | 'use
   return {
     officialCalendar: () => request<OfficialDrawCalendar>('/official-calendar'),
     syncOfficialCalendar: (key: string) => request<OfficialCalendarSyncResult>('/official-calendar/sync', {}, key),
-    drawOverview: (id: string, year = '', offset = 0) => request<PlatformDrawOverview>(`/${encodeURIComponent(id)}/draw-overview?year=${encodeURIComponent(year)}&limit=50&offset=${offset}`),
+    drawOverview: (id: string, year = '', offset = 0, limit = 50) => request<PlatformDrawOverview>(`/${encodeURIComponent(id)}/draw-overview?year=${encodeURIComponent(year)}&limit=${limit}&offset=${offset}`),
     drawSources:(id:string)=>request<import('./automation').DrawSourceList>(`/${encodeURIComponent(id)}/draw-sources`),
     automation:(id:string)=>request<import('./automation').AutomationConfig>(`/${encodeURIComponent(id)}/automation`),
-    list: (offset = 0) => request<{ games: PlatformGame[]; total_count: string; limit: number; offset: number }>(`?limit=50&offset=${offset}`),
-    detail: (id: string, offset = 0) => request<PlatformGameDetail>(`/${encodeURIComponent(id)}?limit=50&offset=${offset}`),
+    list: (offset = 0, limit = 50) => request<{ games: PlatformGame[]; total_count: string; limit: number; offset: number }>(`?limit=${limit}&offset=${offset}`),
+    detail: (id: string, offset = 0, limit = 50) => request<PlatformGameDetail>(`/${encodeURIComponent(id)}?limit=${limit}&offset=${offset}`),
     write: (path: string, body: unknown, key: string) => request<unknown>(path, body, key),
   }
 }
@@ -61,9 +61,9 @@ export const platformLotteryCatalog = {
   backToGames: 'Back to game list',
   editOpening: 'Set opening date and time', openingHelp: 'Applies to this period, including automatic periods. Periods with bets, closed periods and published results cannot be changed.', openingInvalid: 'Enter an opening date and time before closing.',
   'error.PLATFORM_PERIOD_IN_USE': 'This period has bets or has closed. Its opening date and time cannot be changed.',
- salesConfiguration:'Betting configuration',editName: 'Edit', ruleUnpublished: 'Rules not published', rulePublished: 'Rules published', salesReady: 'Betting open', salesUnconfigured: 'Betting not configured', salesDisabled: 'Betting closed', salesOutdated: 'Betting rules need updating', brandNotConnected: 'Brand not connected',
+ salesOdds:'Plates & odds',salesConfiguration:'Betting configuration',editName: 'Edit', ruleUnpublished: 'Rules not published', rulePublished: 'Rules published', salesReady: 'Betting open', salesUnconfigured: 'Betting not configured', salesDisabled: 'Betting closed', salesOutdated: 'Betting rules need updating', brandNotConnected: 'Brand not connected',
 
- timeSettings:'Time settings', drawResults:'Draw results', drawConfiguration:'Draw configuration', drawSources:'Data sources', manualResults:'Manual results',
+ timeSettings:'Time settings', drawResults:'Draw history', drawConfiguration:'Draw configuration', drawSources:'Data sources', manualResults:'Manual results',
  gameActionTitle: '{action} “{name}”',
  gameActionPrompt: '{action} “{name}”?',
  filterSearch: 'Search', filterClear: 'Clear', shortEnabled: 'Enabled', shortDisabled: 'Disabled', shortEnable: 'Enable', shortDisable: 'Disable', actions: 'Actions', status: 'Status', active: 'Listed', offline: 'Offline', disabled: 'Disabled for brand', enabled: 'Enabled for brand', allStates: 'All statuses', lifecycleFilter: 'Game status', takeOffline: 'Take offline', relist: 'Relist', deleteGame: 'Delete', disableGame: 'Disable', enableGame: 'Enable', lifecycleConfirm: 'Confirm game change', confirmAction: 'Confirm', cancelAction: 'Cancel', offlineHint: 'Hide this game from player listings and stop new bets and new automatic periods. Existing periods and orders continue to draw and settle; history and wallet entries stay available.', brandDisableHint: 'Hide this game from player listings and stop new bets. Existing orders continue to settle and history and wallet entries are retained.', enableHint: 'Restore catalogue availability. Existing betting and automatic-draw settings still apply.', cannotDelete: 'This game has unpublished periods or unsettled orders.', 'error.PLATFORM_GAME_IN_USE': 'This game has unpublished periods or unsettled orders.',
@@ -93,9 +93,9 @@ export const platformLotteryCatalog = {
   backToGames: '返回彩种列表',
   editOpening: '设置开盘日期时间', openingHelp: '仅修改本期，自动期次同样适用。已产生注单、已封盘或已开奖的期次不可修改。', openingInvalid: '请选择早于封盘的完整开盘日期时间。',
   'error.PLATFORM_PERIOD_IN_USE': '本期已产生注单或已封盘，不能修改开盘日期时间。',
- salesConfiguration:'投注配置',editName: '编辑', ruleUnpublished: '未发布规则', rulePublished: '规则已发布', salesReady: '已开放投注', salesUnconfigured: '未配置投注', salesDisabled: '未开放投注', salesOutdated: '投注规则待更新', brandNotConnected: '本品牌未接入',
+ salesOdds:'盘口赔率',salesConfiguration:'投注配置',editName: '编辑', ruleUnpublished: '未发布规则', rulePublished: '规则已发布', salesReady: '已开放投注', salesUnconfigured: '未配置投注', salesDisabled: '未开放投注', salesOutdated: '投注规则待更新', brandNotConnected: '本品牌未接入',
 
- timeSettings:'时间设置', drawResults:'开奖结果', drawConfiguration:'开奖配置', drawSources:'开奖数据源', manualResults:'手动开奖结果',
+ timeSettings:'时间设置', drawResults:'开奖记录', drawConfiguration:'开奖配置', drawSources:'开奖数据源', manualResults:'手动开奖结果',
  gameActionTitle: '{action}「{name}」',
  gameActionPrompt: '确定要{action}“{name}”吗？',
  filterSearch: '查询', filterClear: '清空', shortEnabled: '启用', shortDisabled: '停用', shortEnable: '启用', shortDisable: '停用', actions: '操作', status: '状态', active: '已上架', offline: '已下架', disabled: '本品牌已停用', enabled: '本品牌已启用', allStates: '全部状态', lifecycleFilter: '彩种状态', takeOffline: '下架', relist: '重新上架', deleteGame: '删除', disableGame: '停用', enableGame: '启用', lifecycleConfirm: '确认彩种操作', confirmAction: '确认', cancelAction: '取消', offlineHint: '从用户列表隐藏，停止新投注及预约新自动期次。已有期次和注单继续开奖结算，历史记录和钱包流水保留。', brandDisableHint: '从用户列表隐藏并停止新投注。已有注单继续结算，历史记录和钱包流水保留。', enableHint: '恢复列表展示，仍按已有投注及自动开奖配置决定是否开放投注。', cannotDelete: '有未开奖期次或未结算订单，暂不能删除。', 'error.PLATFORM_GAME_IN_USE': '有未开奖期次或未结算订单，暂不能删除。',

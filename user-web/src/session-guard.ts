@@ -1,6 +1,6 @@
 import type { NavigationGuard } from 'vue-router';
 
-const publicPaths = new Set(['/login', '/register', '/terms', '/privacy']);
+const publicPaths = new Set(['/login', '/register', '/terms', '/privacy', '/announcements']);
 
 /** Resolve the real cookie session before mounting any business page. */
 export function createUserSessionGuard(check: () => Promise<unknown>): NavigationGuard {

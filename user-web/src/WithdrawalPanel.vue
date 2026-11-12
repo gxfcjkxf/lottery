@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { isPoints, pointsMinor, pointsFromMinor } from '@lottery/shared'
+
 import { auditReasonLabel } from "@lottery/shared";
 import { useOperationToast } from "@lottery/shared";
 import { formValidationText } from '@lottery/shared'
@@ -19,6 +21,8 @@ import { hasPendingWithdrawalIntent, retainWithdrawalIntent, type CreateWithdraw
 import { createWithdrawalOrdersApi, WithdrawalUnknownIntentError } from "./withdrawal-orders-api";
 import { formatIntegerAmount } from "./wallet-api";
 import { useUserI18n } from './i18n';
+const pageSize = ref(20)
+
 
 const props = defineProps<{
   locale: "en" | "zh";
@@ -65,20 +69,20 @@ const labels = computed(() => ({
   receipt: ui('user.withdrawal.receipt'), replay: ui('user.withdrawal.replay'), unknown: ui('user.withdrawal.unknown'), accountChanged: ui('user.withdrawal.accountChanged'),
   states: { reviewing: ui('user.withdrawal.state.reviewing'), processing: ui('user.withdrawal.state.processing'), paid: ui('user.withdrawal.state.paid'), rejected: ui('user.withdrawal.state.rejected'), failed: ui('user.withdrawal.state.failed'), cancelled: ui('user.withdrawal.state.cancelled') },
 }));
-const total = computed(() => /^[0-9]+$/.test(amount.value.trim()) ? BigInt(amount.value.trim()) : -1n);
+const total = computed(() => isPoints(amount.value.trim()) ? pointsMinor(amount.value.trim()) : -1n);
 const availablePoints = computed(() => {
   const current = availability.value;
   if (!current?.can_apply || !qualification.value?.meets_turnover) return 0n;
-  const balance = BigInt(current.available_points);
-  const capped = current.max_points !== null && balance > BigInt(current.max_points) ? BigInt(current.max_points) : balance;
-  return capped / BigInt(current.points_step) * BigInt(current.points_step);
+  const balance = pointsMinor(current.available_points);
+  const capped = current.max_points !== null && balance > pointsMinor(current.max_points) ? pointsMinor(current.max_points) : balance;
+  return capped / pointsMinor(current.points_step) * pointsMinor(current.points_step);
 });
 const amountError = computed(() => {
   const current = availability.value;
   if (!current || !amount.value.trim()) return '';
   if (total.value <= 0n) return ui('user.withdrawal.positiveInteger');
-  if (total.value < BigInt(current.min_points)) return ui('user.withdrawal.amountMinimum', { min: current.min_points });
-  if (total.value % BigInt(current.points_step) !== 0n) return ui('user.withdrawal.stepHint', { step: current.points_step });
+  if (total.value < pointsMinor(current.min_points)) return ui('user.withdrawal.amountMinimum', { min: current.min_points });
+  if (total.value % pointsMinor(current.points_step) !== 0n) return ui('user.withdrawal.stepHint', { step: current.points_step });
   if (total.value > availablePoints.value) return ui('user.withdrawal.exceedsAvailable');
   return '';
 });
@@ -119,7 +123,7 @@ async function load(nextOffset = offset.value) {
   loading.value = true;
   try {
     const [snapshot, page] = await Promise.all([
-      api.value.availability(controller.signal), api.value.list(changedScope ? 0 : nextOffset, controller.signal),
+      api.value.availability(controller.signal), api.value.list(changedScope ? 0 : nextOffset, controller.signal, pageSize.value),
     ]);
     if (disposed || requestGeneration !== generation || requestScope !== scopeKey.value) return;
     if (snapshot.member_id !== props.member.id || snapshot.brand_id !== props.member.brand_id || page.brand_id !== props.member.brand_id || page.items.some((item) => item.member_id !== props.member!.id || item.brand_id !== props.member!.brand_id)) throw new Error("The server returned withdrawal data for a different account.");
@@ -174,11 +178,11 @@ function buildBody(): CreateWithdrawalBody | null {
   for (const source of sources) {
     const balance = current.source_balances.find(item => item.source === source);
     if (!balance || remaining === 0n) continue;
-    const points = BigInt(balance.points) < remaining ? BigInt(balance.points) : remaining;
-    source_allocation.push({ source, state: 'available', points: points.toString() });
+    const points = pointsMinor(balance.points) < remaining ? pointsMinor(balance.points) : remaining;
+    source_allocation.push({ source, state: 'available', points: pointsFromMinor(points) });
     remaining -= points;
   }
-  return remaining === 0n ? { points: total.value.toString(), source_allocation } : null;
+  return remaining === 0n ? { points: pointsFromMinor(total.value), source_allocation } : null;
 }
 
 async function submit(replay = false) {
@@ -259,7 +263,7 @@ useOperationToast(receipt, order => `${labels.value.receipt} · ${stateName(orde
 
 <template>
   <section class="page-section narrow-page withdrawal-page">
-    <Teleport defer to="#user-page-refresh"><button type="button" v-refresh-button="loading ? labels.loading : labels.refresh" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load)">{{ loading ? labels.loading : labels.refresh }}</button></Teleport>
+    <Teleport v-if="error || orders.some(order => order.state === 'reviewing' || order.state === 'processing')" defer to="#user-page-refresh"><button type="button" v-refresh-button="loading ? labels.loading : labels.refresh" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load)">{{ loading ? labels.loading : labels.refresh }}</button></Teleport>
     <p v-global-loading v-if="loading && !ordersPage" class="detail-panel" role="status">{{ labels.loading }}</p>
     <div v-else-if="!member" class="detail-panel" role="status">{{ labels.signIn }}</div>
     <template v-else>
@@ -269,7 +273,7 @@ useOperationToast(receipt, order => `${labels.value.receipt} · ${stateName(orde
       <div class="withdrawal-application-body">
         <div v-if="uncertain && uncertain.scope === scopeKey" class="demo-callout" role="alert"><p>{{ labels.unknown }}</p><button type="button" v-write-guard="submitting" class="button button-secondary" :disabled="submitting" @click="withGlobalLoading(submit, true)">{{ labels.replay }}</button></div>
         <div class="withdrawal-summary">
-          <div><span class="tiny-label">{{ ui('user.withdrawal.availablePoints') }}</span><strong>{{ formatIntegerAmount(availablePoints.toString()) }} {{ labels.pointsUnit }}</strong></div>
+          <div><span class="tiny-label">{{ ui('user.withdrawal.availablePoints') }}</span><strong>{{ formatIntegerAmount(pointsFromMinor(availablePoints)) }} {{ labels.pointsUnit }}</strong></div>
           <div><span class="tiny-label">{{ ui('user.withdrawal.minimumPoints') }}</span><strong>{{ formatIntegerAmount(availability.min_points) }} {{ labels.pointsUnit }}</strong></div>
         </div>
         <p v-if="availability.reason_code === 'WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED'" class="muted" role="status">{{ labels.noEligibility }}</p>
@@ -279,8 +283,8 @@ useOperationToast(receipt, order => `${labels.value.receipt} · ${stateName(orde
         <p v-else-if="qualificationError" class="muted" role="status">{{ ui('user.withdrawal.qualificationFailed') }}</p>
         <p v-else-if="qualification && !qualification.meets_turnover" class="muted" role="status">{{ ui('user.withdrawal.turnoverRequired') }}</p>
         <form v-write-guard="submitting" novalidate v-inline-validation class="withdrawal-form ui-form" @submit.prevent="withGlobalLoading(submit)">
-          <label class="field-label" for="withdrawal-amount">{{ labels.amount }}<input id="withdrawal-amount" :aria-describedby="BigInt(availability.points_step) > 1n ? 'withdrawal-step-hint' : undefined" v-model="amount" type="text" inputmode="numeric" pattern="[0-9]*" :data-validation-format="formValidationText('positiveInteger')" autocomplete="off" :placeholder="ui('user.withdrawal.pointsPlaceholder')" :disabled="!availability.can_apply || Boolean(uncertain) || submitting" /></label>
-          <p v-if="BigInt(availability.points_step) > 1n" id="withdrawal-step-hint" class="muted">{{ ui('user.withdrawal.stepHint', { step: availability.points_step }) }}</p>
+          <label class="field-label ui-field-row" for="withdrawal-amount"><span>{{ labels.amount }}</span><input id="withdrawal-amount" :aria-describedby="pointsMinor(availability.points_step) > 100n ? 'withdrawal-step-hint' : undefined" v-model="amount" type="text" inputmode="decimal" pattern="(0|[1-9][0-9]*)([.][0-9]{1,2})?" :data-validation-format="formValidationText('positivePoints')" autocomplete="off" :placeholder="ui('user.withdrawal.pointsPlaceholder')" :disabled="!availability.can_apply || Boolean(uncertain) || submitting" /></label>
+          <p v-if="pointsMinor(availability.points_step) > 100n" id="withdrawal-step-hint" class="muted">{{ ui('user.withdrawal.stepHint', { step: availability.points_step }) }}</p>
           <p v-if="amountError" class="form-error" role="alert">{{ amountError }}</p>
           <div class="ui-form-actions"><button class="button button-primary" type="submit" :disabled="!validSubmission || submitting">{{ submitting ? labels.loading : labels.submit }}</button></div>
         </form>
@@ -298,7 +302,7 @@ useOperationToast(receipt, order => `${labels.value.receipt} · ${stateName(orde
           </div>
 </DetailModal>
         </article>
-        <TablePagination v-if="ordersPage" show-empty :total="ordersPage.total_count" :page="Math.floor(offset / 20 + 1)" :count="orders.length" :locale="publicErrorI18n.locale.value" :page-size="20" :previous-disabled="loading || offset === 0" :next-disabled="loading || !ordersPage.has_more" :go-to="(target: number) => load((target - 1) * 20)" />
+        <TablePagination v-if="ordersPage" :total="ordersPage.total_count" :page="Math.floor(offset / pageSize + 1)" :count="orders.length" :locale="publicErrorI18n.locale.value" :page-size="pageSize" :previous-disabled="loading || offset === 0" :next-disabled="loading || !ordersPage.has_more" :go-to="(target: number) => load((target - 1) * pageSize)" :change-page-size="async (size: number) => { pageSize = size; await load(0) }" :busy="loading" />
       </div>
     </template>
   </section>
@@ -327,4 +331,10 @@ useOperationToast(receipt, order => `${labels.value.receipt} · ${stateName(orde
 .withdrawal-form input{width:100%;min-width:0;box-sizing:border-box}
 .withdrawal-form p{margin:0}
 .withdrawal-form button{justify-self:end}
+@media (max-width:900px), (pointer:coarse) {
+  .withdrawal-summary { grid-template-columns: minmax(0,1fr); gap: 4px; padding-bottom: 8px; }
+  .withdrawal-summary > div { display:flex; align-items:baseline; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+  .withdrawal-summary strong { font-size:var(--body-font-size); }
+  .withdrawal-form { margin-top:8px; }
+}
 </style>

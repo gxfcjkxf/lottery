@@ -19,7 +19,7 @@ const (
 )
 
 func TestGrantInputJSONExactAmountAndValidation(t *testing.T) {
-	const maxInt64 = "9223372036854775807"
+	const maxInt64 = "92233720368547758.07"
 	raw := `{"member_id":"` + testMember + `","points":"` + maxInt64 + `","reason":"manual reward"}`
 	var in GrantInput
 	if err := json.Unmarshal([]byte(raw), &in); err != nil {
@@ -39,7 +39,7 @@ func TestGrantInputJSONExactAmountAndValidation(t *testing.T) {
 		t.Fatalf("valid grant rejected: %v", err)
 	}
 
-	for _, amount := range []string{"0", "-1", "01", "+1", "1.0", "1e2", "9223372036854775808"} {
+	for _, amount := range []string{"0", "-1", "01", "+1", "1.001", "1e2", "9223372036854775808"} {
 		t.Run("amount_"+amount, func(t *testing.T) {
 			body := `{"member_id":"` + testMember + `","points":"` + amount + `","reason":"ok"}`
 			if json.Unmarshal([]byte(body), &GrantInput{}) == nil {
@@ -120,7 +120,7 @@ func TestInputJSONRequiresClosedCompleteNonNullObjects(t *testing.T) {
 }
 
 func TestInputValidationCanonicalIDsAndReasons(t *testing.T) {
-	base := GrantInput{MemberID: testMember, Points: 1, Reason: "ok"}
+	base := GrantInput{MemberID: testMember, Points: 100, Reason: "ok"}
 	if !canonicalUUID(testMember) || !validID(testMember) {
 		t.Fatal("lowercase canonical UUID rejected")
 	}
@@ -155,7 +155,7 @@ func TestInputValidationCanonicalIDsAndReasons(t *testing.T) {
 
 func TestDTOJSONUsesExplicitSnakeCaseKeysAndNullPointers(t *testing.T) {
 	at := time.Date(2026, 10, 8, 1, 2, 3, 0, time.UTC)
-	order := Order{ID: "id", BrandID: "brand", MemberID: "member", Points: 9007199254740993,
+	order := Order{ID: "id", BrandID: "brand", MemberID: "member", Points: 900719925474099300,
 		State: "granted", Version: MaxVersion, CreatedAt: at, UpdatedAt: at}
 	raw, err := json.Marshal(order)
 	if err != nil {

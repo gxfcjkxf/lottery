@@ -23,7 +23,7 @@ func previewFixture(t *testing.T) configuredPreviewInput {
 	if err := json.Compact(&compact, raw); err != nil {
 		t.Fatal(err)
 	}
-	return configuredPreviewInput{Snapshot: json.RawMessage(compact.Bytes()), Requests: []rules.ConfiguredRequest{{PlayID: "operator_new_play", Options: []string{"lucky"}, Plate: "A", Points: 3, Multiplier: 1}}}
+	return configuredPreviewInput{Snapshot: json.RawMessage(compact.Bytes()), Requests: []rules.ConfiguredRequest{{PlayID: "operator_new_play", Options: []string{"lucky"}, Plate: "A", Points: 300, Multiplier: 1}}}
 }
 
 func TestConfiguredPreviewNewPlay(t *testing.T) {
@@ -36,14 +36,14 @@ func TestConfiguredPreviewNewPlay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if q := quoted.(map[string]any)["quote"].(rules.ConfiguredQuote); len(q.Lines) != 1 || q.BetPoints != 3 || q.Lines[0].Prices["hit"] != "2.5" {
+	if q := quoted.(map[string]any)["quote"].(rules.ConfiguredQuote); len(q.Lines) != 1 || q.BetPoints != 300 || q.Lines[0].Prices["hit"] != "2.5" {
 		t.Fatal(q)
 	}
 	for _, tc := range []struct {
 		n             int
 		outcome       string
 		prize, refund int64
-	}{{7, "won", 8, 0}, {8, "lost", 0, 0}, {49, "push", 0, 3}} {
+	}{{7, "won", 750, 0}, {8, "lost", 0, 0}, {49, "push", 0, 300}} {
 		in.Draw = &rules.Draw{Regular: []int{1, 3, tc.n, 4, 5, 6}, Special: []int{2}, Digits: []int{}}
 		out, err := configuredPreview(context.Background(), in)
 		if err != nil {
@@ -60,7 +60,7 @@ func TestConfiguredPreviewNewPlay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result := out.(map[string]any)["result"].(rules.ConfiguredResult); result.PrizePoints != 11 {
+	if result := out.(map[string]any)["result"].(rules.ConfiguredResult); result.PrizePoints != 1050 {
 		t.Fatal(result)
 	}
 }
@@ -84,7 +84,7 @@ func TestConfiguredPreviewUsesConfiguredSettlementDefaults(t *testing.T) {
 	}
 	in := configuredPreviewInput{
 		Snapshot: engine.Snapshot(),
-		Requests: []rules.ConfiguredRequest{{PlayID: "big", Options: []string{"big"}, Plate: "A", Points: 10, Multiplier: 1}},
+		Requests: []rules.ConfiguredRequest{{PlayID: "big", Options: []string{"big"}, Plate: "A", Points: 1000, Multiplier: 1}},
 		Draw:     &rules.Draw{Digits: []int{9, 8, 6}},
 	}
 	out, err := configuredPreview(context.Background(), in)
@@ -92,7 +92,7 @@ func TestConfiguredPreviewUsesConfiguredSettlementDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := out.(map[string]any)["result"].(rules.ConfiguredResult)
-	if result.BetPoints != 10 || result.PrizePoints != 20 || result.RefundPoints != 0 {
+	if result.BetPoints != 1000 || result.PrizePoints != 2000 || result.RefundPoints != 0 {
 		t.Fatalf("unexpected Canada preview result: %+v", result)
 	}
 }

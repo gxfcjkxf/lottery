@@ -1,4 +1,6 @@
+import { pointSchemas } from './openapi-points.mjs';
 export const commonSchemas = {
+ ...pointSchemas,
   AssociationDisplayName: {type:'object',additionalProperties:false,required:['name'],properties:{name:{type:'string'},built_in:{type:'boolean'},from:{type:'string',format:'date-time'},to:{type:'string',format:'date-time'}}},
   UUID: { type: "string", format: "uuid" },
   DateTime: { type: "string", format: "date-time" },
@@ -49,6 +51,7 @@ const doc={openapi:"3.1.1",info:{title:"Lottery Platform Implemented API",versio
       responses[code]={description:errorDescriptions[code],headers:responseHeaders,content:{"application/json":{schema:ref("ErrorResponse")}}};
     }
     const op={operationId:opId,summary:source.summary,tags:[source.tag],description:(source.auth==="admin"&&source.path.startsWith("/api/v1/platform/")?"Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. ":"")+(source.description??""),security,parameters:params,responses,"x-implemented":true,"x-permissions":source.permissions??[],"x-idempotent-operation":Boolean(source.idempotency)};
+    if(source.deprecated!==undefined)op.deprecated=source.deprecated;
     if(source.requestBody)op.requestBody={required:true,description:source.requestBodyDescription??"Exactly one JSON object, at most16KiB; unknown fields rejected where documented. JSON Schema cannot represent duplicate-member rejection; see handler contract.",content:{"application/json":{schema:source.requestBody}}};
     if(source.requestContent) {
       if(source.requestBody) throw new Error(`Conflicting request content ${opId}`);

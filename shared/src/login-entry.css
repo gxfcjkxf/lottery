@@ -1,9 +1,9 @@
 /* Single authentication layout for all four applications. */
 .login-entry { --site-icon-size: 20px; --icon-control-size: var(--control-height); min-height: 100dvh; color: var(--ink); background: var(--canvas); }
-.login-entry__topbar { position: sticky; top: 0; z-index: 20; display: flex; min-height: 76px; align-items: center; justify-content: space-between; gap: 16px; padding: 14px clamp(20px, 5vw, 72px); border-bottom: 1px solid var(--line); background: var(--surface); }
+.login-entry__topbar { position: sticky; top: 0; z-index: 20; display: flex; min-height: 76px; align-items: center; justify-content: space-between; gap: 16px; padding: 14px clamp(20px, 5vw, 72px); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
 .login-entry__brand { display: flex; align-items: center; gap: 11px; color: inherit; text-decoration: none; }
-.login-entry__mark { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 13px; background: linear-gradient(145deg,var(--primary),var(--primary-dark)); color: var(--surface); font-size: 21px; font-weight: 800; box-shadow: 0 5px 15px color-mix(in srgb, var(--primary) 20%, transparent); }
-.login-entry__brand b,.login-entry__brand small { display: block; }
+.login-entry__mark { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 13px; background: linear-gradient(145deg, var(--primary), var(--primary-dark)); color: var(--on-primary); font-size: 21px; font-weight: 800; box-shadow: 0 5px 15px color-mix(in srgb, var(--primary) 22%, transparent); }
+.login-entry__brand b, .login-entry__brand small { display: block; }
 .login-entry__brand b { font-size: 16px; letter-spacing: -.5px; }
 .login-entry__brand small { margin-top: 3px; color: var(--muted); font-size: var(--body-font-size); letter-spacing: 1.2px; }
 .login-entry__main { display: grid; min-height: calc(100dvh - 77px); align-content: center; justify-items: center; gap: 24px; padding: 42px 20px 64px; }
@@ -21,8 +21,77 @@
 .login-entry__brand { min-width: 0; }
 .login-entry__brand > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .login-entry__card form { width: 100%; }
+
+/* Pure-code SVG decorative backdrop: zero external raster images, zero blue-purple. */
+#app .login-entry {
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--canvas) 92%, transparent), color-mix(in srgb, var(--canvas) 35%, transparent)), var(--lottery-art);
+  background-position: center, center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+#app .login-entry__card::before {
+  content: '';
+  display: block;
+  height: 88px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--lottery-art) center / cover no-repeat;
+}
+@media (min-width: 1100px) {
+  #app .login-entry__main { justify-items: start; padding-inline-start: clamp(64px, 12vw, 200px); }
+  #app .login-entry__card::before { display: none; }
+}
+@media (max-width: 480px) {
+  #app .login-entry__card::before { height: 72px; margin-bottom: 12px; }
+}
 .login-entry__field { margin: 0; min-width: 0; }
 .login-entry__card :is(.auth-error, .message.error, .form-error) { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--danger); overflow-wrap: anywhere; }
 
 .login-entry__card .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); font: inherit; font-weight: 600; line-height: 1.5; text-decoration: none; cursor: pointer; }
 .login-entry .login-entry__field .field:focus { border-color: var(--primary); box-shadow: none; outline: 2px solid var(--primary); outline-offset: 2px; }
+
+.login-entry__input { display: block; position: relative; min-width: 0; }
+.login-entry__password-toggle { position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: var(--control-height); height: var(--control-height); padding: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.login-entry__password-toggle:hover { color: var(--primary); }
+.login-entry__password-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: -4px; border-radius: var(--radius-sm); }
+
+.login-entry__input--password .field { padding-inline-end: calc(var(--control-height) + 8px); }
+
+/* Player entry inherits the same palette as the user workspace. */
+#app .login-entry.player-login {
+  color: var(--ink);
+  background: var(--canvas);
+}
+#app .login-entry.player-login .login-entry__card {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: var(--shadow-lg);
+}
+#app .login-entry.player-login .login-entry__card::before {
+  background: var(--primary-light);
+}
+#app .login-entry.player-login .login-entry__field .field {
+  background-color: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+#app .login-entry.player-login .login-entry__topbar { position: absolute; inset: 0 0 auto; min-height: 60px; justify-content: flex-end; padding: 8px 16px; border: 0; background: transparent; backdrop-filter: none; }
+#app .login-entry.player-login .login-entry__topbar > .login-entry__brand { display: none; }
+#app .login-entry.player-login .login-entry__main { min-height: 100dvh; padding: 76px 16px 32px; gap: 16px; }
+#app .login-entry.player-login .login-entry__card { width: min(100%, 440px); padding: 28px; }
+@media (max-width: 900px), (pointer: coarse) {
+  #app .login-entry__topbar { min-height: 52px; padding-block: 4px; gap: 8px; }
+  #app .login-entry__main { align-content: start; min-height: calc(100dvh - 53px); padding: 8px 16px max(8px, env(safe-area-inset-bottom)); gap: 8px; }
+  #app .login-entry__card { padding: 12px 16px; }
+  #app .login-entry__card::before { display: none; }
+  #app .login-entry__card h1 { margin-block: 0 8px; }
+  #app .login-entry__card form { margin-top: 8px; row-gap: 8px; }
+  #app .login-entry__field { grid-template-columns: fit-content(35%) minmax(0, 1fr); align-items: center; gap: 4px 8px; }
+  #app .login-entry__field > :is(.login-entry__input, input) { width: 100%; min-width: 0; }
+  #app .login-entry__field > :is(small, .field-error) { grid-column: 2; }
+  #app .login-entry.player-login .login-entry__main { min-height: 100dvh; padding-top: 60px; }
+}
+@media (min-width: 1100px) {
+  #app .login-entry.player-login .login-entry__main { padding-inline-start: clamp(64px, 12vw, 200px); }
+}

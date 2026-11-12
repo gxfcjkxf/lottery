@@ -1,3 +1,5 @@
+import { isPoints, pointsFromMinor } from './points'
+import { pointsMinor } from './points'
 import { readApiEnvelope } from './api-response'
 import type { RuleModel } from './rules'
 
@@ -104,12 +106,15 @@ export function configuredBetPoints(play: ConfiguredPlay, request: ConfiguredReq
   const count = request.options.length
   if (count < play.selection.min) return '0'
   const amount = play.stake_mode === 'per_line' ? request.points : request.multiplier
-  if (!/^[0-9]+$/.test(amount) || BigInt(amount) <= 0n) return null
   let stake: bigint
-  if (play.stake_mode === 'per_line') stake = BigInt(amount)
+  if (play.stake_mode === 'per_line') {
+    if (!isPoints(amount) || pointsMinor(amount) <= 0n) return null
+    stake = pointsMinor(amount)
+  }
   else if (play.stake_mode === 'unit_multiplier') {
+    if (!/^[1-9][0-9]*$/.test(amount)) return null
     if (!play.unit_points) throw new Error('Missing configured unit points')
-    stake = BigInt(play.unit_points) * BigInt(amount)
+    stake = pointsMinor(play.unit_points) * BigInt(amount)
   } else throw new Error('Unsupported configured stake mode')
   let entries: bigint
   switch (play.selection.mode) {
@@ -123,7 +128,7 @@ export function configuredBetPoints(play: ConfiguredPlay, request: ConfiguredReq
     }
     default: throw new Error('Unsupported configured selection mode')
   }
-  return (entries * stake).toString()
+  return pointsFromMinor(entries * stake)
 }
 
 export type ConfiguredWave = 'red' | 'blue' | 'green'

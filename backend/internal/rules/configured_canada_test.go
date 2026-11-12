@@ -27,14 +27,14 @@ func TestConfiguredCanadaTemplatesMatchEveryHistoricalDraw(t *testing.T) {
 			}
 			for _, total := range []int64{0, 10000} {
 				for _, code := range CanadaOptions(profile) {
-					q, err := e.Prepare(context.Background(), []ConfiguredRequest{{PlayID: code, Options: []string{code}, Plate: "A", Points: 10, Multiplier: 1}})
+					q, err := e.Prepare(context.Background(), []ConfiguredRequest{{PlayID: code, Options: []string{code}, Plate: "A", Points: 1000, Multiplier: 1}})
 					if err != nil {
 						t.Fatal(err)
 					}
 					for n := 0; n < 1000; n++ {
 						d := Draw{Digits: []int{n / 100, n / 10 % 10, n % 10}}
-						cap := points.Amount(888888)
-						r, err := e.SettleWithContext(context.Background(), q, d, ConfiguredSettlementContext{Aggregates: map[string]points.Amount{"non_tail": points.Amount(total)}, PrizeRemaining: &cap})
+						cap := points.Amount(88888800)
+						r, err := e.SettleWithContext(context.Background(), q, d, ConfiguredSettlementContext{Aggregates: map[string]points.Amount{"non_tail": points.Amount(total * 100)}, PrizeRemaining: &cap})
 						if err != nil {
 							t.Fatalf("%s/%d: %v", code, n, err)
 						}
@@ -45,13 +45,13 @@ func TestConfiguredCanadaTemplatesMatchEveryHistoricalDraw(t *testing.T) {
 							var win, loss int64
 							outcome, win, loss, err = CanadaNiu(code, d)
 							effective = outcome != "push"
-							refund = 10 * points.Amount(CanadaRisk(profile, code)-loss)
+							refund = 1000 * points.Amount(CanadaRisk(profile, code)-loss)
 							if win > 0 {
-								prize, _, err = CanadaNiuProfit(10, "2.5", win)
+								prize, _, err = CanadaNiuProfit(1000, "2.5", win)
 							}
 						} else {
 							outcome, _, effective, err = CanadaOutcome(profile, code, d, total)
-							amount, e2 := MarkSixPayout(10, "2.5", outcome)
+							amount, e2 := MarkSixPayout(1000, "2.5", outcome)
 							if err == nil {
 								err = e2
 							}
@@ -66,7 +66,7 @@ func TestConfiguredCanadaTemplatesMatchEveryHistoricalDraw(t *testing.T) {
 						}
 						wantEffective := points.Amount(0)
 						if effective {
-							wantEffective = 10
+							wantEffective = 1000
 						}
 						if r.Lines[0].Outcome != outcome || r.PrizePoints != prize || r.RefundPoints != refund || r.EffectivePoints != wantEffective {
 							t.Fatalf("%s/%d/%d: got %+v want %s prize %d refund %d effective %d", code, n, total, r, outcome, prize, refund, wantEffective)

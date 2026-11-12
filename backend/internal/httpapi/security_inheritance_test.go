@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"strconv"
@@ -12,7 +11,7 @@ import (
 func TestSecurityDefaultsInheritanceAndThreeLoginSurfaces(t *testing.T) {
 	f := managedFixture(t)
 	op := securityOperator(t, f)
-	grantPlatformPermission(t, op, "auth_config.view.platform", "auth_config.write.platform", "compliance_policy.view.platform", "compliance_policy.write.platform")
+	grantPlatformPermission(t, op, "auth_config.view.platform", "auth_config.write.platform")
 	ctx := context.Background()
 	const authPath = "/api/v1/platform/auth-settings"
 	var defaults identity.AuthSettingsRecord
@@ -83,53 +82,4 @@ func fIdentitySettings(f managementHTTP, ctx context.Context, brand string) (ide
 		return identity.Settings{}, e
 	}
 	return s.Settings(ctx, brand)
-}
-
-func TestComplianceDefaultsPropagateAuditedVersions(t *testing.T) {
-	f := securityOperator(t, managedFixture(t))
-	grantPlatformPermission(t, f, "compliance_policy.view.platform", "compliance_policy.write.platform")
-	const path = "/api/v1/platform/compliance-policy"
-	const other = "0199a000-0000-7000-8000-000000000002"
-	read := func(brand string) compliance.Policy {
-		t.Helper()
-		r := f.call("GET", path, "", f.token, brand, nil)
-		mustStatus(t, r, 200)
-		var p compliance.Policy
-		managedData(t, r, &p)
-		return p
-	}
-	explicit := read(other)
-	mustStatus(t, f.call("PUT", path, "compliance-override", f.token, other, compliance.Input{Version: explicit.Version, Config: explicit.Config}), 200)
-	before := read(managedBrand)
-	defaults := read("")
-	cfg := compliance.DefaultConfig()
-	cfg.IdentityEnabled = true
-	body := compliance.Input{Version: defaults.Version, Config: cfg}
-	r := f.call("PUT", path, "compliance-defaults-on", f.token, "", body)
-	mustStatus(t, r, 200)
-	mustStatus(t, f.call("PUT", path, "compliance-defaults-on", f.token, "", body), 200)
-	inherited := read(managedBrand)
-	if !inherited.InheritPlatform || !inherited.Config.IdentityEnabled || inherited.Version != before.Version+1 || inherited.AuditLogID == "" {
-		t.Fatal(inherited)
-	}
-	if read(other).Config.IdentityEnabled {
-		t.Fatal("explicit brand overridden")
-	}
-	if _, err := f.pool.Exec(context.Background(), `INSERT INTO brands(id,code,name,status) VALUES('0199a000-0000-7000-8000-000000000099','security_test_brand','Security test','active')`); err != nil {
-		t.Fatal(err)
-	}
-	if p := read("0199a000-0000-7000-8000-000000000099"); !p.InheritPlatform || !p.Config.IdentityEnabled {
-		t.Fatal("new brand did not inherit", p)
-	}
-	explicit = read(other)
-	mustStatus(t, f.call("PUT", path, "compliance-inherit", f.token, other, compliance.Input{Version: explicit.Version, InheritPlatform: true, Config: explicit.Config}), 200)
-	if !read(other).Config.IdentityEnabled {
-		t.Fatal("inherit did not take effect")
-	}
-	defaults = read("")
-	mustStatus(t, f.call("PUT", path, "compliance-defaults-off", f.token, "", compliance.Input{Version: defaults.Version, Config: compliance.DefaultConfig()}), 200)
-	if read(other).Config.IdentityEnabled || read(managedBrand).Config.IdentityEnabled {
-		t.Fatal("inherited brands did not follow latest default")
-	}
-	mustStatus(t, f.call("PUT", path, "compliance-stale-defaults", f.token, "", body), 409)
 }

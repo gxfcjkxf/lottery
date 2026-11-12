@@ -20,9 +20,9 @@ func TestConfiguredPeriodLimitSerializesDifferentMembers(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	sale.MaxPoints = 10
-	sale.MaxPeriodPoints = 10
-	sale.MaxUserPeriodPoints = 10
+	sale.MaxPoints = 1000
+	sale.MaxPeriodPoints = 1000
+	sale.MaxUserPeriodPoints = 1000
 	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
 		var e error
 		sale, e = c.s.WriteConfiguredSales(ctx, tx, c.b, c.f.brand, c.g.ID, sale, points.Metadata{})
@@ -30,8 +30,8 @@ func TestConfiguredPeriodLimitSerializesDifferentMembers(t *testing.T) {
 	})
 	c.input.SalesVersion = sale.Version
 	other.input.SalesVersion = sale.Version
-	fundBettingWallet(t, c.f, 100)
-	fundBettingWallet(t, other.f, 100)
+	fundBettingWallet(t, c.f, 10000)
+	fundBettingWallet(t, other.f, 10000)
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
 	for _, fixture := range []configuredFixture{c, other} {
@@ -59,14 +59,14 @@ func TestConfiguredPeriodLimitSerializesDifferentMembers(t *testing.T) {
 	}
 	a, _ := (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, c.f.member)
 	b, _ := (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, other.f.member)
-	if a.AvailablePoints+b.AvailablePoints != 190 {
+	if a.AvailablePoints+b.AvailablePoints != 19000 {
 		t.Fatal("quota rejection changed funds", a, b)
 	}
 }
 func TestConfiguredOrderNotificationsUseCurrentFinancialEvidence(t *testing.T) {
 	c := newConfiguredFixture(t)
 	ctx := context.Background()
-	fundBettingWallet(t, c.f, 100)
+	fundBettingWallet(t, c.f, 10000)
 	if _, err := configuredPlace(t, c, ids.New(), c.input); err != nil {
 		t.Fatal(err)
 	}

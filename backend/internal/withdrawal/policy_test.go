@@ -11,8 +11,8 @@ import (
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
-	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/platformlottery"
+	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 	"github.com/jackc/pgx/v5"
@@ -33,12 +33,15 @@ func fixture(t *testing.T) (Service, access.Account, string) {
 	var game platformlottery.Game
 	transact(t, Service{DB: db}, func(tx pgx.Tx) error {
 		var e error
-		platformActor:=access.Account{ID:a.ID,Type:access.AccountAdmin,SuperAdmin:true,Roles:[]access.Role{{Permissions:[]access.Permission{{Resource:"platform_game",Action:"write",Scope:access.ScopePlatform}}}}}
-        svc:=platformlottery.Service{DB:db}
-        game,e=svc.Create(ctx,tx,platformActor,platformlottery.GameInput{Code:"withdraw_policy_digits",Name:"Withdrawal policy model",Timezone:"UTC",Model:rules.Model{Type:"DIGITS_0_9",Length:3,AllowRepeat:true,Ordered:true}},metadata(a.ID))
-        if e!=nil{return e}
-        connector:=a;connector.Roles[0].Permissions=append(connector.Roles[0].Permissions,access.Permission{Resource:"platform_game",Action:"connect",Scope:access.ScopeBrand})
-        _,e=svc.Connect(ctx,tx,connector,policyBrand,game.ID,"",metadata(a.ID))
+		platformActor := access.Account{ID: a.ID, Type: access.AccountAdmin, SuperAdmin: true, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "platform_game", Action: "write", Scope: access.ScopePlatform}}}}}
+		svc := platformlottery.Service{DB: db}
+		game, e = svc.Create(ctx, tx, platformActor, platformlottery.GameInput{Code: "withdraw_policy_digits", Name: "Withdrawal policy model", Timezone: "UTC", Model: rules.Model{Type: "DIGITS_0_9", Length: 3, AllowRepeat: true, Ordered: true}}, metadata(a.ID))
+		if e != nil {
+			return e
+		}
+		connector := a
+		connector.Roles[0].Permissions = append(connector.Roles[0].Permissions, access.Permission{Resource: "platform_game", Action: "connect", Scope: access.ScopeBrand})
+		_, e = svc.Connect(ctx, tx, connector, policyBrand, game.ID, "", metadata(a.ID))
 		return e
 	})
 	return Service{DB: db}, a, game.ID
@@ -157,14 +160,14 @@ func TestPoliciesInitializeResolveExactOverridesAndKeepImmutableHistory(t *testi
 	}
 	c := b.Config
 	c.Enabled = true
-	c.MinPoints = 10
-	cap := points.Amount(100)
+	c.MinPoints = 1000
+	cap := points.Amount(10000)
 	c.MaxPoints = &cap
 	c.TurnoverMultiple = "2.5"
 	c.AllowedSources = []string{"recharge", "winning"}
 	transact(t, s, func(tx pgx.Tx) error {
 		var e error
-		b, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{PointsStep: 1, Version: 1, Config: c, Reason: "first brand policy"}, metadata(a.ID))
+		b, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{PointsStep: 100, Version: 1, Config: c, Reason: "first brand policy"}, metadata(a.ID))
 		return e
 	})
 	if b.Version != 2 || b.AuditLogID == "" {
@@ -181,7 +184,7 @@ func TestPoliciesInitializeResolveExactOverridesAndKeepImmutableHistory(t *testi
 	c.TurnoverMultiple = "4.5"
 	transact(t, s, func(tx pgx.Tx) error {
 		var e error
-		b, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{PointsStep: 1, Version: 2, Config: c, Reason: "new default preserves override"}, metadata(a.ID))
+		b, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{PointsStep: 100, Version: 2, Config: c, Reason: "new default preserves override"}, metadata(a.ID))
 		return e
 	})
 	g, e = s.GamePolicy(ctx, policyBrand, game)
@@ -242,7 +245,7 @@ func TestPolicyConcurrentWritersHaveOneWinnerAndRollbackAuditFailure(t *testing.
 			defer tx.Rollback(ctx)
 			c := DefaultBrandConfig()
 			c.TurnoverMultiple = n
-			_, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{PointsStep: 1, Version: 1, Config: c, Reason: "concurrent update"}, metadata(a.ID))
+			_, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{PointsStep: 100, Version: 1, Config: c, Reason: "concurrent update"}, metadata(a.ID))
 			if e == nil {
 				e = tx.Commit(ctx)
 			}
@@ -281,7 +284,7 @@ func TestPolicyConcurrentWritersHaveOneWinnerAndRollbackAuditFailure(t *testing.
 	}
 	c := DefaultBrandConfig()
 	c.TurnoverMultiple = "5"
-	_, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{PointsStep: 1, Version: before.Version, Config: c, Reason: "must rollback"}, metadata(a.ID))
+	_, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{PointsStep: 100, Version: before.Version, Config: c, Reason: "must rollback"}, metadata(a.ID))
 	_ = tx.Rollback(ctx)
 	if e == nil {
 		t.Fatal("audit failure not propagated")
@@ -345,7 +348,7 @@ func TestDatabaseRejectsOrphanRevisionUnwitnessedConfigAndHistoryMutation(t *tes
 func TestPolicyWriteDeniesSuperMissingGrantForeignScopeAndStaleVersions(t *testing.T) {
 	s, a, game := fixture(t)
 	ctx := context.Background()
-	in := BrandInput{PointsStep: 1, Version: 1, Config: DefaultBrandConfig(), Reason: "checked update"}
+	in := BrandInput{PointsStep: 100, Version: 1, Config: DefaultBrandConfig(), Reason: "checked update"}
 	for _, actor := range []access.Account{func() access.Account { v := a; v.SuperAdmin = true; return v }(), {ID: a.ID, Type: access.AccountAdmin, BrandIDs: []string{policyBrand}}, func() access.Account {
 		v := a
 		v.BrandIDs = []string{policyOther}

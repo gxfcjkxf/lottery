@@ -69,7 +69,7 @@ func TestPostgresSnapshotEmptyThenActualNotificationWork(t *testing.T) {
 	if _, err := db.Exec(ctx, `INSERT INTO global_users(id,username) VALUES($1,$2)`, user, "opsmetrics_"+user); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, member, brand, user); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, member, brand, user); err != nil {
 		t.Fatal(err)
 	}
 	tx, err := db.Begin(ctx)

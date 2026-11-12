@@ -1,3 +1,4 @@
+import { isPoints, pointsMinor } from '@lottery/shared'
 import { readAdminEnvelope } from './admin-api'
 
 import { AdminApiError, type AdminAccount } from "./admin-api";
@@ -5,7 +6,6 @@ import { brandPermissionSet } from "./brand-permissions";
 import { WALLET_SOURCES, type WalletSource } from "@lottery/shared";
 
 const BASE = "/api/v1/admin";
-const MAX_INT64 = 9223372036854775807n;
 const MAX_TURNOVER_MICROS = 1000000n * 1000000n;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -138,21 +138,16 @@ function isDateTime(value: unknown): value is string {
   );
 }
 
-function isPositiveInt64(value: unknown): value is string {
-  if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) return false;
-  try {
-    return BigInt(value) <= MAX_INT64;
-  } catch {
-    return false;
-  }
+function isPositivePoints(value: unknown): value is string {
+  return isPoints(value) && pointsMinor(value) > 0n;
 }
 
 function validBrandConfig(value: unknown): value is BrandWithdrawalConfig {
   if (!isRecord(value)) return false;
   if (
     typeof value.enabled !== "boolean" ||
-    !isPositiveInt64(value.min_points) ||
-    !(value.max_points === null || isPositiveInt64(value.max_points)) ||
+    !isPositivePoints(value.min_points) ||
+    !(value.max_points === null || isPositivePoints(value.max_points)) ||
     !Array.isArray(value.allowed_sources) ||
     value.allowed_sources.length === 0 ||
     value.allowed_sources.length > WALLET_SOURCES.length ||
@@ -164,7 +159,7 @@ function validBrandConfig(value: unknown): value is BrandWithdrawalConfig {
     return false;
   if (
     value.max_points !== null &&
-    BigInt(value.max_points) < BigInt(value.min_points)
+    pointsMinor(value.max_points) < pointsMinor(value.min_points)
   )
     return false;
   const sources = value.allowed_sources;
@@ -196,7 +191,7 @@ function validBrandPolicy(
     isUuid(value.brand_id) &&
     isVersion(value.version) &&
     validBrandConfig(value.config) &&
-    isPositiveInt64(value.points_step) &&
+    isPositivePoints(value.points_step) &&
     isDateTime(value.updated_at) &&
     (value.audit_log_id === undefined || isUuid(value.audit_log_id))
   );
@@ -207,8 +202,8 @@ function sameBrandConfig(
 ): boolean {
   return (
     a.enabled === b.enabled &&
-    a.min_points === b.min_points &&
-    a.max_points === b.max_points &&
+    pointsMinor(a.min_points) === pointsMinor(b.min_points) &&
+    (a.max_points === null || b.max_points === null ? a.max_points === b.max_points : pointsMinor(a.max_points) === pointsMinor(b.max_points)) &&
     a.review_mode === b.review_mode &&
     a.turnover_multiple === b.turnover_multiple &&
     a.allowed_sources.length === b.allowed_sources.length &&
@@ -305,7 +300,7 @@ function validateUpdateBody(
     typeof body.reason !== "string" ||
 
     Array.from(body.reason).length > 500 ||
-    !(game ? validGameConfig(body.config) : validBrandConfig(body.config) && isPositiveInt64((body as UpdateBrandWithdrawalPolicyBody).points_step))
+    !(game ? validGameConfig(body.config) : validBrandConfig(body.config) && isPositivePoints((body as UpdateBrandWithdrawalPolicyBody).points_step))
   )
     invalidInput("提现策略输入无效。");
 }
@@ -412,7 +407,7 @@ export function createWithdrawalPolicyApi(fetcher: typeof fetch = fetch) {
         !validBrandPolicy(value, brand) ||
         value.version !== body.version + 1 ||
         !isUuid(value.audit_log_id) ||
-        value.points_step !== body.points_step ||
+        pointsMinor(value.points_step) !== pointsMinor(body.points_step) ||
         !sameBrandConfig(value.config, body.config)
       )
         invalidResponse();

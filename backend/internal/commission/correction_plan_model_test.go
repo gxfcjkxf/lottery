@@ -22,7 +22,7 @@ func TestCorrectionPlanDTOUsesFrozenSnakeCaseShape(t *testing.T) {
 		ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", BrandID: correctionPlanTestBrand,
 		CycleID: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", PaymentID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
 		RunID: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", State: "ready", PayoutMode: PayoutManual,
-		Version: maxCycleVersion, EvidenceEpoch: "9007199254740993", BeforePoints: "9223372036854775807",
+		Version: maxCycleVersion, EvidenceEpoch: "9007199254740993", BeforePoints: "92233720368547758.07",
 		CalculatedPoints: "9007199254740993", CreditPoints: correctionString("1"), DebitPoints: correctionString("2"),
 		NetPoints: correctionString("-1"), TargetCount: "9007199254740993", PlannedCount: "9007199254740992",
 		CreationAuditLogID: "ffffffff-ffff-4fff-8fff-ffffffffffff", LastAuditLogID: "99999999-9999-4999-8999-999999999999",
@@ -45,7 +45,7 @@ func TestCorrectionPlanDTOUsesFrozenSnakeCaseShape(t *testing.T) {
 			t.Errorf("plan JSON missing %q: %s", key, raw)
 		}
 	}
-	for key, want := range map[string]string{"version": "9007199254740991", "evidence_epoch": `"9007199254740993"`, "before_points": `"9223372036854775807"`, "credit_points": `"1"`, "net_points": `"-1"`, "last_error_code": "null"} {
+	for key, want := range map[string]string{"version": "9007199254740991", "evidence_epoch": `"9007199254740993"`, "before_points": `"92233720368547758.07"`, "credit_points": `"1"`, "net_points": `"-1"`, "last_error_code": "null"} {
 		if got := string(object[key]); got != want {
 			t.Errorf("%s=%s want %s", key, got, want)
 		}
@@ -59,7 +59,7 @@ func TestCorrectionPlanDTOUsesFrozenSnakeCaseShape(t *testing.T) {
 		ID: "12121212-1212-4212-8212-121212121212", BrandID: correctionPlanTestBrand,
 		PlanID: plan.ID, AgentID: "13131313-1313-4313-8313-131313131313", MemberID: "14141414-1414-4414-8414-141414141414",
 		OriginalTargetID: nil, EarningID: correctionString("15151515-1515-4515-8515-151515151515"), AdjustmentVersion: correctionInt64(maxCycleVersion),
-		PointsBefore: points.Amount(math.MaxInt64), PointsAfter: points.Amount(math.MaxInt64 - 1), DeltaPoints: -1,
+		PointsBefore: points.Amount(math.MaxInt64), PointsAfter: points.Amount(math.MaxInt64 - 1), DeltaPoints: -100,
 		CreationAuditLogID: plan.CreationAuditLogID, CreatedAt: stamp,
 	}
 	targetRaw, err := json.Marshal(target)
@@ -79,7 +79,7 @@ func TestCorrectionPlanDTOUsesFrozenSnakeCaseShape(t *testing.T) {
 			t.Errorf("target JSON missing %q: %s", key, targetRaw)
 		}
 	}
-	for _, field := range []string{`"points_before":"9223372036854775807"`, `"points_after":"9223372036854775806"`, `"delta_points":"-1"`, `"original_target_id":null`, `"earning_id":"15151515-1515-4515-8515-151515151515"`, `"adjustment_version":9007199254740991`} {
+	for _, field := range []string{`"points_before":"92233720368547758.07"`, `"points_after":"92233720368547758.06"`, `"delta_points":"-1"`, `"original_target_id":null`, `"earning_id":"15151515-1515-4515-8515-151515151515"`, `"adjustment_version":9007199254740991`} {
 		if !strings.Contains(string(targetRaw), field) {
 			t.Errorf("target JSON missing %s: %s", field, targetRaw)
 		}
@@ -108,13 +108,13 @@ func TestComputeCorrectionDeltaUsesSafeSignedInt64Math(t *testing.T) {
 		want   points.Amount
 		bad    bool
 	}{
-		{"same", 17, 17, 0, false},
-		{"credit", 10, 15, 5, false},
-		{"debit", 15, 10, -5, false},
+		{"same", 1700, 1700, 0, false},
+		{"credit", 1000, 1500, 500, false},
+		{"debit", 1500, 1000, -500, false},
 		{"maximum credit", 0, points.Amount(math.MaxInt64), points.Amount(math.MaxInt64), false},
 		{"maximum debit", points.Amount(math.MaxInt64), 0, points.Amount(-math.MaxInt64), false},
-		{"negative before", -1, 0, 0, true},
-		{"negative after", 0, -1, 0, true},
+		{"negative before", -100, 0, 0, true},
+		{"negative after", 0, -100, 0, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

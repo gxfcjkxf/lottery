@@ -15,7 +15,7 @@ func TestPlatformGlobalUserDeleteHTTP(t *testing.T) {
 	if _, err := f.pool.Exec(ctx, `INSERT INTO global_users(id,username,password_hash) VALUES($1,'global_delete_test','unused')`, user); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.pool.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, member, managedBrand, user); err != nil {
+	if _, err := f.pool.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, member, managedBrand, user); err != nil {
 		t.Fatal(err)
 	}
 	body := map[string]any{"brand_id": managedBrand}

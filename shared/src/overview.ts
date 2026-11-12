@@ -1,3 +1,4 @@
+import { pointsMinor } from './points'
 export interface OverviewDay {
   day: string
   stake_points: string
@@ -26,7 +27,7 @@ export interface OverviewSummary {
 
 /** Integer arithmetic preserves precision even when the totals exceed 2^53. */
 export function overviewChange(current: string, previous: string): string | null {
-  const a = BigInt(current), b = BigInt(previous)
+  const a = pointsMinor(current), b = pointsMinor(previous)
   if (b === 0n) return null
   const tenths = (a - b) * 1000n / b
   const absolute = tenths < 0n ? -tenths : tenths

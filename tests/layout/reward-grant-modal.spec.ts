@@ -40,13 +40,13 @@ for(const locale of ['en','zh-CN'] as const)test(`reward grant form opens from a
   await expect(page.getByTestId('rewards-grant-review')).toBeDisabled()
   await page.getByTestId('rewards-grant-member').fill('r')
   await page.waitForTimeout(400);expect(searches).not.toContain('r')
-  await page.getByTestId('rewards-grant-member').fill('re')
-  await expect(dialog.getByRole('button',{name:'reward_user',exact:true})).toBeVisible()
   await page.getByTestId('rewards-grant-points').fill('25')
+  await page.getByTestId('rewards-grant-member').fill('re')
+  await expect(dialog.getByRole('option',{name:'reward_user',exact:true})).toBeVisible()
   await expect(page.getByTestId('rewards-grant-review')).toBeDisabled()
   await expectInsideViewport(dialog);await expectNoPageOverflow(page)
   await page.screenshot({path:info.outputPath(`grant-results-${locale}.png`)})
-  await dialog.getByRole('button',{name:'reward_user',exact:true}).click()
+  await dialog.getByRole('option',{name:'reward_user',exact:true}).click()
   await page.getByTestId('rewards-grant-points').fill('25')
   const preset=page.viewportSize()!
   for(const width of info.project.name.includes('reflow')?[320,640,900,1440]:[preset.width]){

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import CashMemberBalances from "../../shared/src/CashMemberBalances.vue"
+import { pointsMinor } from '@lottery/shared'
+
 import ManagementList from "@lottery/shared/ManagementList.vue"
 import { auditReasonLabel, readPaginationTotal } from '@lottery/shared'
 const ledgerTotal = ref('0')
@@ -8,7 +11,6 @@ import PaginationControls from '@lottery/shared/PaginationControls.vue'
 import SelectControl from '@lottery/shared/SelectControl.vue'
 import { useOperationToast } from "@lottery/shared";
 import RechargeQuotaPanel from "@lottery/shared/RechargeQuotaPanel.vue";
-const quotaPanel = ref<InstanceType<typeof RechargeQuotaPanel> | null>(null);
 const adjustmentQuotaPanel = ref<InstanceType<typeof RechargeQuotaPanel> | null>(null);
 import { vWriteGuard } from "@lottery/shared";
 import { useAdminI18n as useAssociationI18n } from "./i18n";
@@ -24,7 +26,7 @@ const displayDate = (value: string | null | undefined) => formatDisplayDateTime(
 import { formatDisplayDateTime } from "@lottery/shared";
 const displayLocale = useAdminI18n().locale;
 import { vInlineValidation } from '@lottery/shared'
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import type { LocalizedMessage } from "@lottery/shared";
 import { type AdminAccount } from "./admin-api";
 import DetailModal from "@lottery/shared/DetailModal.vue";
@@ -51,6 +53,9 @@ import {
 import { useAdminI18n } from "./i18n";
 import FilterAssociationSearch from "@lottery/shared/FilterAssociationSearch.vue";
 import { lookupAdminMember } from "./member-lookup";
+const ledgerPageSize = ref(50)
+const rechargePageSize = ref(50)
+
 
 const props = withDefaults(defineProps<{
   account: AdminAccount & Partial<FinanceAccount>;
@@ -61,7 +66,7 @@ const props = withDefaults(defineProps<{
 }>(), { view: 'wallet' });
 const emit = defineEmits<{ (event: "session-invalid"): void; (event: "close"): void; (event: "changed"): void }>();
 const { t, message, display } = useAdminI18n();
-const PAGE_SIZE = 50;
+
 const api = createFinanceApi();
 const sources: WalletSource[] = ["recharge", "winning", "gift", "commission"];
 const states: WalletState[] = [
@@ -87,6 +92,8 @@ function stateName(state: WalletState) {
         : state === "withdrawal" ? t('admin.copy.f56770cc') : state;
 }
 const entryTypeKeys = {
+  currency_exchange_credit: "cash.to_points",
+  currency_exchange_debit: "cash.from_points",
   recharge: 'admin.finance.entry.recharge',
   freeze: 'admin.finance.entry.freeze',
   unfreeze: 'admin.finance.entry.unfreeze',
@@ -221,8 +228,8 @@ const ledgerRows = computed(() => entries.value.flatMap(entry => {
   return (showAllBalances.value ? balances : changed)
     .map(({ source, state }, index) => ({ id: `${entry.id}-${source}-${state}`, entry, source, state, first: index === 0 }));
 }));
-const hasNextLedger = computed(() => entries.value.length === PAGE_SIZE);
-const hasNextRecharge = computed(() => recharges.value.length === PAGE_SIZE);
+const hasNextLedger = computed(() => entries.value.length === ledgerPageSize.value);
+const hasNextRecharge = computed(() => recharges.value.length === rechargePageSize.value);
 
 function messageFor(cause: unknown): string | LocalizedMessage {
   return publicErrorMessage(cause);
@@ -265,12 +272,7 @@ async function inspectRecharge() {
   if (loadedMemberId.value) await reloadData();
   else await loadRechargeQueue();
 }
-async function clearRechargeFilter() {
-  rechargeFilterReset.value++;
-  rechargeMemberDraft.value = "";
-  memberId.value = '';
-  await nextTick(); await inspectRecharge();
-}
+
 async function inspectMember() {
   const username = memberId.value.trim();
   if (loading.value) return;
@@ -325,7 +327,7 @@ async function reloadData() {
     );
     jobs.push(
       api
-        .ledger(requestBrandId, targetId, PAGE_SIZE, ledgerOffset.value)
+        .ledger(requestBrandId, targetId, ledgerPageSize.value, ledgerOffset.value)
         .then((result) => {
           if (!isCurrent()) return;
           if (
@@ -365,7 +367,7 @@ async function reloadData() {
   if (props.view === 'recharges' && viewRecharges.value) {
     jobs.push(
       api
-        .recharges(requestBrandId, targetId, PAGE_SIZE, rechargeOffset.value)
+        .recharges(requestBrandId, targetId, rechargePageSize.value, rechargeOffset.value)
         .then((result) => {
           if (!isCurrent()) return;
           if (
@@ -435,7 +437,7 @@ async function loadRechargeQueue() {
     const result = await api.recharges(
       requestBrandId,
       undefined,
-      PAGE_SIZE,
+      rechargePageSize.value,
       rechargeOffset.value,
     );
     if (
@@ -458,13 +460,13 @@ async function moveLedgerPage(direction: number) {
     generation === dataRequestGeneration &&
     props.brandId === requestBrandId &&
     loadedMemberId.value === targetId;
-  ledgerOffset.value = Math.max(0, ledgerOffset.value + direction * PAGE_SIZE);
+  ledgerOffset.value = Math.max(0, ledgerOffset.value + direction * ledgerPageSize.value);
   loading.value = true;
   try {
     const result = await api.ledger(
       requestBrandId,
       targetId,
-      PAGE_SIZE,
+      ledgerPageSize.value,
       ledgerOffset.value,
     );
     if (
@@ -485,7 +487,7 @@ async function moveRechargePage(direction: number) {
   if (!viewRecharges.value) return;
   rechargeOffset.value = Math.max(
     0,
-    rechargeOffset.value + direction * PAGE_SIZE,
+    rechargeOffset.value + direction * rechargePageSize.value,
   );
   if (loadedMemberId.value) await reloadData();
   else await loadRechargeQueue();
@@ -510,7 +512,6 @@ async function mutate(
       unfreezeReason.value = '';
       emit('changed');
     }
-    await quotaPanel.value?.reload();
     notice.value = successText;
     if (loadedMemberId.value) await reloadData();
     else if (viewRecharges.value) await loadRechargeQueue();
@@ -701,6 +702,7 @@ useOperationToast(() => rechargeError.value, value => display(value), 'error');
         <button v-refresh-button="t('admin.copy.bfd9564c')" type="button" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(reloadData)">{{ t('admin.copy.bfd9564c') }}</button>
       </p>
       <div v-show="view === 'wallet' || view === 'ledger'">
+      <CashMemberBalances v-if="view === 'wallet' && viewWallet && wallet" base-path="/api/v1/admin" :brand-id="brandId" :member-id="loadedMemberId" :locale="displayLocale" />
       <section v-if="view === 'wallet' && viewWallet && wallet" class="panel wallet-panel">
         <div class="panel-title">
           <div>
@@ -818,7 +820,7 @@ useOperationToast(() => rechargeError.value, value => display(value), 'error');
         <label>{{ t('admin.copy.10025d7b') }}<input
           :disabled="!!pendingMutation" v-model.trim="adjustForm.delta"
           style="--input-width: 140px"
-          :inputmode="adjustForm.source === 'freeze' ? 'numeric' : 'text'"
+          :inputmode="adjustForm.source === 'freeze' ? 'decimal' : 'text'"
           required
           :placeholder="adjustForm.source === 'freeze' ? undefined : t('admin.copy.9a348780')" /></label>
         <RechargeQuotaPanel v-if="writeAdjust && viewRecharges" external-feedback summary-only ref="adjustmentQuotaPanel" :brand-id="brandId" :locale="associationLocale" base-path="/api/v1/admin" @failure="cause => { error = publicErrorMessage(cause, 'read') }" />
@@ -848,27 +850,26 @@ useOperationToast(() => rechargeError.value, value => display(value), 'error');
           </template>
           <template #balance="{ entry: row }"><span>{{ sourceName(row.source) }} · {{ stateName(row.state) }}</span></template>
           <template #before="{ entry: row }">{{ sourceSnapshotValue(row.entry, 'before_snapshot', row.source, row.state) }}</template>
-          <template #change="{ entry: row }"><strong :class="{ 'ledger-increase': BigInt(row.entry.delta_snapshot[row.source][row.state]) > 0n, 'ledger-decrease': BigInt(row.entry.delta_snapshot[row.source][row.state]) < 0n }">{{ BigInt(row.entry.delta_snapshot[row.source][row.state]) > 0n ? '+' : '' }}{{ sourceSnapshotValue(row.entry, 'delta_snapshot', row.source, row.state) }}</strong></template>
+          <template #change="{ entry: row }"><strong :class="{ 'ledger-increase': pointsMinor(row.entry.delta_snapshot[row.source][row.state]) > 0n, 'ledger-decrease': pointsMinor(row.entry.delta_snapshot[row.source][row.state]) < 0n }">{{ pointsMinor(row.entry.delta_snapshot[row.source][row.state]) > 0n ? '+' : '' }}{{ sourceSnapshotValue(row.entry, 'delta_snapshot', row.source, row.state) }}</strong></template>
           <template #after="{ entry: row }">{{ sourceSnapshotValue(row.entry, 'after_snapshot', row.source, row.state) }}</template>
           <template #remark="{ entry: row }">{{ auditReasonLabel(row.entry.reason, displayLocale) }}</template>
         </ManagementTable>
 
-      <template #pagination><PaginationControls :show-empty="!loading && !rechargeError"
-          :total="ledgerTotal" :page="Math.floor(ledgerOffset / PAGE_SIZE + 1)" :count="entries.length" :locale="associationLocale"
+      <template #pagination><PaginationControls
+          :total="ledgerTotal" :page="Math.floor(ledgerOffset / ledgerPageSize + 1)" :count="entries.length" :locale="associationLocale"
           :previous-label="t('admin.copy.dbe7a5d7')"
           :next-label="t('admin.copy.2e9c9e7a')"
           :busy="loading"
           :has-previous="ledgerOffset > 0"
           :has-next="hasNextLedger"
-         :page-size="PAGE_SIZE" :go-to="(target: number) => moveLedgerPage(target - (Math.floor(ledgerOffset / PAGE_SIZE + 1)))" /></template></ManagementList>
+         :page-size="ledgerPageSize" :go-to="(target: number) => moveLedgerPage(target - (Math.floor(ledgerOffset / ledgerPageSize + 1)))" :change-page-size="async (size: number) => { ledgerPageSize = size; ledgerOffset = 0; await moveLedgerPage(0) }" /></template></ManagementList>
       </div>
     </DetailModal>
 
     <ManagementList v-show="view === 'recharges'" v-if="viewRecharges">
-    <template #filters><DirectorySearch class="recharge-filters" v-model="memberId" :label="t('admin.copy.b41d30df')" :query-label="t('admin.members.query')" :clear-label="t('admin.copy.b089734d')" :busy="loading" :query-pending="rechargeSearchPending" :active="Boolean(rechargeSearchPending || rechargeMemberDraft || loadedMemberId)" :search="inspectRecharge" :clear="clearRechargeFilter">
+    <template #filters><DirectorySearch :locale="associationLocale" class="recharge-filters" v-model="memberId" :label="t('admin.copy.b41d30df')" :query-label="t('admin.members.query')" :busy="loading" :query-pending="rechargeSearchPending" :search="inspectRecharge">
       <template #input><FilterAssociationSearch :reset-key="rechargeFilterReset" v-model="rechargeMemberDraft" v-model:pending="rechargeSearchPending" :brand-id="brandId" surface="admin" resource="recharge" :label="t('filter.member')" :locale="associationLocale" :scope-key="JSON.stringify(account)" :enabled="viewRecharges" @select="rechargeMemberName = $event.name" /></template>
       <template #actions>
-        <RechargeQuotaPanel v-if="view === 'recharges' && viewRecharges" compact external-feedback @failure="cause => { error = publicErrorMessage(cause, 'read') }" ref="quotaPanel" :brand-id="brandId" :locale="associationLocale" base-path="/api/v1/admin" />
       </template>
     </DirectorySearch></template>
 
@@ -923,14 +924,14 @@ useOperationToast(() => rechargeError.value, value => display(value), 'error');
         </DetailModal>
       </template>
 
-    <template #pagination><PaginationControls :show-empty="!loading && !rechargeError"
-          :total="rechargeTotal" :page="Math.floor(rechargeOffset / PAGE_SIZE + 1)" :count="recharges.length" :locale="associationLocale"
+    <template #pagination><PaginationControls
+          :total="rechargeTotal" :page="Math.floor(rechargeOffset / rechargePageSize + 1)" :count="recharges.length" :locale="associationLocale"
           :previous-label="t('admin.copy.dbe7a5d7')"
           :next-label="t('admin.copy.2e9c9e7a')"
           :busy="loading"
           :has-previous="rechargeOffset > 0"
           :has-next="hasNextRecharge"
-         :page-size="PAGE_SIZE" :go-to="(target: number) => moveRechargePage(target - (Math.floor(rechargeOffset / PAGE_SIZE + 1)))" /></template></ManagementList>
+         :page-size="rechargePageSize" :go-to="(target: number) => moveRechargePage(target - (Math.floor(rechargeOffset / rechargePageSize + 1)))" :change-page-size="async (size: number) => { rechargePageSize = size; rechargeOffset = 0; await moveRechargePage(0) }" /></template></ManagementList>
 
 
   </section>

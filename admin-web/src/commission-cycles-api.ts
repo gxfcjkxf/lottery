@@ -1,3 +1,4 @@
+import { pointsMinor, isPoints, isPointTotal } from '@lottery/shared'
 import { commissionListParams, type CommissionListQuery } from './commission-list-query'
 import { readAdminEnvelope } from './admin-api'
 
@@ -204,7 +205,18 @@ export interface CommissionRetryBody {
   reason: string;
 }
 
+export interface CommissionCycleCandidate {
+  anchor_order_id: string;
+  window_from: string;
+  window_to: string;
+  cycle: 'weekly' | 'monthly';
+}
+export interface CommissionCycleCandidatePage {
+  brand_id: string; items: CommissionCycleCandidate[]; limit: number; offset: number;
+}
+
 export interface CommissionCyclesApi {
+  candidates(brand: string, limit?: number, offset?: number): Promise<CommissionCycleCandidatePage>;
   list(brand: string, limit?: number, offset?: number, filter?: Readonly<CommissionListQuery>): Promise<CommissionCyclePage>;
   read(brand: string, id: string): Promise<CommissionCycleRecord>;
   earnings(brand: string, id: string, limit?: number, offset?: number): Promise<CommissionEarningPage>;
@@ -252,11 +264,6 @@ function isDecimal(value: unknown, positive = false, max = MAX_INT64): value is 
   } catch {
     return false;
   }
-}
-
-function isNonnegativeDecimal(value: unknown): value is string {
-  if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) return false;
-  try { return BigInt(value) <= MAX_INT64 * MAX_INT64; } catch { return false; }
 }
 
 function isReason(value: unknown): value is string {
@@ -322,7 +329,7 @@ function validCycle(value: unknown, brand: string): value is CommissionCycleReco
     !isVersion(value.version) || BigInt(value.version) > MAX_SAFE_VERSION || !isDecimal(value.target_count) || typeof value.scan_complete !== "boolean" ||
     !isNullableUuid(value.current_run_id) || !(value.current_generation === null || isDecimal(value.current_generation, true)) ||
     !(value.evidence_epoch === null || isDecimal(value.evidence_epoch)) || typeof value.evidence_current !== "boolean" ||
-    !isDecimal(value.calculated_count) || !isDecimal(value.earning_count) || !isNonnegativeDecimal(value.total_points) ||
+    !isDecimal(value.calculated_count) || !isDecimal(value.earning_count) || !isPointTotal(value.total_points) ||
     !isNullableUuid(value.created_by) || (actorType !== "admin" && actorType !== "system") ||
     (actorType === "system") !== (value.created_by === null) || !isReason(value.reason) ||
     !isDateTime(value.created_at) || !isDateTime(value.updated_at) || Date.parse(value.updated_at) < Date.parse(value.created_at) ||
@@ -331,7 +338,7 @@ function validCycle(value: unknown, brand: string): value is CommissionCycleReco
   if ((value.state === "failed") !== (value.last_error_code !== null) ||
     (["waiting", "calculating", "summarizing", "ready"].includes(String(value.state)) && !value.scan_complete) ||
     (["calculating", "summarizing", "ready"].includes(String(value.state)) && value.current_run_id === null) ||
-    (value.current_run_id === null && (value.calculated_count !== "0" || value.earning_count !== "0" || value.total_points !== "0" || value.evidence_current))) return false;
+    (value.current_run_id === null && (value.calculated_count !== "0" || value.earning_count !== "0" || pointsMinor(value.total_points) !== 0n || value.evidence_current))) return false;
   value.creation_actor_type = actorType;
   return true;
 }
@@ -354,8 +361,8 @@ function validEarning(value: unknown, brand: string, cycle: string): value is Co
   const amount = value.exact_amount;
   return isCanonicalUuid(value.id) && value.brand_id === brand && isCanonicalUuid(value.brand_id) && value.cycle_id === cycle && isCanonicalUuid(value.cycle_id) &&
     isCanonicalUuid(value.run_id) && isCanonicalUuid(value.agent_id) && isCanonicalUuid(value.member_id) &&
-    exactKeys(amount, ["numerator", "denominator"]) && isDecimal(amount.numerator, false, 10n ** 100n - 1n) && typeof amount.denominator === "string" && /^[1-9][0-9]*$/.test(amount.denominator) && amount.denominator.length <= 7 && BigInt(amount.denominator) <= 1_000_000n && 1_000_000n % BigInt(amount.denominator) === 0n &&
-    greatestCommonDivisor(BigInt(amount.numerator), BigInt(amount.denominator)) === 1n && isDecimal(value.points) && roundedHalfUp(BigInt(amount.numerator), BigInt(amount.denominator)) === BigInt(value.points) && isDateTime(value.created_at);
+    exactKeys(amount, ["numerator", "denominator"]) && isDecimal(amount.numerator, false, 10n ** 100n - 1n) && typeof amount.denominator === "string" && /^[1-9][0-9]*$/.test(amount.denominator) && amount.denominator.length <= 9 && BigInt(amount.denominator) <= 100_000_000n && 100_000_000n % BigInt(amount.denominator) === 0n &&
+    greatestCommonDivisor(BigInt(amount.numerator), BigInt(amount.denominator)) === 1n && isPoints(value.points) && roundedHalfUp(BigInt(amount.numerator) * 100n, BigInt(amount.denominator)) === pointsMinor(value.points) && isDateTime(value.created_at);
 }
 
 function greatestCommonDivisor(left: bigint, right: bigint): bigint {
@@ -406,9 +413,9 @@ function validAllocation(value: unknown, brand: string, cycle: string, run: stri
   const amount = record.exact_amount;
   if (!(record.brand_id === brand && isCanonicalUuid(record.brand_id) && record.cycle_id === cycle && isCanonicalUuid(record.cycle_id) && record.run_id === run && isCanonicalUuid(record.run_id) &&
     isCanonicalUuid(record.calculation_id) && isCanonicalUuid(record.order_id) && isCanonicalUuid(record.agent_id) && isCanonicalUuid(record.member_id) && isCanonicalUuid(record.bettor_member_id) &&
-    isDecimal(record.base_points) && ["loss", "turnover"].includes(String(record.mode)) && agent !== null && downstream !== null && difference !== null && agent - downstream === difference &&
-    exactKeys(amount, ["numerator", "denominator"]) && isDecimal(amount.numerator, false, 10n ** 100n - 1n) && typeof amount.denominator === "string" && /^[1-9][0-9]*$/.test(amount.denominator) && amount.denominator.length <= 7 && BigInt(amount.denominator) <= 1_000_000n && 1_000_000n % BigInt(amount.denominator) === 0n &&
-    greatestCommonDivisor(BigInt(amount.numerator), BigInt(amount.denominator)) === 1n && BigInt(amount.numerator) * 1_000_000n === BigInt(record.base_points as string) * difference! * BigInt(amount.denominator) && isDateTime(record.created_at))) return false;
+    isPoints(record.base_points) && ["loss", "turnover"].includes(String(record.mode)) && agent !== null && downstream !== null && difference !== null && agent - downstream === difference &&
+    exactKeys(amount, ["numerator", "denominator"]) && isDecimal(amount.numerator, false, 10n ** 100n - 1n) && typeof amount.denominator === "string" && /^[1-9][0-9]*$/.test(amount.denominator) && amount.denominator.length <= 9 && BigInt(amount.denominator) <= 100_000_000n && 100_000_000n % BigInt(amount.denominator) === 0n &&
+    greatestCommonDivisor(BigInt(amount.numerator), BigInt(amount.denominator)) === 1n && BigInt(amount.numerator) * 100_000_000n === pointsMinor(record.base_points as string) * difference! * BigInt(amount.denominator) && isDateTime(record.created_at))) return false;
   return true;
 }
 
@@ -431,14 +438,14 @@ function validRun(value: unknown, brand: string, cycle: string): value is Commis
   return exactKeys(value, ["id", "brand_id", "cycle_id", "generation", "evidence_epoch", "state", "calculated_count", "earning_count", "total_points", "created_at"]) &&
     isCanonicalUuid(value.id) && value.brand_id === brand && isCanonicalUuid(value.brand_id) && value.cycle_id === cycle && isCanonicalUuid(value.cycle_id) &&
     isDecimal(value.generation, true) && isDecimal(value.evidence_epoch) && ["calculating", "summarizing", "ready", "abandoned"].includes(String(value.state)) &&
-    isDecimal(value.calculated_count) && isDecimal(value.earning_count) && isNonnegativeDecimal(value.total_points) && isDateTime(value.created_at);
+    isDecimal(value.calculated_count) && isDecimal(value.earning_count) && isPointTotal(value.total_points) && isDateTime(value.created_at);
 }
 
 function validCalculation(value: unknown, brand: string, cycle: string, run: string): value is CommissionCalculation {
   if (!exactKeys(value, ["id", "brand_id", "cycle_id", "run_id", "order_id", "member_id", "reason", "status", "stake_points", "prize_points", "base_points", "audit_log_id", "created_at"]) ||
     !(isCanonicalUuid(value.id) && value.brand_id === brand && isCanonicalUuid(value.brand_id) && value.cycle_id === cycle && isCanonicalUuid(value.cycle_id) && value.run_id === run && isCanonicalUuid(value.run_id) &&
     isCanonicalUuid(value.order_id) && isCanonicalUuid(value.member_id) && ["eligible", "policy_disabled", "unattributed", "other_cycle", "cancelled", "abnormal"].includes(String(value.reason)) &&
-    ["won", "lost", "abnormal", "bet_cancelled", "judged_cancelled"].includes(String(value.status)) && isDecimal(value.stake_points) && isDecimal(value.prize_points) && isDecimal(value.base_points) &&
+    ["won", "lost", "abnormal", "bet_cancelled", "judged_cancelled"].includes(String(value.status)) && isPoints(value.stake_points) && isPoints(value.prize_points) && isPoints(value.base_points) &&
     isCanonicalUuid(value.audit_log_id) && isDateTime(value.created_at))) return false;
   return true;
 }
@@ -547,6 +554,16 @@ export function createCommissionCyclesApi(fetcher: typeof fetch = fetch): Commis
   }
 
   return {
+    async candidates(brand, limit = 100, offset = 0) {
+      validateBrand(brand);
+      const query = pageQuery(limit, offset);
+      return request(brand, `${CYCLES}/candidates?${query}`, {}, (value): value is CommissionCycleCandidatePage =>
+        exactKeys(value, ['brand_id', 'items', 'limit', 'offset']) && value.brand_id === brand && value.limit === limit && value.offset === offset &&
+        Array.isArray(value.items) && value.items.length <= limit && value.items.every(item =>
+          exactKeys(item, ['anchor_order_id', 'window_from', 'window_to', 'cycle']) && isCanonicalUuid(item.anchor_order_id) &&
+          isDateTime(item.window_from) && isDateTime(item.window_to) && Date.parse(item.window_from) < Date.parse(item.window_to) &&
+          (item.cycle === 'weekly' || item.cycle === 'monthly')));
+    },
     async list(brand, limit = 20, offset = 0, filter = {}) {
       validateBrand(brand);
       const query = commissionListParams(limit, offset, filter, "cycle");

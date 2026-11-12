@@ -57,7 +57,7 @@ func newOrderIntegrationFixture(t *testing.T, enabled, allowed bool) orderIntegr
 	if _, err := db.Exec(ctx, `INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'test-only-hash')`, userID, "withdrawal_"+userID[:8]); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, memberID, orderTestBrand, userID); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, memberID, orderTestBrand, userID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(ctx, `INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, ids.New(), orderTestBrand, memberID); err != nil {
@@ -128,7 +128,7 @@ func (f orderIntegrationFixture) updatePolicy(t *testing.T, enabled bool, max *p
 		t.Fatal(err)
 	}
 	defer tx.Rollback(context.Background())
-	_, err = s.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{PointsStep: 1, Version: policy.Version, Config: config, Reason: "integration fixture policy"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
+	_, err = s.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{PointsStep: 100, Version: policy.Version, Config: config, Reason: "integration fixture policy"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,9 +225,9 @@ func orderAction(t *testing.T, f orderIntegrationFixture, id, action, key string
 
 func TestOrderMixedSourceReservationReversalAndReceiptReplay(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 40}, {Source: "winning", State: "available", Points: 30}, {Source: "gift", State: "available", Points: 20}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 4000}, {Source: "winning", State: "available", Points: 3000}, {Source: "gift", State: "available", Points: 2000}}
 	f.fund(t, allocation)
-	order := createOrder(t, f, 90, "mixed-source-order", allocation)
+	order := createOrder(t, f, 9000, "mixed-source-order", allocation)
 	if got := orderState(t, order); got != "reviewing" {
 		t.Fatalf("new order state=%q, want reviewing", got)
 	}
@@ -235,7 +235,7 @@ func TestOrderMixedSourceReservationReversalAndReceiptReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wallet.AvailablePoints != 0 || wallet.WithdrawalPoints != 90 {
+	if wallet.AvailablePoints != 0 || wallet.WithdrawalPoints != 9000 {
 		t.Fatalf("reservation wallet available/withdrawal=%d/%d, want 0/90", wallet.AvailablePoints, wallet.WithdrawalPoints)
 	}
 	if _, err = orderAction(t, f, orderID(t, order), "reject", "mixed-reject", f.admin, ActionInput{Version: 1, ClientKey: "mixed-reject", Reason: "review declined"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()}); err != nil {
@@ -245,7 +245,7 @@ func TestOrderMixedSourceReservationReversalAndReceiptReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wallet.BySource[0][0] != 40 || wallet.BySource[1][0] != 30 || wallet.BySource[2][0] != 20 || wallet.WithdrawalPoints != 0 {
+	if wallet.BySource[0][0] != 4000 || wallet.BySource[1][0] != 3000 || wallet.BySource[2][0] != 2000 || wallet.WithdrawalPoints != 0 {
 		t.Fatalf("rejection did not restore original source allocation: %+v", wallet.BySource)
 	}
 	replay, err := f.service.Read(context.Background(), orderTestBrand, orderID(t, order))
@@ -293,7 +293,7 @@ func TestCommissionWithdrawalRequiresExplicitPolicyAndUsesSavedRuleSnapshot(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy, err = policyService.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{PointsStep: 1, Version: policy.Version, Config: configured, Reason: "explicitly authorize commission withdrawals"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
+	policy, err = policyService.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{PointsStep: 100, Version: policy.Version, Config: configured, Reason: "explicitly authorize commission withdrawals"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
 	if err != nil {
 		_ = tx.Rollback(context.Background())
 		t.Fatal(err)
@@ -301,9 +301,9 @@ func TestCommissionWithdrawalRequiresExplicitPolicyAndUsesSavedRuleSnapshot(t *t
 	if err = tx.Commit(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	commissionAllocation := []points.Allocation{{Source: "commission", State: "available", Points: 100}}
+	commissionAllocation := []points.Allocation{{Source: "commission", State: "available", Points: 10000}}
 	f.fund(t, commissionAllocation)
-	first := createOrder(t, f, 25, "commission-refund-order", []points.Allocation{{Source: "commission", State: "available", Points: 25}})
+	first := createOrder(t, f, 2500, "commission-refund-order", []points.Allocation{{Source: "commission", State: "available", Points: 2500}})
 	if fmt.Sprint(first.PolicySnapshot.Config.AllowedSources) != fmt.Sprint(configured.AllowedSources) {
 		t.Fatalf("application lost its configured policy snapshot: %+v", first.PolicySnapshot)
 	}
@@ -312,10 +312,10 @@ func TestCommissionWithdrawalRequiresExplicitPolicyAndUsesSavedRuleSnapshot(t *t
 		t.Fatalf("commission source refund failed: %+v err=%v", rejected, err)
 	}
 	wallet, err := f.points.Read(context.Background(), orderTestBrand, f.member)
-	if err != nil || wallet.BySource[3][0] != 100 {
+	if err != nil || wallet.BySource[3][0] != 10000 {
 		t.Fatalf("commission refund did not restore exact source: %+v err=%v", wallet.BySource, err)
 	}
-	paidOrder := createOrder(t, f, 40, "commission-paid-order", []points.Allocation{{Source: "commission", State: "available", Points: 40}})
+	paidOrder := createOrder(t, f, 4000, "commission-paid-order", []points.Allocation{{Source: "commission", State: "available", Points: 4000}})
 	if fmt.Sprint(paidOrder.PolicySnapshot.Config.AllowedSources) != fmt.Sprint(configured.AllowedSources) {
 		t.Fatalf("paid application did not capture commission authorization: %+v", paidOrder.PolicySnapshot)
 	}
@@ -331,7 +331,7 @@ func TestCommissionWithdrawalRequiresExplicitPolicyAndUsesSavedRuleSnapshot(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = policyService.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{PointsStep: 1, Version: current.Version, Config: currentConfig, Reason: "remove commission for future orders"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()}); err != nil {
+	if _, err = policyService.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{PointsStep: 100, Version: current.Version, Config: currentConfig, Reason: "remove commission for future orders"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()}); err != nil {
 		_ = tx.Rollback(context.Background())
 		t.Fatal(err)
 	}
@@ -347,16 +347,16 @@ func TestCommissionWithdrawalRequiresExplicitPolicyAndUsesSavedRuleSnapshot(t *t
 		t.Fatalf("commission-funded request did not pay under saved rules: %+v err=%v", paid, err)
 	}
 	wallet, err = f.points.Read(context.Background(), orderTestBrand, f.member)
-	if err != nil || wallet.BySource[3][0] != 60 || wallet.WithdrawalPoints != 0 {
+	if err != nil || wallet.BySource[3][0] != 6000 || wallet.WithdrawalPoints != 0 {
 		t.Fatalf("paid commission source balance=%+v err=%v", wallet.BySource, err)
 	}
 }
 
 func TestOrderPaidConsumesReservationAndReplaysReceiptAfterTerminal(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 75}, {Source: "winning", State: "available", Points: 25}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 7500}, {Source: "winning", State: "available", Points: 2500}}
 	f.fund(t, allocation)
-	order := createOrder(t, f, 100, "paid-order", allocation)
+	order := createOrder(t, f, 10000, "paid-order", allocation)
 	approved, err := orderAction(t, f, orderID(t, order), "approve", "paid-approve", f.admin, ActionInput{Version: 1, ClientKey: "paid-approve", Reason: "verified"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
 	if err != nil || orderState(t, approved) != "processing" {
 		t.Fatalf("approve state=%q err=%v", orderState(t, approved), err)
@@ -397,11 +397,11 @@ func TestOrderPaidConsumesReservationAndReplaysReceiptAfterTerminal(t *testing.T
 	if wallet.AvailablePoints != 0 || wallet.WithdrawalPoints != 0 {
 		t.Fatalf("paid order should consume reservation: available=%d withdrawal=%d", wallet.AvailablePoints, wallet.WithdrawalPoints)
 	}
-	createReplay, err := createOrderResult(f, OrderInput{Points: 100, SourceAllocation: allocation, ClientKey: "paid-order"})
+	createReplay, err := createOrderResult(f, OrderInput{Points: 10000, SourceAllocation: allocation, ClientKey: "paid-order"})
 	if err != nil || createReplay.ID != order.ID || createReplay.State != "reviewing" || createReplay.Version != 1 {
 		t.Fatalf("original create receipt replay after paid=%+v err=%v", createReplay, err)
 	}
-	if _, err = createOrderResult(f, OrderInput{Points: 99, SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 74}, {Source: "winning", State: "available", Points: 25}}, ClientKey: "paid-order"}); !errors.Is(err, points.ErrConflict) {
+	if _, err = createOrderResult(f, OrderInput{Points: 9900, SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 7400}, {Source: "winning", State: "available", Points: 2500}}, ClientKey: "paid-order"}); !errors.Is(err, points.ErrConflict) {
 		t.Fatalf("changed create body with original key error=%v, want points.ErrConflict", err)
 	}
 }
@@ -419,7 +419,7 @@ func TestOrderAutomaticReviewReturnsProcessingReceiptWithoutPaying(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{PointsStep: 1, Version: policy.Version, Config: config, Reason: "test automatic review"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
+	_, err = s.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{PointsStep: 100, Version: policy.Version, Config: config, Reason: "test automatic review"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
 	if err != nil {
 		_ = tx.Rollback(context.Background())
 		t.Fatal(err)
@@ -427,9 +427,9 @@ func TestOrderAutomaticReviewReturnsProcessingReceiptWithoutPaying(t *testing.T)
 	if err = tx.Commit(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 60}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 6000}}
 	f.fund(t, allocation)
-	in := OrderInput{Points: 60, SourceAllocation: allocation, ClientKey: "automatic-review-order"}
+	in := OrderInput{Points: 6000, SourceAllocation: allocation, ClientKey: "automatic-review-order"}
 	order, err := createOrderResult(f, in)
 	if err != nil {
 		t.Fatal(err)
@@ -455,9 +455,9 @@ func TestOrderAutomaticReviewReturnsProcessingReceiptWithoutPaying(t *testing.T)
 
 func TestOrderCreateReceiptReplaysOriginalAfterCancellationAndBodyConflict(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 30}, {Source: "winning", State: "available", Points: 20}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 3000}, {Source: "winning", State: "available", Points: 2000}}
 	f.fund(t, allocation)
-	in := OrderInput{Points: 50, SourceAllocation: allocation, ClientKey: "cancel-receipt-order"}
+	in := OrderInput{Points: 5000, SourceAllocation: allocation, ClientKey: "cancel-receipt-order"}
 	order, err := createOrderResult(f, in)
 	if err != nil {
 		t.Fatal(err)
@@ -470,8 +470,8 @@ func TestOrderCreateReceiptReplaysOriginalAfterCancellationAndBodyConflict(t *te
 		t.Fatalf("original creation receipt replay=%+v err=%v", replay, err)
 	}
 	changed := in
-	changed.Points = 40
-	changed.SourceAllocation = []points.Allocation{{Source: "recharge", State: "available", Points: 20}, {Source: "winning", State: "available", Points: 20}}
+	changed.Points = 4000
+	changed.SourceAllocation = []points.Allocation{{Source: "recharge", State: "available", Points: 2000}, {Source: "winning", State: "available", Points: 2000}}
 	if _, err = createOrderResult(f, changed); !errors.Is(err, points.ErrConflict) {
 		t.Fatalf("same-key changed body error=%v, want points.ErrConflict", err)
 	}
@@ -489,9 +489,9 @@ func TestOrderReleaseActionsRestoreOriginalMixedAllocation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newOrderIntegrationFixture(t, true, true)
-			allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 17}, {Source: "winning", State: "available", Points: 19}, {Source: "gift", State: "available", Points: 23}}
+			allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 1700}, {Source: "winning", State: "available", Points: 1900}, {Source: "gift", State: "available", Points: 2300}}
 			f.fund(t, allocation)
-			order := createOrder(t, f, 59, "release-action-order", allocation)
+			order := createOrder(t, f, 5900, "release-action-order", allocation)
 			state, version := "reviewing", int64(1)
 			for i, action := range tc.actions {
 				key := fmt.Sprintf("release-action-%s-%c", action, 'a'+i)
@@ -508,7 +508,7 @@ func TestOrderReleaseActionsRestoreOriginalMixedAllocation(t *testing.T) {
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
-			if wallet.BySource[0][0] != 17 || wallet.BySource[1][0] != 19 || wallet.BySource[2][0] != 23 || wallet.WithdrawalPoints != 0 {
+			if wallet.BySource[0][0] != 1700 || wallet.BySource[1][0] != 1900 || wallet.BySource[2][0] != 2300 || wallet.WithdrawalPoints != 0 {
 				t.Fatalf("%s did not restore full original allocation: %+v", tc.name, wallet.BySource)
 			}
 			var reversalOf string
@@ -524,9 +524,9 @@ func TestOrderReleaseActionsRestoreOriginalMixedAllocation(t *testing.T) {
 
 func TestOrderPaidCycleUsesSubmissionBoundaryAndFailedOrderDoesNotAdvanceIt(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 300}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 30000}}
 	f.fund(t, allocation)
-	failed := createOrder(t, f, 50, "cycle-failed-order", oneRechargeAllocation(50))
+	failed := createOrder(t, f, 5000, "cycle-failed-order", oneRechargeAllocation(5000))
 	if _, err := orderAction(t, f, failed.ID, "approve", "cycle-failed-approve", f.admin, ActionInput{Version: 1, ClientKey: "cycle-failed-approve", Reason: "review"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()}); err != nil {
 		t.Fatal(err)
 	}
@@ -540,7 +540,7 @@ func TestOrderPaidCycleUsesSubmissionBoundaryAndFailedOrderDoesNotAdvanceIt(t *t
 	if cycles != 0 {
 		t.Fatalf("failed withdrawal advanced successful-cycle cursor: rows=%d", cycles)
 	}
-	paidOrder := createOrder(t, f, 60, "cycle-paid-order", oneRechargeAllocation(60))
+	paidOrder := createOrder(t, f, 6000, "cycle-paid-order", oneRechargeAllocation(6000))
 	approved, err := orderAction(t, f, paidOrder.ID, "approve", "cycle-paid-approve", f.admin, ActionInput{Version: 1, ClientKey: "cycle-paid-approve", Reason: "review"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
 	if err != nil {
 		t.Fatal(err)
@@ -560,7 +560,7 @@ func TestOrderPaidCycleUsesSubmissionBoundaryAndFailedOrderDoesNotAdvanceIt(t *t
 	if lastOrder != paidOrder.ID || cutoffVersion != reserveVersion || !cutoffAt.Equal(submittedAt) || approved.ReviewedAt == nil || !paidOrder.CreatedAt.Before(*approved.ReviewedAt) {
 		t.Fatalf("cycle cursor=(%v,%d,%s), paid submission=(%v,%d,%s)", cutoffAt, cutoffVersion, lastOrder, submittedAt, reserveVersion, paidOrder.ID)
 	}
-	next := createOrder(t, f, 25, "cycle-next-order", oneRechargeAllocation(25))
+	next := createOrder(t, f, 2500, "cycle-next-order", oneRechargeAllocation(2500))
 	if next.CycleFromAt == nil || !next.CycleFromAt.Equal(paidOrder.CreatedAt) || next.CycleFromVersion != paidOrder.ReserveVersion {
 		t.Fatalf("next order turnover boundary=(%v,%d), want (%v,%d)", next.CycleFromAt, next.CycleFromVersion, paidOrder.CreatedAt, paidOrder.ReserveVersion)
 	}
@@ -576,9 +576,9 @@ func TestOrderConcurrentActionsHaveSingleWinner(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newOrderIntegrationFixture(t, true, true)
-			allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 100}}
+			allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 10000}}
 			f.fund(t, allocation)
-			order := createOrder(t, f, 100, "action-race-order", allocation)
+			order := createOrder(t, f, 10000, "action-race-order", allocation)
 			if tc.initial == "processing" {
 				if _, err := orderAction(t, f, order.ID, "approve", "action-race-setup", f.admin, ActionInput{Version: 1, ClientKey: "action-race-setup", Reason: "review"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()}); err != nil {
 					t.Fatal(err)
@@ -630,9 +630,9 @@ func TestOrderConcurrentActionsHaveSingleWinner(t *testing.T) {
 
 func TestOrderAdminWritesRequirePersistedExactBrandPermissionAndNeverSuper(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 40}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 4000}}
 	f.fund(t, allocation)
-	order := createOrder(t, f, 40, "permission-order", allocation)
+	order := createOrder(t, f, 4000, "permission-order", allocation)
 	_, err := orderAction(t, f, order.ID, "approve", "super-must-not-write", f.super, ActionInput{Version: 1, ClientKey: "super-must-not-write", Reason: "try super write"}, points.Metadata{ActorType: "admin", ActorID: f.super.ID, RequestID: ids.New()})
 	if !errors.Is(err, ErrDenied) {
 		t.Fatalf("super-admin write error=%v, want ErrDenied", err)
@@ -651,9 +651,9 @@ func TestOrderAdminWritesRequirePersistedExactBrandPermissionAndNeverSuper(t *te
 
 func TestOrderActionRollbackLeavesNoProjectionAuditOrReceipt(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 55}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 5500}}
 	f.fund(t, allocation)
-	order := createOrder(t, f, 55, "rollback-order", allocation)
+	order := createOrder(t, f, 5500, "rollback-order", allocation)
 	tx, err := f.db.Begin(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -687,7 +687,7 @@ func TestOrderActionRollbackLeavesNoProjectionAuditOrReceipt(t *testing.T) {
 
 func TestOrderSameKeyAndActiveMemberConcurrency(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 500}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 50000}}
 	f.fund(t, allocation)
 	const workers = 12
 	start := make(chan struct{})
@@ -705,7 +705,7 @@ func TestOrderSameKeyAndActiveMemberConcurrency(t *testing.T) {
 				return
 			}
 			defer tx.Rollback(context.Background())
-			out, err := f.service.Create(context.Background(), tx, orderTestBrand, f.member, OrderInput{Points: 25, SourceAllocation: oneRechargeAllocation(25), ClientKey: "one-concurrent-create"}, f.actor)
+			out, err := f.service.Create(context.Background(), tx, orderTestBrand, f.member, OrderInput{Points: 2500, SourceAllocation: oneRechargeAllocation(2500), ClientKey: "one-concurrent-create"}, f.actor)
 			if err != nil {
 				errs <- err
 				return
@@ -746,7 +746,7 @@ func TestOrderSameKeyAndActiveMemberConcurrency(t *testing.T) {
 
 func TestOrderDifferentKeyConcurrentCreatesEnforceSingleActiveOrder(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	f.fund(t, []points.Allocation{{Source: "recharge", State: "available", Points: 500}})
+	f.fund(t, []points.Allocation{{Source: "recharge", State: "available", Points: 50000}})
 	const workers = 12
 	start := make(chan struct{})
 	var wg sync.WaitGroup
@@ -762,7 +762,7 @@ func TestOrderDifferentKeyConcurrentCreatesEnforceSingleActiveOrder(t *testing.T
 				results <- err
 				return
 			}
-			_, err = f.service.Create(context.Background(), tx, orderTestBrand, f.member, OrderInput{Points: 25, SourceAllocation: oneRechargeAllocation(25), ClientKey: key}, f.actor)
+			_, err = f.service.Create(context.Background(), tx, orderTestBrand, f.member, OrderInput{Points: 2500, SourceAllocation: oneRechargeAllocation(2500), ClientKey: key}, f.actor)
 			if err != nil {
 				_ = tx.Rollback(context.Background())
 				results <- err
@@ -795,19 +795,19 @@ func TestOrderDifferentKeyConcurrentCreatesEnforceSingleActiveOrder(t *testing.T
 
 func TestOrderNilOrDenyEligibilityDoesNotReserve(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, false)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 50}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 5000}}
 	f.fund(t, allocation)
 	tx, err := f.db.Begin(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.service.Create(context.Background(), tx, orderTestBrand, f.member, OrderInput{Points: 50, SourceAllocation: allocation, ClientKey: "eligibility-denied"}, f.actor)
+	_, err = f.service.Create(context.Background(), tx, orderTestBrand, f.member, OrderInput{Points: 5000, SourceAllocation: allocation, ClientKey: "eligibility-denied"}, f.actor)
 	_ = tx.Rollback(context.Background())
 	if !errors.Is(err, ErrIneligible) {
 		t.Fatalf("denied eligibility error=%v, want ErrIneligible", err)
 	}
 	wallet, readErr := f.points.Read(context.Background(), orderTestBrand, f.member)
-	if readErr != nil || wallet.AvailablePoints != 50 || wallet.WithdrawalPoints != 0 {
+	if readErr != nil || wallet.AvailablePoints != 5000 || wallet.WithdrawalPoints != 0 {
 		t.Fatalf("denied eligibility changed wallet: wallet=%+v err=%v", wallet, readErr)
 	}
 	f.service.Eligibility = nil
@@ -815,36 +815,36 @@ func TestOrderNilOrDenyEligibilityDoesNotReserve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, nilErr := f.service.Create(context.Background(), tx, orderTestBrand, f.member, OrderInput{Points: 50, SourceAllocation: allocation, ClientKey: "eligibility-missing"}, f.actor)
+	_, nilErr := f.service.Create(context.Background(), tx, orderTestBrand, f.member, OrderInput{Points: 5000, SourceAllocation: allocation, ClientKey: "eligibility-missing"}, f.actor)
 	_ = tx.Rollback(context.Background())
 	if !errors.Is(nilErr, ErrEligibilityNotConfigured) {
 		t.Fatalf("nil eligibility checker error=%v, want ErrEligibilityNotConfigured", nilErr)
 	}
 	wallet, readErr = f.points.Read(context.Background(), orderTestBrand, f.member)
-	if readErr != nil || wallet.AvailablePoints != 50 || wallet.WithdrawalPoints != 0 {
+	if readErr != nil || wallet.AvailablePoints != 5000 || wallet.WithdrawalPoints != 0 {
 		t.Fatalf("missing eligibility checker changed wallet: wallet=%+v err=%v", wallet, readErr)
 	}
 }
 
 func TestOrderBrandStatusAndPolicyLimits(t *testing.T) {
-	cap := points.Amount(40)
+	cap := points.Amount(4000)
 	f := newOrderIntegrationFixture(t, true, true)
 	f.updatePolicy(t, true, &cap)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 100}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 10000}}
 	f.fund(t, allocation)
-	if _, err := createOrderResult(f, OrderInput{Points: 50, SourceAllocation: oneRechargeAllocation(50), ClientKey: "over-policy-cap"}); !errors.Is(err, ErrIneligible) {
+	if _, err := createOrderResult(f, OrderInput{Points: 5000, SourceAllocation: oneRechargeAllocation(5000), ClientKey: "over-policy-cap"}); !errors.Is(err, ErrIneligible) {
 		t.Fatalf("order above policy maximum error=%v, want ErrIneligible", err)
 	}
 	if _, err := f.db.Exec(context.Background(), `UPDATE brands SET status='paused' WHERE id=$1`, orderTestBrand); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := createOrderResult(f, OrderInput{Points: 25, SourceAllocation: oneRechargeAllocation(25), ClientKey: "paused-brand-order"}); err != nil {
+	if _, err := createOrderResult(f, OrderInput{Points: 2500, SourceAllocation: oneRechargeAllocation(2500), ClientKey: "paused-brand-order"}); err != nil {
 		t.Fatalf("paused brand should allow existing-user withdrawal: %v", err)
 	}
 	if _, err := f.db.Exec(context.Background(), `UPDATE brands SET status='disabled' WHERE id=$1`, orderTestBrand); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := createOrderResult(f, OrderInput{Points: 25, SourceAllocation: oneRechargeAllocation(25), ClientKey: "disabled-brand-order"}); !errors.Is(err, ErrDenied) {
+	if _, err := createOrderResult(f, OrderInput{Points: 2500, SourceAllocation: oneRechargeAllocation(2500), ClientKey: "disabled-brand-order"}); !errors.Is(err, ErrDenied) {
 		t.Fatalf("disabled brand error=%v, want ErrDenied", err)
 	}
 }
@@ -872,15 +872,15 @@ func oneRechargeAllocation(amount points.Amount) []points.Allocation {
 func TestWithdrawalStepAndAvailableSources(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
 	ctx := context.Background()
-	f.fund(t, []points.Allocation{{Source: "recharge", State: "available", Points: 500}, {Source: "commission", State: "available", Points: 200}})
+	f.fund(t, []points.Allocation{{Source: "recharge", State: "available", Points: 50000}, {Source: "commission", State: "available", Points: 20000}})
 	policies := Service{DB: f.db}
 	policy, err := policies.BrandPolicy(ctx, orderTestBrand)
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy.Config.MinPoints = 100
+	policy.Config.MinPoints = 10000
 	transact(t, policies, func(tx pgx.Tx) error {
-		_, e := policies.UpdateBrand(ctx, tx, orderTestBrand, f.admin, BrandInput{Version: policy.Version, PointsStep: 100, Config: policy.Config}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
+		_, e := policies.UpdateBrand(ctx, tx, orderTestBrand, f.admin, BrandInput{Version: policy.Version, PointsStep: 10000, Config: policy.Config}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
 		return e
 	})
 	tx, err := f.db.Begin(ctx)
@@ -889,12 +889,12 @@ func TestWithdrawalStepAndAvailableSources(t *testing.T) {
 	}
 	available, err := f.service.AvailabilityTx(ctx, tx, orderTestBrand, f.member)
 	tx.Rollback(ctx)
-	if err != nil || available.PointsStep != 100 || available.AvailablePoints != 500 || len(available.SourceBalances) != 1 {
+	if err != nil || available.PointsStep != 10000 || available.AvailablePoints != 50000 || len(available.SourceBalances) != 1 {
 		t.Fatalf("availability=%+v error=%v", available, err)
 	}
-	for _, amount := range []points.Amount{50, 150, 600} {
+	for _, amount := range []points.Amount{5000, 15000, 60000} {
 		_, err = createOrderResult(f, OrderInput{Points: amount, SourceAllocation: oneRechargeAllocation(amount), ClientKey: fmt.Sprintf("step-reject-%d", amount)})
-		if amount == 600 {
+		if amount == 60000 {
 			if !errors.Is(err, points.ErrInsufficient) {
 				t.Fatal(err)
 			}
@@ -903,25 +903,25 @@ func TestWithdrawalStepAndAvailableSources(t *testing.T) {
 		}
 	}
 	wallet, err := f.points.Read(ctx, orderTestBrand, f.member)
-	if err != nil || wallet.AvailablePoints != 700 || wallet.WithdrawalPoints != 0 {
+	if err != nil || wallet.AvailablePoints != 70000 || wallet.WithdrawalPoints != 0 {
 		t.Fatalf("invalid request reserved points: %+v %v", wallet, err)
 	}
-	accepted := createOrder(t, f, 200, "step-accepted", oneRechargeAllocation(200))
+	accepted := createOrder(t, f, 20000, "step-accepted", oneRechargeAllocation(20000))
 	currentPolicy, err := policies.BrandPolicy(ctx, orderTestBrand)
 	if err != nil {
 		t.Fatal(err)
 	}
 	transact(t, policies, func(tx pgx.Tx) error {
-		_, e := policies.UpdateBrand(ctx, tx, orderTestBrand, f.admin, BrandInput{Version: currentPolicy.Version, PointsStep: 1000, Config: currentPolicy.Config}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
+		_, e := policies.UpdateBrand(ctx, tx, orderTestBrand, f.admin, BrandInput{Version: currentPolicy.Version, PointsStep: 100000, Config: currentPolicy.Config}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
 		return e
 	})
 
-	replay, err := createOrderResult(f, OrderInput{Points: 200, SourceAllocation: oneRechargeAllocation(200), ClientKey: "step-accepted"})
+	replay, err := createOrderResult(f, OrderInput{Points: 20000, SourceAllocation: oneRechargeAllocation(20000), ClientKey: "step-accepted"})
 	if err != nil || replay.ID != accepted.ID {
 		t.Fatalf("receipt replay=%+v %v", replay, err)
 	}
 	wallet, err = f.points.Read(ctx, orderTestBrand, f.member)
-	if err != nil || wallet.AvailablePoints != 500 || wallet.WithdrawalPoints != 200 {
+	if err != nil || wallet.AvailablePoints != 50000 || wallet.WithdrawalPoints != 20000 {
 		t.Fatalf("withdrawal reserved more than once: %+v %v", wallet, err)
 	}
 }

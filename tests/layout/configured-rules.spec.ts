@@ -18,7 +18,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await page.route('**/api/**', route => {
       const req = route.request(), path = new URL(req.url()).pathname
       const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
-      if (path === '/api/v1/display-settings') return reply({ timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss' })
+      if (path === '/api/v1/display-settings') return reply({ theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss' })
       if (path.endsWith('/rule-preview/template')) return reply(catalog)
       expect(path).toBe('/api/v1/platform/platform-games/rule-preview')
       const input = req.postDataJSON(); requests.push(input)

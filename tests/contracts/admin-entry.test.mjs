@@ -24,18 +24,21 @@ test('platform admin entry documents only registered independent routes and its 
   const platformRoutes = routes.filter(route => route.path.startsWith('/api/v1/platform/'));
   const expectedPlatformRoutes = routes
     .filter(route => route.path.startsWith('/api/v1/admin/'))
-    .filter(route => !['/api/v1/admin/auth/challenge','/api/v1/admin/auth/config','/api/v1/admin/platform-games/{id}/draw-source-preview','/api/v1/admin/platform-games/{id}/draw-sources','/api/v1/admin/platform-games/{id}/configured/orders','/api/v1/admin/platform-games/{id}/canada/orders','/api/v1/admin/platform-games/{id}/mark-six/orders', '/api/v1/admin/bet-limits', '/api/v1/admin/platform-games/{id}/bet-limits'].includes(route.path))
+    .filter(route => !['/api/v1/admin/auth/challenge','/api/v1/admin/auth/config','/api/v1/admin/platform-games/{id}/draw-source-preview','/api/v1/admin/platform-games/{id}/draw-sources','/api/v1/admin/platform-games/{id}/configured/orders','/api/v1/admin/platform-games/{id}/canada/orders','/api/v1/admin/platform-games/{id}/mark-six/orders', '/api/v1/admin/bet-limits', '/api/v1/admin/brand-contacts', '/api/v1/admin/bet-distribution', '/api/v1/admin/bet-distribution/games', '/api/v1/admin/platform-games/{id}/bet-limits'].includes(route.path))
     .filter(route => route.method === 'GET'
       || route.method === 'POST' && ['/api/v1/admin/auth/login', '/api/v1/admin/auth/logout', '/api/v1/admin/me/password', '/api/v1/admin/brands', '/api/v1/admin/accounts', '/api/v1/admin/accounts/{id}/reset-password', '/api/v1/admin/roles'].includes(route.path)
       || route.method === 'DELETE' && route.path === '/api/v1/admin/brands/{id}'
       || route.method === 'PATCH' && ['/api/v1/admin/accounts/{id}', '/api/v1/admin/roles/{id}', '/api/v1/admin/brand-operation'].includes(route.path))
     .map(route => ({ ...route, path: route.path.replace('/api/v1/admin/', '/api/v1/platform/') }));
-  for (const [method, path] of [['GET','/notification-templates'],['GET','/notification-templates/{key}/history'],['PUT','/notification-templates/{key}'],['GET','/commission-settings'], ['GET','/platform-games/official-calendar'], ['GET','/platform-games/{id}/draw-overview'], ['GET','/presentation'],['GET','/platform-games/{id}/draw-sources'], ['GET', '/platform-accounts'], ['GET', '/platform-roles'], ['GET','/platform-permissions'], ['GET','/platform-settings'], ['POST', '/platform-accounts'], ['PATCH', '/platform-accounts/{id}'], ['POST', '/platform-accounts/{id}/reset-password']]) {
+  for (const [method, path] of [['GET','/notification-templates'],['GET','/notification-templates/{key}/history'],['PUT','/notification-templates/{key}'],['GET','/commission-settings'], ['GET','/brand-domains'], ['GET','/brand-domains/history'], ['GET','/platform-games/official-calendar'], ['GET','/platform-games/{id}/draw-overview'], ['GET','/presentation'], ['GET','/announcements/brands'],['GET','/platform-games/{id}/draw-sources'], ['GET', '/platform-accounts'], ['GET', '/platform-roles'], ['GET','/platform-permissions'], ['GET','/platform-settings'], ['POST', '/platform-accounts'], ['PATCH', '/platform-accounts/{id}'], ['POST', '/platform-accounts/{id}/reset-password']]) {
     expectedPlatformRoutes.push({ method, path: `/api/v1/platform${path}` });
   }
   for (const path of ['/report-archive-policy']) expectedPlatformRoutes.push({method:'GET',path:`/api/v1/platform${path}`});
   const platformExtraWrites = [
     'PUT /api/v1/platform/commission-settings',
+    'POST /api/v1/platform/brand-domains',
+    'PATCH /api/v1/platform/brand-domains/{domainID}',
+    'DELETE /api/v1/platform/brand-domains/{domainID}',
     'PUT /api/v1/platform/report-archive-policy',
     'POST /api/v1/platform/platform-games/periods/{id}/opening',
     'POST /api/v1/platform/platform-games/{id}/draw-schedule',
@@ -43,8 +46,11 @@ test('platform admin entry documents only registered independent routes and its 
     'POST /api/v1/platform/recharge-quota/reclaims',
     'POST /api/v1/platform/platform-games/official-calendar/sync',
     'PATCH /api/v1/platform/auth-settings',
-    'PUT /api/v1/platform/compliance-policy',
-    'POST /api/v1/platform/compliance-checks',
+    'POST /api/v1/platform/announcements',
+    'POST /api/v1/platform/announcements/image',
+    'PUT /api/v1/platform/announcements/{id}',
+    'PUT /api/v1/platform/cash/config',
+    'POST /api/v1/platform/platform-games/{id}/automation-timing',
     'POST /api/v1/platform/platform-roles',
     'PATCH /api/v1/platform/platform-roles/{id}',
     'POST /api/v1/platform/accounts/{id}/delete',
@@ -56,6 +62,7 @@ test('platform admin entry documents only registered independent routes and its 
     'POST /api/v1/platform/platform-games/rule-preview',
     'POST /api/v1/platform/platform-games/{id}/configured/rules',
     'POST /api/v1/platform/platform-games/periods/{id}/result',
+    'POST /api/v1/platform/platform-games/{id}/results',
     'POST /api/v1/platform/platform-games/{id}/draw-source-preview',
     'POST /api/v1/platform/platform-games/{id}/draw-sources',
     'POST /api/v1/platform/platform-games/{id}/draw-sources/{sourceId}/activate',

@@ -35,7 +35,7 @@ func TestMemberQuickAmountsHTTP(t *testing.T) {
 	values := []string{"5", "20", "50", "100", "999999"}
 	mustStatus(t, f.call("PUT", path, "", f.userToken, managedBrand, map[string]any{"quick_amounts": values}), 200)
 	// A fresh login represents another device; values live on the member, not the session.
-	login := f.call("POST", "/api/v1/auth/login", "preferences-second-device", "", managedBrand, map[string]string{"identifier": "points_member", "password": "points-member-password-2026", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"})
+	login := f.call("POST", "/api/v1/auth/login", "preferences-second-device", "", managedBrand, map[string]string{"identifier": "points_member", "password": "points-member-password-2026", })
 	mustStatus(t, login, 200)
 	var auth struct {
 		AccessToken string `json:"access_token"`
@@ -56,7 +56,7 @@ func TestMemberQuickAmountsHTTP(t *testing.T) {
 	mustStatus(t, f.call("PUT", "/api/v1/b/harbor/me/betting-preferences", "", auth.AccessToken, "", map[string]any{"quick_amounts": []string{}}), 401)
 	created := f.call("POST", "/api/v1/admin/users", "preferences-other-member", f.token, managedBrand, map[string]string{"username": "preferences_other", "password": "other-password-2026", "display_name": "Other member"})
 	mustStatus(t, created, 201)
-	otherLogin := f.call("POST", "/api/v1/auth/login", "preferences-other-login", "", managedBrand, map[string]string{"identifier": "preferences_other", "password": "other-password-2026", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"})
+	otherLogin := f.call("POST", "/api/v1/auth/login", "preferences-other-login", "", managedBrand, map[string]string{"identifier": "preferences_other", "password": "other-password-2026", })
 	mustStatus(t, otherLogin, 200)
 	var other struct {
 		AccessToken string `json:"access_token"`

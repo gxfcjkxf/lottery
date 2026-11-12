@@ -14,7 +14,7 @@ const expectedOrderFields=[
 test("withdrawal DTOs are closed and expose only the agreed fields",()=>{
   assert.deepEqual(Object.keys(schemas.WithdrawalOrder.properties),expectedOrderFields);
   assert.equal(schemas.WithdrawalOrder.additionalProperties,false);
-  assert.deepEqual(Object.keys(schemas.WithdrawalOrderPage.properties),["brand_id","items","limit","offset","has_more"]);
+  assert.deepEqual(Object.keys(schemas.WithdrawalOrderPage.properties),["brand_id","total_count","items","limit","offset","has_more"]);
   assert.deepEqual(Object.keys(schemas.WithdrawalHistory.properties),["brand_id","order_id","items"]);
   assert.deepEqual(Object.keys(schemas.WithdrawalTransition.properties),["id","version","from_state","to_state","reason","actor_type","created_at","audit_log_id"]);
   assert.deepEqual(Object.keys(schemas.WithdrawalAvailability.properties),[
@@ -26,8 +26,8 @@ test("withdrawal DTOs are closed and expose only the agreed fields",()=>{
   assert.equal(schemas.WithdrawalAvailability.properties.actor_context.pattern,"^[0-9a-f]{64}$");
   assert.deepEqual(schemas.WithdrawalOrder.properties.cycle_from_version,{ $ref:"#/components/schemas/NonnegativeInt64String" });
   assert.deepEqual(schemas.WithdrawalOrder.properties.reserve_version,{ $ref:"#/components/schemas/PositiveInt64String" });
-  assert.deepEqual(schemas.WithdrawalAvailability.properties.min_points,{ $ref:"#/components/schemas/PositiveInt64String" });
-  assert.deepEqual(schemas.WithdrawalAvailability.properties.max_points.anyOf[0],{ $ref:"#/components/schemas/PositiveInt64String" });
+  assert.deepEqual(schemas.WithdrawalAvailability.properties.min_points,{ $ref:"#/components/schemas/PositivePoints" });
+  assert.deepEqual(schemas.WithdrawalAvailability.properties.max_points.anyOf[0],{ $ref:"#/components/schemas/PositivePoints" });
   assert.equal(schemas.WithdrawalAvailability.properties.allowed_sources.minItems,1);
   assert.equal(schemas.WithdrawalAvailability.properties.allowed_sources.maxItems,4);
   assert.deepEqual(schemas.WithdrawalAvailability.properties.allowed_sources.items.enum,["recharge","winning","gift","commission"]);
@@ -46,22 +46,18 @@ test("withdrawal DTOs are closed and expose only the agreed fields",()=>{
   assert.ok(!JSON.stringify(schemas.WithdrawalOrder).match(/policy_snapshot|eligibility_evidence|actor_id|client_key/));
 });
 
-test("user routes bind create to availability context and keep request bodies minimal",()=>{
-  const availability=paths["/api/v1/withdrawal-availability"].get;
+test("retired point withdrawal creation is closed and directs users to currency operations",()=>{
   const create=paths["/api/v1/withdrawals"].post;
-  const header=create.parameters.find(p=>p.name==="X-Withdrawal-Actor-Context");
-  assert.equal(header.required,true);
-  assert.match(header.description,/cached idempotent replays/i);
-  assert.equal(create.responses["201"].content["application/json"].schema.properties.success.const,true);
+  assert.equal(create.deprecated,true);
+  assert.ok(!create.parameters.some(p=>p.name==="X-Withdrawal-Actor-Context"));
+  assert.match(create.description,/always returns 409 CASH_EXCHANGE_REQUIRED/);
+  assert.match(create.description,/performs no financial writes/);
+  assert.match(create.description,/\/cash\/exchanges/);
+  assert.match(create.description,/\/cash\/withdrawals/);
   assert.deepEqual(schemas.WithdrawalCreateRequest.required,["points","source_allocation"]);
   assert.equal(schemas.WithdrawalCreateRequest.additionalProperties,false);
   assert.deepEqual(Object.keys(schemas.WithdrawalCreateRequest.properties),["points","source_allocation"]);
-  assert.match(availability.description,/actual global user and brand member/);
-  assert.match(create.description,/WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED/);
-  assert.match(create.description,/explicit nil dependency remains closed/);
-  assert.match(create.description,/saved automatic review advances to processing v2/);
-  assert.match(create.description,/Neither marks paid nor executes an external payment/);
-  assert.deepEqual(paths["/api/v1/b/{brandCode}/withdrawals"].post.operationId,"createWithdrawalOrderByBrand");
+  assert.equal(paths["/api/v1/b/{brandCode}/withdrawals"].post.operationId,"createWithdrawalOrderByBrand");
 });
 
 test("readonly turnover preview is member-scoped, exact, closed and never a submission ticket",()=>{

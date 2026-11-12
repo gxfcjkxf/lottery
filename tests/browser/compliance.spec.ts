@@ -29,7 +29,7 @@ test("audited compliance configuration and explicit stub check replay across nav
  // A real, new anonymous user request must be rejected by the server; the
  // administrative simulation below is not evidence of this business gate.
  const regKey=crypto.randomUUID(),registrationUsername=`gate_${crypto.randomUUID().replaceAll("-","").slice(0,12)}`;
- const regBody={username:registrationUsername,password:`local-test-${crypto.randomUUID()}`,privacy_policy_version:"dev-1",service_terms_version:"dev-1"};
+ const regBody={username:registrationUsername,password:`local-test-${crypto.randomUUID()}`,};
  const rejected=await page.request.post(`${origin}/api/v1/b/harbor/auth/register`,{headers:{Origin:origin,"Idempotency-Key":regKey},data:regBody});expect(rejected.status()).toBe(409);expect((await rejected.json()).error.code).toBe("COMPLIANCE_REVIEW_REQUIRED");
  expect((await page.request.post(`${origin}/api/v1/b/harbor/auth/register`,{headers:{Origin:origin,"Idempotency-Key":regKey},data:regBody})).status()).toBe(409);
  const gatePage=(await page.request.get(`${api}/compliance-gates?operation=registration`,{headers}).then(r=>r.json())).data;

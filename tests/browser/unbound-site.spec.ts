@@ -10,7 +10,7 @@ for (const locale of ['en','zh-CN'] as const) for (const path of ['/login','/acc
   await page.route('**/api/**',async route=>{
    const request=route.request(),url=new URL(request.url())
    expect(request.method()).toBe('GET');calls.push(url.pathname)
-   if(url.pathname==='/api/v1/display-settings')return route.fulfill({json:{success:true,data:{timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}}})
+   if(url.pathname==='/api/v1/display-settings')return route.fulfill({json:{success:true,data:{theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}}})
    expect(['/api/v1/context','/api/v1/me']).toContain(url.pathname)
    requested();await gate
    return route.fulfill({status:404,json:{success:false,error:{code:'BRAND_NOT_FOUND',message:'Unknown brand'}}})

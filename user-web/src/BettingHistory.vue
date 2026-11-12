@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import TablePagination from "@lottery/shared/TablePagination.vue"
 import { useOperationToast } from "@lottery/shared";
-import BettingHistoryTable from "./BettingHistoryTable.vue"
+import BettingHistoryTable from "@lottery/shared/BettingHistoryTable.vue"
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { withGlobalLoading, vGlobalLoading, type LocalizedMessage } from '@lottery/shared'
@@ -55,13 +55,13 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
 
 <template>
   <section class="betting-history" data-testid="betting-history">
-    <OrderHistoryLayout :title="ui('user.orders.title')" :loading="loading" :empty="!!auth && !!page && !page.items.length" @refresh="withGlobalLoading(refresh)">
+    <OrderHistoryLayout :title="ui('user.orders.title')" :loading="loading" :error="!!error" :empty="!!auth && !!page && !page.items.length" @refresh="withGlobalLoading(refresh)">
       <p v-if="!auth">{{ ui('betting.signInHistory') }} <RouterLink to="/login">{{ ui('betting.signIn') }}</RouterLink></p>
       <p v-if="loading" v-global-loading role="status">{{ ui('betting.loadingOrders') }}</p>
 
       <BettingHistoryTable v-if="page?.items.length" :items="page.items" :locale="localeCode" :show-game="!gameId" />
       <template #pagination>
-        <TablePagination v-if="auth && page" compact-mobile class="history-pagination" :aria-label="ui('user.orders.pages')" :total="page.total_count" :page="pageIndex + 1" :count="page.items.length" :locale="localeCode" :page-size="pageSize" :page-size-options="[10, 20, 50, 100]" :change-page-size="changePageSize" :previous-disabled="loading || pageIndex === 0" :next-disabled="loading || !page.next_cursor" :previous-label="ui('user.orders.previous')" :next-label="ui('user.orders.next')" :go-to="(target: number) => load(target - 1, target === pageIndex + 2 ? page!.next_cursor : cursors[target - 1])" :reachable-page="pageIndex + (page.next_cursor ? 2 : 1)" />
+        <TablePagination v-if="auth && page" class="history-pagination" :aria-label="ui('user.orders.pages')" :total="page.total_count" :page="pageIndex + 1" :count="page.items.length" :locale="localeCode" :page-size="pageSize" :change-page-size="changePageSize" :previous-disabled="loading || pageIndex === 0" :next-disabled="loading || !page.next_cursor" :previous-label="ui('user.orders.previous')" :next-label="ui('user.orders.next')" :go-to="(target: number) => load(target - 1, target === pageIndex + 2 ? page!.next_cursor : cursors[target - 1])" :reachable-page="pageIndex + (page.next_cursor ? 2 : 1)" :busy="loading" />
       </template>
     </OrderHistoryLayout>
   </section>

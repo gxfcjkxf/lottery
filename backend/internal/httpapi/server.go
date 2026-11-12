@@ -68,6 +68,8 @@ func New(d Dependencies) http.Handler {
 func buildRouter(d Dependencies) *routeMux {
 	mux := newRouteMux()
 	registerBrandLogoRoutes(mux, d)
+	registerPublicBrandContacts(mux, d)
+	registerPublicAnnouncements(mux, d)
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) { respond(w, r, 200, map[string]string{"status": "alive"}) })
 	mux.HandleFunc("GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -88,7 +90,7 @@ func buildRouter(d Dependencies) *routeMux {
 			failure(w, r, 503, "SERVICE_UNAVAILABLE", "暂时无法加载品牌")
 			return
 		}
-		cfg := identity.Settings{Privacy: "dev-1", Terms: "dev-1"}
+		cfg := identity.Settings{}
 		if d.Identity != nil {
 			cfg, err = d.Identity.Settings(r.Context(), brand.ID)
 			if err != nil {
@@ -100,7 +102,7 @@ func buildRouter(d Dependencies) *routeMux {
 		if locales == nil {
 			locales = []string{"en", "zh-CN"}
 		}
-		respond(w, r, 200, map[string]any{"brand": brand, "available_locales": locales, "features": map[string]bool{"pwa": true, "real_payments": false}, "auth": map[string]any{"captcha_enabled": cfg.CaptchaEnabled, "telegram_enabled": cfg.TelegramEnabled, "telegram_client_id": cfg.TelegramClientID}, "terms": map[string]string{"privacy_policy_version": cfg.Privacy, "service_terms_version": cfg.Terms}})
+		respond(w, r, 200, map[string]any{"brand": brand, "available_locales": locales, "features": map[string]bool{"pwa": true, "real_payments": false}, "auth": map[string]any{"captcha_enabled": cfg.CaptchaEnabled, "telegram_enabled": cfg.TelegramEnabled, "telegram_client_id": cfg.TelegramClientID}})
 	}
 	mux.HandleFunc("GET /api/v1/context", contextHandler)
 	mux.HandleFunc("GET /api/v1/b/{brandCode}/context", contextHandler)

@@ -56,7 +56,7 @@ func TestRewardWorkbenchCountsRealCurrentOrdersWithoutChangingFinancialFacts(t *
 	}{
 		{`INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,$2,'test-only')`, []any{a.ID, "reward_workbench_" + a.ID}},
 		{`INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'test-only')`, []any{user, "reward_workbench_member_" + user}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'operator','1','1')`, []any{member, brandA, user}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'operator')`, []any{member, brandA, user}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{account, brandA, member}},
 		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift']) s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) t`, []any{brandA, account}},
 	} {
@@ -83,8 +83,8 @@ func TestRewardWorkbenchCountsRealCurrentOrdersWithoutChangingFinancialFacts(t *
 		}
 		return o
 	}
-	grant(10)
-	o := grant(20)
+	grant(1000)
+	o := grant(2000)
 	tx, err := db.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -95,12 +95,12 @@ func TestRewardWorkbenchCountsRealCurrentOrdersWithoutChangingFinancialFacts(t *
 	if err = tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	pending := grant(30)
+	pending := grant(3000)
 	tx, err = db.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	allocation := []points.Allocation{{Source: "gift", State: "available", Points: 40}}
+	allocation := []points.Allocation{{Source: "gift", State: "available", Points: 4000}}
 	delta, err := points.AllocationDelta(allocation, "available", "manual_frozen")
 	if err != nil {
 		t.Fatal(err)

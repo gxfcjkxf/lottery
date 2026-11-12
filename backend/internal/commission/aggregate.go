@@ -29,7 +29,8 @@ func Aggregate(items []ExactAmount) (ExactAmount, points.Amount, error) {
 	}
 
 	quotient, remainder := new(big.Int), new(big.Int)
-	quotient.QuoRem(total.Num(), total.Denom(), remainder)
+	scaled := new(big.Int).Mul(total.Num(), big.NewInt(100))
+	quotient.QuoRem(scaled, total.Denom(), remainder)
 	if new(big.Int).Lsh(remainder, 1).Cmp(total.Denom()) >= 0 {
 		quotient.Add(quotient, big.NewInt(1))
 	}

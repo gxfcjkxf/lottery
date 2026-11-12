@@ -43,7 +43,7 @@ func TestPointSafetyPolicyLimitsAndPendingCancellation(t *testing.T) {
 	unchanged := f.call("GET", "/api/v1/admin/point-policy", "", f.token, managedBrand, nil)
 	var remaining points.Policy
 	managedData(t, unchanged, &remaining)
-	if remaining.Version != 2 || remaining.MaxRechargePoints == nil || *remaining.MaxRechargePoints != 70 {
+	if remaining.Version != 2 || remaining.MaxRechargePoints == nil || *remaining.MaxRechargePoints != 7000 {
 		t.Fatal(remaining)
 	}
 	over := f.call("POST", "/api/v1/admin/recharges", "recharge-cap-001", f.token, managedBrand, map[string]string{"member_id": f.memberID, "points": "71", "reason": "too large"})

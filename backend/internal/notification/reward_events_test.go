@@ -27,7 +27,7 @@ func TestParseRewardEventRequiresSixUniqueClosedKeys(t *testing.T) {
 }
 
 func TestParseRewardEventEnforcesUUIDAndPositiveInt64Points(t *testing.T) {
-	for _, points := range []string{"1", "9223372036854775807"} {
+	for _, points := range []string{"1", "92233720368547758.07"} {
 		raw := []byte(replaceRewardField(validRewardEventJSON, `"points":"7"`, fmt.Sprintf(`"points":%q`, points)))
 		if _, _, err := parseRewardEvent(raw); err != nil {
 			t.Errorf("accepted-range points %q rejected: %v", points, err)

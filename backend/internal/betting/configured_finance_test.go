@@ -11,7 +11,6 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 	"os"
-	"strconv"
 	"testing"
 	"time"
 
@@ -28,12 +27,12 @@ func TestConfiguredFinancialFactsAndTurnover(t *testing.T) {
 		name        string
 		draw        int
 		valid, loss points.Amount
-	}{{"lost", 8, 10, 10}, {"won", 7, 10, 0}, {"push", 49, 0, 0}} {
+	}{{"lost", 8, 1000, 1000}, {"won", 7, 1000, 0}, {"push", 49, 0, 0}} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newConfiguredFixture(t)
 			f := c.f
 			ctx := context.Background()
-			fundBettingWallet(t, f, 100)
+			fundBettingWallet(t, f, 10000)
 			placed, err := configuredPlace(t, c, ids.New(), c.input)
 			if err != nil {
 				t.Fatal(err)
@@ -81,8 +80,8 @@ func TestConfiguredFinancialFactsAndTurnover(t *testing.T) {
 				if e = json.Unmarshal(d.Evidence, &proof); e != nil {
 					return e
 				}
-				if proof.Qualification.Points != strconv.FormatInt(int64(tc.valid), 10) {
-					t.Fatalf("turnover %s want %s", proof.Qualification.Points, strconv.FormatInt(int64(tc.valid), 10))
+				if proof.Qualification.Points != tc.valid.String() {
+					t.Fatalf("turnover %s want %s", proof.Qualification.Points, tc.valid.String())
 				}
 				return nil
 			})
@@ -135,7 +134,7 @@ func TestCommissionConfiguredDiscoveryAndCycleUseConfiguredOrders(t *testing.T) 
 		_, e := finance.Update(ctx, tx, f.brand, actor, commission.PolicyInput{Version: 1, Config: commission.PolicyConfig{Enabled: true, Calendar: &commission.Calendar{Timezone: "UTC", Cycle: "weekly", BoundaryTime: boundary.Format("15:04:05"), Weekday: &weekday}, PayoutMode: commission.PayoutManual}}, points.Metadata{ActorType: "admin", ActorID: actor.ID, RequestID: ids.New()})
 		return e
 	})
-	fundBettingWallet(t, f, 100)
+	fundBettingWallet(t, f, 10000)
 	out, err := configuredPlace(t, c, ids.New(), c.input)
 	if err != nil {
 		t.Fatal(err)
@@ -199,7 +198,7 @@ func TestCommissionConfiguredAttributedLossPaysOnce(t *testing.T) {
 	}
 	var auth identity.Authentication
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
-		r, e := users.Register(ctx, tx, f.brand, identity.RegisterInput{Username: "configured_finance_user", Password: "configured-finance-password", Privacy: "dev-1", Terms: "dev-1", AgentCode: code.Code}, identity.Metadata{Domain: "aurora.localhost"})
+		r, e := users.Register(ctx, tx, f.brand, identity.RegisterInput{Username: "configured_finance_user", Password: "configured-finance-password", AgentCode: code.Code}, identity.Metadata{Domain: "aurora.localhost"})
 		if e != nil {
 			return e
 		}
@@ -218,7 +217,7 @@ func TestCommissionConfiguredAttributedLossPaysOnce(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	c := configuredFixtureFrom(t, raw, []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{{PlayID: "operator_new_play", Options: []string{"lucky"}, Plate: "A", Points: 10, Multiplier: 1}}, Draw: rules.Draw{Regular: []int{1, 3, 7, 4, 5, 6}, Special: []int{2}}, Bet: 10, Prize: 25}}, f)
+	c := configuredFixtureFrom(t, raw, []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{{PlayID: "operator_new_play", Options: []string{"lucky"}, Plate: "A", Points: 1000, Multiplier: 1}}, Draw: rules.Draw{Regular: []int{1, 3, 7, 4, 5, 6}, Special: []int{2}}, Bet: 1000, Prize: 2500}}, f)
 	finance := commission.Service{DB: f.db}
 	boundary := time.Now().UTC().Truncate(time.Second).Add(10 * time.Second)
 	weekday := int(boundary.Weekday())
@@ -230,7 +229,7 @@ func TestCommissionConfiguredAttributedLossPaysOnce(t *testing.T) {
 		_, e := finance.UpdatePaymentPolicyTx(ctx, tx, f.brand, a, commission.PaymentPolicyInput{Version: 1, Enabled: true}, points.Metadata{ActorType: "admin", ActorID: a.ID, RequestID: ids.New()})
 		return e
 	})
-	fundBettingWallet(t, f, 100)
+	fundBettingWallet(t, f, 10000)
 	out, e := configuredPlace(t, c, ids.New(), c.input)
 	if e != nil {
 		t.Fatal(e)

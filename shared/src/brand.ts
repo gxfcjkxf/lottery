@@ -35,7 +35,6 @@ export interface PlatformContext {
   paused: boolean
   availableLanguages: string[]
   features?: { pwa: boolean; real_payments: boolean }
-  terms?: { privacy_policy_version: string; service_terms_version: string }
   configVersion?: number
 }
 

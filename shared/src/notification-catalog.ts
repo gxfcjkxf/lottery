@@ -27,22 +27,22 @@ export const notificationCatalog = {
   },
   "reward.order.granted": {
     "en": {
-      "title": "Reward grant recorded",
-      "body": "Historical record: {points} points were credited to your gift available balance. This records a past grant, not your current wallet balance or an external payment. Check your current wallet; this record is retained."
+      "title": "Reward credited",
+      "body": "{points} points credited to gift balance."
     },
     "zh-CN": {
-      "title": "奖励发放记录",
-      "body": "历史记录：{points} 积分曾记入赠送可用积分。此记录表示过去的发放，不代表当前钱包余额或外部付款。请查看当前钱包；此记录会保留。"
+      "title": "奖励发放",
+      "body": "赠送可用积分已入账 {points}。"
     }
   },
   "reward.order.revoked": {
     "en": {
-      "title": "Reward reversal recorded",
-      "body": "Historical record: the full original reward of {points} points was reversed from your gift available balance. This records a past reversal, not your current wallet balance or an external payment. Check your current wallet; this record is retained."
+      "title": "Reward reversed",
+      "body": "{points} points reversed from gift balance."
     },
     "zh-CN": {
-      "title": "奖励撤销记录",
-      "body": "历史记录：原奖励全额 {points} 积分曾从赠送可用积分撤销。此记录表示过去的撤销，不代表当前钱包余额或外部付款。请查看当前钱包；此记录会保留。"
+      "title": "奖励撤销",
+      "body": "赠送可用积分已撤销 {points}。"
     }
   },
   "bet.order.placed": {
@@ -87,132 +87,132 @@ export const notificationCatalog = {
   },
   "bet.order.won": {
     "en": {
-      "title": "Prize credit recorded",
-      "body": "Historical record: {points} points were credited as this order's prize. This records the credit, not your current wallet balance or a guaranteed final outcome. Any correction will appear as a separate prize event; this record is retained."
+      "title": "Prize credited",
+      "body": "{points} prize points credited."
     },
     "zh-CN": {
-      "title": "派奖入账记录",
-      "body": "历史记录：此注单的 {points} 积分奖金已记入账本。此记录仅表示该笔入账，不代表当前钱包余额，也不保证最终结果。任何更正都会作为单独的奖金事件记录；此记录会保留。"
+      "title": "派奖入账",
+      "body": "奖金已入账 {points} 积分。"
     }
   },
   "bet.order.prize_reversed": {
     "en": {
-      "title": "Prize reversal recorded",
-      "body": "Historical record: the full original prize amount of {points} points for this order was reversed. This records the reversal, not your current wallet balance. Any later prize correction will appear as a separate event; this record is retained."
+      "title": "Prize reversed",
+      "body": "{points} prize points reversed."
     },
     "zh-CN": {
-      "title": "奖金冲正记录",
-      "body": "历史记录：此注单原奖金全额 {points} 积分已冲回。此记录仅表示该笔冲正，不代表当前钱包余额。之后如有奖金更正，会作为单独事件记录；此记录会保留。"
+      "title": "奖金冲正",
+      "body": "奖金已冲回 {points} 积分。"
     }
   },
   "commission.paid": {
     "en": {
-      "title": "Commission credit recorded",
-      "body": "Historical record: {points} points were credited to your commission wallet. This records a past credit, not new income or an external payment forecast. Check your current wallet balance; this record is retained."
+      "title": "Commission credited",
+      "body": "{points} points credited to commission balance."
     },
     "zh-CN": {
-      "title": "佣金入账记录",
-      "body": "历史记录：{points} 积分曾记入佣金钱包。此记录表示过去的入账，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。"
+      "title": "佣金入账",
+      "body": "佣金已入账 {points} 积分。"
     }
   },
   "commission.corrected": {
     "en": {
-      "title": "Commission correction recorded",
-      "body": "Historical record: a commission correction of {points} points was posted to your commission available balance. Positive points record a past additional credit; negative points record a past recovery. This is not your current balance, new income or an external payment. Check your current wallet; this record is retained."
+      "title": "Commission corrected",
+      "body": "Commission corrected by {points} points."
     },
     "zh-CN": {
-      "title": "佣金更正记录",
-      "body": "历史记录：佣金可用积分曾发生 {points} 积分更正。正数表示过去的补发，负数表示过去的追回；不代表当前余额、新收入或外部付款。请查看当前钱包；此记录会保留。"
+      "title": "佣金更正",
+      "body": "佣金已更正 {points} 积分。"
     }
   },
   "draw.result.published": {
     "en": {
       "title": "Draw result published",
-      "body": "Historical result ID {resource_id}: the result published for this period. This is not a guarantee of a win or prize payment. View the actual result in the app; users cannot edit this notice."
+      "body": "Draw result published: {resource_id}."
     },
     "zh-CN": {
       "title": "开奖结果已公布",
-      "body": "历史开奖结果 ID：{resource_id}，表示本期已公布的结果，不代表中奖或派奖保证。请在应用中查看实际结果；用户不能编辑此通知。"
+      "body": "开奖结果已公布：{resource_id}。"
     }
   },
   "draw.result.corrected": {
     "en": {
       "title": "Draw result corrected",
-      "body": "Historical result ID {resource_id}: the corrected result for this period. This is not a guarantee of a win or prize payment. View the actual result in the app; users cannot edit this notice."
+      "body": "Draw result corrected: {resource_id}."
     },
     "zh-CN": {
       "title": "开奖结果已更正",
-      "body": "历史开奖结果 ID：{resource_id}，表示本期已更正的结果，不代表中奖或派奖保证。请在应用中查看实际结果；用户不能编辑此通知。"
+      "body": "开奖结果已更正：{resource_id}。"
     }
   },
   "commission.adjusted": {
     "en": {
-      "title": "Commission adjustment recorded",
-      "body": "Historical record: a commission adjustment of {points} points was recorded. This records a past adjustment, not new income or an external payment forecast. Check your current wallet balance; this record is retained."
+      "title": "Commission adjusted",
+      "body": "Commission adjusted by {points} points."
     },
     "zh-CN": {
-      "title": "佣金调整记录",
-      "body": "历史记录：曾调整 {points} 积分。此记录表示过去的调整，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。"
+      "title": "佣金调整",
+      "body": "佣金已调整 {points} 积分。"
     }
   },
   "withdrawal.order.reviewing": {
     "en": {
-      "title": "Withdrawal status recorded",
-      "body": "Historical withdrawal status: reviewing. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state."
+      "title": "Withdrawal under review",
+      "body": "Withdrawal under review: {points} points."
     },
     "zh-CN": {
-      "title": "提现状态记录",
-      "body": "历史提现状态：审核中，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。"
+      "title": "提现审核中",
+      "body": "提现审核中，{points} 积分。"
     }
   },
   "withdrawal.order.processing": {
     "en": {
-      "title": "Withdrawal status recorded",
-      "body": "Historical withdrawal status: processing. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state."
+      "title": "Withdrawal processing",
+      "body": "Withdrawal processing: {points} points."
     },
     "zh-CN": {
-      "title": "提现状态记录",
-      "body": "历史提现状态：提现中，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。"
+      "title": "提现中",
+      "body": "提现中，{points} 积分。"
     }
   },
   "withdrawal.order.paid": {
     "en": {
-      "title": "Withdrawal status recorded",
-      "body": "Historical withdrawal status: paid. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state."
+      "title": "Withdrawal paid",
+      "body": "Withdrawal paid: {points} points."
     },
     "zh-CN": {
-      "title": "提现状态记录",
-      "body": "历史提现状态：已提现，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。"
+      "title": "已提现",
+      "body": "已提现，{points} 积分。"
     }
   },
   "withdrawal.order.rejected": {
     "en": {
-      "title": "Withdrawal status recorded",
-      "body": "Historical withdrawal status: rejected. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state."
+      "title": "Withdrawal rejected",
+      "body": "Withdrawal rejected: {points} points."
     },
     "zh-CN": {
-      "title": "提现状态记录",
-      "body": "历史提现状态：已驳回，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。"
+      "title": "提现已驳回",
+      "body": "提现已驳回，{points} 积分。"
     }
   },
   "withdrawal.order.failed": {
     "en": {
-      "title": "Withdrawal status recorded",
-      "body": "Historical withdrawal status: failed. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state."
+      "title": "Withdrawal failed",
+      "body": "Withdrawal failed: {points} points."
     },
     "zh-CN": {
-      "title": "提现状态记录",
-      "body": "历史提现状态：失败，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。"
+      "title": "提现失败",
+      "body": "提现失败，{points} 积分。"
     }
   },
   "withdrawal.order.cancelled": {
     "en": {
-      "title": "Withdrawal status recorded",
-      "body": "Historical withdrawal status: cancelled. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state."
+      "title": "Withdrawal cancelled",
+      "body": "Withdrawal cancelled: {points} points."
     },
     "zh-CN": {
-      "title": "提现状态记录",
-      "body": "历史提现状态：已取消，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。"
+      "title": "提现已取消",
+      "body": "提现已取消，{points} 积分。"
     }
   }
 } as const satisfies Record<string, NotificationTranslations>

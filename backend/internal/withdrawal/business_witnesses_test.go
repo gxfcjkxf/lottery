@@ -23,7 +23,7 @@ func TestFinanceBusinessWitnessesTrackReservationPaymentAndRelease(t *testing.T)
 		t.Fatal(err)
 	}
 	if _, err = policyService.UpdateBrand(ctx, tx, orderTestBrand, f.admin,
-		BrandInput{PointsStep: 1, Version: policy.Version, Config: config, Reason: "enable commission withdrawal witness coverage"},
+		BrandInput{PointsStep: 100, Version: policy.Version, Config: config, Reason: "enable commission withdrawal witness coverage"},
 		points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()}); err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)
@@ -31,13 +31,13 @@ func TestFinanceBusinessWitnessesTrackReservationPaymentAndRelease(t *testing.T)
 	if err = tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	f.fund(t, []points.Allocation{{Source: "recharge", State: "available", Points: 20},
-		{Source: "winning", State: "available", Points: 5}, {Source: "gift", State: "available", Points: 5},
-		{Source: "commission", State: "available", Points: 5}})
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 5},
-		{Source: "winning", State: "available", Points: 5}, {Source: "gift", State: "available", Points: 5},
-		{Source: "commission", State: "available", Points: 5}}
-	paid := createOrder(t, f, 20, "witness-paid-order", allocation)
+	f.fund(t, []points.Allocation{{Source: "recharge", State: "available", Points: 2000},
+		{Source: "winning", State: "available", Points: 500}, {Source: "gift", State: "available", Points: 500},
+		{Source: "commission", State: "available", Points: 500}})
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 500},
+		{Source: "winning", State: "available", Points: 500}, {Source: "gift", State: "available", Points: 500},
+		{Source: "commission", State: "available", Points: 500}}
+	paid := createOrder(t, f, 2000, "witness-paid-order", allocation)
 	meta := points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()}
 	if _, err := orderAction(t, f, paid.ID, "approve", "witness-paid-approve", f.admin,
 		ActionInput{Version: 1, ClientKey: "witness-paid-approve", Reason: "reviewed"}, meta); err != nil {
@@ -47,7 +47,7 @@ func TestFinanceBusinessWitnessesTrackReservationPaymentAndRelease(t *testing.T)
 		ActionInput{Version: 2, ClientKey: "witness-paid-final", Reason: "transfer complete"}, meta); err != nil {
 		t.Fatal(err)
 	}
-	failed := createOrder(t, f, 10, "witness-release-order", []points.Allocation{{Source: "recharge", State: "available", Points: 10}})
+	failed := createOrder(t, f, 1000, "witness-release-order", []points.Allocation{{Source: "recharge", State: "available", Points: 1000}})
 	if _, err := orderAction(t, f, failed.ID, "reject", "witness-release-final", f.admin,
 		ActionInput{Version: 1, ClientKey: "witness-release-final", Reason: "review declined"}, meta); err != nil {
 		t.Fatal(err)
@@ -66,9 +66,9 @@ func TestFinanceBusinessWitnessesTrackReservationPaymentAndRelease(t *testing.T)
 
 func TestFinanceBusinessWitnessesRetainMissingPaidWithdrawalPointer(t *testing.T) {
 	f := newOrderIntegrationFixture(t, true, true)
-	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 10}}
+	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 1000}}
 	f.fund(t, allocation)
-	order := createOrder(t, f, 10, "witness-missing-paid", allocation)
+	order := createOrder(t, f, 1000, "witness-missing-paid", allocation)
 	meta := points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()}
 	if _, err := orderAction(t, f, order.ID, "approve", "witness-missing-approve", f.admin,
 		ActionInput{Version: 1, ClientKey: "witness-missing-approve", Reason: "reviewed"}, meta); err != nil {

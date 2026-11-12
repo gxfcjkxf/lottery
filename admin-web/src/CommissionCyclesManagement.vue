@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import {nextTick} from "vue"
 import MemberActionsMenu from "@lottery/shared/MemberActionsMenu.vue"
 import ManagementList from "@lottery/shared/ManagementList.vue"
 import TablePagination from "@lottery/shared/TablePagination.vue"
@@ -35,7 +34,7 @@ import type { LocalizedMessage } from "@lottery/shared";
 import { adminKey, useAdminI18n } from "./i18n";
 import {
   commissionCyclePermissions, createCommissionCyclesApi,
-  type CommissionCycleRecord, type CommissionCyclePage, type CommissionEarningPage, type CommissionRunEarningPage,
+  type CommissionCycleCandidate, type CommissionCycleRecord, type CommissionCyclePage, type CommissionEarningPage, type CommissionRunEarningPage,
   type CommissionAllocationPage,
   type CommissionRunPage, type CommissionCalculationPage,
   type CommissionDiscovery, type CommissionDiscoveryPage, type CommissionCreateBody, type CommissionRetryBody,
@@ -47,18 +46,26 @@ import {
   listPendingCommissionCycleWrites, setPendingCommissionCycleWrite,
   type CommissionWriteScope, type PendingCommissionCycleWrite,
 } from "./commission-cycles-state";
+const discoveryPageSize = ref(20)
+const allocationPageSize = ref(20)
+const calculationPageSize = ref(20)
+const runEarningPageSize = ref(20)
+const earningPageSize = ref(20)
+const runPageSize = ref(20)
+const cyclePageSize = ref(20)
+
 
 const props = defineProps<{ account: AdminAccount; brandId: string; initialCycleId?: string; brandStatus?: string; covered?: boolean }>();
 const emit = defineEmits<{ (event: "session-invalid"): void; (event: "open-payments", cycleId: string): void; (event: "open-corrections", cycleId: string): void }>();
 const { t, locale, message, display } = useAdminI18n();
 const api = createCommissionCyclesApi();
-const PAGE_SIZE = 20;
+
 const fromDraft = ref(''), toDraft = ref(''), stateDraft = ref(''), agentDraft = ref('');
 const committedFilter = ref<CommissionListQuery>({});
 const searched = ref(true), showCreate = ref(false), showTasks = ref(false);
 const detailTab = ref<'result'|'details'|'history'>('result');
 const columns = computed(() => [
- {key:'cycle',label:t('admin.commission.ui.cycle')}, {key:'state',label:t('admin.commission.ui.state')},
+ {key:'cycle',label:t('admin.commission.ui.cycle'),cellClass:'commission-cycle-cell'}, {key:'state',label:t('admin.commission.ui.state')},
  {key:'agents',label:t('admin.commission.ui.agents'),cellClass:'numeric'}, {key:'points',label:t('admin.commission.ui.points'),cellClass:'numeric'},
  {key:'updated',label:t('admin.commission.ui.updated')}, {key:'actions',label:t('admin.commission.ui.actions')},
 ]);
@@ -74,7 +81,7 @@ async function applyFilters() {
   searched.value=true; closeDetails(); await loadCycles(0);
  } catch { listError.value=t('admin.commission.ui.dateError'); }
 }
-async function resetFilters() {agentDraftSearchPending.value=false;accountSearchReset.value++; fromDraft.value=toDraft.value=stateDraft.value=agentDraft.value=''; await applyFilters(); }
+
 function dirtyFilters() { cycleTicket++; cycles.value=[]; cycleTotal.value='0'; cycleOffset.value=0; loading.value=false; searched.value=false; }
 async function openTab(tab: 'result'|'details'|'history') {
  if (tab !== detailTab.value) { allocationAgentFilter.value = allocationOrderFilter.value = ''; allocationAgentFilterSearchPending.value = false; }
@@ -107,6 +114,30 @@ const discoveriesLoaded = ref(false);
 const discoveries = ref<CommissionDiscovery[]>([]), discoveryTotal = ref("0"), discoveryOffset = ref(0);
 const selectedDiscovery = ref<CommissionDiscovery | null>(null);
 
+const candidates = ref<CommissionCycleCandidate[]>([]), candidatesLoading = ref(false), candidatesFailed = ref(false), candidatesMore = ref(false);
+let candidateTicket = 0;
+function candidateLabel(item: CommissionCycleCandidate) {
+  return `${t(item.cycle === 'weekly' ? 'admin.commission.ui.weekly' : 'admin.commission.ui.monthly')} · ${date(item.window_from)}\n→ ${date(item.window_to)}`;
+}
+async function loadCandidates(offset = 0) {
+  const ticket = ++candidateTicket, captured = scopeStamp.value, session = commissionCycleSessionGeneration();
+  candidatesLoading.value = true; candidatesFailed.value = false;
+  try {
+    const result = await api.candidates(props.brandId, 100, offset);
+    if (!alive || ticket !== candidateTicket || captured !== scopeStamp.value) return;
+    candidates.value = offset ? [...candidates.value, ...result.items] : result.items;
+    candidatesMore.value = result.items.length === 100;
+  } catch (error) {
+    if (!alive || ticket !== candidateTicket || captured !== scopeStamp.value) return;
+    candidatesFailed.value = true; writeError.value = readFailure(error);
+    sessionExpired(error, captured, session);
+  } finally { if (ticket === candidateTicket) candidatesLoading.value = false; }
+}
+async function openCreate() {
+  anchorOrderId.value = ''; candidates.value = []; candidatesMore.value = false;
+  showCreate.value = true;
+  await loadCandidates();
+}
 const anchorOrderId = ref(""), createReason = ref(""), retryReason = ref("");
 const review = ref<PendingCommissionCycleWrite | null>(null), confirmed = ref(false);
 const pendingIntents = ref<PendingCommissionCycleWrite[]>([]);
@@ -120,11 +151,11 @@ let alive = true, generation = 0, cycleTicket = 0, detailTicket = 0, earningTick
 let calculationTicket = 0, runEarningTicket = 0, allocationTicket = 0, discoveryTicket = 0, writeTicket = 0;
 let conflictReloadTicket = 0;
 
-const canCreate = computed(() => rights.value.run && props.brandStatus !== "disabled" && !props.account.super_admin && !writing.value && !pendingIntents.value.some((item) => item.operation === "create") && validReason(createReason.value) && validUuid(anchorOrderId.value.trim()));
+const canCreate = computed(() => rights.value.run && props.brandStatus !== "disabled" && !props.account.super_admin && !writing.value && !pendingIntents.value.some((item) => item.operation === "create") && validReason(createReason.value) && !candidatesLoading.value && !candidatesFailed.value && candidates.value.some(item => item.anchor_order_id === anchorOrderId.value));
 const canRetryCycle = computed(() => Boolean(rights.value.retry && props.brandStatus !== "disabled" && !props.account.super_admin && selectedCycle.value?.state === "failed" && selectedCycle.value.version < Number.MAX_SAFE_INTEGER && validReason(retryReason.value) && !writing.value && !pendingFor("retry_cycle", selectedCycle.value.id)));
 const canRetryDiscovery = computed(() => Boolean(rights.value.retry && props.brandStatus !== "disabled" && !props.account.super_admin && selectedDiscovery.value?.state === "failed" && selectedDiscovery.value.version < Number.MAX_SAFE_INTEGER && validReason(retryReason.value) && !writing.value && !pendingFor("retry_discovery", selectedDiscovery.value.id)));
-const cycleHasNext = computed(() => BigInt(cycleOffset.value + PAGE_SIZE) < BigInt(cycleTotal.value));
-const discoveryHasNext = computed(() => BigInt(discoveryOffset.value + PAGE_SIZE) < BigInt(discoveryTotal.value));
+const cycleHasNext = computed(() => BigInt(cycleOffset.value + cyclePageSize.value) < BigInt(cycleTotal.value));
+const discoveryHasNext = computed(() => BigInt(discoveryOffset.value + discoveryPageSize.value) < BigInt(discoveryTotal.value));
 
 function validUuid(value: string): boolean { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value); }
 function validReason(value: string): boolean {
@@ -180,6 +211,7 @@ function clearVisible() {
   earnings.value = null; runs.value = null; selectedRunId.value = ""; calculations.value = null;
   runEarnings.value = null; allocations.value = null; allocationAgentFilter.value = allocationOrderFilter.value = "";
   discoveriesLoaded.value = false; discoveries.value = []; discoveryTotal.value = "0"; discoveryOffset.value = 0; selectedDiscovery.value = null;
+  candidateTicket++; candidates.value = []; candidatesLoading.value = candidatesFailed.value = candidatesMore.value = false;
   anchorOrderId.value = ""; createReason.value = ""; retryReason.value = ""; review.value = null; confirmed.value = false;
   listError.value = detailError.value = earningsError.value = runsError.value = calculationsError.value = runEarningsError.value = allocationsError.value = discoveryError.value = writeError.value = notice.value = "";
   loading.value = detailLoading.value = earningsLoading.value = runsLoading.value = calculationsLoading.value = runEarningsLoading.value = allocationsLoading.value = discoveryLoading.value = writing.value = false;
@@ -214,7 +246,7 @@ async function loadCycles(offset = cycleOffset.value) {
   const ticket = ++cycleTicket, captured = scopeStamp.value, session = commissionCycleSessionGeneration();
   loading.value = true; listError.value = "";
   try {
-    const page: CommissionCyclePage = await api.list(props.brandId, PAGE_SIZE, offset, committedFilter.value);
+    const page: CommissionCyclePage = await api.list(props.brandId, cyclePageSize.value, offset, committedFilter.value);
     if (!current(ticket, cycleTicket, captured, session)) return;
     cycles.value = page.items; cycleTotal.value = page.total_count; cycleOffset.value = page.offset;
     if (selectedCycle.value) {
@@ -234,7 +266,7 @@ async function loadDiscoveries(offset = discoveryOffset.value) {
   const ticket = ++discoveryTicket, captured = scopeStamp.value, session = commissionCycleSessionGeneration();
   discoveryLoading.value = true; discoveryError.value = "";
   try {
-    const page: CommissionDiscoveryPage = await api.discoveries(props.brandId, PAGE_SIZE, offset);
+    const page: CommissionDiscoveryPage = await api.discoveries(props.brandId, discoveryPageSize.value, offset);
     if (!current(ticket, discoveryTicket, captured, session)) return;
     discoveriesLoaded.value = true; discoveries.value = page.items; discoveryTotal.value = page.total_count; discoveryOffset.value = page.offset;
     if (selectedDiscovery.value) selectedDiscovery.value = page.items.find((item) => item.id === selectedDiscovery.value?.id) ?? null;
@@ -260,7 +292,7 @@ async function loadEarnings(cycleId: string, offset = earningOffset.value) {
   const ticket = ++earningTicket, captured = scopeStamp.value, session = commissionCycleSessionGeneration();
   earningsLoading.value = true; earningsError.value = "";
   try {
-    const page: CommissionEarningPage = await api.earnings(props.brandId, cycleId, PAGE_SIZE, offset);
+    const page: CommissionEarningPage = await api.earnings(props.brandId, cycleId, earningPageSize.value, offset);
     if (!current(ticket, earningTicket, captured, session) || selectedCycle.value?.id !== cycleId) return;
     const currentRunId = selectedCycle.value.current_run_id;
     if (page.cycle_id !== cycleId || page.items.some((row) => row.cycle_id !== cycleId || row.run_id !== currentRunId)) {
@@ -276,7 +308,7 @@ async function loadRuns(cycleId: string, offset = runOffset.value) {
   const ticket = ++runTicket, captured = scopeStamp.value, session = commissionCycleSessionGeneration();
   runsLoading.value = true; runsError.value = "";
   try {
-    const page: CommissionRunPage = await api.runs(props.brandId, cycleId, PAGE_SIZE, offset);
+    const page: CommissionRunPage = await api.runs(props.brandId, cycleId, runPageSize.value, offset);
     if (!current(ticket, runTicket, captured, session) || selectedCycle.value?.id !== cycleId) return;
     if (page.cycle_id !== cycleId || page.items.some((row) => row.cycle_id !== cycleId)) throw new Error(t('admin.copy.4d720ae2'));
     runs.value = page; runOffset.value = page.offset;
@@ -298,7 +330,7 @@ async function loadRunEarnings(cycleId: string, runId: string, offset = runEarni
   const ticket = ++runEarningTicket, captured = scopeStamp.value, session = commissionCycleSessionGeneration();
   runEarningsLoading.value = true; runEarningsError.value = "";
   try {
-    const page = await api.runEarnings(props.brandId, cycleId, runId, PAGE_SIZE, offset);
+    const page = await api.runEarnings(props.brandId, cycleId, runId, runEarningPageSize.value, offset);
     if (!current(ticket, runEarningTicket, captured, session) || selectedCycle.value?.id !== cycleId || selectedRunId.value !== runId) return;
     if (page.cycle_id !== cycleId || page.run_id !== runId || page.items.some((row) => row.cycle_id !== cycleId || row.run_id !== runId)) throw new Error(t('admin.copy.1718d6a6'));
     runEarnings.value = page; runEarningOffset.value = page.offset;
@@ -311,7 +343,7 @@ async function loadAllocations(cycleId: string, runId: string, offset = allocati
   allocationsLoading.value = true; allocationsError.value = "";
   try {
     const agentId = allocationAgentFilter.value.trim(), orderId = allocationOrderFilter.value.trim();
-    const page = await api.allocations(props.brandId, cycleId, runId, { limit: PAGE_SIZE, offset, ...(agentId ? { agent_id: agentId } : {}), ...(orderId ? { order_id: orderId } : {}) });
+    const page = await api.allocations(props.brandId, cycleId, runId, { limit: allocationPageSize.value, offset, ...(agentId ? { agent_id: agentId } : {}), ...(orderId ? { order_id: orderId } : {}) });
     if (!current(ticket, allocationTicket, captured, session) || selectedCycle.value?.id !== cycleId || selectedRunId.value !== runId) return;
     if (page.cycle_id !== cycleId || page.run_id !== runId || page.items.some((row) => row.cycle_id !== cycleId || row.run_id !== runId)) throw new Error(t('admin.copy.c1622f82'));
     allocations.value = page; allocationOffset.value = page.offset;
@@ -334,7 +366,7 @@ async function loadCalculations(cycleId: string, runId: string, offset = calcula
   const ticket = ++calculationTicket, captured = scopeStamp.value, session = commissionCycleSessionGeneration();
   calculationsLoading.value = true; calculationsError.value = "";
   try {
-    const page: CommissionCalculationPage = await api.calculations(props.brandId, cycleId, runId, PAGE_SIZE, offset);
+    const page: CommissionCalculationPage = await api.calculations(props.brandId, cycleId, runId, calculationPageSize.value, offset);
     if (!current(ticket, calculationTicket, captured, session) || selectedCycle.value?.id !== cycleId || selectedRunId.value !== runId) return;
     if (page.cycle_id !== cycleId || page.run_id !== runId || page.items.some((row) => row.cycle_id !== cycleId || row.run_id !== runId)) throw new Error(t('admin.copy.69608838'));
     calculations.value = page; calculationOffset.value = page.offset;
@@ -348,7 +380,7 @@ function createIntent(): PendingCommissionCycleWrite | null {
   if (old) return old;
   if (!canCreate.value) return null;
   const body = freezeCommissionCycleBody({ anchor_order_id: anchorOrderId.value.trim(), reason: createReason.value });
-  return Object.freeze({ ...scope, body, key: createIdempotencyKey() });
+  return Object.freeze({ ...scope, body, key: createIdempotencyKey(), cycleWindow: { ...candidates.value.find(item => item.anchor_order_id === anchorOrderId.value)! } });
 }
 function retryIntent(operation: "retry_cycle" | "retry_discovery"): PendingCommissionCycleWrite | null {
   const targetId = operation === "retry_cycle" ? selectedCycle.value?.id : selectedDiscovery.value?.id;
@@ -431,11 +463,11 @@ async function reloadConflictedIntent(intent: PendingCommissionCycleWrite) {
   writeError.value = "";
   try {
     if (intent.operation === "create") {
-      const page = await api.list(props.brandId, PAGE_SIZE, 0);
+      const page = await api.list(props.brandId, cyclePageSize.value, 0);
       if (!stillCurrent()) return;
       cycles.value = page.items; cycleTotal.value = page.total_count; cycleOffset.value = page.offset;
     } else if (intent.operation === "retry_cycle") {
-      const [item, page] = await Promise.all([api.read(props.brandId, intent.targetId!), api.list(props.brandId, PAGE_SIZE, cycleOffset.value)]);
+      const [item, page] = await Promise.all([api.read(props.brandId, intent.targetId!), api.list(props.brandId, cyclePageSize.value, cycleOffset.value)]);
       if (!stillCurrent()) return;
       selectedCycle.value = item; cycles.value = page.items; cycleTotal.value = page.total_count; cycleOffset.value = page.offset;
       earningTicket++; runTicket++; calculationTicket++; runEarningTicket++; allocationTicket++;
@@ -443,7 +475,7 @@ async function reloadConflictedIntent(intent: PendingCommissionCycleWrite) {
       runEarnings.value = null; allocations.value = null; allocationAgentFilter.value = allocationOrderFilter.value = "";
       void loadEarnings(item.id, 0); void loadRuns(item.id, 0);
     } else {
-      const latest = await api.discoveries(props.brandId, PAGE_SIZE, discoveryOffset.value);
+      const latest = await api.discoveries(props.brandId, discoveryPageSize.value, discoveryOffset.value);
       if (!stillCurrent()) return;
       const found = latest.items.find((item) => item.id === intent.targetId);
       discoveries.value = latest.items; discoveryTotal.value = latest.total_count; discoveryOffset.value = latest.offset;
@@ -477,13 +509,13 @@ function discardIntent(intent: PendingCommissionCycleWrite) {
   reviewedConflictKeys.value = reviewedConflictKeys.value.filter((key) => key !== intent.key);
   if (review.value?.key === intent.key) { review.value = null; confirmed.value = false; }
 }
-async function pageCycles(delta: number) { if (!loading.value) await loadCycles(Math.max(0, cycleOffset.value + delta * PAGE_SIZE)); }
-async function pageDiscoveries(delta: number) { if (!discoveryLoading.value) await loadDiscoveries(Math.max(0, discoveryOffset.value + delta * PAGE_SIZE)); }
-async function pageEarnings(delta: number) { if (selectedCycle.value && earnings.value) await loadEarnings(selectedCycle.value.id, Math.max(0, earningOffset.value + delta * PAGE_SIZE)); }
-async function pageRuns(delta: number) { if (selectedCycle.value) await loadRuns(selectedCycle.value.id, Math.max(0, runOffset.value + delta * PAGE_SIZE)); }
-async function pageCalculations(delta: number) { if (selectedCycle.value && selectedRunId.value) await loadCalculations(selectedCycle.value.id, selectedRunId.value, Math.max(0, calculationOffset.value + delta * PAGE_SIZE)); }
-async function pageRunEarnings(delta: number) { if (selectedCycle.value && selectedRunId.value) await loadRunEarnings(selectedCycle.value.id, selectedRunId.value, Math.max(0, runEarningOffset.value + delta * PAGE_SIZE)); }
-async function pageAllocations(delta: number) { if (selectedCycle.value && selectedRunId.value) await loadAllocations(selectedCycle.value.id, selectedRunId.value, Math.max(0, allocationOffset.value + delta * PAGE_SIZE)); }
+async function pageCycles(delta: number) { if (!loading.value) await loadCycles(Math.max(0, cycleOffset.value + delta * cyclePageSize.value)); }
+async function pageDiscoveries(delta: number) { if (!discoveryLoading.value) await loadDiscoveries(Math.max(0, discoveryOffset.value + delta * discoveryPageSize.value)); }
+async function pageEarnings(delta: number) { if (selectedCycle.value && earnings.value) await loadEarnings(selectedCycle.value.id, Math.max(0, earningOffset.value + delta * earningPageSize.value)); }
+async function pageRuns(delta: number) { if (selectedCycle.value) await loadRuns(selectedCycle.value.id, Math.max(0, runOffset.value + delta * runPageSize.value)); }
+async function pageCalculations(delta: number) { if (selectedCycle.value && selectedRunId.value) await loadCalculations(selectedCycle.value.id, selectedRunId.value, Math.max(0, calculationOffset.value + delta * calculationPageSize.value)); }
+async function pageRunEarnings(delta: number) { if (selectedCycle.value && selectedRunId.value) await loadRunEarnings(selectedCycle.value.id, selectedRunId.value, Math.max(0, runEarningOffset.value + delta * runEarningPageSize.value)); }
+async function pageAllocations(delta: number) { if (selectedCycle.value && selectedRunId.value) await loadAllocations(selectedCycle.value.id, selectedRunId.value, Math.max(0, allocationOffset.value + delta * allocationPageSize.value)); }
 function recoveryReason(intent: PendingCommissionCycleWrite) { return intent.body.reason; }
 function intentLabel(intent: PendingCommissionCycleWrite) { return intent.operation === "create" ? t('admin.copy.379b72cb') : intent.operation === "retry_cycle" ? t('admin.copy.8efee3ae') : t('admin.copy.a33c324d'); }
 function operationText(operation: CommissionWriteScope["operation"]) { return operation === "create" ? t('admin.copy.379b72cb') : operation === "retry_cycle" ? t('admin.copy.8efee3ae') : t('admin.copy.a33c324d'); }
@@ -508,7 +540,7 @@ useOperationToast(() => allocationsError.value, value => displayPublicError(valu
 useOperationToast(() => discoveryError.value, value => displayPublicError(value), 'error');
 defineExpose({ openCycle: loadCycle })
 const allocationReset=ref(0)
-async function clearAllocationFilters(){allocationReset.value++;allocationAgentFilter.value=allocationOrderFilter.value='';await nextTick();await filterAllocations()}
+
 </script>
 
 <template>
@@ -523,13 +555,13 @@ async function clearAllocationFilters(){allocationReset.value++;allocationAgentF
 
       <section v-if="pendingIntents.length" class="panel pending" aria-live="polite">
         <div class="section-title"><div><h2>{{ t('admin.copy.eef84c8f') }}</h2><p>{{ t('admin.copy.56be4d08') }}</p></div><span class="tag warn">{{ t('admin.copy.020ec9b6') }}</span></div>
-        <article v-for="intent in pendingIntents" :key="intent.key" class="pending-item"><b>{{ intentLabel(intent) }} · {{ intent.targetId ?? "" }}</b><code></code><p>{{ recoveryReason(intent) }}</p><p v-if="isConflict(intent)" class="error" role="alert">{{ t('admin.copy.2827a14b') }}</p><div class="actions ui-form-actions"><button v-refresh-button="t('admin.copy.586a2411')" v-if="isConflict(intent)" type="button" class="button button-quiet" :disabled="writing || conflictReloading || !rights.view" @click="withGlobalLoading(reloadConflictedIntent, intent)">{{ t('admin.copy.586a2411') }}</button><button v-else type="button" class="button button-primary" :disabled="writing || brandStatus === 'disabled' || !(intent.operation === 'create' ? rights.run : rights.retry) || account.super_admin" @click="recover(intent)">{{ t('admin.copy.cb6f5b32') }}</button><label v-if="isConflict(intent) && conflictReloaded(intent)" class="confirm-check"><input type="checkbox" :checked="conflictReviewed(intent)" @change="markConflictReviewed(intent, $event)" />{{ t('admin.copy.2a662c1c') }}</label><button v-if="isConflict(intent) && conflictReloaded(intent)" type="button" class="button button-quiet" :disabled="writing || !conflictReviewed(intent)" @click="discardIntent(intent)">{{ t('admin.copy.095e078e') }}</button></div></article>
+        <article v-for="intent in pendingIntents" :key="intent.key" class="pending-item"><b>{{ intentLabel(intent) }} · {{ intent.targetId ?? "" }}</b><code></code><p>{{ recoveryReason(intent) }}</p><p v-if="isConflict(intent)" class="error" role="alert">{{ t('admin.copy.2827a14b') }}</p><div class="actions ui-form-actions"><button v-refresh-button="t('admin.settings.readAgain')" v-if="isConflict(intent)" type="button" class="button button-quiet" :disabled="writing || conflictReloading || !rights.view" @click="withGlobalLoading(reloadConflictedIntent, intent)">{{ t('admin.settings.readAgain') }}</button><button v-else type="button" class="button button-primary" :disabled="writing || brandStatus === 'disabled' || !(intent.operation === 'create' ? rights.run : rights.retry) || account.super_admin" @click="recover(intent)">{{ t('admin.copy.cb6f5b32') }}</button><label v-if="isConflict(intent) && conflictReloaded(intent)" class="confirm-check"><input type="checkbox" :checked="conflictReviewed(intent)" @change="markConflictReviewed(intent, $event)" />{{ t('admin.copy.2a662c1c') }}</label><button v-if="isConflict(intent) && conflictReloaded(intent)" type="button" class="button button-quiet" :disabled="writing || !conflictReviewed(intent)" @click="discardIntent(intent)">{{ t('admin.copy.095e078e') }}</button></div></article>
       </section>
 
 
 
     <ManagementList :busy="loading"><template #actions>   <div class="commission-actions console-page-actions commission-list-actions">
-    <button v-if="rights.run && !account.super_admin && brandStatus !== 'disabled'" type="button" class="button" @click="showCreate=true">{{ t('admin.commission.ui.manual') }}</button>
+    <button v-if="rights.run && !account.super_admin && brandStatus !== 'disabled'" type="button" class="button" @click="withGlobalLoading(openCreate)">{{ t('admin.commission.ui.manual') }}</button>
     <button v-if="rights.view" type="button" class="button" aria-haspopup="dialog" @click="withGlobalLoading(openTasks)">{{ t('admin.commission.ui.tasks') }}</button>
 
    </div></template><template #filters>    <form novalidate v-inline-validation class="commission-toolbar ui-filter-bar" @submit.prevent="withGlobalLoading(applyFilters)">
@@ -537,30 +569,30 @@ async function clearAllocationFilters(){allocationReset.value++;allocationAgentF
      <label><PlatformTemporalInput :label="t('admin.commission.ui.to')" :placeholder="t('admin.commission.ui.to')" v-model="toDraft" type="date" :locale="locale" /></label>
      <label><SelectControl :placeholder="t('admin.commission.ui.state')" v-model="stateDraft" :label="String(t('admin.commission.ui.state'))" :options="[{ value: '', label: (String(t('admin.commission.ui.all'))).trim() }, ...((['enumerating', 'waiting', 'calculating', 'summarizing', 'ready', 'stale', 'failed']).map((state) => ({ value: state, label: (String(state === 'stale' ? t('admin.commission.ui.stale') : state === 'ready' ? t('admin.commission.ui.ready') : statusText(state))).trim() })))]" /></label>
      <label><FilterAssociationSearch v-model="agentDraft" v-model:pending="agentDraftSearchPending" :reset-key="accountSearchReset" :brand-id="brandId" surface="admin" resource="commission" kind="agent" :label="t('admin.commission.ui.agent')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" /></label>
-     <div class="commission-actions ui-form-actions"><button class="button button-primary" type="submit" :disabled="agentDraftSearchPending || loading">{{ t('admin.commission.ui.query') }}</button><button class="button" type="button" @click="withGlobalLoading(resetFilters)">{{ t('admin.commission.ui.reset') }}</button></div>
+     <div class="commission-actions ui-form-actions"><button class="button button-primary" type="submit" :disabled="agentDraftSearchPending || loading">{{ t('admin.commission.ui.query') }}</button></div>
     </form></template>
     <p v-if="!searched" class="commission-note">{{ t('admin.commission.ui.filtersChanged') }}</p>
     <p v-if="listError" role="alert" class="commission-warning">{{ t('admin.commission.ui.readFailed') }} <button :disabled="agentDraftSearchPending" class="button" v-refresh-button="t('admin.commission.ui.retryRead')" @click="withGlobalLoading(applyFilters)">{{ t('admin.commission.ui.retryRead') }}</button></p>
     <p v-if="loading" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
     <ManagementTable :entries="cycles" :columns="columns" :empty="searched && !loading && !listError && !cycles.length" :empty-label="t('admin.commission.ui.empty')">
-     <template #cycle="{entry}"><button class="text-button commission-link" :data-cycle-id="entry.id" :data-cycle-version="entry.version" @click="withGlobalLoading(loadCycle,entry.id)">{{ date(entry.window_from) }} – {{ date(entry.window_to) }}</button></template>
+     <template #cycle="{entry}"><button class="text-button commission-link" :data-cycle-id="entry.id" :data-cycle-version="entry.version" @click="withGlobalLoading(loadCycle,entry.id)"><span class="commission-cycle-range"><span>{{ date(entry.window_from) }}</span><span> → {{ date(entry.window_to) }}</span></span></button></template>
      <template #state="{entry}"><span class="commission-status" :class="cycleState(entry)">{{ cycleStateLabel(entry) }}</span></template>
      <template #agents="{entry}">{{ cycleComplete(entry)?exact(entry.earning_count):'—' }}</template>
      <template #points="{entry}">{{ cycleComplete(entry)?exact(entry.total_points):t('admin.commission.ui.incomplete') }}</template>
      <template #updated="{entry}">{{ date(entry.updated_at) }}</template>
      <template #actions="{entry}"><MemberActionsMenu :id="'CommissionCyclesManagement-'+entry.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" class="button" @click="withGlobalLoading(loadCycle,entry.id)">{{ t('admin.commission.ui.view') }}</button><button type="button" role="menuitem" class="button" :data-cycle-payments="entry.id" :disabled="!entry.current_run_id" aria-haspopup="dialog" @click="emit('open-payments',entry.id)">{{ t('admin.commission.ui.paymentsAction') }}</button><button type="button" role="menuitem" class="button" :data-cycle-corrections="entry.id" :disabled="!entry.current_run_id" aria-haspopup="dialog" @click="emit('open-corrections',entry.id)">{{ t('admin.commission.ui.correctionsAction') }}</button></MemberActionsMenu></template>
     </ManagementTable>
-    <template #pagination><TablePagination :show-empty="searched && !loading && !listError" class="commission-pager" :total="cycleTotal" :page="Math.floor(cycleOffset / PAGE_SIZE + 1)" :count="cycles.length" :locale="locale" :page-size="PAGE_SIZE" :previous-disabled="loading || cycleOffset===0" :next-disabled="loading || !cycleHasNext" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageCycles(target - (Math.floor(cycleOffset / PAGE_SIZE + 1)))" /></template></ManagementList>
-      <DetailModal v-if="showTasks" :title="t('admin.commission.ui.tasks')" :close-label="t('association.close')" :open="!selectedDiscovery && !review" @close="showTasks=false; selectedDiscovery=null"><ManagementList embedded class="discoveries"><header class="console-page-heading"><div class="console-page-actions"><button v-refresh-button="t('admin.copy.894e2a7d')" type="button" class="button" :disabled="discoveryLoading || !rights.view" @click="withGlobalLoading(loadDiscoveries, discoveryOffset)">{{ t('admin.copy.894e2a7d') }}</button></div></header><div v-if="!discoveryLoading && !discoveryError && !discoveries.length" class="empty empty-state">{{ t('admin.copy.6f161c9e') }}</div><article v-for="item in discoveries" :key="item.id" :data-discovery-id="item.id" class="discovery-row" :class="{ selected: selectedDiscovery?.id === item.id }"><button type="button" class="discovery-select" @click="selectDiscovery(item)"><span class="row-head"><b>{{ statusText(item.state) }}</b><span class="id">{{ item.id }}</span></span><span>{{ t('admin.copy.11c28a36') }} <span v-if="item.cycle_id" class="id"><AssociationName :record="item" kind="cycle" :id="item.cycle_id" :locale="associationLocale" /></span><span v-else>{{ t('admin.copy.941137c1') }}</span></span><span>{{ item.window_from ? `${date(item.window_from)} – ${date(item.window_to)}` : t('admin.copy.6a0bb6fb') }}</span><span v-if="item.last_error_code" class="error-text">{{ t('admin.copy.c0a94db8') }}: {{ item.last_error_code ? displayPublicError(publicErrorMessage({ code: item.last_error_code })) : "—" }}</span><span>{{ t('admin.copy.c4397333') }} {{ date(item.next_check_at) }}</span></button><button v-if="item.state === 'failed' && rights.retry && !account.super_admin" type="button" class="button button-quiet" @click="selectDiscovery(item); retryReason = ''">{{ t('admin.copy.e57b7cb7') }}</button></article>
+    <template #pagination><TablePagination class="commission-pager" :total="cycleTotal" :page="Math.floor(cycleOffset / cyclePageSize + 1)" :count="cycles.length" :locale="locale" :page-size="cyclePageSize" :previous-disabled="loading || cycleOffset===0" :next-disabled="loading || !cycleHasNext" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageCycles(target - (Math.floor(cycleOffset / cyclePageSize + 1)))" :change-page-size="async (size: number) => { cyclePageSize = size; await loadCycles(0) }" :busy="loading" /></template></ManagementList>
+      <DetailModal v-if="showTasks" :title="t('admin.commission.ui.tasks')" :close-label="t('association.close')" :open="!selectedDiscovery && !review" @close="showTasks=false; selectedDiscovery=null"><ManagementList embedded class="discoveries"><header v-if="discoveryError" class="console-page-heading"><div class="console-page-actions"><button v-refresh-button="t('admin.copy.894e2a7d')" type="button" class="button" :disabled="discoveryLoading || !rights.view" @click="withGlobalLoading(loadDiscoveries, discoveryOffset)">{{ t('admin.copy.894e2a7d') }}</button></div></header><div v-if="!discoveryLoading && !discoveryError && !discoveries.length" class="empty empty-state">{{ t('admin.copy.6f161c9e') }}</div><article v-for="item in discoveries" :key="item.id" :data-discovery-id="item.id" class="discovery-row" :class="{ selected: selectedDiscovery?.id === item.id }"><button type="button" class="discovery-select" @click="selectDiscovery(item)"><span class="row-head"><b>{{ statusText(item.state) }}</b><span class="id">{{ item.id }}</span></span><span>{{ t('admin.copy.11c28a36') }} <span v-if="item.cycle_id" class="id"><AssociationName :record="item" kind="cycle" :id="item.cycle_id" :locale="associationLocale" /></span><span v-else>{{ t('admin.copy.941137c1') }}</span></span><span>{{ item.window_from ? `${date(item.window_from)} – ${date(item.window_to)}` : t('admin.copy.6a0bb6fb') }}</span><span v-if="item.last_error_code" class="error-text">{{ t('admin.copy.c0a94db8') }}: {{ item.last_error_code ? displayPublicError(publicErrorMessage({ code: item.last_error_code })) : "—" }}</span><span>{{ t('admin.copy.c4397333') }} {{ date(item.next_check_at) }}</span></button><button v-if="item.state === 'failed' && rights.retry && !account.super_admin" type="button" class="button button-quiet" @click="selectDiscovery(item); retryReason = ''">{{ t('admin.copy.e57b7cb7') }}</button></article>
 
 
-      <template #pagination><TablePagination :show-empty="discoveriesLoaded" class="pager" :total="discoveryTotal" :page="Math.floor(discoveryOffset / PAGE_SIZE + 1)" :count="discoveries.length" :locale="locale" :page-size="PAGE_SIZE" :previous-disabled="discoveryLoading || discoveryOffset === 0" :next-disabled="discoveryLoading || !discoveryHasNext" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageDiscoveries(target - (Math.floor(discoveryOffset / PAGE_SIZE + 1)))" /></template></ManagementList></DetailModal>
+      <template #pagination><TablePagination class="pager" :total="discoveryTotal" :page="Math.floor(discoveryOffset / discoveryPageSize + 1)" :count="discoveries.length" :locale="locale" :page-size="discoveryPageSize" :previous-disabled="discoveryLoading || discoveryOffset === 0" :next-disabled="discoveryLoading || !discoveryHasNext" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageDiscoveries(target - (Math.floor(discoveryOffset / discoveryPageSize + 1)))" :change-page-size="async (size: number) => { discoveryPageSize = size; await loadDiscoveries(0) }" :busy="discoveryLoading" /></template></ManagementList></DetailModal>
         <DetailModal v-if="!!selectedDiscovery" :title="t('admin.copy.01db40da')" :close-label="t('admin.copy.2bb2cb1d')" :open="!review" @close="selectedDiscovery = null">
-<div v-if="selectedDiscovery" class="retry-box"><header class="console-page-heading"><div class="console-page-actions"><button v-refresh-button="t('admin.copy.894e2a7d')" type="button" class="button" :disabled="discoveryLoading || !rights.view" @click="withGlobalLoading(loadDiscoveries, discoveryOffset)">{{ t('admin.copy.894e2a7d') }}</button></div></header><h3>{{ t('admin.copy.c1fe5e47') }} · {{ selectedDiscovery.id }}</h3><p>{{ selectedDiscovery.last_error_code ? displayPublicError(publicErrorMessage({ code: selectedDiscovery.last_error_code })) : t('admin.copy.85b71678') }} · {{ t('admin.copy.c4397333') }} {{ date(selectedDiscovery.next_check_at) }}</p><div v-if="selectedDiscovery.state === 'failed' && rights.retry && !account.super_admin" class="ui-form-actions"><button type="button" class="button button-primary" :disabled="!canRetryDiscovery" @click="beginReview(retryIntent('retry_discovery'))">{{ t('admin.copy.4dfcbb0b') }}</button></div></div>
+<div v-if="selectedDiscovery" class="retry-box"><header v-if="discoveryError" class="console-page-heading"><div class="console-page-actions"><button v-refresh-button="t('admin.copy.894e2a7d')" type="button" class="button" :disabled="discoveryLoading || !rights.view" @click="withGlobalLoading(loadDiscoveries, discoveryOffset)">{{ t('admin.copy.894e2a7d') }}</button></div></header><h3>{{ t('admin.copy.c1fe5e47') }} · {{ selectedDiscovery.id }}</h3><p>{{ selectedDiscovery.last_error_code ? displayPublicError(publicErrorMessage({ code: selectedDiscovery.last_error_code })) : t('admin.copy.85b71678') }} · {{ t('admin.copy.c4397333') }} {{ date(selectedDiscovery.next_check_at) }}</p><div v-if="selectedDiscovery.state === 'failed' && rights.retry && !account.super_admin" class="ui-form-actions"><button type="button" class="button button-primary" :disabled="!canRetryDiscovery" @click="beginReview(retryIntent('retry_discovery'))">{{ t('admin.copy.4dfcbb0b') }}</button></div></div>
 </DetailModal>
 
    <DetailModal v-if="selectedCycle || detailLoading || detailError" :open="!review && !covered" :title="t('admin.nav.commissionCycles')" :close-label="t('association.close')" @close="closeDetails"><div class="commission-detail">
-    <header class="console-page-heading commission-heading"><div v-if="selectedCycle" class="commission-actions console-page-actions ui-form-actions"><button class="button" v-refresh-button="t('admin.copy.894e2a7d')" @click="withGlobalLoading(loadCycle,selectedCycle.id)">{{ t('admin.copy.894e2a7d') }}</button><button class="button" @click="emit('open-payments',selectedCycle.id)">{{ t('admin.commission.ui.openPayments') }}</button><button class="button" :disabled="!selectedCycle.current_run_id" @click="emit('open-corrections',selectedCycle.id)">{{ t('admin.commission.ui.correctionsAction') }}</button></div></header>
+    <header class="console-page-heading commission-heading"><div v-if="selectedCycle" class="commission-actions console-page-actions ui-form-actions"><button v-if="detailError || ['enumerating','waiting','calculating','summarizing'].includes(selectedCycle.state)" class="button" v-refresh-button="t('admin.copy.894e2a7d')" @click="withGlobalLoading(loadCycle,selectedCycle.id)">{{ t('admin.copy.894e2a7d') }}</button><button class="button" @click="emit('open-payments',selectedCycle.id)">{{ t('admin.commission.ui.openPayments') }}</button><button class="button" :disabled="!selectedCycle.current_run_id" @click="emit('open-corrections',selectedCycle.id)">{{ t('admin.commission.ui.correctionsAction') }}</button></div></header>
     <p v-if="detailLoading" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
     <p v-if="detailError" class="commission-warning" role="alert">{{ displayPublicError(detailError) }}</p>
     <template v-if="selectedCycle">
@@ -572,27 +604,27 @@ async function clearAllocationFilters(){allocationReset.value++;allocationAgentF
       <dl class="commission-metrics"><div><dt>{{ t('admin.commission.ui.points') }}</dt><dd>{{ cycleComplete(selectedCycle)?exact(selectedCycle.total_points):t('admin.commission.ui.incomplete') }}</dd></div><div><dt>{{ t('admin.commission.ui.agents') }}</dt><dd>{{ cycleComplete(selectedCycle)?exact(selectedCycle.earning_count):'—' }}</dd></div></dl>
       <ManagementTable :entries="earnings?.items ?? []" :columns="earningColumns" :empty="!!earnings && !earnings.items.length" :empty-label="t('admin.commission.ui.empty')"><template #agent="{entry}"><AssociationName :record="entry" kind="agent" :id="entry.agent_id" :locale="locale" /></template><template #points="{entry}">{{ cycleComplete(selectedCycle)?exact(entry.points):t('admin.commission.ui.incomplete') }}</template></ManagementTable>
 
-     <template #pagination><TablePagination :show-empty="Boolean(earnings)" v-if="earnings" class="commission-pager" :total="earnings.total_count" :page="Math.floor(earningOffset / PAGE_SIZE + 1)" :count="earnings.items.length" :locale="locale" :page-size="PAGE_SIZE" :previous-disabled="earningsLoading || earningOffset===0" :next-disabled="earningsLoading || BigInt(earningOffset+PAGE_SIZE)>=BigInt(earnings.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageEarnings(target - (Math.floor(earningOffset / PAGE_SIZE + 1)))" /></template></ManagementList>
+     <template #pagination><TablePagination v-if="earnings" class="commission-pager" :total="earnings.total_count" :page="Math.floor(earningOffset / earningPageSize + 1)" :count="earnings.items.length" :locale="locale" :page-size="earningPageSize" :previous-disabled="earningsLoading || earningOffset===0" :next-disabled="earningsLoading || BigInt(earningOffset+earningPageSize)>=BigInt(earnings.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageEarnings(target - (Math.floor(earningOffset / earningPageSize + 1)))" :change-page-size="async (size: number) => { earningPageSize = size; await loadEarnings(selectedCycle!.id, 0) }" :busy="earningsLoading" /></template></ManagementList>
      <section v-if="detailTab==='details'" class="commission-detail" role="tabpanel">
-      <ManagementList embedded><template #filters><form v-inline-validation novalidate class="commission-toolbar ui-filter-bar" @submit.prevent="withGlobalLoading(filterAllocations)"><label><FilterAssociationSearch :reset-key="allocationReset" v-model="allocationAgentFilter" v-model:pending="allocationAgentFilterSearchPending" :brand-id="brandId" surface="admin" resource="commission" kind="agent" :label="t('filter.agent')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" @update:model-value="allocationFilterChanged" /></label><label><FilterAssociationSelect v-model="allocationOrderFilter" :brand-id="brandId" surface="admin" resource="commission" kind="bet_order" :label="t('filter.bet_order')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" @update:model-value="allocationFilterChanged" /></label><button class="button button-primary" :disabled="allocationAgentFilterSearchPending || allocationsLoading || !selectedRunId" >{{ t('admin.commission.ui.query') }}</button><button type="button" class="button button-secondary" :disabled="allocationsLoading" @click="withGlobalLoading(clearAllocationFilters)">{{t('admin.copy.b089734d')}}</button></form></template>
+      <ManagementList embedded><template #filters><form v-inline-validation novalidate class="commission-toolbar ui-filter-bar" @submit.prevent="withGlobalLoading(filterAllocations)"><label><FilterAssociationSearch :reset-key="allocationReset" v-model="allocationAgentFilter" v-model:pending="allocationAgentFilterSearchPending" :brand-id="brandId" surface="admin" resource="commission" kind="agent" :label="t('filter.agent')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" @update:model-value="allocationFilterChanged" /></label><label><FilterAssociationSelect v-model="allocationOrderFilter" :brand-id="brandId" surface="admin" resource="commission" kind="bet_order" :label="t('filter.bet_order')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" @update:model-value="allocationFilterChanged" /></label><button class="button button-primary" :disabled="allocationAgentFilterSearchPending || allocationsLoading || !selectedRunId" >{{ t('admin.commission.ui.query') }}</button></form></template>
       <article v-for="(row,index) in allocations?.items ?? []" :key="index" class="panel">
        <b><AssociationName :record="row" kind="agent" :id="row.agent_id" :locale="locale" /></b>
        <dl class="commission-facts"><dt>{{ t('admin.commission.ui.order') }}</dt><dd>{{ row.order_id }}</dd><dt>{{ t('filter.member') }}</dt><dd><AssociationName :record="row" kind="member" :id="row.bettor_member_id" :locale="locale" /></dd><dt>{{ t('admin.commission.ui.base') }}</dt><dd>{{ exact(row.base_points) }}</dd><dt>{{ t('admin.commission.ui.ratio') }}</dt><dd>{{ percent(row.agent_ratio) }}</dd><dt>{{ t('admin.commission.ui.downstream') }}</dt><dd>{{ percent(row.downstream_ratio) }}</dd><dt>{{ t('admin.commission.ui.difference') }}</dt><dd>{{ percent(row.difference_ratio) }}</dd><dt>{{ t('admin.commission.ui.exact') }}</dt><dd>{{ exact(row.exact_amount) }}</dd></dl>
       </article>
       <p v-if="allocations && !allocations.items.length" class="empty-state">{{ t('admin.commission.ui.empty') }}</p>
-      <template #pagination><TablePagination :show-empty="Boolean(allocations)" v-if="allocations" class="commission-pager" :total="allocations.total_count" :page="Math.floor(allocationOffset / PAGE_SIZE + 1)" :count="allocations.items.length" :locale="locale" :page-size="PAGE_SIZE" :previous-disabled="allocationsLoading || allocationOffset===0" :next-disabled="allocationsLoading || BigInt(allocationOffset+PAGE_SIZE)>=BigInt(allocations.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageAllocations(target - (Math.floor(allocationOffset / PAGE_SIZE + 1)))" /></template></ManagementList>
+      <template #pagination><TablePagination v-if="allocations" class="commission-pager" :total="allocations.total_count" :page="Math.floor(allocationOffset / allocationPageSize + 1)" :count="allocations.items.length" :locale="locale" :page-size="allocationPageSize" :previous-disabled="allocationsLoading || allocationOffset===0" :next-disabled="allocationsLoading || BigInt(allocationOffset+allocationPageSize)>=BigInt(allocations.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageAllocations(target - (Math.floor(allocationOffset / allocationPageSize + 1)))" :change-page-size="async (size: number) => { allocationPageSize = size; await loadAllocations(selectedCycle!.id, selectedRunId, 0) }" :busy="allocationsLoading" /></template></ManagementList>
 
-     <details class="commission-technical"><summary>{{ t('admin.commission.ui.sources') }}</summary><ManagementList embedded><article v-for="item in calculations?.items ?? []" :key="item.id" class="panel"><b>{{ statusText(item.reason) }} · {{ statusText(item.status) }}</b><p>{{ item.order_id }}</p><p>{{ t('admin.copy.96730052') }} {{ item.stake_points }} · {{ t('admin.copy.31452fe8') }} {{ item.prize_points }} · {{ t('admin.commission.ui.base') }} {{ item.base_points }}</p></article><template #pagination><TablePagination :show-empty="Boolean(calculations)" v-if="calculations" class="commission-pager" :total="calculations.total_count" :page="Math.floor(calculationOffset / PAGE_SIZE + 1)" :count="calculations.items.length" :locale="locale" :page-size="PAGE_SIZE" :previous-disabled="calculationsLoading || calculationOffset===0" :next-disabled="calculationsLoading || BigInt(calculationOffset+PAGE_SIZE)>=BigInt(calculations.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageCalculations(target - (Math.floor(calculationOffset / PAGE_SIZE + 1)))" /></template></ManagementList></details>
+     <details class="commission-technical"><summary>{{ t('admin.commission.ui.sources') }}</summary><ManagementList embedded><article v-for="item in calculations?.items ?? []" :key="item.id" class="panel"><b>{{ statusText(item.reason) }} · {{ statusText(item.status) }}</b><p>{{ item.order_id }}</p><p>{{ t('admin.copy.96730052') }} {{ item.stake_points }} · {{ t('admin.copy.31452fe8') }} {{ item.prize_points }} · {{ t('admin.commission.ui.base') }} {{ item.base_points }}</p></article><template #pagination><TablePagination v-if="calculations" class="commission-pager" :total="calculations.total_count" :page="Math.floor(calculationOffset / calculationPageSize + 1)" :count="calculations.items.length" :locale="locale" :page-size="calculationPageSize" :previous-disabled="calculationsLoading || calculationOffset===0" :next-disabled="calculationsLoading || BigInt(calculationOffset+calculationPageSize)>=BigInt(calculations.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageCalculations(target - (Math.floor(calculationOffset / calculationPageSize + 1)))" :change-page-size="async (size: number) => { calculationPageSize = size; await loadCalculations(selectedCycle!.id, selectedRunId, 0) }" :busy="calculationsLoading" /></template></ManagementList></details>
      </section>
-            <section v-if="detailTab === 'history'" class="subsection"><ManagementList embedded><div class="section-title"><div><h3>{{ t('admin.copy.c29e7175') }}</h3></div><span v-global-loading v-if="runsLoading" class="tag">{{ t('admin.copy.ab7239f3') }}</span></div><button v-for="run in runs?.items ?? []" :key="run.id" :data-run-id="run.id" type="button" class="run-row" :class="{ selected: selectedRunId === run.id }" @click="withGlobalLoading(selectRun, run.id)"><b>{{ statusText(run.state) }} · {{ t('admin.copy.c8648ca9') }} {{ run.generation }}</b><span class="id">{{ run.id }}</span><span>{{ t('admin.copy.57546450') }} {{ exact(run.calculated_count) }} · {{ t('admin.copy.043f32b3') }} {{ exact(run.earning_count) }} · {{ t('admin.copy.ec082fa7') }} {{ exact(run.total_points) }}</span></button><template #pagination><TablePagination :show-empty="Boolean(runs)" v-if="runs" class="pager" :total="runs.total_count" :page="Math.floor(runOffset / PAGE_SIZE + 1)" :count="runs.items.length" :locale="locale" :page-size="PAGE_SIZE" :previous-disabled="runsLoading || runOffset === 0" :next-disabled="runsLoading || BigInt(runOffset + PAGE_SIZE) >= BigInt(runs.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageRuns(target - (Math.floor(runOffset / PAGE_SIZE + 1)))" /></template></ManagementList>
-              <div v-if="selectedRunId" class="calculations"><ManagementList embedded><h4>{{ t('admin.copy.685b8e96') }} · {{ selectedRunId }}</h4><span v-global-loading v-if="calculationsLoading" class="tag">{{ t('admin.copy.ab7239f3') }}</span><article v-for="item in calculations?.items ?? []" :key="item.id" class="calc-row"><b>{{ statusText(item.reason) }} · {{ statusText(item.status) }}</b><span class="id">{{ item.order_id }} · <AssociationName :record="item" kind="member" :id="item.member_id" :locale="associationLocale" /></span><span>{{ t('admin.copy.96730052') }} {{ exact(item.stake_points) }} · {{ t('admin.copy.31452fe8') }} {{ exact(item.prize_points) }} · {{ t('admin.copy.ef515018') }} {{ exact(item.base_points) }}</span></article><template #pagination><TablePagination :show-empty="Boolean(calculations)" v-if="calculations" class="pager" :total="calculations.total_count" :page="Math.floor(calculationOffset / PAGE_SIZE + 1)" :count="calculations.items.length" :locale="locale" :page-size="PAGE_SIZE" :previous-disabled="calculationsLoading || calculationOffset === 0" :next-disabled="calculationsLoading || BigInt(calculationOffset + PAGE_SIZE) >= BigInt(calculations.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageCalculations(target - (Math.floor(calculationOffset / PAGE_SIZE + 1)))" /></template></ManagementList>
+            <section v-if="detailTab === 'history'" class="subsection"><ManagementList embedded><div class="section-title"><div><h3>{{ t('admin.copy.c29e7175') }}</h3></div><span v-global-loading v-if="runsLoading" class="tag">{{ t('admin.copy.ab7239f3') }}</span></div><button v-for="run in runs?.items ?? []" :key="run.id" :data-run-id="run.id" type="button" class="run-row" :class="{ selected: selectedRunId === run.id }" @click="withGlobalLoading(selectRun, run.id)"><b>{{ statusText(run.state) }} · {{ t('admin.copy.c8648ca9') }} {{ run.generation }}</b><span class="id">{{ run.id }}</span><span>{{ t('admin.copy.57546450') }} {{ exact(run.calculated_count) }} · {{ t('admin.copy.043f32b3') }} {{ exact(run.earning_count) }} · {{ t('admin.copy.ec082fa7') }} {{ exact(run.total_points) }}</span></button><template #pagination><TablePagination v-if="runs" class="pager" :total="runs.total_count" :page="Math.floor(runOffset / runPageSize + 1)" :count="runs.items.length" :locale="locale" :page-size="runPageSize" :previous-disabled="runsLoading || runOffset === 0" :next-disabled="runsLoading || BigInt(runOffset + runPageSize) >= BigInt(runs.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageRuns(target - (Math.floor(runOffset / runPageSize + 1)))" :change-page-size="async (size: number) => { runPageSize = size; await loadRuns(selectedCycle!.id, 0) }" :busy="runsLoading" /></template></ManagementList>
+              <div v-if="selectedRunId" class="calculations"><ManagementList embedded><h4>{{ t('admin.copy.685b8e96') }} · {{ selectedRunId }}</h4><span v-global-loading v-if="calculationsLoading" class="tag">{{ t('admin.copy.ab7239f3') }}</span><article v-for="item in calculations?.items ?? []" :key="item.id" class="calc-row"><b>{{ statusText(item.reason) }} · {{ statusText(item.status) }}</b><span class="id">{{ item.order_id }} · <AssociationName :record="item" kind="member" :id="item.member_id" :locale="associationLocale" /></span><span>{{ t('admin.copy.96730052') }} {{ exact(item.stake_points) }} · {{ t('admin.copy.31452fe8') }} {{ exact(item.prize_points) }} · {{ t('admin.copy.ef515018') }} {{ exact(item.base_points) }}</span></article><template #pagination><TablePagination v-if="calculations" class="pager" :total="calculations.total_count" :page="Math.floor(calculationOffset / calculationPageSize + 1)" :count="calculations.items.length" :locale="locale" :page-size="calculationPageSize" :previous-disabled="calculationsLoading || calculationOffset === 0" :next-disabled="calculationsLoading || BigInt(calculationOffset + calculationPageSize) >= BigInt(calculations.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageCalculations(target - (Math.floor(calculationOffset / calculationPageSize + 1)))" :change-page-size="async (size: number) => { calculationPageSize = size; await loadCalculations(selectedCycle!.id, selectedRunId, 0) }" :busy="calculationsLoading" /></template></ManagementList>
                 <section class="subsection historical"><ManagementList embedded><h4>{{ t('admin.copy.666c29a4') }}</h4>
-                  <div class="section-title"><h4>{{ t('admin.copy.e6563a7a') }}</h4><span v-global-loading v-if="runEarningsLoading" class="tag">{{ t('admin.copy.ab7239f3') }}</span></div><article v-for="row in runEarnings?.items ?? []" :key="row.id" class="run-earning-row"><b class="id"><AssociationName :record="row" kind="agent" :id="row.agent_id" :locale="associationLocale" /></b><span>{{ t('admin.copy.56b2d19b') }} <AssociationName :record="row" kind="member" :id="row.member_id" :locale="associationLocale" /> {{ t('admin.copy.54e851cb') }} {{ exact(row.points) }}</span><span>{{ t('admin.copy.d7344f9c') }} {{ exact(row.exact_amount) }}</span></article><p v-if="runEarnings && !runEarnings.items.length" class="empty empty-state">{{ t('admin.copy.a2f78367') }}</p><template #pagination><TablePagination :show-empty="Boolean(runEarnings)" v-if="runEarnings" class="pager" :total="runEarnings.total_count" :page="Math.floor(runEarningOffset / PAGE_SIZE + 1)" :count="runEarnings.items.length" :locale="locale" :page-size="PAGE_SIZE" :previous-disabled="runEarningsLoading || runEarningOffset === 0" :next-disabled="runEarningsLoading || BigInt(runEarningOffset + PAGE_SIZE) >= BigInt(runEarnings.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageRunEarnings(target - (Math.floor(runEarningOffset / PAGE_SIZE + 1)))" /></template></ManagementList>
+                  <div class="section-title"><h4>{{ t('admin.copy.e6563a7a') }}</h4><span v-global-loading v-if="runEarningsLoading" class="tag">{{ t('admin.copy.ab7239f3') }}</span></div><article v-for="row in runEarnings?.items ?? []" :key="row.id" class="run-earning-row"><b class="id"><AssociationName :record="row" kind="agent" :id="row.agent_id" :locale="associationLocale" /></b><span>{{ t('admin.copy.56b2d19b') }} <AssociationName :record="row" kind="member" :id="row.member_id" :locale="associationLocale" /> {{ t('admin.copy.54e851cb') }} {{ exact(row.points) }}</span><span>{{ t('admin.copy.d7344f9c') }} {{ exact(row.exact_amount) }}</span></article><p v-if="runEarnings && !runEarnings.items.length" class="empty empty-state">{{ t('admin.copy.a2f78367') }}</p><template #pagination><TablePagination v-if="runEarnings" class="pager" :total="runEarnings.total_count" :page="Math.floor(runEarningOffset / runEarningPageSize + 1)" :count="runEarnings.items.length" :locale="locale" :page-size="runEarningPageSize" :previous-disabled="runEarningsLoading || runEarningOffset === 0" :next-disabled="runEarningsLoading || BigInt(runEarningOffset + runEarningPageSize) >= BigInt(runEarnings.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageRunEarnings(target - (Math.floor(runEarningOffset / runEarningPageSize + 1)))" :change-page-size="async (size: number) => { runEarningPageSize = size; await loadRunEarnings(selectedCycle!.id, selectedRunId, 0) }" :busy="runEarningsLoading" /></template></ManagementList>
                   <ManagementList embedded><div class="section-title allocation-heading"><h4>{{ t('admin.copy.d4543586') }}</h4><span v-global-loading v-if="allocationsLoading" class="tag">{{ t('admin.copy.ab7239f3') }}</span></div>
                   <template #filters><form v-inline-validation novalidate class="allocation-filters ui-filter-bar" @submit.prevent="withGlobalLoading(filterAllocations)">
                     <label><FilterAssociationSearch :reset-key="allocationReset" v-model="allocationAgentFilter" v-model:pending="allocationAgentFilterSearchPending" :brand-id="brandId" surface="admin" resource="commission" kind="agent" :label="t('filter.agent')" :locale="displayLocale" :scope-key="JSON.stringify(account)" :enabled="rights.view" @update:model-value="allocationFilterChanged" /></label>
                     <label><FilterAssociationSelect v-model="allocationOrderFilter" :brand-id="brandId" surface="admin" resource="commission" kind="bet_order" :label="t('filter.bet_order')" :locale="displayLocale" :scope-key="JSON.stringify(account)" :enabled="rights.view" @update:model-value="allocationFilterChanged" /></label>
-                    <button type="submit" class="button button-primary" :disabled="allocationAgentFilterSearchPending || allocationsLoading">{{ t('admin.copy.b8972a75') }}</button><button type="button" class="button button-secondary" :disabled="allocationsLoading" @click="withGlobalLoading(clearAllocationFilters)">{{t('admin.copy.b089734d')}}</button>
+                    <button type="submit" class="button button-primary" :disabled="allocationAgentFilterSearchPending || allocationsLoading">{{ t('admin.copy.b8972a75') }}</button>
                   </form></template>
 
                   <article v-for="(row, index) in allocations?.items ?? []" :key="`${row.order_id}:${row.agent_id}:${index}`" class="allocation-row">
@@ -603,7 +635,7 @@ async function clearAllocationFilters(){allocationReset.value++;allocationAgentF
                     <small>{{ t('admin.copy.f5703e2b') }} {{ row.calculation_id }} · {{ date(row.created_at) }}</small>
                   </article>
                   <p v-if="allocations && !allocations.items.length" class="empty empty-state">{{ t('admin.copy.ae2a5503') }}</p>
-                  <template #pagination><TablePagination :show-empty="Boolean(allocations)" v-if="allocations" class="pager" :total="allocations.total_count" :page="Math.floor(allocationOffset / PAGE_SIZE + 1)" :count="allocations.items.length" :locale="locale" :page-size="PAGE_SIZE" :previous-disabled="allocationsLoading || allocationOffset === 0" :next-disabled="allocationsLoading || BigInt(allocationOffset + PAGE_SIZE) >= BigInt(allocations.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageAllocations(target - (Math.floor(allocationOffset / PAGE_SIZE + 1)))" /></template></ManagementList>
+                  <template #pagination><TablePagination v-if="allocations" class="pager" :total="allocations.total_count" :page="Math.floor(allocationOffset / allocationPageSize + 1)" :count="allocations.items.length" :locale="locale" :page-size="allocationPageSize" :previous-disabled="allocationsLoading || allocationOffset === 0" :next-disabled="allocationsLoading || BigInt(allocationOffset + allocationPageSize) >= BigInt(allocations.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageAllocations(target - (Math.floor(allocationOffset / allocationPageSize + 1)))" :change-page-size="async (size: number) => { allocationPageSize = size; await loadAllocations(selectedCycle!.id, selectedRunId, 0) }" :busy="allocationsLoading" /></template></ManagementList>
                 </section>
               </div>
             </section>
@@ -612,12 +644,15 @@ async function clearAllocationFilters(){allocationReset.value++;allocationAgentF
    </div></DetailModal>
    <DetailModal v-if="showCreate" class="ui-form-dialog" :open="!review" :title="t('admin.commission.ui.manual')" :close-label="t('association.close')" @close="showCreate=false">
     <div class="ui-form">
-     <label>{{ t('admin.commission.ui.order') }}<FilterAssociationSelect v-model="anchorOrderId" :brand-id="brandId" surface="admin" resource="commission" kind="anchor_order" :label="t('admin.commission.ui.order')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.run" /></label>
-     <div class="ui-form-actions"><button type="button" class="button button-primary" :disabled="!canCreate" @click="beginReview(createIntent())">{{ t('admin.copy.2e889bb3') }}</button></div>
+     <label v-if="candidates.length">{{ t('admin.commission.ui.cycle') }}<SelectControl class="commission-cycle-picker" v-model="anchorOrderId" :label="t('admin.commission.ui.cycle')" :placeholder="t('admin.commission.ui.chooseCycle')" :disabled="candidatesLoading || candidatesFailed" :options="candidates.map(item => ({value:item.anchor_order_id,label:candidateLabel(item)}))" /></label>
+     <p v-else-if="!candidatesLoading && !candidatesFailed" class="empty-state">{{ t('admin.commission.ui.noMissingCycles') }}</p>
+     <button v-if="candidatesFailed" type="button" class="button button-quiet" @click="withGlobalLoading(loadCandidates)">{{ t('admin.settings.readAgain') }}</button>
+     <button v-if="candidatesMore && !candidatesFailed" type="button" class="button button-quiet" :disabled="candidatesLoading" @click="withGlobalLoading(loadCandidates, candidates.length)">{{ t('admin.commission.ui.moreCycles') }}</button>
+     <div class="ui-form-actions"><button type="button" class="button button-primary" :disabled="!canCreate" @click="beginReview(createIntent())">{{ t('admin.commission.ui.registerCycle') }}</button></div>
     </div>
    </DetailModal>
   </template>
-      <DetailModal v-if="review" class="confirmation-dialog dialog" :title="t('admin.copy.77d8945f')" title-id="review-title" :close-label="t('association.close')" :close-disabled="writing" @close="if (!(writing)) { review = null; confirmed = false; }" ><p>{{ t('admin.copy.6d4a02e0') }}</p><dl class="facts"><dt>{{ t('admin.copy.015371dd') }}</dt><dd>{{ intentLabel(review) }}</dd><dt>{{ t('admin.copy.559998d7') }}</dt><dd class="id">{{ review.targetId ?? (review.body as CommissionCreateBody).anchor_order_id }}</dd><dt v-if="review.body.reason">{{ t('admin.copy.5ec7c8ba') }}</dt><dd v-if="review.body.reason">{{ review.body.reason }}</dd></dl><label class="confirm-check"><input v-model="confirmed" type="checkbox" />{{ t('admin.copy.01a94dd5') }}</label><div class="actions ui-form-actions"><button v-write-guard="writing" type="button" class="button button-primary" :disabled="!confirmed || writing || (review.operation === 'create' ? !rights.run : !rights.retry) || account.super_admin" @click="withGlobalLoading(confirmWrite)">{{ t('admin.copy.3135aeca') }}</button></div></DetailModal>
+      <DetailModal v-if="review" class="confirmation-dialog dialog" :title="t('admin.copy.77d8945f')" title-id="review-title" :close-label="t('association.close')" :close-disabled="writing" @close="if (!(writing)) { review = null; confirmed = false; }" ><p>{{ t('admin.copy.6d4a02e0') }}</p><dl class="facts"><dt>{{ t('admin.copy.015371dd') }}</dt><dd>{{ intentLabel(review) }}</dd><dt v-if="review.operation === 'create'">{{ t('admin.commission.ui.cycle') }}</dt><dd v-if="review.cycleWindow" class="commission-cycle-range">{{ candidateLabel(review.cycleWindow) }}</dd><dt v-if="review.body.reason">{{ t('admin.copy.5ec7c8ba') }}</dt><dd v-if="review.body.reason">{{ review.body.reason }}</dd></dl><label class="confirm-check"><input v-model="confirmed" type="checkbox" />{{ t('admin.copy.01a94dd5') }}</label><div class="actions ui-form-actions"><button v-write-guard="writing" type="button" class="button button-primary" :disabled="!confirmed || writing || (review.operation === 'create' ? !rights.run : !rights.retry) || account.super_admin" @click="withGlobalLoading(confirmWrite)">{{ t('admin.copy.3135aeca') }}</button></div></DetailModal>
  </main>
 </template>
 <style scoped>
@@ -639,4 +674,13 @@ async function clearAllocationFilters(){allocationReset.value++;allocationAgentF
 .discoveries .discovery-select { width:100%;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer; }
 .facts { display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px; }.facts dd{margin:0;overflow-wrap:anywhere;}
 .confirm-check { display:flex;align-items:center;gap:8px;min-height:44px; }
+@media (max-width: 1080px) {
+  .commission-workspace :deep(.console-table td.commission-cycle-cell::before) { content: none; }
+}
+@media (max-width: 900px), (pointer: coarse) {
+  .commission-cycle-picker :deep(.select-control-value > span),
+  .commission-cycle-picker :deep(.select-control-option > span) { white-space: pre; overflow-wrap: normal; }
+  .commission-cycle-range { white-space: pre-line; }
+  .commission-cycle-range > span { display: block; white-space: nowrap; }
+}
 </style>

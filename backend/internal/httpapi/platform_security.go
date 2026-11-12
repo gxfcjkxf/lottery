@@ -13,7 +13,7 @@ import (
 )
 
 func platformSecurityWriteRoute(method, path string) bool {
-	return method == "PATCH" && path == "/auth-settings" || method == "PUT" && path == "/compliance-policy" || method == "POST" && path == "/compliance-checks"
+	return method == "PATCH" && path == "/auth-settings"
 }
 func authSettingsWrite(w http.ResponseWriter, r *http.Request, d Dependencies, a access.Account, brand string, body identity.AuthSettingsInput, run managementAction) {
 	if r.URL.RawQuery != "" {

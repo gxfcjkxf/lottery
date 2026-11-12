@@ -11,9 +11,9 @@ import (
 func TestInsufficientRevocationLeavesOrderWalletActionsAndEventsUnchanged(t *testing.T) {
 	f := newRewardFixture(t)
 	ctx := context.Background()
-	order := rewardGrant(t, f, 30)
-	rewardCredit(t, f, "recharge", 100, "other-source")
-	rewardMove(t, f, "gift", "available", "manual_frozen", 20)
+	order := rewardGrant(t, f, 3000)
+	rewardCredit(t, f, "recharge", 10000, "other-source")
+	rewardMove(t, f, "gift", "available", "manual_frozen", 2000)
 	before := rewardBalance(t, f)
 	fingerprint := func() string {
 		var v string
@@ -35,13 +35,13 @@ func TestInsufficientRevocationLeavesOrderWalletActionsAndEventsUnchanged(t *tes
 		t.Fatal("failed reversal changed wallet or financial evidence")
 	}
 	// Explicitly restoring gift availability allows a new normal revoke, exactly once.
-	rewardMove(t, f, "gift", "manual_frozen", "available", 20)
+	rewardMove(t, f, "gift", "manual_frozen", "available", 2000)
 	revoked, err := rewardRevoke(t, f, order, f.actor, "cancel original grant")
 	if err != nil || revoked.State != "revoked" || revoked.Version != 2 {
 		t.Fatalf("revoke: %+v %v", revoked, err)
 	}
 	after := rewardBalance(t, f)
-	if after[2][0] != 0 || after[0][0] != 100 {
+	if after[2][0] != 0 || after[0][0] != 10000 {
 		t.Fatalf("wrong source deducted: %+v", after)
 	}
 	_, err = rewardRevoke(t, f, revoked, f.actor, "repeat cancellation")

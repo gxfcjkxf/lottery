@@ -130,7 +130,7 @@ describe('platform brand selection during a login', () => {
     await state.chooseBrandAccounts()
     expect(state.selectedBrand).toBe('brand-a')
     await state.chooseAuditView('audit')
-    expect(api.audit).toHaveBeenLastCalledWith('brand-a', 51, 0)
+    expect(api.audit).toHaveBeenLastCalledWith('brand-a', 50, 0)
     await state.chooseBrand('brand-b')
     const reloaded = await mount()
     expect(reloaded.selectedBrand).toBe('brand-b')

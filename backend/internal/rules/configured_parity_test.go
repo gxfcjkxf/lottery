@@ -332,7 +332,7 @@ func TestConfiguredCombinationExpansionAndSpecialPayouts(t *testing.T) {
 		{"regular_zodiac_horse", nil}, {"parlay", []int{500, 300}}, {"parlay", []int{516, 300}},
 	} {
 		for _, plate := range []string{"A", "B"} {
-			assertConfiguredParity(t, c, e, prices, attrs, v.code, v.selection, draw, plate, 100)
+			assertConfiguredParity(t, c, e, prices, attrs, v.code, v.selection, draw, plate, 10000)
 		}
 	}
 	for k := 5; k <= 10; k++ {
@@ -344,7 +344,7 @@ func TestConfiguredCombinationExpansionAndSpecialPayouts(t *testing.T) {
 		for i := 1; i <= max; i++ {
 			selection = append(selection, i)
 		}
-		assertConfiguredParity(t, c, e, prices, attrs, "miss_"+strconv.Itoa(k), selection, draw, "B", 1)
+		assertConfiguredParity(t, c, e, prices, attrs, "miss_"+strconv.Itoa(k), selection, draw, "B", 100)
 	}
 	// Independent expected value: positive repeated hits return principal once.
 	prices.Plates["A"]["regular_zodiac_horse"] = "1.8"
@@ -353,13 +353,13 @@ func TestConfiguredCombinationExpansionAndSpecialPayouts(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := configuredSources(c)["regular_zodiac_horse"]
-	request := configuredRequestForSource(t, c, source, nil, "A", 100)
+	request := configuredRequestForSource(t, c, source, nil, "A", 10000)
 	q, err := e.Prepare(context.Background(), []ConfiguredRequest{request})
 	if err != nil {
 		t.Fatal(err)
 	}
 	out, err := e.Settle(context.Background(), q, draw)
-	if err != nil || out.PrizePoints != 500 {
+	if err != nil || out.PrizePoints != 50000 {
 		t.Fatal("five hits including regular 49", out, err)
 	}
 	prices.Plates["A"]["regular_zodiac_horse"] = "1.5"
@@ -367,14 +367,14 @@ func TestConfiguredCombinationExpansionAndSpecialPayouts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request.Points = 1
+	request.Points = 100
 	draw.Regular = []int{1, 13, 2, 3, 4, 5}
 	q, err = e.Prepare(context.Background(), []ConfiguredRequest{request})
 	if err != nil {
 		t.Fatal(err)
 	}
 	out, err = e.Settle(context.Background(), q, draw)
-	if err != nil || out.PrizePoints != 2 {
+	if err != nil || out.PrizePoints != 200 {
 		t.Fatal("round once per line", out, err)
 	}
 	// Color tie: three red regular + three blue regular, special green.
@@ -397,14 +397,14 @@ func TestConfiguredCombinationExpansionAndSpecialPayouts(t *testing.T) {
 	}
 	draw = Draw{Regular: []int{1, 2, 3, 4, 5, 6}, Special: []int{49}}
 	for _, code := range []string{"seven_red", "seven_blue", "seven_green", "seven_tie"} {
-		assertConfiguredParity(t, c, e, prices, attrs, code, nil, draw, "A", 10)
+		assertConfiguredParity(t, c, e, prices, attrs, code, nil, draw, "A", 1000)
 	}
 }
 
 func TestConfiguredFrozenSnapshotAndQuoteIntegrity(t *testing.T) {
 	c, b, p, e, _ := configuredFixture(t)
 	source := configuredSources(c)["number_07"]
-	r := configuredRequestForSource(t, c, source, nil, "A", 10)
+	r := configuredRequestForSource(t, c, source, nil, "A", 1000)
 	q, err := e.Prepare(context.Background(), []ConfiguredRequest{r})
 	if err != nil {
 		t.Fatal(err)
@@ -462,11 +462,11 @@ func TestConfiguredPositiveCombinationTiersAndPosition49(t *testing.T) {
 		{"linked_3_2", []int{1, 13, 25}}, {"linked_3_2", []int{1, 13, 4}},
 		{"linked_2_special", []int{49, 3}}, {"linked_2_special", []int{49, 2}}, {"linked_special", []int{49, 3}},
 	} {
-		outcome, _, _ := configuredOldPayout(t, v.code, v.selection, cluster, attrs, prices.Plates["A"], 10)
+		outcome, _, _ := configuredOldPayout(t, v.code, v.selection, cluster, attrs, prices.Plates["A"], 1000)
 		if outcome != "won" {
 			t.Fatal("positive fixture", v)
 		}
-		assertConfiguredParity(t, c, e, prices, attrs, v.code, v.selection, cluster, "A", 10)
+		assertConfiguredParity(t, c, e, prices, attrs, v.code, v.selection, cluster, "A", 1000)
 	}
 	draw := Draw{Regular: []int{1, 2, 3, 4, 5, 6}, Special: []int{7}}
 	for k := 1; k <= 5; k++ {
@@ -476,8 +476,8 @@ func TestConfiguredPositiveCombinationTiersAndPosition49(t *testing.T) {
 			selected = append(selected, n)
 			absent = append(absent, n+7)
 		}
-		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("zodiac_link_%d", k), selected, draw, "B", 13)
-		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("zodiac_nohit_%d", k), absent, draw, "B", 13)
+		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("zodiac_link_%d", k), selected, draw, "B", 1300)
+		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("zodiac_nohit_%d", k), absent, draw, "B", 1300)
 	}
 	for k := 2; k <= 11; k++ {
 		hit, miss := []int{}, []int{}
@@ -489,15 +489,15 @@ func TestConfiguredPositiveCombinationTiersAndPosition49(t *testing.T) {
 		if k == 2 {
 			code = "zodiac_pair"
 		}
-		assertConfiguredParity(t, c, e, prices, attrs, code, hit, draw, "A", 7)
-		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("zodiac_miss_%d", k), miss, draw, "A", 7)
+		assertConfiguredParity(t, c, e, prices, attrs, code, hit, draw, "A", 700)
+		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("zodiac_miss_%d", k), miss, draw, "A", 700)
 	}
 	for k := 2; k <= 5; k++ {
 		selection := []int{}
 		for n := 1; n <= k; n++ {
 			selection = append(selection, n)
 		}
-		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("tail_link_%d", k), selection, draw, "B", 9)
+		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("tail_link_%d", k), selection, draw, "B", 900)
 	}
 	zero := Draw{Regular: []int{10, 21, 32, 43, 4, 15}, Special: []int{26}}
 	for k := 2; k <= 5; k++ {
@@ -505,24 +505,24 @@ func TestConfiguredPositiveCombinationTiersAndPosition49(t *testing.T) {
 		for n := 0; n < k; n++ {
 			selection = append(selection, n)
 		}
-		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("tail_link_%d", k), selection, zero, "B", 9)
+		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("tail_link_%d", k), selection, zero, "B", 900)
 	}
 	for k := 5; k <= 10; k++ {
 		selection := []int{}
 		for n := 10; n < 10+k; n++ {
 			selection = append(selection, n)
 		}
-		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("miss_%d", k), selection, draw, "B", 3)
+		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("miss_%d", k), selection, draw, "B", 300)
 	}
 	noTail := Draw{Regular: []int{1, 11, 21, 31, 41, 2}, Special: []int{3}}
 	for k := 1; k <= 5; k++ {
-		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("tail_nohit_%d", k), []int{0, 4, 5, 6, 7}[:k], noTail, "B", 3)
+		assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("tail_nohit_%d", k), []int{0, 4, 5, 6, 7}[:k], noTail, "B", 300)
 	}
 	for position := 1; position <= 6; position++ {
 		d := Draw{Regular: []int{1, 2, 3, 4, 5, 6}, Special: []int{7}}
 		d.Regular[position-1] = 49
 		for _, attribute := range MarkSixPositionAttributes {
-			assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("position_attribute_%d_%s", position, attribute), nil, d, "A", 10)
+			assertConfiguredParity(t, c, e, prices, attrs, fmt.Sprintf("position_attribute_%d_%s", position, attribute), nil, d, "A", 1000)
 		}
 	}
 }

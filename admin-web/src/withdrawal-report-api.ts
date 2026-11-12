@@ -1,3 +1,4 @@
+import { isPointTotal } from '@lottery/shared'
 import { readReportDownload } from "@lottery/shared";
 import { readAdminErrorResponse } from './admin-api'
 import { readAdminEnvelope } from './admin-api'
@@ -30,7 +31,7 @@ const exactKeys=(v:Record<string,unknown>,keys:readonly string[])=>Object.keys(v
 const invalid=(msg="提现报表响应格式无效。"):never=>{throw new AdminApiError(msg,502,"INVALID_RESPONSE")};
 const bad=(msg="提现报表筛选无效。"):never=>{throw new AdminApiError(msg,0,"INVALID_INPUT")};
 function totals(v:unknown):WithdrawalTotals {
-  if(!isObject(v)||Object.keys(v).length!==fields.length||fields.some(k=>typeof v[k]!=="string"||!INTEGER.test(v[k] as string))) return invalid();
+  if(!isObject(v)||Object.keys(v).length!==fields.length||fields.some(k=>typeof v[k]!=="string"||!(k.endsWith("_points") ? isPointTotal(v[k]) : INTEGER.test(v[k] as string)))) return invalid();
   const t=v as unknown as WithdrawalTotals;
   return t;
 }

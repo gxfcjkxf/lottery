@@ -50,7 +50,7 @@ export function registerManagementConsoleTests(reflow = false) {
         expect(request.method(), path).toBe('GET')
         reads.push({ path, brand })
         const reply = (data: unknown) => route.fulfill({ json: { success: true, data, associations: { [`member:${memberId}`]: { name: member.username } } } })
-        if (path === '/api/v1/display-settings') return reply({ timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' })
+        if (path === '/api/v1/display-settings') return reply({ theme:'jade',timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' })
         if (path === '/api/v1/context') return reply({ brand: { id: hostBrandId, name: hostBrandId === gameId ? 'Aurora' : 'Harbor', status: 'active', default_locale: locale, timezone: 'Asia/Singapore' } })
         if (path === '/api/v1/admin/me') return reply({ account: { id: gameId, username: 'console_operator', super_admin: false, permissions: [], platform_permissions: [], brand_ids: [gameId, otherBrand], permissions_by_brand: { [gameId]: grants, [otherBrand]: ['user.view.brand'] } } })
         if (path === '/api/v1/admin/brands') return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status: 'active' }, { id: otherBrand, name: 'Harbor', code: 'harbor', status: 'active' }] })
@@ -226,7 +226,7 @@ export function registerFinancialViewRetryTest() {
         return reply({ ...order, state: 'processing', version: 2, reviewed_at: stamp })
       }
       expect(req.method(), path).toBe('GET')
-      if (path === '/api/v1/display-settings') return reply({ timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' })
+      if (path === '/api/v1/display-settings') return reply({ theme:'jade',timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' })
       if (path === '/api/v1/context') return reply({ brand: { id: gameId, name: 'Aurora', status: 'active', default_locale: 'en', timezone: 'Asia/Singapore' } })
       if (path === '/api/v1/admin/me') return reply({ account: { id: gameId, username: 'withdrawal_operator', super_admin: false, permissions: [], platform_permissions: [], brand_ids: [gameId], permissions_by_brand: { [gameId]: ['user.view.brand', 'withdrawal.view.brand', 'withdrawal.approve.brand'] } } })
       if (path === '/api/v1/admin/brands') return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status: 'active' }] })
@@ -270,7 +270,7 @@ export function registerFixedBrandScopeTests() {
         const req = route.request(), path = new URL(req.url()).pathname
         expect(req.method()).toBe('GET')
         const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
-        if (path === '/api/v1/display-settings') return reply({ timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' })
+        if (path === '/api/v1/display-settings') return reply({ theme:'jade',timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' })
         if (path === '/api/v1/context') {
           if (mode === 'unavailable') return route.fulfill({ status: 503, json: { success: false, error: { code: 'UNAVAILABLE', message: 'Synthetic context failure' } } })
           return reply({ brand: { id: otherBrand, name: 'Harbor', status: 'active' } })

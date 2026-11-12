@@ -3,7 +3,7 @@ const historyPaths = new Set([
   "/api/v1/platform/notification-templates/{key}/history",
   "/api/v1/admin/compliance-policy/history",
   "/api/v1/admin/brand-presentation/history",
-  "/api/v1/admin/brand-domains/history",
+  "/api/v1/platform/brand-domains/history",
   "/api/v1/admin/brand-operation/history",
 ]);
 

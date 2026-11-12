@@ -58,3 +58,13 @@ test('console data refresh never lives inside pagination', () => {
     assert.ok(!ancestors.some(node => node.tag === 'TablePagination' || node.tag === 'PaginationControls'), path);
   }
 });
+
+test('cash and settings recovery labels stay textual only in an actual failure context',()=>{
+ assert.equal(isRecoveryRead("t('cash.reload')",['error']),true);
+ assert.equal(isRecoveryRead("t('cash.reload')",[]),false);
+ assert.equal(isRecoveryRead("t('admin.settings.readAgain')",['needsRead']),true);
+ assert.equal(isRecoveryRead("t('admin.settings.readAgain')",['candidatesFailed']),true);
+ assert.equal(isRecoveryRead("t('reset')",['conflict'],'shared/src/AnnouncementsManagement.vue'),true);
+ assert.equal(isRecoveryRead("t('reset')",[],'shared/src/AnnouncementsManagement.vue'),false);
+ assert.equal(isRecoveryRead("t('reload')",['failed&&!pending'],'shared/src/AutomationTimeSettings.vue'),true);
+});

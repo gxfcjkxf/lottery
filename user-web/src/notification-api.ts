@@ -1,3 +1,4 @@
+import { isPoints, pointsMinor } from '@lottery/shared'
 import { readPaginationTotal } from '@lottery/shared'
 import { resolveNotificationContent } from '@lottery/shared'
 import { readApiEnvelope } from '@lottery/shared'
@@ -94,9 +95,7 @@ const ISO_DATE_TIME =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/;
 const POSITIVE_INT64 = /^(?:[1-9]\d*)$/;
 const NONNEGATIVE_INT64 = /^(?:0|[1-9]\d*)$/;
-const SIGNED_NONZERO_INT64 = /^(?:[1-9]\d*|-[1-9]\d*)$/;
 const MAX_INT64 = "9223372036854775807";
-const MAX_NEGATIVE_INT64 = "9223372036854775808";
 const MAX_SAFE_INTEGER = 9007199254740991;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9_:.-]{8,128}$/;
 const TEMPLATE_PLACEHOLDERS = new Set(["points", "resource_id"]);
@@ -349,17 +348,11 @@ function parseNotification(value: unknown): NotificationItem {
     points = null;
   } else {
     if (eventType === "commission.adjusted" || eventType === "commission.corrected") {
-      if (typeof payload.points !== "string" || !SIGNED_NONZERO_INT64.test(payload.points)) {
-        return malformed(`${eventType} points must be a canonical signed nonzero int64 string`);
-      }
-      const digits = payload.points.startsWith("-") ? payload.points.slice(1) : payload.points;
-      const limit = payload.points.startsWith("-") ? MAX_NEGATIVE_INT64 : MAX_INT64;
-      if (digits.length > limit.length || (digits.length === limit.length && digits > limit)) {
-        return malformed(`${eventType} points exceed int64 range`);
-      }
+      if (!isPoints(payload.points,true) || pointsMinor(payload.points)===0n) return malformed('Invalid notification points');
       points = payload.points;
     } else {
-      points = int64(payload.points, "notification.payload.points", true);
+      if (!isPoints(payload.points) || pointsMinor(payload.points)<=0n) return malformed('Invalid notification points');
+      points = payload.points;
     }
   }
   return {

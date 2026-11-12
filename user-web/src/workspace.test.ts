@@ -1,4 +1,5 @@
 import {createSSRApp} from 'vue'
+import {createMemoryHistory,createRouter} from 'vue-router'
 import {renderToString} from 'vue/server-renderer'
 import {afterEach,describe,expect,it,vi} from 'vitest'
 import UserPeriodStrip from './UserPeriodStrip.vue'
@@ -24,7 +25,9 @@ describe('game workspace',()=>{
   vi.stubGlobal('navigator',{language:locale,languages:[locale]})
   setPlatformDisplaySettings({timezone:'Asia/Singapore',date_format:'DD/MM/YYYY',time_format:'hh:mm:ss A'})
   const i18n=createUserI18n();i18n.setLocale(locale)
-  const render=(now:number)=>renderToString(createSSRApp(UserPeriodStrip,{previousNo:'3495516',periodNo:'3495517',openAt:'2026-10-18T05:59:00Z',closeAt:'2026-10-18T06:00:00Z',drawAt:'2026-10-18T06:01:00Z',now,clockOffset:0}).provide(userI18nKey,i18n))
+  const router=createRouter({history:createMemoryHistory(),routes:[{path:'/',component:{template:'<div />'}},{path:'/results',component:{template:'<div />'}}]})
+  await router.push('/')
+  const render=(now:number)=>renderToString(createSSRApp(UserPeriodStrip,{gameId:'current-game',previousNo:'3495516',periodNo:'3495517',openAt:'2026-10-18T05:59:00Z',closeAt:'2026-10-18T06:00:00Z',drawAt:'2026-10-18T06:01:00Z',now,clockOffset:0}).use(router).provide(userI18nKey,i18n))
   const waiting=await render(Date.parse('2026-10-18T05:58:51Z'))
   expect(waiting).toContain(locale==='en'?'Opens in':'开盘倒计时');expect(waiting).toContain('00:00:09')
   expect(waiting).toContain(locale==='en'?'Opens':'开盘')
@@ -33,7 +36,7 @@ describe('game workspace',()=>{
   const open=await render(Date.parse('2026-10-18T05:59:51Z'))
   expect(open).toContain(locale==='en'?'Closes in':'封盘倒计时');expect(open).toContain('00:00:09')
   expect(open).toContain(`aria-label="${locale==='en'?'Closes in':'封盘倒计时'}"`)
-  expect(open).not.toContain('period-results-link');expect(open).not.toContain('period-facts')
+  expect(open).toContain('period-results-link');expect(open).toContain('/results?platform_game_id=current-game');expect(open).toContain(locale==='en'?'Draw history':'开奖记录');expect(open).not.toContain('period-facts')
   expect(open).toMatch(/class="period-countdown"[^>]*>00:00:09<\/strong>/)
   expect(open).toContain(locale==='en'?'3495516':'3495516期');expect(open).not.toContain('上期')
   expect(open).toContain(locale==='en'?'02:00:00 PM':'02:00:00 下午')

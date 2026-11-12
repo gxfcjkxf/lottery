@@ -55,7 +55,7 @@ func TestAdminHTTPAuthorizationKickAndAudit(t *testing.T) {
 		h.ServeHTTP(w, r)
 		return w
 	}
-	r := call("POST", "/api/v1/auth/register", "register-test-001", "", a, map[string]string{"username": "member_test", "password": "member-test-password-123", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"})
+	r := call("POST", "/api/v1/auth/register", "register-test-001", "", a, map[string]string{"username": "member_test", "password": "member-test-password-123", })
 	var u struct {
 		Data identity.Authentication `json:"data"`
 	}

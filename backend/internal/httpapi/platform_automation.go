@@ -13,6 +13,24 @@ func registerPlatformAutomationRoutes(register func(string, string, http.Handler
 	s := platformlottery.Service{DB: d.Admins.DB}
 	if platform {
 		registerDrawSourceRoutes(register, d)
+		register("POST", "/platform-games/{id}/automation-timing", func(w http.ResponseWriter, r *http.Request) {
+			a, b, ok := platformLotteryActor(w, r, d, "write")
+			if !ok {
+				return
+			}
+			id, ok := ruleID(w, r, "id")
+			if !ok {
+				return
+			}
+			var in platformlottery.AutomationTimingInput
+			if !decodeBody(w, r, &in) {
+				return
+			}
+			platformLotteryWrite(w, r, d, a, b, "write", "platform.automation_timing.save", in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
+				out, e := s.SaveAutomationTiming(ctx, tx, fresh, id, in, pointMeta(r, fresh))
+				return platformLotteryResult(200, out, e)
+			})
+		})
 		register("POST", "/platform-games/{id}/draw-schedule", func(w http.ResponseWriter, r *http.Request) {
 			a, b, ok := platformLotteryActor(w, r, d, "write")
 			if !ok {

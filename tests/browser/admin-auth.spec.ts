@@ -19,9 +19,7 @@ test("admin directory writes a real brand member and kick revokes its session", 
       data: {
         username: name,
         password: "test-only-member-password-123",
-        privacy_policy_version: "dev-1",
-        service_terms_version: "dev-1",
-      },
+        },
     },
   );
   expect(registration.status()).toBe(201);

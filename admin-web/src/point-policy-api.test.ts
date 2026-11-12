@@ -106,10 +106,10 @@ describe("point policy API", () => {
     expect(canWritePointPolicy(platformView, "b")).toBe(false);
   });
 
-  it("accepts only canonical positive integer limit strings", () => {
-    for (const value of ["1", "10", "9007199254740993123456789"])
+  it("accepts bounded positive decimal point limits", () => {
+    for (const value of ["0.01", "1", "1.0", "10.25", "92233720368547758.07"])
       expect(isCanonicalPositiveLimit(value)).toBe(true);
-    for (const value of ["", "0", "00", "01", "-1", "+1", "1.0", " 1"])
+    for (const value of ["", "0", "0.00", "00", "01", "-1", "+1", "1.001", " 1", "92233720368547758.08"])
       expect(isCanonicalPositiveLimit(value)).toBe(false);
   });
 

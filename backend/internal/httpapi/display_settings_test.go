@@ -14,7 +14,7 @@ func TestPublicDisplaySettingsUsesPlatformPolicyOnly(t *testing.T) {
 	mustStatus(t, response, 200)
 	var data map[string]string
 	managedData(t, response, &data)
-	if len(data) != 3 || data["timezone"] != "Asia/Singapore" || data["date_format"] != "DD/MM/YYYY" || data["time_format"] != "hh:mm:ss A" || response.Header().Get("Cache-Control") != "no-store" {
+	if len(data) != 4 || data["theme"] != "jade" || data["timezone"] != "Asia/Singapore" || data["date_format"] != "DD/MM/YYYY" || data["time_format"] != "hh:mm:ss A" || response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal(data, response.Header())
 	}
 }

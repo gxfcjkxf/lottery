@@ -32,8 +32,9 @@ async function save(){
   showOperationToast(()=>t('success'),'success');emit('saved')
  }catch(cause){
   if(cause instanceof PlatformLotteryError&&cause.status>=400&&cause.status<500)pending.value=null
+  if(cause instanceof PlatformLotteryError&&cause.status===401){emit('failure',cause);return}
   const message=i18n.errorMessage(cause)
-  showOperationToast(()=>i18n.displayError(message),'error');if(cause instanceof PlatformLotteryError&&cause.status===401)emit('failure',cause)
+  showOperationToast(()=>i18n.displayError(message),'error')
  }finally{busy.value=false}
 }
 </script>

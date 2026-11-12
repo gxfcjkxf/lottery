@@ -114,6 +114,18 @@ importers:
       '@lucide/vue':
         specifier: ^1.58.0
         version: 1.58.0(vue@3.5.43(typescript@5.7.3))
+      '@noble/curves':
+        specifier: ^2.4.0
+        version: 2.4.0
+      '@noble/hashes':
+        specifier: ^2.4.0
+        version: 2.4.0
+      '@scure/bip32':
+        specifier: ^2.4.0
+        version: 2.4.0
+      '@scure/bip39':
+        specifier: ^2.4.0
+        version: 2.4.0
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -355,6 +367,14 @@ packages:
     os: [linux]
     libc: [glibc]
 
+  '@noble/curves@2.4.0':
+    resolution: {integrity: sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==}
+    engines: {node: '>= 20.19.0'}
+
+  '@noble/hashes@2.4.0':
+    resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
+    engines: {node: '>= 20.19.0'}
+
   '@playwright/test@1.62.1':
     resolution: {integrity: sha512-DTcUc8qii+cpHvtOwggMtBRMjKZHXYWdw8syRYu2vtzuq4Wxphqq4NfCs5Zt44L6mA8rfDfj+PHnxFc/FeK6mQ==}
     engines: {node: '>=20'}
@@ -502,6 +522,15 @@ packages:
     resolution: {integrity: sha512-nl+CTWIgOGszQmUz/kanfgrfFZ4qiwxKIfT/ryl3N3Ewk5tqizmYtNXiqb7Bu/fDtNgu1kyxdFiAUJNur3iysg==}
     cpu: [x64]
     os: [win32]
+
+  '@scure/base@2.4.0':
+    resolution: {integrity: sha512-thZ1TuJwFwBblOhgsjDKvvGirBxNp+wSvY/DR6tJBJOTDhdAAcHJ8Vbr2eFnqaxeca4+t0i9KBf+uHYGWwZORg==}
+
+  '@scure/bip32@2.4.0':
+    resolution: {integrity: sha512-i3DS0CptAocyvqE4n3SUkpzeQK4vJMFwWLofTwRiiKo2aWojBOfyMCgfKw9HVpO6fSY5AK86sHS/Uzn8kK9Few==}
+
+  '@scure/bip39@2.4.0':
+    resolution: {integrity: sha512-82dxFbZUYboyOf0AXiydsQrFQ5Q4h9mX+O2UkE91ROYmsc0BKMGZLwDmy96Jpa2+vrtoxomjUhy1RPIgH/r2nA==}
 
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
@@ -1224,6 +1253,12 @@ snapshots:
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
 
+  '@noble/curves@2.4.0':
+    dependencies:
+      '@noble/hashes': 2.4.0
+
+  '@noble/hashes@2.4.0': {}
+
   '@playwright/test@1.62.1':
     dependencies:
       playwright: 1.62.1
@@ -1304,6 +1339,18 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.64.0':
     optional: true
+
+  '@scure/base@2.4.0': {}
+
+  '@scure/bip32@2.4.0':
+    dependencies:
+      '@noble/curves': 2.4.0
+      '@noble/hashes': 2.4.0
+      '@scure/base': 2.4.0
+
+  '@scure/bip39@2.4.0':
+    dependencies:
+      '@noble/hashes': 2.4.0
 
   '@types/chai@5.2.3':
     dependencies:

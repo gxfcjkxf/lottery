@@ -66,7 +66,7 @@ func newBettingFixture(t *testing.T, brand string) bettingFixture {
 	if _, err := db.Exec(ctx, `INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'test-only')`, userID, "bet_user_"+userID[24:]); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','test-1','test-1')`, memberID, brand, userID); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, memberID, brand, userID); err != nil {
 		t.Fatal(err)
 	}
 	accountID := ids.New()

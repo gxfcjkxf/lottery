@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/gxfcjkxf/lottery/backend/internal/agency"
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
+	"github.com/gxfcjkxf/lottery/backend/internal/cash"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
@@ -75,6 +76,8 @@ func agentMemberRead(w http.ResponseWriter, r *http.Request, tx pgx.Tx, brand, a
 func agentPortalWrite(w http.ResponseWriter, r *http.Request, d Dependencies, brand, entryBrand string, initial identity.AgentSession, path string) {
 	var input any
 	switch path {
+	case "transfers":
+		input = &cash.AgentTransferInput{}
 	case "password":
 		input = &identity.AgentPasswordInput{}
 	case "members":
@@ -125,6 +128,9 @@ func agentPortalWrite(w http.ResponseWriter, r *http.Request, d Dependencies, br
 		s := agency.Service{DB: d.Admins.DB}
 		metadata := points.Metadata{ActorType: "agent", ActorID: fresh.AccountID, RequestID: requestID(r), IP: meta(r).IP}
 		switch v := input.(type) {
+		case *cash.AgentTransferInput:
+			out, e := cashService(d).TransferAgent(ctx, tx, brand, fresh.AccountID, *v, metadata)
+			return cashResult(out, e)
 		case *identity.AgentPasswordInput:
 			return d.Identity.AgentChangePassword(ctx, tx, fresh, *v, meta(r))
 		case *identity.OperatorInput:

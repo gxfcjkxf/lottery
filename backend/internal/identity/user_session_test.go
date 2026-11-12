@@ -23,8 +23,8 @@ func newUserSessionFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	if _, err := pool.Exec(ctx, `INSERT INTO global_users(id,username) VALUES($1,$2)`, f.user, username); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version)
-		VALUES($1,$2,$3,'domain','test-1','test-1')`, f.member, f.brand, f.user); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method)
+		VALUES($1,$2,$3,'domain')`, f.member, f.brand, f.user); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO sessions(id,token_hash,user_id,member_id,brand_id,expires_at)
@@ -88,14 +88,8 @@ func TestAuthenticateTxUserSessionConditionsAndReadOnly(t *testing.T) {
 	if _, err = authenticateUserSessionTx(ctx, s, pool, operatorTestOtherBrand, f.token); !errors.Is(err, ErrSession) {
 		t.Fatalf("wrong brand should return ErrSession, got %v", err)
 	}
-	if _, err = pool.Exec(ctx, `UPDATE brand_members SET terms_accepted=false,accepted_at=NULL WHERE id=$1`, f.member); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = authenticateUserSessionTx(ctx, s, pool, f.brand, f.token); !errors.Is(err, ErrSession) {
-		t.Fatalf("unaccepted terms should return ErrSession, got %v", err)
-	}
-	if _, err = pool.Exec(ctx, `UPDATE brand_members SET terms_accepted=true,accepted_at=clock_timestamp(),status='normal' WHERE id=$1`, f.member); err != nil {
-		t.Fatal(err)
+	if _, err = authenticateUserSessionTx(ctx, s, pool, f.brand, f.token); err != nil {
+		t.Fatalf("operator members must authenticate without a consent step, got %v", err)
 	}
 	if _, err = pool.Exec(ctx, `UPDATE brands SET status='disabled' WHERE id=$1`, f.brand); err != nil {
 		t.Fatal(err)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/gxfcjkxf/lottery/backend/internal/agency"
+	"github.com/gxfcjkxf/lottery/backend/internal/cash"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
@@ -89,7 +90,7 @@ func registerIndependentAgentRoutes(mux routeRegistrar, d Dependencies) {
 			}
 			outputMutation(w, r, result, err)
 		})
-		for _, action := range []struct{ method, path string }{{"GET", "me"}, {"GET", "children"}, {"GET", "wallet"}, {"GET", "commission"}, {"GET", "members"}, {"GET", "members/{id}/summary"}, {"GET", "members/{id}/bets"}, {"POST", "members"}, {"POST", "children"}, {"POST", "password"}, {"POST", "logout"}, {"PUT", "children/{id}/config"}} {
+		for _, action := range []struct{ method, path string }{{"GET", "cash"}, {"GET", "cash/orders"}, {"POST", "cash/deposits"}, {"POST", "cash/exchanges"}, {"POST", "cash/withdrawals"}, {"POST", "cash/destinations"}, {"POST", "transfers"}, {"GET", "transfers"}, {"GET", "wallet/records"}, {"POST", "cash/orders/{id}/{action}"}, {"GET", "me"}, {"GET", "children"}, {"GET", "wallet"}, {"GET", "commission"}, {"GET", "members"}, {"GET", "members/{id}/summary"}, {"GET", "members/{id}/bets"}, {"POST", "members"}, {"POST", "children"}, {"POST", "password"}, {"POST", "logout"}, {"PUT", "children/{id}/config"}} {
 			action := action
 			mux.HandleFunc(action.method+" "+prefix+"/agent/"+action.path, func(w http.ResponseWriter, r *http.Request) {
 				if d.Identity == nil || d.Admins.DB == nil || d.Mutations == nil {
@@ -133,11 +134,31 @@ func registerIndependentAgentRoutes(mux routeRegistrar, d Dependencies) {
 						failure(w, r, 503, "SERVICE_UNAVAILABLE", "暂时无法操作")
 						return
 					}
-					agentPortalWrite(w, r, d, b.ID, entryBrand, v, action.path)
+					if strings.HasPrefix(action.path, "cash/") {
+						agentCashWrite(w, r, d, entryBrand, v, action.path)
+					} else {
+						agentPortalWrite(w, r, d, b.ID, entryBrand, v, action.path)
+					}
 					return
 				}
 				var out any
 				switch action.path {
+				case "wallet/records":
+					if !cashReadParameters(r, true) || r.URL.Query().Has("kind") {
+						err = cash.ErrInvalid
+						break
+					}
+					limit, offset, _ := pageParams(r)
+					out, err = cash.AgentWalletRecords(r.Context(), tx, b.ID, v.AccountID, limit, offset)
+				case "transfers":
+					if !cashReadParameters(r, true) || r.URL.Query().Has("kind") {
+						err = cash.ErrInvalid
+						break
+					}
+					limit, offset, _ := pageParams(r)
+					out, err = cash.AgentTransfers(r.Context(), tx, b.ID, v.AccountID, limit, offset)
+				case "cash", "cash/orders":
+					out, err = agentCashRead(r, d, tx, v, action.path)
 				case "commission":
 					limit, offset, valid := pageParams(r)
 					if !valid {
@@ -199,6 +220,9 @@ func registerIndependentAgentRoutes(mux routeRegistrar, d Dependencies) {
 					err = tx.Commit(r.Context())
 				}
 				res, e := agentResult(out, err)
+				if strings.HasPrefix(action.path, "cash") || action.path == "transfers" || action.path == "wallet/records" {
+					res, e = cashResult(out, err)
+				}
 				outputMutation(w, r, res, e)
 			})
 		}

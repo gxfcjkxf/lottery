@@ -21,12 +21,13 @@ for(const locale of ['en','zh-CN'] as const)test(`manual calculation has compact
  const preset=page.viewportSize()!
  for(const width of info.project.name.endsWith('reflow')?[320,620,900,901,1440]:[preset.width]){
   if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:preset.height})
+  const mobile=await page.evaluate(()=>matchMedia('(max-width:900px), (pointer:coarse)').matches)
   const layout=await dialog.evaluate(el=>{
    const heading=el.querySelector('.detail-modal-heading')!,content=el.querySelector('.detail-modal-content')!,field=content.querySelector('label')!,action=content.querySelector('.ui-form-actions button')!
    const h=heading.getBoundingClientRect(),c=content.getBoundingClientRect(),f=field.getBoundingClientRect(),a=action.getBoundingClientRect()
-   return {headingMargin:getComputedStyle(heading).margin,dividerGap:c.top-h.bottom,contentTop:f.top-c.top,actionGap:a.top-f.bottom,actionRight:c.right-parseFloat(getComputedStyle(content).paddingRight)-a.right,headingPadding:getComputedStyle(heading).paddingTop,fieldGap:getComputedStyle(field).gap,actionHeight:a.height}
+   return {headingMargin:getComputedStyle(heading).margin,dividerGap:c.top-h.bottom,contentTop:f.top-c.top,actionGap:a.top-f.bottom,actionRight:c.right-parseFloat(getComputedStyle(content).paddingRight)-a.right,headingPadding:getComputedStyle(heading).paddingTop,fieldGap:getComputedStyle(field).rowGap,actionHeight:a.height}
   })
-  expect(layout).toMatchObject({headingMargin:'0px',dividerGap:0,contentTop:12,actionGap:12,headingPadding:'8px',fieldGap:'6px'})
+  expect(layout).toMatchObject({headingMargin:'0px',dividerGap:0,contentTop:mobile?8:12,actionGap:mobile?8:12,headingPadding:mobile?'4px':'8px',fieldGap:mobile?'4px':'6px'})
   expect(Math.abs(layout.actionRight)).toBeLessThanOrEqual(1)
   expect(layout.actionHeight).toBeGreaterThanOrEqual(info.project.name.endsWith('reflow')&&width>900?32:44)
   expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(520)

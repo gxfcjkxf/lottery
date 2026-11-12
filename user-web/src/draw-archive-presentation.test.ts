@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest'
-import {archiveNumbers,specialFacts,totalFacts} from './draw-archive-presentation'
+import {archiveNumbers,specialFacts,totalFacts,shortArchivePeriod} from './draw-archive-presentation'
 describe('compact draw history',()=>{
  it('preserves digit order and zeroes and separates the special group',()=>{
   expect(archiveNumbers({regular:[],special:[],digits:[0,1,0]}).map(n=>n.value)).toEqual([0,1,0])
@@ -31,4 +31,13 @@ it('computes independent per-number facts and uses saved zodiac for animal class
  expect(numberFacts(49)).toEqual({size:'big',parity:'odd',sumParity:'odd'})
  expect(numberFacts(24)).toEqual({size:'small',parity:'even',sumParity:'even'})
  expect(zodiacFamily('pig')).toBe('domestic');expect(zodiacFamily('snake')).toBe('wild');expect(zodiacFamily('')).toBeNull()
+})
+
+it('shortens annual period identifiers using the displayed draw year only',()=>{
+ expect(shortArchivePeriod('2026110','2026-10-31',false)).toBe('110')
+ expect(shortArchivePeriod('2026001','2026-01-01',false)).toBe('001')
+ expect(shortArchivePeriod('20261031001','2026-10-31',true)).toBe('20261031001')
+ expect(shortArchivePeriod('custom-110','2026-10-31',false)).toBe('custom-110')
+ expect(shortArchivePeriod('2025110','2026-10-31',false)).toBe('2025110')
+ expect(shortArchivePeriod('2026110','—',false)).toBe('2026110')
 })

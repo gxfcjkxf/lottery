@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { isPoints, pointsMinor } from '@lottery/shared'
+
 import SelectControl from '@lottery/shared/SelectControl.vue'
 import { vRefreshButton } from "@lottery/shared";
 import { dismissOperationToast, useOperationToast } from "@lottery/shared";
@@ -228,22 +230,17 @@ function buildBrandConfig(): BrandWithdrawalConfig {
     turnover_multiple: brandDraft.value.turnover_multiple,
   };
 }
-function isPositiveInt64(value: string): boolean {
-  if (!/^[1-9][0-9]*$/.test(value)) return false;
-  try {
-    return BigInt(value) <= 9223372036854775807n;
-  } catch {
-    return false;
-  }
+function isPositivePoints(value: unknown): value is string {
+  return isPoints(value) && pointsMinor(value) > 0n;
 }
 const brandInputsValid = computed(() => {
   const config = buildBrandConfig();
   return (
-    isPositiveInt64(brandDraft.value.points_step) &&
-    isPositiveInt64(config.min_points) &&
+    isPositivePoints(brandDraft.value.points_step) &&
+    isPositivePoints(config.min_points) &&
     (config.max_points === null ||
-      (isPositiveInt64(config.max_points) &&
-        BigInt(config.min_points) <= BigInt(config.max_points))) &&
+      (isPositivePoints(config.max_points) &&
+        pointsMinor(config.min_points) <= pointsMinor(config.max_points))) &&
     config.allowed_sources.length > 0 &&
     new Set(config.allowed_sources).size === config.allowed_sources.length &&
     config.allowed_sources.every((source) =>
@@ -802,12 +799,12 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
                   reconciling
                 "
             /></label>
-            <label for="withdraw-brand-step">{{ t('admin.withdrawal.pointsStep') }}<input id="withdraw-brand-step" :aria-label="t('admin.withdrawal.pointsStep')" aria-describedby="withdraw-brand-step-hint" v-model.trim="brandDraft.points_step" inputmode="numeric" autocomplete="off" :disabled="!canWrite || !!pendingInContext || !!confirmation || reconciling" /><small id="withdraw-brand-step-hint">{{ t('admin.withdrawal.pointsStepHint') }}</small></label>
+            <label for="withdraw-brand-step">{{ t('admin.withdrawal.pointsStep') }}<input id="withdraw-brand-step" :aria-label="t('admin.withdrawal.pointsStep')" aria-describedby="withdraw-brand-step-hint" v-model.trim="brandDraft.points_step" inputmode="decimal" autocomplete="off" :disabled="!canWrite || !!pendingInContext || !!confirmation || reconciling" /><small id="withdraw-brand-step-hint">{{ t('admin.withdrawal.pointsStepHint') }}</small></label>
             <label for="withdraw-brand-min"
               >{{ t('admin.copy.f3a168b4') }}<input
                 id="withdraw-brand-min"
                 v-model.trim="brandDraft.min_points"
-                inputmode="numeric"
+                inputmode="decimal"
                 autocomplete="off"
                 :disabled="
                   !canWrite ||
@@ -820,7 +817,7 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
               >{{ t('admin.copy.a99f767f') }}<input
                 id="withdraw-brand-max"
                 v-model.trim="brandDraft.max_points_input"
-                inputmode="numeric"
+                inputmode="decimal"
                 autocomplete="off"
                 :placeholder="t('admin.copy.5302e1a7')"
                 :disabled="

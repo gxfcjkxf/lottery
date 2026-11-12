@@ -59,3 +59,18 @@ tr:has(> td.empty-state):not([data-global-loading="true"]) {
 
 /* Empty tables must not push their message beyond the visible scroll frame. */
 .management-console table:has(> tbody > tr > td.empty-state) th { white-space:normal!important; overflow-wrap:anywhere; }
+
+/* One quiet record illustration; decorative, with the existing localized label. */
+.empty-state::before {
+  content:'';
+  display:block;
+  width:48px;
+  height:40px;
+  flex-shrink:0;
+  margin:0 auto 8px;
+  background: var(--primary-light);
+  border-radius:var(--radius-sm);
+  background-image:var(--empty-state-illustration);
+  background-position:center;
+  background-repeat:no-repeat;
+}

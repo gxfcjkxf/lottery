@@ -29,7 +29,7 @@ for(const locale of ['zh-CN','en'] as const){test(`correction and reports (${loc
  await page.route('**/__commission-followup',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body><div id="app"></div><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import Harness from'/@fs${resolve('tests/layout/CommissionFollowupHarness.vue')}';import'/@fs${resolve('shared/src/styles.css')}';import'/@fs${resolve('admin-web/src/style.css')}';import'/@fs${resolve('admin-web/src/directory.css')}';import'/@fs${resolve('shared/src/management.css')}';import'/@fs${resolve('shared/src/controls.css')}';import'/@fs${resolve('shared/src/empty-state.css')}';import'/@fs${resolve('shared/src/key-value.css')}';createApp(Harness,{locale:'${locale}'}).mount('#app')</script></body></html>`}))
  await page.goto(origins.brand+'/__commission-followup');await expect(page.locator('[data-case-id]')).toBeVisible()
  const preset=page.viewportSize()!,widths=info.project.name.includes('reflow')?[320,640,900,901,1440]:[preset.width]
- for(const width of widths){if(info.project.name.includes('reflow'))await page.setViewportSize({width,height:preset.height});await expectNoPageOverflow(page);await page.locator('[data-case-id]').click();await expect(page.getByTestId('cc-plan-detail')).toContainText('10');await expectNoPageOverflow(page);await page.getByRole('tab',{name:zh?'代理差额':'Agent differences'}).click();await expect(page.getByText('agent_01',{exact:true})).toBeVisible();await expectNoPageOverflow(page);await page.getByTestId('cc-approve').click();const dialog=page.getByRole('dialog');await expect(dialog).toContainText('2');await expectNoPageOverflow(page);await dialog.locator('.detail-modal-close').click();await page.getByRole('button',{name:zh?'返回列表':'Back to list'}).click();await page.getByRole('button',{name:'Reports',exact:true}).click();await page.getByRole('tab',{name:zh?'入账统计':'Posting activity'}).click();await expect(page.getByTestId('commission-report-summary')).toContainText('10');await expectNoPageOverflow(page);await page.getByRole('button',{name:'Corrections',exact:true}).click();await expect(page.locator('[data-case-id]')).toBeVisible()}
+ for(const width of widths){if(info.project.name.includes('reflow'))await page.setViewportSize({width,height:preset.height});await expectNoPageOverflow(page);await page.locator('[data-case-id]').click();await expect(page.getByTestId('cc-plan-detail')).toContainText('10');await page.screenshot({path:info.outputPath(`correction-detail-${locale}-${width}.png`),fullPage:true});await expectNoPageOverflow(page);await page.getByRole('tab',{name:zh?'代理差额':'Agent differences'}).click();await expect(page.getByTestId('correction-detail-dialog').getByText('agent_01',{exact:true})).toBeVisible();await expectNoPageOverflow(page);await page.getByTestId('cc-approve').click();const dialog=page.getByRole('dialog');await expect(dialog).toContainText('2');await expectNoPageOverflow(page);await dialog.locator('.detail-modal-close').click();await page.getByTestId('correction-detail-dialog').locator('.detail-modal-close').click();await page.getByRole('button',{name:'Reports',exact:true}).click();await page.getByRole('tab',{name:zh?'入账统计':'Posting activity'}).click();await expect(page.getByTestId('commission-report-summary')).toContainText('10');await expectNoPageOverflow(page);await page.getByRole('button',{name:'Corrections',exact:true}).click();await expect(page.locator('[data-case-id]')).toBeVisible()}
  await page.getByRole('button',{name:'Reports',exact:true}).click()
  for(const tab of ['posting'] as const){
   await page.getByRole('tab',{name:zh?'入账统计':'Posting activity',exact:true}).click()
@@ -40,14 +40,18 @@ for(const locale of ['zh-CN','en'] as const){test(`correction and reports (${loc
   await accountSearch.fill('agent_01')
   const query=page.getByTestId('commission-report-query')
   await expect(query).toBeDisabled()
-  await expect(section.locator('.association-search-controls').getByRole('button',{name:zh?'搜索':'Search',exact:true})).toHaveCount(0)
-  await section.locator('.association-search-results').getByRole('button',{name:'agent_01',exact:true}).click()
+  await expect(section.locator('.association-search').getByRole('button',{name:zh?'搜索':'Search',exact:true})).toHaveCount(0)
+  await section.locator('.association-search').getByRole('option',{name:'agent_01',exact:true}).click()
   await expect(query).toBeEnabled();await query.click()
   await expect.poll(()=>requests.filter(x=>x.includes('/reports/commission?')).at(-1)).toContain(`member_id=${agent}`)
   const summary=section.getByTestId(tab==='cycle'?'commission-analysis-summary':'commission-report-summary')
   await expect(summary).toBeVisible()
   await expect(summary.locator('details')).toHaveCount(0)
+  await section.getByRole('button',{name:zh?'查看全部指标':'View all metrics',exact:true}).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.screenshot({path:info.outputPath(`report-detail-${locale}.png`),fullPage:true})
   await expectNoPageOverflow(page)
+  await page.getByRole('dialog').locator('.detail-modal-close').click()
   await page.screenshot({path:info.outputPath(`report-${tab}-${locale}.png`),fullPage:true})
  }
  expect(errors).toEqual([])

@@ -39,7 +39,7 @@ func TestMultiBrandOperatorAndVerifiedTelegramJoinPaths(t *testing.T) {
 		if _, e := db.Exec(ctx, `INSERT INTO global_users(id,username)VALUES($1,$2)`, u, "source_"+u); e != nil {
 			t.Fatal(e)
 		}
-		if _, e := db.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version)VALUES($1,$2,$3,'domain','dev-1','dev-1')`, m, b, u); e != nil {
+		if _, e := db.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method)VALUES($1,$2,$3,'domain')`, m, b, u); e != nil {
 			t.Fatal(e)
 		}
 		tx, e := db.Begin(ctx)
@@ -66,7 +66,7 @@ func TestMultiBrandOperatorAndVerifiedTelegramJoinPaths(t *testing.T) {
 		}
 		return out
 	}
-	in := identity.RegisterInput{Username: "multi_code_user", Password: "path-test-password-2026", Privacy: "dev-1", Terms: "dev-1", ReferralCode: codeA.Code}
+	in := identity.RegisterInput{Username: "multi_code_user", Password: "path-test-password-2026", ReferralCode: codeA.Code}
 	out := run(brand, in, func(tx pgx.Tx) (mutation.Result, error) {
 		return store.Register(ctx, tx, brand, in, identity.Metadata{})
 	})
@@ -74,7 +74,7 @@ func TestMultiBrandOperatorAndVerifiedTelegramJoinPaths(t *testing.T) {
 	if out.Status != 201 || json.Unmarshal(out.Data, &original) != nil {
 		t.Fatal(out)
 	}
-	login := identity.LoginInput{Identifier: in.Username, Password: in.Password, Privacy: "dev-1", Terms: "dev-1", ReferralCode: codeA.Code}
+	login := identity.LoginInput{Identifier: in.Username, Password: in.Password, ReferralCode: codeA.Code}
 	out = run(other, login, func(tx pgx.Tx) (mutation.Result, error) {
 		return store.Login(ctx, tx, other, login, identity.Metadata{})
 	})
@@ -107,11 +107,7 @@ func TestMultiBrandOperatorAndVerifiedTelegramJoinPaths(t *testing.T) {
 	if e != nil || attr.JoinMethod != "operator" || attr.CodeID == nil || *attr.CodeID != codeA.ID {
 		t.Fatal(attr, e)
 	}
-	var accepted bool
-	if e = db.QueryRow(ctx, `SELECT terms_accepted FROM brand_members WHERE id=$1`, op.MemberID).Scan(&accepted); e != nil || accepted {
-		t.Fatal("operator consent substituted", accepted, e)
-	}
-	opLogin := identity.LoginInput{Identifier: operator.Username, Password: operator.Password, Privacy: "dev-1", Terms: "dev-1"}
+	opLogin := identity.LoginInput{Identifier: operator.Username, Password: operator.Password, }
 	out = run(brand, opLogin, func(tx pgx.Tx) (mutation.Result, error) {
 		return store.Login(ctx, tx, brand, opLogin, identity.Metadata{})
 	})
@@ -131,7 +127,7 @@ func TestMultiBrandOperatorAndVerifiedTelegramJoinPaths(t *testing.T) {
 	if e != nil || out.Status != 200 {
 		t.Fatal(out, e)
 	}
-	tg := identity.TelegramInput{Privacy: "dev-1", Terms: "dev-1", ReferralCode: codeA.Code}
+	tg := identity.TelegramInput{ReferralCode: codeA.Code}
 	out = run(brand, tg, func(tx pgx.Tx) (mutation.Result, error) {
 		return store.Telegram(ctx, tx, brand, telegramauth.Claims{ID: "1234567891", Name: "Domain claims test"}, tg, "", identity.Metadata{})
 	})
@@ -160,7 +156,7 @@ func TestCodeTimeWindowAndFrozenOwner(t *testing.T) {
 	for _, q := range []struct {
 		sql  string
 		args []any
-	}{{`INSERT INTO global_users(id,username)VALUES($1,$2)`, []any{u, "window_" + u}}, {`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version)VALUES($1,$2,$3,'domain','dev-1','dev-1')`, []any{m, brand, u}}, {`INSERT INTO admin_accounts(id,username,password_hash)VALUES($1,$2,'unused')`, []any{admin, "window_" + admin}}} {
+	}{{`INSERT INTO global_users(id,username)VALUES($1,$2)`, []any{u, "window_" + u}}, {`INSERT INTO brand_members(id,brand_id,global_user_id,join_method)VALUES($1,$2,$3,'domain')`, []any{m, brand, u}}, {`INSERT INTO admin_accounts(id,username,password_hash)VALUES($1,$2,'unused')`, []any{admin, "window_" + admin}}} {
 		if _, e := db.Exec(ctx, q.sql, q.args...); e != nil {
 			t.Fatal(e)
 		}

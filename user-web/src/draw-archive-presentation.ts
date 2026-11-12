@@ -35,3 +35,7 @@ export function zodiacFamily(zodiac: string): 'domestic' | 'wild' | null {
   if (!zodiac) return null
   return ['goat','horse','ox','pig','dog','rooster'].includes(zodiac)?'domestic':'wild'
 }
+
+export function shortArchivePeriod(periodNo: string, date: string, daily: boolean) {
+  return !daily && /^\d{4}-\d{2}-\d{2}$/.test(date) && new RegExp(`^${date.slice(0,4)}\\d+$`).test(periodNo) ? periodNo.slice(4) : periodNo
+}

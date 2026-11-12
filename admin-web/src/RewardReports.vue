@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { formatPoints } from '@lottery/shared'
+
+const showSummary = ref(true), showDetails = ref(true)
 import {vInlineValidation} from '@lottery/shared'
-import {nextTick} from 'vue'
 const filterReset=ref(0)
 import ManagementList from "@lottery/shared/ManagementList.vue"
 import TablePagination from "@lottery/shared/TablePagination.vue"
@@ -25,6 +27,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { adminKey, useAdminI18n } from "./i18n";
 import { createRewardReportApi, rewardReportPermissions, type RewardReport, type RewardReportKind, type RewardReportQuery } from "./reward-report-api";
+const pageSize = ref(20)
+
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
@@ -36,25 +40,23 @@ const end = new Date(Math.ceil(Date.now() / 60_000) * 60_000), start = new Date(
 const fromDraft = ref(utcInput(start).slice(0,10)), toDraft = ref(utcInput(end).slice(0,10)), memberDraft = ref(""), orderDraft = ref("");
 const mode = ref<RewardReportKind>("rewards"), groupDraft = ref<RewardReportQuery["group_by"]>("day");
 const committed = ref<{ kind: RewardReportKind; query: RewardReportQuery } | null>(null), result = ref<RewardReport | null>(null);
-const error = ref<string | import("@lottery/shared").LocalizedMessage>(""), exportError = ref<string | import("@lottery/shared").LocalizedMessage>(""), busy = ref(false), exportBusy = ref(false);
-let readGeneration = 0, exportGeneration = 0, alive = true, readController: AbortController | undefined, exportController: AbortController | undefined;
+const error = ref<string | import("@lottery/shared").LocalizedMessage>(""), busy = ref(false);
+let readGeneration = 0, alive = true, readController: AbortController | undefined;
 const scopeKey = computed(() => JSON.stringify({ brand: props.brandId, actor: props.account.id, super: props.account.super_admin, brands: [...(props.account.brand_ids ?? [])].sort(), permissions: [...(props.account.permissions ?? [])].sort(), platform: [...(props.account.platform_permissions ?? [])].sort(), byBrand: [...(props.account.permissions_by_brand?.[props.brandId] ?? [])].sort(), allowed: permissions.value }));
 const groups = computed(() => mode.value === "rewards" ? ["day", "member", "order"] : ["day", "member", "state"]);
 function abortRead() { readGeneration++; readController?.abort(); readController = undefined; busy.value = false; }
-function abortExport() { exportGeneration++; exportController?.abort(); exportController = undefined; exportBusy.value = false; }
-function clearScope() { abortRead(); abortExport(); committed.value = null; result.value = null; error.value = ""; exportError.value = ""; }
+function clearScope() { abortRead(); committed.value = null; result.value = null; error.value = ""; }
 async function queryDraft(): Promise<RewardReportQuery> {
   const from = filterDateBoundary(fromDraft.value, false, 'utc').toISOString(), to = filterDateBoundary(toDraft.value, true, 'utc').toISOString(), fromMs = Date.parse(from), toMs = Date.parse(to);
   if (toMs <= fromMs || toMs - fromMs > 93 * 86_400_000) throw new Error(t('admin.copy.bddf70ec'));
   const member = memberDraft.value.trim(), order = orderDraft.value.trim();
   if (order && !uuid.test(order)) throw new Error(t('admin.copy.864d220e'));
   const memberId = member;
-  return { from, to, group_by: groupDraft.value, limit: 20, offset: 0, ...(memberId ? { member_id: memberId } : {}), ...(order ? { order_id: order } : {}) };
+  return { from, to, group_by: groupDraft.value, limit: pageSize.value, offset: 0, ...(memberId ? { member_id: memberId } : {}), ...(order ? { order_id: order } : {}) };
 }
 function current(generation: number, scope: string) { return alive && generation === readGeneration && scope === scopeKey.value; }
 async function run(saved?: { kind: RewardReportKind; query: RewardReportQuery }) {
-  abortRead(); abortExport(); error.value = ""; exportError.value = "";
-  const generation = readGeneration, scope = scopeKey.value;
+  abortRead(); error.value = ""; const generation = readGeneration, scope = scopeKey.value;
   if (!permissions.value.view) { error.value = t('admin.copy.56ef8abd'); return; }
   let request: { kind: RewardReportKind; query: RewardReportQuery };
   try { request = saved ? { kind: saved.kind, query: { ...saved.query } } : { kind: mode.value, query: await queryDraft() }; }
@@ -66,24 +68,8 @@ async function run(saved?: { kind: RewardReportKind; query: RewardReportQuery })
   } catch (cause) {
     if (!current(generation, scope)) return;
     error.value = cause instanceof Error ? publicErrorMessage(cause, 'read') : t('admin.copy.c3026898');
-    if (cause instanceof AdminApiError && cause.status === 401) { committed.value = null; emit("session-invalid"); }
-  } finally { if (current(generation, scope)) { busy.value = false; readController = undefined; } }
-}
-async function exportAll() {
-  const saved = committed.value;
-  if (!permissions.value.view || !permissions.value.export || !saved || !result.value || !alive) return;
-  abortExport(); const generation = exportGeneration, scope = scopeKey.value, snapshot = saved;
-  exportBusy.value = true; exportError.value = ""; exportController = new AbortController();
-  try {
-    const file = await api.export(snapshot.kind, props.brandId, { from: snapshot.query.from, to: snapshot.query.to, group_by: snapshot.query.group_by, ...(snapshot.query.member_id ? { member_id: snapshot.query.member_id } : {}), ...(snapshot.query.order_id ? { order_id: snapshot.query.order_id } : {}) }, exportController.signal);
-    if (!alive || generation !== exportGeneration || scope !== scopeKey.value || snapshot !== committed.value) return;
-    const url = URL.createObjectURL(new Blob([file.bytes], { type: "text/csv;charset=utf-8" })), anchor = document.createElement("a");
-    anchor.href = url; anchor.download = file.filename; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 0);
-  } catch (cause) {
-    if (!alive || generation !== exportGeneration || scope !== scopeKey.value || snapshot !== committed.value) return;
-    exportError.value = cause instanceof Error ? publicErrorMessage(cause, 'read') : t('admin.copy.8e66aa98');
     if (cause instanceof AdminApiError && cause.status === 401) { clearScope(); emit("session-invalid"); }
-  } finally { if (generation === exportGeneration) { exportBusy.value = false; exportController = undefined; } }
+  } finally { if (current(generation, scope)) { busy.value = false; readController = undefined; } }
 }
 const fields = computed(() => mode.value === "rewards" ? ["entry_count", "grant_entry_count", "grant_points", "reversal_entry_count", "reversal_points", "net_points"] : ["order_count", "original_points", "granted_count", "granted_points", "revoked_count", "revoked_points"]);
 const names: Record<string, string> = {
@@ -91,26 +77,25 @@ const names: Record<string, string> = {
   order_count: 'admin.copy.c2179a71', original_points: 'admin.copy.dea61704', granted_count: 'admin.copy.facb8181', granted_points: 'admin.copy.43c77853', pending_count: 'admin.copy.458ea6d1', pending_points: 'admin.copy.a8473f43', revoked_count: 'admin.copy.44e2367f', revoked_points: 'admin.copy.6b110769',
 };
  function metric(field: string) { return t(adminKey(names[field]!)); }
-function exact(value: string) { try { const n = BigInt(value), neg = n < 0n, digits = (neg ? -n : n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ","); return `${neg ? "−" : ""}${digits}`; } catch { return value; } }
+function exact(value: string) { return formatPoints(value, displayLocale.value).replace(/^-/, "−"); }
 function count(totals: RewardReport["summary"], field: string) { return exact((totals as unknown as Record<string, string>)[field]!); }
 function groupLabel(group: string) { return group === "day" ? t('admin.copy.f91541ed') : group === "member" ? t('admin.copy.5073d20c') : group === "order" ? t('admin.copy.2e709a31') : t('admin.copy.70a80209'); }
 function stateLabel(key: string) { return key === "granted" ? t('admin.copy.86b01b91') : key === "revoked" ? t('admin.copy.176004df') : key; }
-function hasNext(report: RewardReport) { return BigInt(report.query.offset) + BigInt(report.items.length) < BigInt(report.total_groups) && report.query.offset + 20 <= 1_000_000; }
-async function page(offset: number) { if (committed.value) await run({ kind: committed.value.kind, query: { ...committed.value.query, limit: 20, offset } }); }
+function hasNext(report: RewardReport) { return BigInt(report.query.offset) + BigInt(report.items.length) < BigInt(report.total_groups) && report.query.offset + pageSize.value <= 1_000_000; }
+async function page(offset: number) { if (committed.value) await run({ kind: committed.value.kind, query: { ...committed.value.query, limit: pageSize.value, offset } }); }
 watch(mode, () => { groupDraft.value = "day"; clearScope(); }, { flush: "sync" });
 watch(scopeKey, () => { clearScope(); if (!permissions.value.view) error.value = t('admin.copy.56ef8abd'); }, { flush: "sync" });
 onMounted(() => { if (permissions.value.view) void withGlobalLoading(run); });
 onBeforeUnmount(() => { alive = false; clearScope(); });
 
 useOperationToast(() => error.value, value => displayPublicError(value), 'error');
-useOperationToast(() => exportError.value, value => displayPublicError(value), 'error');
-async function clearFilters(){filterReset.value++;fromDraft.value=utcInput(start).slice(0,10);toDraft.value=utcInput(end).slice(0,10);memberDraft.value=orderDraft.value="";groupDraft.value="day";await nextTick();await run()}
+
 </script>
 
 <template>
   <ManagementList class="reward-reports report-view" :aria-label="t('admin.copy.1d928afb')">
 
-    <template #actions><div class="actions report-actions"><button class="button button-secondary" type="button" data-testid="reward-report-export" :disabled="!result || !permissions.view || !permissions.export || exportBusy" @click="withGlobalLoading(exportAll)">{{ exportBusy ? t('admin.copy.1c800a70') : t('admin.copy.800c75fc') }}</button><span v-if="!permissions.export">{{ t('admin.copy.fcd324d4') }}</span></div></template><template #tabs><div class="modes console-tabs" role="tablist" :aria-label="t('admin.copy.397de89b')">
+    <template #tabs><div class="modes console-tabs" role="tablist" :aria-label="t('admin.copy.397de89b')">
       <button type="button" role="tab" data-testid="reward-report-mode-postings" :aria-selected="mode === 'rewards'" @click="mode = 'rewards'">{{ t('admin.copy.15791d7e') }}</button>
       <button type="button" role="tab" data-testid="reward-report-mode-orders" :aria-selected="mode === 'reward_orders'" @click="mode = 'reward_orders'">{{ t('admin.copy.3bc61630') }}</button>
     </div></template><template #filters><form v-inline-validation novalidate @submit.prevent="withGlobalLoading(run)" class="filters report-filters ui-filter-bar" data-testid="reward-report-filters">
@@ -120,19 +105,19 @@ async function clearFilters(){filterReset.value++;fromDraft.value=utcInput(start
       <label><FilterAssociationSearch :reset-key="filterReset" v-model="memberDraft" :brand-id="props.brandId" surface="admin" :enabled="permissions.view" resource="report_rewards"  v-model:pending="memberSearchPending" :label="t('filter.member')" :locale="displayLocale" :scope-key="JSON.stringify(props.account)" /></label>
       <label><FilterAssociationSelect v-model="orderDraft" :brand-id="props.brandId" surface="admin" :enabled="permissions.view" resource="report_rewards" kind="reward_order" :label="t('filter.reward_order')" :locale="displayLocale" :scope-key="JSON.stringify(props.account)" /></label>
       <label><SelectControl :placeholder="t('admin.copy.6cc02c91')" v-model="groupDraft" data-testid="reward-report-group" :label="String(t('admin.copy.6cc02c91'))" :options="(groups).map((group) => ({ value: group, label: (String(groupLabel(group))).trim() }))" /></label>
-    <button class="button button-primary" type="submit" data-testid="reward-report-query" :disabled="memberSearchPending || busy || !permissions.view">{{ t('admin.copy.2bd50b3e') }}</button>
-    <button type="button" class="button button-secondary" :disabled="busy" @click="withGlobalLoading(clearFilters)">{{t('admin.copy.b089734d')}}</button></form></template>
+    <label class="report-display-option"><input v-model="showSummary" type="checkbox" />{{ t('admin.reports.showSummary') }}</label><label class="report-display-option"><input v-model="showDetails" type="checkbox" />{{ t('admin.reports.showDetails') }}</label><button class="button button-primary" type="submit" data-testid="reward-report-query" :disabled="memberSearchPending || busy || !permissions.view">{{ t('admin.copy.2bd50b3e') }}</button>
+    </form></template>
 
-    <div class="report-results">
+    <div v-if="showSummary || showDetails" class="report-results">
 
     <template v-if="result && committed">
-      <dl class="metrics report-metrics" data-testid="reward-report-summary"><div v-for="field in fields" :key="field"><dt><span>{{ metric(field) }}</span></dt><dd><strong>{{ count(result.summary, field) }}</strong></dd></div></dl>
-      <div class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ result.query.group_by === 'state' ? t('admin.copy.5d42f3a0') : t('admin.copy.b96f43c6') }}</th><th v-for="field in fields" :key="field">{{ metric(field) }}</th></tr></thead><tbody><tr v-for="item in result.items" :key="item.key"><td :data-label="String(result.query.group_by === 'state' ? t('admin.copy.5d42f3a0') : t('admin.copy.b96f43c6'))">{{ result.query.group_by === 'state' ? stateLabel(item.label) : associationGroupLabel(item, result.query.group_by, item.key, item.label, associationLocale) }}</td><td :data-label="String(metric(field))" v-for="field in fields" :key="field">{{ count(item.totals, field) }}</td></tr><tr v-if="!result.items.length"><td :colspan="fields.length + 1" class="empty-state">{{ t('admin.copy.24e33023') }}</td></tr></tbody></table></div>
+      <dl v-if="showSummary" class="metrics report-metrics report-summary-tags" data-testid="reward-report-summary"><div v-for="field in fields" :key="field"><dt><span>{{ metric(field) }}</span></dt><dd><strong>{{ count(result.summary, field) }}</strong></dd></div></dl>
+      <div v-if="showDetails" class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ result.query.group_by === 'state' ? t('admin.copy.5d42f3a0') : t('admin.copy.b96f43c6') }}</th><th v-for="field in fields" :key="field">{{ metric(field) }}</th></tr></thead><tbody><tr v-for="item in result.items" :key="item.key"><td :data-label="String(result.query.group_by === 'state' ? t('admin.copy.5d42f3a0') : t('admin.copy.b96f43c6'))">{{ result.query.group_by === 'state' ? stateLabel(item.label) : associationGroupLabel(item, result.query.group_by, item.key, item.label, associationLocale) }}</td><td :data-label="String(metric(field))" v-for="field in fields" :key="field">{{ count(item.totals, field) }}</td></tr><tr v-if="!result.items.length"><td :colspan="fields.length + 1" class="empty-state">{{ t('admin.copy.24e33023') }}</td></tr></tbody></table></div>
 
     </template>
     <p v-global-loading v-else-if="busy" class="definition" aria-live="polite">{{ t('admin.copy.27342bf3') }}</p>
     </div>
-  <template #pagination v-if="(result && committed)"><TablePagination :show-empty="Boolean(result)" class="pages" :aria-label="t('admin.copy.b81942bf')" :total="result.total_groups" :page="Math.floor(result.query.offset / 20 + 1)" :count="result.items.length" :locale="associationLocale" :page-size="20" :previous-disabled="busy || result.query.offset === 0" :next-disabled="busy || !hasNext(result)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => page((target - 1) * 20)" /></template></ManagementList>
+  <template #pagination v-if="showDetails && (result && committed)"><TablePagination class="pages" :aria-label="t('admin.copy.b81942bf')" :total="result.total_groups" :page="Math.floor(result.query.offset / pageSize + 1)" :count="result.items.length" :locale="associationLocale" :page-size="pageSize" :previous-disabled="busy || result.query.offset === 0" :next-disabled="busy || !hasNext(result)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => page((target - 1) * pageSize)" :change-page-size="async (size: number) => { pageSize = size; await page(0) }" :busy="busy" /></template></ManagementList>
 </template>
 
 <style scoped>

@@ -5,10 +5,10 @@ import { gameId, origins, installLayoutApi, expectNoPageOverflow } from './fixtu
 export const overviewFixture = () => ({
   snapshot_at: '2026-10-20T06:30:00Z', timezone: 'Asia/Singapore', today: '2026-10-20',
   total_members: '28649', online_members: '386', unsettled_points: '9007199254740993',
-  available_points: '6482150', frozen_points: '186400', withdrawal_points: '42800', withdrawal_count: '12',
-  yesterday_same_time_stake: '1000000',
-  days: Array.from({ length: 7 }, (_, i) => ({ day: `2026-10-${14 + i}`, stake_points: String(1000000 + i * 10000), net_points: i % 2 ? '-24000' : '100000', order_count: '8432', bettor_count: '1862', refund_points: '12600', new_members: '236' })),
-  brands: [{ brand_id: gameId, brand_name: 'Aurora / 品牌名称与很长的品牌展示名称', stake_points: '9007199254740993', net_points: '-6800' }],
+  available_points: '6482150.25', frozen_points: '186400', withdrawal_points: '42800', withdrawal_count: '12',
+  yesterday_same_time_stake: '1000000.50',
+  days: Array.from({ length: 7 }, (_, i) => ({ day: `2026-10-${14 + i}`, stake_points: String(1000000 + i * 10000), net_points: i % 2 ? '-24000.75' : '100000.25', order_count: '8432', bettor_count: '1862', refund_points: '12600.50', new_members: '236' })),
+  brands: [{ brand_id: gameId, brand_name: 'Aurora / 品牌名称与很长的品牌展示名称', stake_points: '9007199254740993', net_points: '-6800.25' }],
 })
 
 export function registerPlatformOverviewTests(reflow = false) {
@@ -33,7 +33,7 @@ export function registerPlatformOverviewTests(reflow = false) {
         if (path.endsWith('/withdrawals')) {
           expect(new URL(route.request().url()).searchParams.get('state')).toBe('reviewing')
           expect(route.request().headers()['x-brand-id']).toBe(gameId)
-          return reply({ brand_id: gameId, items: [], limit: 50, offset: 0, has_more: false })
+          return reply({ brand_id: gameId, items: [], limit: 50, offset: 0, has_more: false, total_count: '0' })
         }
         if (path.endsWith('/overview')) {
           expect(route.request().headers()['x-brand-id']).toBeUndefined()
@@ -61,6 +61,8 @@ export function registerPlatformOverviewTests(reflow = false) {
       await expect(overview.locator('.overview-tasks .overview-task strong')).toHaveText('12')
       await expect(overview).not.toContainText(locale === 'en' ? 'No comparable prior stakes' : '前期无可比投注')
       await expect(overview).toContainText('9,007,199,254,740,993')
+      await expect(overview.locator('.overview-current')).toContainText('6,482,150.25')
+      await expect(overview.locator('.overview-business').first()).toContainText('+100,000.25')
       const preset = page.viewportSize()!
       const widths = reflow ? [...new Set([
         ...Array.from({ length: 9 }, (_, i) => 320 + i * 20),

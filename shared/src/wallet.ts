@@ -1,3 +1,4 @@
+import { pointsMinor, isPoints } from './points'
 import { copyAssociationNames } from './association-names';
 
 export const WALLET_SOURCES = ["recharge", "winning", "gift", "commission"] as const;
@@ -47,15 +48,7 @@ function exact(value: Record<string, unknown>, keys: readonly string[]): boolean
   return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 }
 
-function amount(value: unknown, signed: boolean): value is string {
-  if (typeof value !== "string" || !(signed ? /^(0|-?[1-9]\d*)$/ : /^(0|[1-9]\d*)$/).test(value)) return false;
-  try {
-    const parsed = BigInt(value);
-    return parsed >= (signed ? -9223372036854775808n : 0n) && parsed <= MAX_INT64;
-  } catch {
-    return false;
-  }
-}
+function amount(value: unknown, signed: boolean): value is string {return isPoints(value,signed);}
 
 /** Current wallet responses are closed four-source DTOs. */
 export function isWalletDTO(value: unknown): value is WalletDTO {
@@ -69,24 +62,24 @@ export function isWalletDTO(value: unknown): value is WalletDTO {
   let aggregate = 0n;
   for (const source of WALLET_SOURCES) {
     for (const state of WALLET_STATES) {
-      aggregate += BigInt(buckets[source][state]);
+      aggregate += pointsMinor(buckets[source][state]);
       if (aggregate > MAX_INT64) return false;
     }
   }
-  const total = (state: WalletState) => WALLET_SOURCES.reduce((sum, source) => sum + BigInt(buckets[source][state]), 0n);
+  const total = (state: WalletState) => WALLET_SOURCES.reduce((sum, source) => sum + pointsMinor(buckets[source][state]), 0n);
   const available = total("available");
   const manual = total("manual_frozen");
   const system = total("system_frozen");
-  return BigInt(value.available_points as string) === available &&
-    BigInt(value.frozen_points as string) === manual + system &&
-    BigInt(value.withdrawal_points as string) === total("withdrawal") &&
-    BigInt(value.manual_frozen_points as string) === manual &&
-    BigInt(value.system_frozen_points as string) === system &&
-    BigInt(value.display_points as string) === available + manual + system &&
-    BigInt(value.recharge_points as string) === BigInt(buckets.recharge.available) &&
-    BigInt(value.winning_points as string) === BigInt(buckets.winning.available) &&
-    BigInt(value.gift_points as string) === BigInt(buckets.gift.available) &&
-    BigInt(value.commission_points as string) === BigInt(buckets.commission.available);
+  return pointsMinor(value.available_points as string) === available &&
+    pointsMinor(value.frozen_points as string) === manual + system &&
+    pointsMinor(value.withdrawal_points as string) === total("withdrawal") &&
+    pointsMinor(value.manual_frozen_points as string) === manual &&
+    pointsMinor(value.system_frozen_points as string) === system &&
+    pointsMinor(value.display_points as string) === available + manual + system &&
+    pointsMinor(value.recharge_points as string) === pointsMinor(buckets.recharge.available) &&
+    pointsMinor(value.winning_points as string) === pointsMinor(buckets.winning.available) &&
+    pointsMinor(value.gift_points as string) === pointsMinor(buckets.gift.available) &&
+    pointsMinor(value.commission_points as string) === pointsMinor(buckets.commission.available);
 }
 
 /** Validate and parse an exact current sixteen-bucket snapshot. */
@@ -107,7 +100,7 @@ export function normalizeSourceBuckets(value: unknown, signed = false): SourceBu
     let aggregate = 0n;
     for (const source of WALLET_SOURCES) {
       for (const state of WALLET_STATES) {
-        aggregate += BigInt(normalized[source][state]);
+        aggregate += pointsMinor(normalized[source][state]);
         if (aggregate > MAX_INT64) return null;
       }
     }

@@ -18,7 +18,7 @@ func TestRewardNotificationFailureRollsBackWholeGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	tx := rewardTx(t, f.db)
-	if _, err := f.service.GrantTx(ctx, tx, f.brand, f.actor, GrantInput{MemberID: f.member, Points: 25, Reason: "Atomic reward notification failure"}, rewardMeta(f.admin)); err == nil {
+	if _, err := f.service.GrantTx(ctx, tx, f.brand, f.actor, GrantInput{MemberID: f.member, Points: 2500, Reason: "Atomic reward notification failure"}, rewardMeta(f.admin)); err == nil {
 		t.Fatal("outbox failure accepted")
 	}
 	_ = tx.Rollback(ctx)
@@ -36,7 +36,7 @@ func TestRewardNotificationFailureRollsBackWholeGrant(t *testing.T) {
 func TestRewardNotificationWitnessAndOutboxHistoryCannotBeForged(t *testing.T) {
 	f := newRewardFixture(t)
 	ctx := context.Background()
-	order := rewardGrant(t, f, 25)
+	order := rewardGrant(t, f, 2500)
 	var id, aggregate string
 	var raw []byte
 	if err := f.db.QueryRow(ctx, `SELECT id::text,aggregate_id::text,payload FROM outbox_events WHERE event_type='reward.order.granted'`).Scan(&id, &aggregate, &raw); err != nil {
@@ -76,7 +76,7 @@ func TestRewardNotificationWitnessAndOutboxHistoryCannotBeForged(t *testing.T) {
 	if _, err := (notification.Service{DB: f.db}).Process(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
-	if rewardBalance(t, f)[2][0] != points.Amount(25) {
+	if rewardBalance(t, f)[2][0] != points.Amount(2500) {
 		t.Fatal("publishing/delivery changed grant balance")
 	}
 }

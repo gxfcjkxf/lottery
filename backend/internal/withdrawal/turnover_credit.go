@@ -53,12 +53,12 @@ func addTurnoverCredit(credit *big.Rat, contribution TurnoverContribution) error
 	if !ok || multiple.Sign() <= 0 {
 		return ErrTurnoverCreditInvalid
 	}
-	credit.Add(credit, new(big.Rat).Quo(new(big.Rat).SetInt64(int64(contribution.ValidPoints)), multiple))
+	credit.Add(credit, new(big.Rat).Quo(big.NewRat(int64(contribution.ValidPoints), 100), multiple))
 	return nil
 }
 
 func turnoverCreditResult(base points.Amount, credit *big.Rat) TurnoverCreditResult {
-	threshold := new(big.Rat).SetInt64(int64(base))
+	threshold := big.NewRat(int64(base), 100)
 	return TurnoverCreditResult{
 		Numerator:      credit.Num().String(),
 		Denominator:    credit.Denom().String(),

@@ -44,6 +44,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
+  box-shadow: var(--shadow-sm);
 }
 .reports-management .report-panel .report-actions {
   display: flex;

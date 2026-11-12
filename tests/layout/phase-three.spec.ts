@@ -10,7 +10,7 @@ async function review(page:Page,info:TestInfo,name:string){
  }
 }
 for(const locale of ['en','zh-CN'] as const){
- test(`phase three wallet ledger reads only on entry, pagination and refresh (${locale})`,async({page},info)=>{
+ test(`phase three wallet ledger reads on entry without a permanent refresh (${locale})`,async({page},info)=>{
   await page.clock.install();await installLayoutApi(page,locale);await installWalletLayoutApi(page)
   let walletReads=0,ledgerReads=0
   await page.route('**/api/v1/wallet',async route=>{walletReads++;await route.fallback()})
@@ -22,8 +22,8 @@ for(const locale of ['en','zh-CN'] as const){
   await expect(entry.locator('.ledger-result dd')).toHaveText('120')
   const before=[walletReads,ledgerReads];await page.clock.fastForward(35000);expect([walletReads,ledgerReads]).toEqual(before)
   await page.getByRole('button',{name:locale==='en'?'Menu':'菜单',exact:true}).click()
-  await page.locator('#user-page-refresh button').click()
-  await expect.poll(()=>ledgerReads).toBe(before[1]+1)
+  await expect(page.locator('#user-page-refresh button')).toHaveCount(0)
+  expect(ledgerReads).toBe(before[1])
   await expect(entry.locator('.ledger-result dd')).toHaveText('120')
   await page.locator('.workspace-menu-close').click()
   await review(page,info,`ledger-${locale}`)
@@ -47,8 +47,11 @@ for(const locale of ['en','zh-CN'] as const){
   const panel=page.locator('.commission-page');await expect(panel).toContainText('+7');expect(walletReads).toBe(1)
   await panel.getByRole('button',{name:locale==='en'?'Next':'下一页',exact:true}).click();await expect(panel).toContainText('+9')
   expect(walletReads).toBe(1);expect(postingReads).toBe(2)
-  failWallet=true;await panel.locator('[data-refresh-button]').click();await expect.poll(()=>walletReads).toBe(2)
-  await expect(panel).toContainText('+9');expect(postingReads).toBe(3)
+  await expect(panel.locator('[data-refresh-button]')).toHaveCount(0)
+  failWallet=true;await nav.locator('a[href="#/members"]').click();await nav.locator('a[href="#/commission"]').click()
+  await expect(panel.locator('[data-refresh-button]')).toBeVisible();expect(walletReads).toBe(2)
+  failWallet=false;await panel.locator('[data-refresh-button]').click();await expect(panel.locator('[data-refresh-button]')).toHaveCount(0)
+  expect(walletReads).toBe(3)
   await review(page,info,`commission-${locale}`)
  })
  test(`phase three policy errors translate directly without repeating requests (${locale})`,async({page},info)=>{

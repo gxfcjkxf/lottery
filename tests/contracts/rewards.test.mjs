@@ -9,7 +9,7 @@ const ajv = new Ajv2020({ strict: false, allErrors: true }); addFormats(ajv);
 ajv.addSchema({ $id: 'urn:lottery:reward', components: { schemas: { ...doc.components.schemas, ...schemas } } });
 const validate = name => ajv.compile({ $ref: `urn:lottery:reward#/components/schemas/${name}` });
 const id = '11111111-1111-4111-8111-111111111111', time = '2026-10-08T00:00:00Z';
-const granted = { id, brand_id: id, member_id: id, points: '9223372036854775807', state: 'granted', version: 1, grant_ledger_entry_id: id, revoke_ledger_entry_id: null,
+const granted = { id, brand_id: id, member_id: id, points: '92233720368547758.07', state: 'granted', version: 1, grant_ledger_entry_id: id, revoke_ledger_entry_id: null,
   creation_audit_log_id: id, last_audit_log_id: id, created_by: id, reason: 'explicit grant', point_policy_version: '1', created_at: time, updated_at: time, revoked_at: null };
 test('reward contract exposes five scoped operations and two actor-bound writes', () => {
   assert.deepEqual(operations.map(o => `${o.method} ${o.path}`).sort(), [
@@ -30,7 +30,8 @@ test('reward schemas are closed and preserve int64 point strings with no wallet 
   for (const s of Object.values(schemas)) assert.equal(s.additionalProperties, false);
   assert.equal(validate('RewardOrder')(granted), true);
   assert.equal(validate('RewardGrantInput')({ member_id: id, points: granted.points, reason: 'manual grant' }), true);
-  for (const points of [25, '0', '-1', '01', '1.1']) assert.equal(validate('RewardGrantInput')({ member_id: id, points, reason: 'grant' }), false);
+  assert.equal(validate('RewardGrantInput')({ member_id: id, points: '1.25', reason: 'grant' }), true);
+  for (const points of [25, '0', '-1', '01', '1.111']) assert.equal(validate('RewardGrantInput')({ member_id: id, points, reason: 'grant' }), false);
   assert.ok(!Object.keys(schemas.RewardOrder.properties).some(k => /account_id|bucket|snapshot/.test(k)));
   assert.equal(validate('RewardOrder')({ ...granted, hidden: 'field' }), false);
 });

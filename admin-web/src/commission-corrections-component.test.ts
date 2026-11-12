@@ -93,7 +93,8 @@ function textOf(node: HostNode): string { return node.text + node.children.map(t
 let lastRoot: HostNode | null = null;
 function findNode(node: HostNode, match: (n: HostNode) => boolean): HostNode | null { if(match(node))return node;for(const child of node.children){const found=findNode(child,match);if(found)return found;}return null; }
 function byTestId(root: HostNode,id: string): HostNode|null{return findNode(root,(node)=>node.props["data-testid"]===id);}
-function button(root: HostNode,text: string):HostNode|null{return findNode(root,(node)=>node.tag==="button"&&((text===planId||text===executionId)?node.props["data-case-id"]===planId:(textOf(node).includes(text)||node.props["aria-label"]===text)));}
+function button(root: HostNode,text: string):HostNode|null{const match=(node:HostNode)=>node.tag==="button"&&((text===planId||text===executionId)?node.props["data-case-id"]===planId:(textOf(node).includes(text)||node.props["aria-label"]===text));const dialog=findNode(root,node=>node.props["data-testid"]==='correction-detail-dialog');return (dialog && findNode(dialog,match)) || findNode(root,match);}
+
 function click(node:HostNode|null){expect(node,`button was missing in: ${lastRoot?textOf(lastRoot):""}`).not.toBeNull();(node!.props.onClick as (()=>void)|undefined)?.();}
 function setModel(node:HostNode|null,value:unknown){expect(node).not.toBeNull();(node!.props["onUpdate:modelValue"] as ((next:unknown)=>void)|undefined)?.(value);}
 function setChecked(node:HostNode|null,value:boolean){expect(node).not.toBeNull();(node!.props.onChange as ((event:unknown)=>void)|undefined)?.({target:{checked:value}});}
@@ -104,9 +105,9 @@ afterEach(()=>{CorrectionState.clearAllCommissionCorrectionIntents();calls.lengt
 
 describe("CommissionCorrectionsManagement",()=>{
   beforeEach(freshData);
-  it("keeps correction queries scoped to the selected calculation after reset and queue changes", async () => {
+  it("keeps correction queries scoped to the selected calculation after querying and queue changes", async () => {
     const mounted = mount(baseAccount, brand, "active", cycleId); await flush();
-    click(button(mounted.container, "清空")); await flush();
+    (findNode(mounted.container, node => node.tag === "form" && String(node.props.class).includes("commission-toolbar"))!.props.onSubmit as (event: Event) => void)({preventDefault(){}} as Event); await flush();
     click(button(mounted.container, "待处理")); await flush();
     const reads = calls.filter(call => call.method === "listCases");
     expect(reads.length).toBeGreaterThanOrEqual(3);
@@ -119,7 +120,7 @@ describe("CommissionCorrectionsManagement",()=>{
     const mounted = mount(); await flush();
     click(button(mounted.container, planId)); await flush();
     expect(byTestId(mounted.container, "cc-plan-detail")).not.toBeNull();
-    click(button(mounted.container, "返回列表")); await flush();
+    click(byTestId(mounted.container,"close-detail")); await flush();
     (findNode(mounted.container, node => node.tag === "form" && String(node.props.class).includes("commission-toolbar"))!.props.onSubmit as (event: Event) => void)({preventDefault(){}} as Event); await flush();
     expect(byTestId(mounted.container, "cc-plan-detail")).toBeNull();
     click(button(mounted.container, executionId)); await flush();
@@ -131,7 +132,7 @@ describe("CommissionCorrectionsManagement",()=>{
     click(byTestId(mounted.container, "cc-submit")); await flush();
     expect(byTestId(mounted.container, "cc-plan-detail")).not.toBeNull();
     expect(calls.filter(call => call.method === "approve")).toHaveLength(1);
-    click(button(mounted.container, "返回列表")); await flush();
+    click(byTestId(mounted.container,"close-detail")); await flush();
     (findNode(mounted.container, node => node.tag === "form" && String(node.props.class).includes("commission-toolbar"))!.props.onSubmit as (event: Event) => void)({preventDefault(){}} as Event); await flush();
     expect(byTestId(mounted.container, "cc-execution-detail")).toBeNull();
     mounted.app.unmount();

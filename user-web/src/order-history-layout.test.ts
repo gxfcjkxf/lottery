@@ -5,24 +5,23 @@ import { describe, expect, it } from 'vitest';
 import OrderHistoryLayout from './OrderHistoryLayout.vue';
 import { createUserI18n, userI18nKey } from './i18n';
 
-async function render(locale: 'en' | 'zh-CN', loading = false, empty = true) {
+async function render(locale: 'en' | 'zh-CN', loading = false, empty = true, error = false) {
   const i18n = createUserI18n();
   i18n.setLocale(locale);
   const context: { teleports?: Record<string, string> } = {};
-  const html = await renderToString(createSSRApp({ render: () => h(OrderHistoryLayout, { title: 'Orders', loading, empty }, {
+  const html = await renderToString(createSSRApp({ render: () => h(OrderHistoryLayout, { title: 'Orders', loading, empty, error }, {
     default: () => h('div', { class: 'order-content' }, 'content'),
     pagination: () => h('nav', { class: 'history-pages' }, 'pages'),
   }) }).provide(userI18nKey, i18n), context);
   expect(html).not.toContain('data-refresh-button');
-  return html + context.teleports?.['#user-page-refresh'];
+  return html + (context.teleports?.['#user-page-refresh'] ?? '');
 }
 
 describe('one user order history layout', () => {
   for (const locale of ['en', 'zh-CN'] as const) {
-    it(`shares the secondary refresh button and localized empty state (${locale})`, async () => {
+    it(`hides refresh and retains the localized empty state (${locale})`, async () => {
       const html = await render(locale);
-      expect(html).toContain('class="button button-secondary"');
-      expect(html).toContain(locale === 'en' ? 'Refresh' : '刷新');
+      expect(html).not.toContain('data-refresh-button');
       expect(html).toContain(locale === 'en' ? 'No bet orders match the current game and filters.' : '当前彩种和筛选条件下暂无投注记录。');
       expect(html).toContain('order-history-empty');
       expect(html).not.toContain('order-content');
@@ -33,7 +32,7 @@ describe('one user order history layout', () => {
   it('does not show an empty state during loading, errors or populated content', async () => {
     const loading = await render('en', true, false);
     expect(loading).not.toContain('order-history-empty');
-    expect(loading).toMatch(/<button[^>]*disabled/);
+    expect(loading).not.toContain('data-refresh-button');
     for (const html of [loading, await render('en', false, false)]) expect(html).toContain('order-content');
     expect(await render('en', false, false)).not.toContain('order-history-empty');
   });
@@ -41,6 +40,13 @@ describe('one user order history layout', () => {
     const html = await render('en', true, true);
     expect(html).toContain('order-history-empty');
     expect(html).toContain('history-pages');
+  });
+  it('offers a localized retry after a read failure', async () => {
+    for (const locale of ['en', 'zh-CN'] as const) {
+      const html = await render(locale, false, false, true);
+      expect(html).toContain('data-refresh-button');
+      expect(html).toContain(locale === 'en' ? 'Refresh' : '刷新');
+    }
   });
   it('uses one history layout and centered empty styling', () => {
     for (const name of ['BettingHistory']) {

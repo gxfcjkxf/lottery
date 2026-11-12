@@ -26,7 +26,7 @@ func TestCaptureArchiveUsesOneReadOnlyAggregateSnapshot(t *testing.T) {
 		args []any
 	}{
 		{`INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'archive-snapshot-test')`, []any{userID, "archive_user_" + userID[:8]}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'operator','1','1')`, []any{memberID, testBrand, userID}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'operator')`, []any{memberID, testBrand, userID}},
 		{`INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,$2,'archive-snapshot-test')`, []any{adminID, "archive_admin_" + adminID[:8]}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{accountID, testBrand, memberID}},
 		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift','commission']) s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) t ON CONFLICT DO NOTHING`, []any{testBrand, accountID}},
@@ -42,11 +42,11 @@ func TestCaptureArchiveUsesOneReadOnlyAggregateSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = financeService.GrantRechargeQuota(ctx, tx, testBrand, 19, meta); err != nil {
+	if _, err = financeService.GrantRechargeQuota(ctx, tx, testBrand, 1900, meta); err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)
 	}
-	rechargeOrder, err := financeService.CreateRecharge(ctx, tx, testBrand, memberID, 19, "archive fixture proof", "private note", "archive fixture", meta)
+	rechargeOrder, err := financeService.CreateRecharge(ctx, tx, testBrand, memberID, 1900, "archive fixture proof", "private note", "archive fixture", meta)
 	if err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestCaptureArchiveUsesOneReadOnlyAggregateSnapshot(t *testing.T) {
 	}
 	rewardMeta := meta
 	rewardMeta.RequestID = ids.New()
-	rewardOrder, err := rewardService.GrantTx(ctx, tx, testBrand, actor, rewards.GrantInput{MemberID: memberID, Points: 23, Reason: "archive fixture grant"}, rewardMeta)
+	rewardOrder, err := rewardService.GrantTx(ctx, tx, testBrand, actor, rewards.GrantInput{MemberID: memberID, Points: 2300, Reason: "archive fixture grant"}, rewardMeta)
 	if err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)
@@ -91,12 +91,12 @@ func TestCaptureArchiveUsesOneReadOnlyAggregateSnapshot(t *testing.T) {
 
 	// This is a real manual points posting through the canonical ledger writer.
 	var manualDelta points.Balance
-	manualDelta[0][0] = 7
+	manualDelta[0][0] = 700
 	tx, err = db.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = (points.Store{DB: db}).Post(ctx, tx, points.Change{BrandID: testBrand, MemberID: memberID, EntryType: "adjustment", ReferenceType: "manual", OperationKey: "archive-manual:" + ids.New(), Reason: "archive fixture manual credit", ActorType: "admin", ActorID: adminID, RequestID: ids.New(), Delta: manualDelta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 7}}}); err != nil {
+	if _, err = (points.Store{DB: db}).Post(ctx, tx, points.Change{BrandID: testBrand, MemberID: memberID, EntryType: "adjustment", ReferenceType: "manual", OperationKey: "archive-manual:" + ids.New(), Reason: "archive fixture manual credit", ActorType: "admin", ActorID: adminID, RequestID: ids.New(), Delta: manualDelta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 700}}}); err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestCaptureArchiveUsesOneReadOnlyAggregateSnapshot(t *testing.T) {
 		if _, err = db.Exec(ctx, `INSERT INTO global_users(id,username) VALUES($1,$2)`, largeUser, "archive_large_"+largeUser); err != nil {
 			t.Fatal(err)
 		}
-		if _, err = db.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'operator','1','1')`, largeMember, testBrand, largeUser); err != nil {
+		if _, err = db.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'operator')`, largeMember, testBrand, largeUser); err != nil {
 			t.Fatal(err)
 		}
 		if _, err = db.Exec(ctx, `INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, largeAccount, testBrand, largeMember); err != nil {

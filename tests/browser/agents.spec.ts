@@ -15,7 +15,7 @@ test("real agent policy tree and direct-child configuration retain audited idemp
     const r=await page.request.fetch(`${admin}${path}`,{method,headers:{...headers,...(method==="GET"?{}:{"Idempotency-Key":uid()})},...(body===undefined?{}:{data:body})});expect(r.status(),await r.text()).toBe(status);return(await r.json()).data;
   };
   const optionValues=async(select:ReturnType<typeof page.getByLabel>)=>select.locator("option").evaluateAll(options=>options.filter(option=>!(option as HTMLOptionElement).disabled).map(option=>(option as HTMLOptionElement).value));
-  const register=await page.request.post(`${pub}/auth/register`,{headers:{Origin:origin,"Idempotency-Key":uid()},data:{username:`agency_${uid().replaceAll("-","").slice(0,12)}`,password:"agent-test-only-password-2026",privacy_policy_version:"dev-1",service_terms_version:"dev-1"}});
+  const register=await page.request.post(`${pub}/auth/register`,{headers:{Origin:origin,"Idempotency-Key":uid()},data:{username:`agency_${uid().replaceAll("-","").slice(0,12)}`,password:"agent-test-only-password-2026",}});
   expect(register.status(),await register.text()).toBe(201);const user=(await register.json()).data,member=user.member.id;
   const before=await adminCall(`/wallets/${member}`,"GET");const beforeLedger=await adminCall(`/wallets/${member}/ledger`,"GET");
   const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));

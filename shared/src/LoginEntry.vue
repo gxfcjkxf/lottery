@@ -29,7 +29,7 @@ defineEmits<{ 'update:locale': [value: string]; logoError: [] }>()
     <main class="login-entry__main">
       <slot name="status" />
       <article v-if="ready !== false" class="login-entry__card" :class="cardClass" :aria-labelledby="titleId">
-        <h1 :id="titleId">{{title}}</h1>
+        <slot name="heading"><h1 :id="titleId">{{title}}</h1></slot>
         <slot />
       </article>
     </main>

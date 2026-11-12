@@ -24,11 +24,13 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformCommissionApi, type AgentDirectoryNode, type AgentNode, type Cycle, type Earning, type Payment } from './commission-api'
 import { formatPlatformDateTime, type PlatformDisplaySettings } from './platform-format'
+const earningPageSize = ref(50)
+const listPageSize = ref(50)
+
 
 const props = defineProps<{ brandId: string; locale: 'en' | 'zh-CN'; initialTab?: 'agents' | 'cycles' | 'payments'; displaySettings: PlatformDisplaySettings }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
 const api = createPlatformCommissionApi()
-const pageSize = 50
 type Tab = 'agents' | 'cycles' | 'payments'
 const activeTab = ref<Tab>(props.initialTab ?? 'agents')
 const copy = computed(() => props.locale === 'en' ? {
@@ -55,7 +57,7 @@ const agents = ref<AgentDirectoryNode[]>([])
 const search = ref(''), query = ref('')
 const onlineFilter = ref<'' | 'true' | 'false'>(''), onlineQuery = ref<'' | 'true' | 'false'>('')
 async function searchAgents() { query.value = search.value.trim(); onlineQuery.value = onlineFilter.value; await loadList('agents', 0) }
-async function clearSearch() { search.value = ''; onlineFilter.value = ''; await searchAgents() }
+
 const cycles = ref<Cycle[]>([])
 const payments = ref<Payment[]>([])
 const agentTotal = ref('0')
@@ -76,8 +78,8 @@ let generation = 0
 
 const offset = computed(() => activeTab.value === 'agents' ? agentOffset.value : activeTab.value === 'cycles' ? cycleOffset.value : paymentOffset.value)
 const total = computed(() => activeTab.value === 'agents' ? agentTotal.value : activeTab.value === 'cycles' ? cycleTotal.value : paymentTotal.value)
-const hasNext = computed(() => BigInt(offset.value + pageSize) < BigInt(total.value))
-const hasNextEarnings = computed(() => BigInt(earningOffset.value + pageSize) < BigInt(earningTotal.value))
+const hasNext = computed(() => BigInt(offset.value + listPageSize.value) < BigInt(total.value))
+const hasNextEarnings = computed(() => BigInt(earningOffset.value + earningPageSize.value) < BigInt(earningTotal.value))
 const emptyLabel = computed(() => activeTab.value === 'agents' ? copy.value.emptyAgents : activeTab.value === 'cycles' ? copy.value.emptyCycles : copy.value.emptyPayments)
 const stateLabel = (state: string) => copy.value.states[state] || state
 const modeLabel = (mode: string | null) => mode === null ? copy.value.inherited : copy.value.modes[mode] || mode
@@ -111,15 +113,15 @@ async function loadList(tab: Tab, nextOffset: number) {
   loading.value = true
   try {
     if (tab === 'agents') {
-      const page = await api.list(brandId, pageSize, nextOffset, { query: query.value, online: onlineQuery.value })
+      const page = await api.list(brandId, listPageSize.value, nextOffset, { query: query.value, online: onlineQuery.value })
       if (request !== generation || props.brandId !== brandId) return
       agents.value = page.items; agentOffset.value = nextOffset; agentTotal.value = page.total_count
     } else if (tab === 'cycles') {
-      const page = await api.cycles(brandId, pageSize, nextOffset)
+      const page = await api.cycles(brandId, listPageSize.value, nextOffset)
       if (request !== generation || props.brandId !== brandId) return
       cycles.value = page.items; cycleOffset.value = nextOffset; cycleTotal.value = page.total_count
     } else {
-      const page = await api.payments(brandId, pageSize, nextOffset)
+      const page = await api.payments(brandId, listPageSize.value, nextOffset)
       if (request !== generation || props.brandId !== brandId) return
       payments.value = page.items; paymentOffset.value = nextOffset; paymentTotal.value = page.total_count
     }
@@ -155,7 +157,7 @@ async function openCycle(cycle: Cycle) {
     if (request !== generation || props.brandId !== brandId) return
     cycleDetail.value = detail
     if (detail.current_run_id) {
-      const page = await api.earnings(brandId, detail.id, pageSize, 0)
+      const page = await api.earnings(brandId, detail.id, earningPageSize.value, 0)
       if (request !== generation || props.brandId !== brandId) return
       if (page.items.some(item => item.run_id !== detail.current_run_id)) throw new PlatformApiError('Commission run changed; refresh the cycle', 0, 'RUN_CHANGED')
       earningItems.value = page.items; earningOffset.value = 0; earningTotal.value = page.total_count
@@ -171,7 +173,7 @@ async function loadEarnings(nextOffset: number) {
   const cycleId = cycleDetail.value.id
   error.value = ''; loading.value = true
   try {
-    const page = await api.earnings(brandId, cycleId, pageSize, nextOffset)
+    const page = await api.earnings(brandId, cycleId, earningPageSize.value, nextOffset)
     if (request === generation && props.brandId === brandId && cycleDetail.value?.id === cycleId) {
       if (page.items.some(item => item.run_id !== cycleDetail.value?.current_run_id)) throw new PlatformApiError('Commission run changed; refresh the cycle', 0, 'RUN_CHANGED')
       earningItems.value = page.items; earningOffset.value = nextOffset; earningTotal.value = page.total_count
@@ -208,8 +210,8 @@ useOperationToast(error, value => displayPublicError(value), 'error');
   <div v-if="brandId" data-testid="platform-commission">
 
     <ManagementList :busy="loading">
-      <template v-if="activeTab !== 'agents'" #actions><button v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading || !brandId" @click="withGlobalLoading(refresh)">{{ copy.refresh }}</button></template>
-      <template v-if="activeTab === 'agents'" #filters><DirectorySearch v-if="activeTab==='agents'" v-model="search" :label="ui('members.search')" :query-label="ui('members.query')" :clear-label="ui('members.clear')" :busy="loading" :active="Boolean(search||onlineFilter)" :search="searchAgents" :clear="clearSearch"><SelectControl v-model="onlineFilter" :label="ui('members.onlineStatus')" :options="[{ value: '', label: (String(ui('members.allOnline'))).trim() }, { value: 'true', label: (String(ui('members.online'))).trim() }, { value: 'false', label: (String(ui('members.offline'))).trim() }]" /></DirectorySearch></template>
+      <template v-if="activeTab !== 'agents' && (error || (activeTab === 'cycles' ? cycles.some(item => ['enumerating','waiting','calculating','summarizing'].includes(item.state)) : payments.some(item => ['awaiting_approval','paying'].includes(item.state))))" #actions><button v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading || !brandId" @click="withGlobalLoading(refresh)">{{ copy.refresh }}</button></template>
+      <template v-if="activeTab === 'agents'" #filters><DirectorySearch :locale="associationLocale" v-if="activeTab==='agents'" v-model="search" :label="ui('members.search')" :query-label="ui('members.query')" :busy="loading" :search="searchAgents"><SelectControl v-model="onlineFilter" :label="ui('members.onlineStatus')" :options="[{ value: '', label: (String(ui('members.allOnline'))).trim() }, { value: 'true', label: (String(ui('members.online'))).trim() }, { value: 'false', label: (String(ui('members.offline'))).trim() }]" /></DirectorySearch></template>
       <div class="table-wrap" data-testid="platform-commission-list">
         <table v-if="activeTab === 'agents'" class="agent-directory-table console-table console-responsive-table"><thead><tr><th>{{ ui('platform.copy.eeaa7275') }}</th><th>{{ ui('members.onlineStatus') }}</th><th>{{ ui('common.points') }}</th><th>{{ copy.depth }}</th><th>{{ copy.parent }}</th><th>{{ copy.ratio }}</th><th>{{ copy.effectiveMode }}</th><th><BusinessDetails :value="copy.status" :locale="associationLocale" /></th><th>{{ ui('common.actions') }}</th></tr></thead><tbody>
           <tr v-for="agent in agents" :key="agent.id"><td :data-label="ui('platform.copy.eeaa7275')"><button type="button" class="text-button member-account" @click="withGlobalLoading(openAgent, agent)">{{ agent.username || ui('association.unnamed') }}</button></td><td :data-label="ui('members.onlineStatus')"><span class="member-presence" :class="{ 'is-online': agent.online }"><i aria-hidden="true" />{{ ui(agent.online ? 'members.online' : 'members.offline') }}</span></td><td class="member-points" :data-label="ui('common.points')">{{ agent.display_points === null ? ui('members.pointsRestricted') : agent.display_points }}</td><td :data-label="copy.depth">{{ agent.depth }}</td><td :data-label="copy.parent"><AssociationName :record="agent" kind="agent" :id="agent.parent_id ?? undefined" :locale="associationLocale" /></td><td :data-label="copy.ratio">{{ agent.config.ratio }}</td><td :data-label="copy.effectiveMode">{{ modeLabel(agent.effective_mode) }}</td><td :data-label="copy.status"><span :class="['status-pill', agent.config.status]">{{ stateLabel(agent.config.status) }}</span></td><td :data-label="ui('common.actions')"><MemberActionsMenu :id="`platform-agent-actions-${agent.id}`" :label="ui('agents.actions', { account: agent.username })"><button type="button" role="menuitem" @click="withGlobalLoading(openAgent, agent)">{{ copy.detail }}</button></MemberActionsMenu></td></tr>
@@ -226,8 +228,8 @@ useOperationToast(error, value => displayPublicError(value), 'error');
       </div>
 
 
-    <template #pagination><TablePagination :show-empty="!loading && !error" v-if="activeTab === 'agents'" data-testid="platform-commission-list-pages" :total="agentTotal" :page="Math.floor(agentOffset / pageSize + 1)" :count="agents.length" :locale="locale" :page-size="pageSize" :previous-disabled="loading || agentOffset === 0" :next-disabled="loading || !hasNext" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => loadList('agents', (target - 1) * pageSize)" />
-<TablePagination :show-empty="!loading && !error" v-else class="wallet-pagination" data-testid="platform-commission-list-pages" :total="total" :page="Math.floor(offset / pageSize + 1)" :count="activeTab === 'cycles' ? cycles.length : payments.length" :locale="locale" :page-size="pageSize" :previous-disabled="loading || offset === 0 || !brandId" :next-disabled="loading || !hasNext" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => loadList(activeTab, (target - 1) * pageSize)" /></template></ManagementList>
+    <template #pagination><TablePagination v-if="activeTab === 'agents'" data-testid="platform-commission-list-pages" :total="agentTotal" :page="Math.floor(agentOffset / listPageSize + 1)" :count="agents.length" :locale="locale" :page-size="listPageSize" :previous-disabled="loading || agentOffset === 0" :next-disabled="loading || !hasNext" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => loadList('agents', (target - 1) * listPageSize)" :change-page-size="async (size: number) => { listPageSize = size; await loadList(activeTab, 0) }" :busy="loading" />
+<TablePagination v-else class="wallet-pagination" data-testid="platform-commission-list-pages" :total="total" :page="Math.floor(offset / listPageSize + 1)" :count="activeTab === 'cycles' ? cycles.length : payments.length" :locale="locale" :page-size="listPageSize" :previous-disabled="loading || offset === 0 || !brandId" :next-disabled="loading || !hasNext" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => loadList(activeTab, (target - 1) * listPageSize)" :change-page-size="async (size: number) => { listPageSize = size; await loadList(activeTab, 0) }" :busy="loading" /></template></ManagementList>
 
     <DetailModal class="agent-dialog" v-if="agentDetail" :title="`${copy.detail} · ${copy.agent}`" :close-label="copy.close" @close="agentDetail = null">
 <section v-if="agentDetail" class="detail-section" data-testid="platform-commission-details">
@@ -258,7 +260,7 @@ useOperationToast(error, value => displayPublicError(value), 'error');
         </tbody></table></div>
 
       </template>
-    <template #pagination v-if="(cycleDetail?.current_run_id)"><TablePagination :show-empty="!loading && !error" class="wallet-pagination" data-testid="platform-commission-earnings-pages" :total="earningTotal" :page="Math.floor(earningOffset / pageSize + 1)" :count="earningItems.length" :locale="locale" :page-size="pageSize" :previous-disabled="loading || earningOffset === 0" :next-disabled="loading || !hasNextEarnings" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => loadEarnings((target - 1) * pageSize)" /></template></ManagementList>
+    <template #pagination v-if="(cycleDetail?.current_run_id)"><TablePagination class="wallet-pagination" data-testid="platform-commission-earnings-pages" :total="earningTotal" :page="Math.floor(earningOffset / earningPageSize + 1)" :count="earningItems.length" :locale="locale" :page-size="earningPageSize" :previous-disabled="loading || earningOffset === 0" :next-disabled="loading || !hasNextEarnings" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => loadEarnings((target - 1) * earningPageSize)" :change-page-size="async (size: number) => { earningPageSize = size; await loadEarnings(0) }" :busy="loading" /></template></ManagementList>
 </DetailModal>
 
     <DetailModal v-if="paymentDetail" :title="`${copy.detail} · ${copy.payment}`" :close-label="copy.close" @close="paymentDetail = null">

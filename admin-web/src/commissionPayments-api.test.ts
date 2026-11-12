@@ -14,7 +14,7 @@ const now = "2026-10-07T00:00:00Z";
 const base: AdminAccount = { id: actor, super_admin: false, brand_ids: [brand], permissions_by_brand: { [brand]: ["commission.view.brand", "commission_payment_policy.write.brand", "commission_payment.approve.brand", "commission_payment.retry.brand"] }, permissions: [] };
 
 function payment(overrides: Partial<CommissionPayment> = {}): CommissionPayment {
-  return { id, brand_id: brand, cycle_id: cycle, run_id: run, state: "failed", payout_mode: "automatic", version: 2, evidence_epoch: "900719925474099312345", total_points: "900719925474099312345", paid_points: "900719925474099300000", target_count: "900719925474099312345", paid_count: "900719925474099300000", creation_audit_log_id: audit, last_error_code: "POST_FAILED", created_at: now, updated_at: now, ...overrides };
+  return { id, brand_id: brand, cycle_id: cycle, run_id: run, state: "failed", payout_mode: "automatic", version: 2, evidence_epoch: "900719925474099312345", total_points: "900719925474099312345.25", paid_points: "900719925474099300000.15", target_count: "900719925474099312345", paid_count: "900719925474099300000", creation_audit_log_id: audit, last_error_code: "POST_FAILED", created_at: now, updated_at: now, ...overrides };
 }
 function ok(data: unknown, status = 200) { return new Response(JSON.stringify({ success: true, data }), { status }); }
 
@@ -161,4 +161,16 @@ describe('payment history projection',()=>{
   await expect(api.history(brand,payment)).rejects.toMatchObject({code:'INVALID_RESPONSE'});
   page.brand_id=payment;await expect(api.history(brand,payment)).rejects.toMatchObject({code:'INVALID_RESPONSE'});
  })
+})
+
+it('accepts paid totals with equivalent decimal scales without accepting a cent mismatch', async () => {
+ const data=payment({state:'paid',last_error_code:null,total_points:'1.50',paid_points:'1.5',target_count:'1',paid_count:'1'})
+ await expect(createCommissionPaymentsApi(async()=>ok(data)).read(brand,id)).resolves.toEqual(data)
+ await expect(createCommissionPaymentsApi(async()=>ok({...data,paid_points:'1.49'})).read(brand,id)).rejects.toMatchObject({code:'INVALID_RESPONSE'})
+})
+
+it('accepts decimal zero for a payment awaiting approval', async () => {
+ const data=payment({state:'awaiting_approval',payout_mode:'manual',last_error_code:null,paid_points:'0.00',paid_count:'0'})
+ await expect(createCommissionPaymentsApi(async()=>ok(data)).read(brand,id)).resolves.toEqual(data)
+ await expect(createCommissionPaymentsApi(async()=>ok({...data,paid_points:'0.01'})).read(brand,id)).rejects.toMatchObject({code:'INVALID_RESPONSE'})
 })

@@ -66,7 +66,7 @@ export function registerWorkspaceTests(){
     expect(content.x).toBeGreaterThanOrEqual(side.x+side.width)
    }
    const topbar=await page.locator('.workspace-game-heading').boundingBox()
-   const game=await page.locator('.workspace-game-trigger').boundingBox()
+   const game=await page.locator('.workspace-game-picker .select-control-trigger').boundingBox()
    expect(Math.abs(game!.x+game!.width/2-topbar!.x-topbar!.width/2)).toBeLessThan(1)
    await expectNoPageOverflow(page)
    if(width===initialViewport.width||[320,999,1000,1440].includes(width))await page.screenshot({path:info.outputPath(`user-home-${locale}-${width}.png`)})
@@ -211,40 +211,37 @@ export function registerConfiguredHistoryLayoutTests(){
   await page.route('**/api/v1/draw-archive?*', route => {
    expect(route.request().method()).toBe('GET')
    const selected = new URL(route.request().url()).searchParams.get('selected') || '2026'
-   return route.fulfill({json:{success:true,data:{game_id:gameId,game_name:'Mark Six',mark_six:true,timezone:'Asia/Singapore',daily:false,choices:['2026','2025'],selected,has_more:false,items:[{period_no:selected+'10',drawn_at:selected+'-10-23T01:01:00Z',draw_date:null,regular_order:[3,12,28,14,25,48],result:{regular:[3,12,28,14,25,48],special:[7],digits:[]},attributes:Object.fromEntries([3,12,28,14,25,48,7].map(n=>[String(n).padStart(2,'0'),{wave:n%3===0?'red':n%3===1?'blue':'green',zodiac:'dragon',element:'wood'}]))}]}}})
+   return route.fulfill({json:{success:true,data:{game_id:gameId,game_name:'Mark Six',mark_six:true,timezone:'Asia/Singapore',daily:false,choices:['2026','2025'],selected,has_more:false,total_count:'1',items:[{period_no:selected+'10',drawn_at:selected+'-10-23T01:01:00Z',draw_date:null,regular_order:[3,12,28,14,25,48],result:{regular:[3,12,28,14,25,48],special:[7],digits:[]},attributes:Object.fromEntries([3,12,28,14,25,48,7].map(n=>[String(n).padStart(2,'0'),{wave:n%3===0?'red':n%3===1?'blue':'green',zodiac:'dragon',element:'wood'}]))}]}}})
   })
   await page.reload()
-  await expect(page.locator('.draw-archive .archive-period')).toContainText('202610')
+  await expect(page.locator('.draw-archive .archive-period')).toHaveText(locale==='en'?'10':'10期')
   await expect(page.locator('.archive-numbers .archive-ball')).toHaveText(['03','12','28','14','25','48','07'])
-  await expect(page.locator('.archive-zodiac')).toHaveCount(7)
+  await expect(page.locator('.archive-number-attribute')).toHaveCount(7)
   await expect(page.locator('.archive-plus')).toHaveText('+')
   const assertCompactResultRow = async () => {
    const filterHeight=await page.locator(".archive-filter .select-control-trigger").evaluate(select=>select.getBoundingClientRect().height)
    expect(filterHeight).toBe(await page.evaluate(()=>matchMedia('(min-width:901px) and (pointer:fine)').matches?32:44))
-   await expect(page.locator('.archive-options input[type=checkbox]')).toHaveCount(5)
+   await expect(page.locator('.archive-summary-options input[type=checkbox]')).toHaveCount(6)
    await expect(page.locator('.archive-sorting input[type=radio]')).toHaveCount(2)
-   const geometry=await page.locator('.archive-row').first().evaluate(row=>({right:row.querySelector('.archive-numbers')!.getBoundingClientRect().right,bounds:row.getBoundingClientRect().right}))
+   const geometry=await page.locator('.archive-row').first().evaluate(row=>({right:Math.max(...[...row.querySelectorAll('.archive-ball')].map(ball=>ball.getBoundingClientRect().right)),bounds:row.getBoundingClientRect().right}))
    expect(geometry.right).toBeLessThanOrEqual(geometry.bounds+1)
    await expect(page.locator('.draw-archive h2')).toHaveCount(0)
   }
   await assertCompactResultRow()
-  await expect(page.locator('input[name=archive-option-numbers]')).toBeChecked()
-  await expect(page.locator('input[name=archive-option-zodiac]')).toBeChecked()
-  for(const key of ['wave','parity','animal']){await expect(page.locator(`input[name=archive-option-${key}]`)).not.toBeChecked();await page.locator(`input[name=archive-option-${key}]`).check()}
-  await page.locator('input[name=archive-option-zodiac]').uncheck()
-  await expect(page.locator('.archive-detail-zodiac')).toHaveCount(0)
-  await expect(page.locator('.archive-detail-wave')).toBeVisible()
-  await expect(page.locator('.archive-detail-parity')).toBeVisible()
-  await page.locator('input[name=archive-option-zodiac]').check()
+  const attribute=page.getByRole('radiogroup',{name:locale==='en'?'Attribute':'属性',exact:true})
+  await expect(attribute.locator('input[value=zodiac]')).toBeChecked()
+  await attribute.locator('label').filter({has:page.locator('input[value=element]')}).click()
+  await expect(page.locator('.archive-number-attribute')).toHaveText(Array(7).fill(locale==='en'?'Wood':'木'))
+  await attribute.locator('label').filter({has:page.locator('input[value=zodiac]')}).click()
   await page.locator('input[name=archive-sort][value=size]').check()
   await expect(page.locator('.archive-numbers .archive-ball')).toHaveText(['03','12','14','25','28','48','07'])
   await page.locator('input[name=archive-sort][value=drawn]').check()
   await expect(page.locator('.archive-numbers .archive-ball')).toHaveText(['03','12','28','14','25','48','07'])
   await expect(page.locator(".archive-filter .select-control-trigger")).toHaveAttribute('data-value', '2026')
   await selectControl(page.locator(".archive-filter .select-control-trigger"), '2025')
-  await expect(page.locator('.draw-archive .archive-period')).toContainText('202510')
+  await expect(page.locator('.draw-archive .archive-period')).toHaveText(locale==='en'?'10':'10期')
   await expect(page.locator('.draw-archive [role="tablist"]')).toHaveCount(0)
-  await expect(page.locator(".draw-archive .select-control-trigger")).toHaveCount(1)
+  await expect(page.locator(".draw-archive .archive-toolbar .select-control-trigger")).toHaveCount(1)
   if (info.project.name.endsWith('reflow')) {
    const original = page.viewportSize()!
    for (const width of [320, 640, 999, 1000, 1001]) {
@@ -264,7 +261,7 @@ export function registerConfiguredHistoryLayoutTests(){
   await page.route('**/api/v1/draw-archive?*', route => {
    expect(route.request().method()).toBe('GET')
    const selected=new URL(route.request().url()).searchParams.get('selected') || '2026-10-23'
-   return route.fulfill({json:{success:true,data:{game_id:gameId,game_name:'Quick draw',mark_six:false,timezone:'Asia/Singapore',daily:true,choices:['2026-10-23','2026-10-22'],selected,has_more:false,items:[{period_no:selected.replaceAll('-','')+'001',drawn_at:selected+'T01:00:00Z',draw_date:null,result:{regular:[],special:[],digits:[0,1,0]},attributes:{}}]}}})
+   return route.fulfill({json:{success:true,data:{game_id:gameId,game_name:'Quick draw',mark_six:false,timezone:'Asia/Singapore',daily:true,choices:['2026-10-23','2026-10-22'],selected,has_more:false,total_count:'1',items:[{period_no:selected.replaceAll('-','')+'001',drawn_at:selected+'T01:00:00Z',draw_date:null,result:{regular:[],special:[],digits:[0,1,0]},attributes:{}}]}}})
   })
   await page.reload()
   await expect(page.locator(".archive-filter .select-control-trigger")).toHaveAttribute('data-value', '2026-10-23')
@@ -274,11 +271,11 @@ export function registerConfiguredHistoryLayoutTests(){
   await expect(page.locator('.archive-numbers .archive-ball')).toHaveText(['0','1','0'])
   await expectNoPageOverflow(page)
   await page.goto(`${origins.user}/orders`)
-  const trigger=page.locator('.workspace-game-trigger')
-  await trigger.click();await expect(page.locator('.workspace-game-picker button')).toHaveCount(4)
+  const trigger=page.locator('.workspace-game-picker .select-control-trigger')
+  await trigger.click();await expect(page.locator('.workspace-game-picker [role="option"]')).toHaveCount(4)
   for(let index=0;index<4;index++){
-   if(!await page.locator('.workspace-game-picker').isVisible())await trigger.click()
-   await page.locator('.workspace-game-picker button').nth(index).click()
+   if(!await page.locator('.workspace-game-picker [role="listbox"]').isVisible())await trigger.click()
+   await page.locator('.workspace-game-picker [role="option"]').nth(index).click()
    await expect(page.locator('.order-history-empty')).toBeVisible();await expectNoPageOverflow(page)
   }
   const snapshot=configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/canada_niuniu.json','utf8')))
@@ -286,7 +283,7 @@ export function registerConfiguredHistoryLayoutTests(){
    expect(route.request().method()).toBe('GET')
    const selected=new URL(route.request().url()).searchParams.get('game_id')??''
    const order={id:'historical-risk',game_id:gameId,game_name:'Niu risk history',period_no:'history-1',status:'settled',snapshot,quote:{bet_points:'10',reserved_points:'200',lines:[{play_id:'aa',options:['aa'],plate:'A',stake:'10',prices:{aa:'2'}}]},result:{prize_points:'0',refund_points:'10',consumed_points:'190',lines:[{outcome:'lost',prize_points:'0'}]}}
-   return route.fulfill({json:{success:true,data:{brand_id:gameId,member_id:gameId,game_id:selected,games:[{id:gameId,name:'Niu risk history'}],items:[{id:order.id,kind:'configured',game_id:gameId,game_name:order.game_name,period_no:order.period_no,placed_at:'2026-10-21T00:00:00Z',order}],limit:20,next_cursor:null}}})
+   return route.fulfill({json:{success:true,data:{brand_id:gameId,member_id:gameId,game_id:selected,games:[{id:gameId,name:'Niu risk history'}],items:[{id:order.id,kind:'configured',game_id:gameId,game_name:order.game_name,period_no:order.period_no,placed_at:'2026-10-21T00:00:00Z',order}],limit:20,total_count:'1',next_cursor:null}}})
   })
   await page.reload()
   const ticket=page.locator('.history-table');await expect(ticket).toHaveCount(1)

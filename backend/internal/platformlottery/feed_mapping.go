@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -180,8 +181,13 @@ func nodeText(n *html.Node) string {
 	}
 	return b.String()
 }
+
+var errFeedNull = errors.New("explicit null feed value")
+
 func mappedScalar(v any) (string, error) {
 	switch x := v.(type) {
+	case nil:
+		return "", errFeedNull
 	case string:
 		return strings.TrimSpace(x), nil
 	case json.Number:
@@ -354,21 +360,28 @@ func parseFeed(m FeedMapping, body []byte, responses map[string]json.RawMessage)
 		return time.Time{}, ErrInvalid
 	}
 	if m.Schedule == "source" && m.NextPeriod != nil {
-		no, e := scalar(*m.NextPeriod)
-		if e != nil {
-			return out, e
+		// An explicit null pair announces no next schedule, e.g. a market rest.
+		// Missing fields, a single null, and malformed values remain errors.
+		_, periodErr := read(*m.NextPeriod)
+		_, timeErr := read(*m.NextDrawTime)
+		if !(errors.Is(periodErr, errFeedNull) && errors.Is(timeErr, errFeedNull)) {
+			no, e := scalar(*m.NextPeriod)
+			if e != nil {
+				return out, e
+			}
+			at, e := parseTime(*m.NextDrawTime)
+			if e != nil {
+				return out, e
+			}
+			if at.IsZero() || at.Year() < 1970 {
+				return out, ErrInvalid
+			}
+			out.NextPeriodNo = &no
+			at = at.UTC()
+			out.NextDrawAt = &at
 		}
-		at, e := parseTime(*m.NextDrawTime)
-		if e != nil {
-			return out, e
-		}
-		if at.IsZero() || at.Year() < 1970 {
-			return out, ErrInvalid
-		}
-		out.NextPeriodNo = &no
-		at = at.UTC()
-		out.NextDrawAt = &at
 	}
+
 	if m.Complete != nil {
 		v, e := scalar(m.Complete.FeedField)
 		if e != nil {

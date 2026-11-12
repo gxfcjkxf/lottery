@@ -24,7 +24,7 @@ func TestRechargeQuotaSharedConcurrentNoOverdraft(t *testing.T) {
 	for i := range orders {
 		tx := financeTx(t, f.pool)
 		var err error
-		orders[i], err = f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 70, "", "", "", financeMeta(f.adminID))
+		orders[i], err = f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 7000, "", "", "", financeMeta(f.adminID))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -98,7 +98,7 @@ func TestRechargeQuotaGrantRollbackAndAudit(t *testing.T) {
 	ctx := context.Background()
 	meta := financeMeta(f.adminID)
 	tx := financeTx(t, f.pool)
-	out, err := f.service.GrantRechargeQuota(ctx, tx, f.brandID, 200, meta)
+	out, err := f.service.GrantRechargeQuota(ctx, tx, f.brandID, 20000, meta)
 	if err != nil || out.Available != "1000200" {
 		t.Fatalf("quota=%+v err=%v", out, err)
 	}
@@ -111,7 +111,7 @@ func TestRechargeQuotaGrantRollbackAndAudit(t *testing.T) {
 		t.Fatal("quota ledger is mutable")
 	}
 	tx = financeTx(t, f.pool)
-	order, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 20, "", "", "", meta)
+	order, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 2000, "", "", "", meta)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,12 +141,12 @@ func TestRechargeQuotaReclaimOnlyUnusedAndPreservesMemberPoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	tx := financeTx(t, f.pool)
-	if _, err := f.service.GrantRechargeQuota(ctx, tx, f.brandID, 100, meta); err != nil {
+	if _, err := f.service.GrantRechargeQuota(ctx, tx, f.brandID, 10000, meta); err != nil {
 		t.Fatal(err)
 	}
 	commitFinanceTx(t, tx)
 	tx = financeTx(t, f.pool)
-	order, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 60, "", "", "", meta)
+	order, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 6000, "", "", "", meta)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,11 +155,11 @@ func TestRechargeQuotaReclaimOnlyUnusedAndPreservesMemberPoints(t *testing.T) {
 	}
 	commitFinanceTx(t, tx)
 	tx = financeTx(t, f.pool)
-	if _, err = f.service.ReclaimRechargeQuota(ctx, tx, f.brandID, 41, meta); !errors.Is(err, ErrRechargeQuota) {
+	if _, err = f.service.ReclaimRechargeQuota(ctx, tx, f.brandID, 4100, meta); !errors.Is(err, ErrRechargeQuota) {
 		t.Fatalf("oversized reclaim=%v", err)
 	}
 	_ = tx.Rollback(ctx)
-	for _, amount := range []points.Amount{25, 15} {
+	for _, amount := range []points.Amount{2500, 1500} {
 		tx = financeTx(t, f.pool)
 		if _, err = f.service.ReclaimRechargeQuota(ctx, tx, f.brandID, amount, meta); err != nil {
 			t.Fatal(err)
@@ -199,7 +199,7 @@ func TestRechargeQuotaReclaimConcurrentWithMemberRecharge(t *testing.T) {
 		t.Fatal(err)
 	}
 	tx := financeTx(t, f.pool)
-	order, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 70, "", "", "", meta)
+	order, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 7000, "", "", "", meta)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestRechargeQuotaReclaimConcurrentWithMemberRecharge(t *testing.T) {
 			}
 			defer tx.Rollback(ctx)
 			if reclaim {
-				_, e = f.service.ReclaimRechargeQuota(ctx, tx, f.brandID, 70, meta)
+				_, e = f.service.ReclaimRechargeQuota(ctx, tx, f.brandID, 7000, meta)
 			} else {
 				_, e = f.service.ConfirmRecharge(ctx, tx, f.brandID, order.ID, 1, "", meta)
 			}
@@ -263,14 +263,14 @@ func TestManualAdjustmentAndRechargeShareQuotaConcurrently(t *testing.T) {
 		t.Fatal(err)
 	}
 	tx := financeTx(t, f.pool)
-	order, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 70, "", "", "", financeMeta(f.adminID))
+	order, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 7000, "", "", "", financeMeta(f.adminID))
 	if err != nil {
 		t.Fatal(err)
 	}
 	commitFinanceTx(t, tx)
 	var delta points.Balance
-	delta[2][0] = 70
-	change := points.Change{BrandID: f.brandID, MemberID: f.memberID, EntryType: "adjust", ReferenceType: "manual", ReferenceID: f.memberID, OperationKey: "quota-adjust-concurrent", ActorType: "admin", ActorID: other, RequestID: "quota-adjust-concurrent", Delta: delta, Allocation: []points.Allocation{{Source: "gift", State: "available", Points: 70}}}
+	delta[2][0] = 7000
+	change := points.Change{BrandID: f.brandID, MemberID: f.memberID, EntryType: "adjust", ReferenceType: "manual", ReferenceID: f.memberID, OperationKey: "quota-adjust-concurrent", ActorType: "admin", ActorID: other, RequestID: "quota-adjust-concurrent", Delta: delta, Allocation: []points.Allocation{{Source: "gift", State: "available", Points: 7000}}}
 	var wg sync.WaitGroup
 	results := make(chan error, 2)
 	for _, adjust := range []bool{true, false} {
@@ -314,7 +314,7 @@ func TestManualAdjustmentAndRechargeShareQuotaConcurrently(t *testing.T) {
 		t.Fatal(quota, err)
 	}
 	wallet, err := f.service.Points.Read(ctx, f.brandID, f.memberID)
-	if err != nil || wallet.AvailablePoints != 70 {
+	if err != nil || wallet.AvailablePoints != 7000 {
 		t.Fatal(wallet, err)
 	}
 }
@@ -326,8 +326,8 @@ func TestManualAdjustmentReplayWithExhaustedQuota(t *testing.T) {
 		t.Fatal(err)
 	}
 	var delta points.Balance
-	delta[2][0] = 20
-	change := points.Change{BrandID: f.brandID, MemberID: f.memberID, EntryType: "adjust", ReferenceType: "manual", ReferenceID: f.memberID, OperationKey: "quota-adjust-replay", ActorType: "admin", ActorID: f.adminID, RequestID: "quota-adjust-replay", Delta: delta, Allocation: []points.Allocation{{Source: "gift", State: "available", Points: 20}}}
+	delta[2][0] = 2000
+	change := points.Change{BrandID: f.brandID, MemberID: f.memberID, EntryType: "adjust", ReferenceType: "manual", ReferenceID: f.memberID, OperationKey: "quota-adjust-replay", ActorType: "admin", ActorID: f.adminID, RequestID: "quota-adjust-replay", Delta: delta, Allocation: []points.Allocation{{Source: "gift", State: "available", Points: 2000}}}
 	for i := 0; i < 2; i++ {
 		tx := financeTx(t, f.pool)
 		if _, err := f.service.PostManualAdjustment(ctx, tx, change); err != nil {
@@ -344,7 +344,54 @@ func TestManualAdjustmentReplayWithExhaustedQuota(t *testing.T) {
 		t.Fatal(entries, err)
 	}
 	wallet, err := f.service.Points.Read(ctx, f.brandID, f.memberID)
-	if err != nil || wallet.AvailablePoints != 20 {
+	if err != nil || wallet.AvailablePoints != 2000 {
 		t.Fatal(wallet, err)
+	}
+}
+
+func TestRechargeQuotaEntriesIdentifyMemberDestinations(t *testing.T) {
+	f := newFinanceFixture(t)
+	ctx := context.Background()
+	meta := financeMeta(f.adminID)
+	tx := financeTx(t, f.pool)
+	if _, err := f.service.GrantRechargeQuota(ctx, tx, f.brandID, 10000, meta); err != nil {
+		t.Fatal(err)
+	}
+	order, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, 2000, "", "", "", meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.ConfirmRecharge(ctx, tx, f.brandID, order.ID, 1, "", meta); err != nil {
+		t.Fatal(err)
+	}
+	var delta points.Balance
+	delta[2][0] = 1000
+	_, err = f.service.PostManualAdjustment(ctx, tx, points.Change{BrandID: f.brandID, MemberID: f.memberID, EntryType: "adjust", ReferenceType: "manual", ReferenceID: f.memberID, OperationKey: "quota-destination", ActorType: "admin", ActorID: f.adminID, RequestID: "quota-destination", Delta: delta, Allocation: []points.Allocation{{Source: "gift", State: "available", Points: 1000}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.ReclaimRechargeQuota(ctx, tx, f.brandID, 1000, meta); err != nil {
+		t.Fatal(err)
+	}
+	commitFinanceTx(t, tx)
+	entries, err := f.service.ListRechargeQuotaEntries(ctx, f.brandID, 10, 0)
+	if err != nil || len(entries) != 4 {
+		t.Fatalf("entries=%+v err=%v", entries, err)
+	}
+	for _, entry := range entries {
+		switch entry.Kind {
+		case "manual_recharge", "manual_adjustment":
+			if entry.MemberID == nil || *entry.MemberID != f.memberID || entry.MemberAccount == nil || *entry.MemberAccount != "finance_member_"+f.memberID[:8] {
+				t.Fatalf("destination=%+v", entry)
+			}
+		default:
+			if entry.MemberID != nil || entry.MemberAccount != nil {
+				t.Fatalf("platform flow has member: %+v", entry)
+			}
+		}
+	}
+	other, err := f.service.ListRechargeQuotaEntries(ctx, f.otherBrand, 10, 0)
+	if err != nil || len(other) != 0 {
+		t.Fatalf("cross-brand entries=%+v err=%v", other, err)
 	}
 }

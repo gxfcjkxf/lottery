@@ -62,7 +62,7 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 	path := "/api/v1/platform/platform-games/" + game.ID + "/configured/rules"
 	mustStatus(t, f.call("POST", "/api/v1/platform/platform-games/"+game.ID+"/periods", "unpublished-period", auth.AccessToken, "", platformlottery.PeriodInput{PeriodNo: "unpublished", BetStartAt: time.Now().Add(-time.Hour), BetEndAt: time.Now().Add(time.Hour), DrawAt: time.Now().Add(time.Hour)}), 404)
 
-	cases := []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{{PlayID: "operator_new_play", Options: []string{"lucky"}, Plate: "A", Points: 10, Multiplier: 1}}, Draw: rules.Draw{Regular: []int{1, 3, 7, 4, 5, 6}, Special: []int{2}, Digits: []int{}}, Bet: 10, Prize: 25}}
+	cases := []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{{PlayID: "operator_new_play", Options: []string{"lucky"}, Plate: "A", Points: 1000, Multiplier: 1}}, Draw: rules.Draw{Regular: []int{1, 3, 7, 4, 5, 6}, Special: []int{2}, Digits: []int{}}, Bet: 1000, Prize: 2500}}
 	input := platformlottery.ConfiguredRulesInput{Snapshot: engine.Snapshot()}
 	mustStatus(t, f.call("GET", path, "", auth.AccessToken, "", nil), 200)
 	saved := f.call("POST", path, "configured-http-save", auth.AccessToken, "", input)
@@ -82,7 +82,7 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 	mustStatus(t, f.call("POST", "/api/v1/admin/platform-games/"+game.ID+"/configured/rules", "configured-brand-rule", f.token, managedBrand, input), 404)
 	mustStatus(t, f.call("POST", "/api/v1/admin/platform-games/"+game.ID+"/connect", "configured-connect", f.token, managedBrand, map[string]string{}), 201)
 	salesPath := "/api/v1/admin/platform-games/" + game.ID + "/configured/sales"
-	sales := platformlottery.ConfiguredSales{RuleID: version.ID, Enabled: true, Prices: snap.Prices, MinPoints: 1, MaxPoints: 100, MaxPeriodPoints: 1000, MaxUserPeriodPoints: 500}
+	sales := platformlottery.ConfiguredSales{RuleID: version.ID, Enabled: true, Prices: snap.Prices, MinPoints: 100, MaxPoints: 10000, MaxPeriodPoints: 100000, MaxUserPeriodPoints: 50000}
 
 	mustStatus(t, f.call("GET", salesPath, "", f.token, managedBrand, nil), 404)
 	mustStatus(t, f.call("POST", "/api/v1/platform/platform-games/"+game.ID+"/configured/sales", "configured-platform-sales-denied", auth.AccessToken, managedBrand, sales), 404)
@@ -137,8 +137,8 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 		t.Fatal(e)
 	}
 	var delta points.Balance
-	delta[0][0] = 100
-	_, e = (points.Store{DB: f.pool}).Post(ctx, tx, points.Change{BrandID: managedBrand, MemberID: f.memberID, EntryType: "adjustment", ReferenceType: "test_fund", OperationKey: "configured-http-fund", Reason: "test funds", ActorType: "system", RequestID: ids.New(), Delta: delta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 100}}})
+	delta[0][0] = 10000
+	_, e = (points.Store{DB: f.pool}).Post(ctx, tx, points.Change{BrandID: managedBrand, MemberID: f.memberID, EntryType: "adjustment", ReferenceType: "test_fund", OperationKey: "configured-http-fund", Reason: "test funds", ActorType: "system", RequestID: ids.New(), Delta: delta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 10000}}})
 	if e != nil {
 		tx.Rollback(ctx)
 		t.Fatal(e)
@@ -154,15 +154,19 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 		ActorContext string `json:"actor_context"`
 	}
 	managedData(t, preview, &q)
-	if len(q.Lines) != 1 || q.BetPoints != 10 {
+	if len(q.Lines) != 1 || q.BetPoints != 1000 {
 		t.Fatal(q)
 	}
 	mustStatus(t, f.call("POST", "/api/v1/configured/orders", "configured-missing-actor", f.userToken, managedBrand, in), 403)
 	in.ActorContext = q.ActorContext
 	receipt := f.call("POST", "/api/v1/configured/orders", "configured-http-order", f.userToken, managedBrand, in)
 	mustStatus(t, receipt, 201)
-	var order betting.ConfiguredOrder
-	managedData(t, receipt, &order)
+	var placed betting.ConfiguredOrdersReceipt
+	managedData(t, receipt, &placed)
+	if len(placed.Items) != 1 {
+		t.Fatal(placed)
+	}
+	order := placed.Items[0]
 	orderPath := "/api/v1/configured/orders/" + order.ID
 	detail := f.call("GET", orderPath, "", f.userToken, managedBrand, nil)
 	mustStatus(t, detail, 200)
@@ -185,9 +189,9 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 	}
 	replay := f.call("POST", "/api/v1/configured/orders", "configured-http-order", f.userToken, managedBrand, in)
 	mustStatus(t, replay, 201)
-	var same betting.ConfiguredOrder
+	var same betting.ConfiguredOrdersReceipt
 	managedData(t, replay, &same)
-	if same.ID != order.ID {
+	if len(same.Items) != 1 || same.Items[0].ID != order.ID {
 		t.Fatal("duplicate debit")
 	}
 	mustStatus(t, f.call("GET", "/api/v1/admin/configured-orders", "", f.token, managedBrand, nil), 200)
@@ -219,9 +223,9 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 	if totals["unsettled_points"] != "10" {
 		t.Fatal("configured stake omitted from summary", totals)
 	}
-	in.Requests[0].Points = 11
+	in.Requests[0].Points = 1100
 	mustStatus(t, f.call("POST", "/api/v1/configured/orders", "configured-http-order", f.userToken, managedBrand, in), 409)
-	in.Requests[0].Points = 10
+	in.Requests[0].Points = 1000
 	mustStatus(t, f.call("GET", "/api/v1/configured/games/"+game.ID+"/orders", "", f.userToken, managedBrand, nil), 200)
 	mustStatus(t, f.call("GET", "/api/v1/admin/platform-games/"+game.ID+"/configured/orders", "", f.token, managedBrand, nil), 200)
 	mustStatus(t, f.call("GET", "/api/v1/admin/platform-games/"+game.ID+"/configured/orders", "", f.token, "0199a000-0000-7000-8000-000000000002", nil), 403)

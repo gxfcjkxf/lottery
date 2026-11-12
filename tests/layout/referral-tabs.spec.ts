@@ -49,6 +49,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await codeTab.click()
     await expect(page.locator('.registration-link')).toContainText('referral_code=A1B2C3D4E5F607182930ABCD')
     await expect(page.locator('.registration-qr')).toBeVisible()
+    await expect(page.locator('.join-code-pagination')).toHaveCount(0)
     await expectRealEntry(page,'user');await expectListLayout(page)
     await page.screenshot({path:info.outputPath(`referral-code-${locale}.png`),fullPage:true,animations:'disabled'})
     mode='empty'; await listTab.click()

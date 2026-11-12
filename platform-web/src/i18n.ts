@@ -1,3 +1,4 @@
+import { cashCatalog } from '../../shared/src/cash-catalog'
 import {
   createCatalogI18n,
   createI18nKey,
@@ -13,6 +14,7 @@ import { overviewCatalog } from '@lottery/shared'
 import { associationCatalog } from '@lottery/shared'
 const catalog = {
   en: {
+    ...cashCatalog.en,
     'templates.name.member.joined': 'Member · Welcome',
     'templates.name.recharge.confirmed': 'Recharge · Confirmed',
     'templates.name.reward.order.granted': 'Reward · Granted',
@@ -114,6 +116,7 @@ const catalog = {
     ...overviewCatalog.en,
   },
   'zh-CN': {
+    ...cashCatalog['zh-CN'],
     'templates.name.member.joined': '会员 · 欢迎加入',
     'templates.name.recharge.confirmed': '充值 · 确认入账',
     'templates.name.reward.order.granted': '奖励 · 发放入账',
