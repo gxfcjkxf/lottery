@@ -253,7 +253,7 @@ async function changePage(direction: number) {
                 <dl v-if="entry.agent_transfer" class="ledger-result agent-transfer-receipt"><div><dt>{{ ui('user.wallet.agentTransferFrom') }}</dt><dd>{{ entry.agent_transfer.agent_account ?? '—' }}</dd></div></dl>
               </td>
               <td class="ledger-amount" :data-label="ui('user.wallet.availableChange')"><strong :class="{ 'change-negative': availableChange(entry).startsWith('−'), 'change-positive': availableChange(entry).startsWith('+') }">{{ availableChange(entry) }}</strong></td>
-              <td class="ledger-amount ledger-balance-after" :data-label="ui('user.wallet.availableAfter')">{{ availableAfter(entry) }}</td>
+              <td class="ledger-amount ledger-balance-after" :data-label="ui('user.wallet.availableAfter')"><span>{{ availableAfter(entry) }}</span></td>
               <td class="ledger-time">{{ formatDisplayDateTime(entry.created_at, props.locale) }}</td>
             </tr>
           </tbody>
