@@ -111,16 +111,16 @@ func (s Service) reward(ctx context.Context, runner rowQuerier, brand string, q 
 	// The action is the immutable operator/audit witness for each posting. Bind
 	// ledger_entry_id directly so a pending action or later state update cannot
 	// multiply or erase an earlier grant.
-	sql := `WITH scope AS (SELECT id,timezone FROM brands WHERE id=$1), validity AS (
+	sql := `WITH scope AS (SELECT id,retention_report_timezone(id,$2,$3) AS timezone FROM brands WHERE id=$1), validity AS (
  SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$4)) AND
         ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM reward_orders WHERE brand_id=$1 AND id=$5)) AS valid),
  facts AS (
  SELECT l.id,l.created_at AS posted_at,o.member_id,o.id AS order_id,'grant'::text AS kind,
         o.points::numeric AS points,o.points::numeric AS signed_points
- FROM point_ledger_entries l
+ FROM retention_point_ledger_entries() l
 	JOIN reward_order_actions a ON a.brand_id=l.brand_id AND a.ledger_entry_id=l.id
 	JOIN reward_orders o ON o.brand_id=a.brand_id AND o.id=a.order_id
-	JOIN audit_logs witness ON witness.id=a.audit_log_id AND witness.brand_id=a.brand_id AND witness.actor_id=a.actor_id
+	JOIN retention_audit_logs() witness ON witness.id=a.audit_log_id AND witness.brand_id=a.brand_id AND witness.actor_id=a.actor_id
 	WHERE l.brand_id=$1 AND l.created_at >= $2 AND l.created_at < $3
 	  AND l.entry_type='reward_grant' AND l.reference_type='reward_order' AND l.reference_id=o.id
 	  AND o.grant_ledger_entry_id=l.id
@@ -137,10 +137,10 @@ func (s Service) reward(ctx context.Context, runner rowQuerier, brand string, q 
   AND l.source_allocation=jsonb_build_array(jsonb_build_object('source','gift','state','available','points',o.points::text))
  UNION ALL
  SELECT l.id,l.created_at,o.member_id,o.id,'reversal'::text,o.points::numeric,-o.points::numeric
- FROM point_ledger_entries l
+ FROM retention_point_ledger_entries() l
 	JOIN reward_order_actions a ON a.brand_id=l.brand_id AND a.ledger_entry_id=l.id
 	JOIN reward_orders o ON o.brand_id=a.brand_id AND o.id=a.order_id
-	JOIN audit_logs witness ON witness.id=a.audit_log_id AND witness.brand_id=a.brand_id AND witness.actor_id=a.actor_id
+	JOIN retention_audit_logs() witness ON witness.id=a.audit_log_id AND witness.brand_id=a.brand_id AND witness.actor_id=a.actor_id
 	 WHERE l.brand_id=$1 AND l.created_at >= $2 AND l.created_at < $3
 	  AND l.entry_type='reward_reversal' AND l.reference_type='reward_order' AND l.reference_id=o.id
 	  AND o.state='revoked' AND o.revoke_ledger_entry_id=l.id
@@ -163,7 +163,7 @@ func (s Service) reward(ctx context.Context, runner rowQuerier, brand string, q 
  (SELECT count(*)::text FROM grouped) FROM scope CROSS JOIN validity`
 	var valid bool
 	var summary, rows []byte
-	err := runner.QueryRow(ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.MemberID, q.OrderID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups)
+	err := historyQueryRow(runner, ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.MemberID, q.OrderID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && !valid {
 		return out, ErrNotFound
 	}

@@ -265,6 +265,8 @@ func commissionReportRead(w http.ResponseWriter, r *http.Request, d Dependencies
 
 func commissionReportFailure(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
+	case errors.Is(err, reporting.ErrHistoricalRange):
+		failure(w,r,400,"REPORT_HISTORY_DAY_RANGE_INVALID","历史报表须按归档时区查询完整自然日")
 	case errors.Is(err, reporting.ErrNotFound):
 		failure(w, r, 404, "REPORT_SCOPE_NOT_FOUND", "当前品牌未找到佣金报表筛选资源")
 	case errors.Is(err, reporting.ErrExportTooLarge):

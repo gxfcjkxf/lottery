@@ -182,7 +182,8 @@ func (s Store) Read(ctx context.Context, brand, member string) (Wallet, error) {
 	return w, tx.Commit(ctx)
 }
 
-const entrySelect = `SELECT id::text,brand_id::text,account_id::text,member_id::text,entry_type,reference_type,coalesce(reference_id::text,''),operation_key,reason,actor_type,coalesce(actor_id::text,''),request_id,coalesce(reversal_of::text,''),version,before_snapshot,delta_snapshot,after_snapshot,source_allocation,created_at,request_hash FROM point_ledger_entries`
+const entryColumns = `SELECT id::text,brand_id::text,account_id::text,member_id::text,entry_type,reference_type,coalesce(reference_id::text,''),operation_key,reason,actor_type,coalesce(actor_id::text,''),request_id,coalesce(reversal_of::text,''),version,before_snapshot,delta_snapshot,after_snapshot,source_allocation,created_at,request_hash`
+const entrySelect = entryColumns + ` FROM retention_point_ledger_entries()`
 
 func scanEntry(row pgx.Row) (Entry, error) {
 	var e Entry
@@ -378,7 +379,7 @@ func (s Store) Post(ctx context.Context, tx pgx.Tx, c Change) (Entry, error) {
 			return Entry{}, ErrInvalid
 		}
 		var reversed bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM point_ledger_entries WHERE reversal_of=$1)`, c.ReversalOf).Scan(&reversed); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM retention_point_ledger_entries() WHERE reversal_of=$1)`, c.ReversalOf).Scan(&reversed); err != nil {
 			return Entry{}, err
 		}
 		if reversed {
@@ -504,7 +505,7 @@ func (s Store) List(ctx context.Context, brand, member string, limit, offset int
 	if !uuidPattern.MatchString(brand) || !uuidPattern.MatchString(member) || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
 		return nil, ErrInvalid
 	}
-	rows, err := s.DB.Query(ctx, entrySelect+` WHERE brand_id=$1 AND member_id=$2 ORDER BY version DESC LIMIT $3 OFFSET $4`, brand, member, limit, offset)
+	rows, err := s.DB.Query(ctx, entryColumns+` FROM point_ledger_entries`+` WHERE brand_id=$1 AND member_id=$2 ORDER BY version DESC LIMIT $3 OFFSET $4`, brand, member, limit, offset)
 	if err != nil {
 		return nil, err
 	}

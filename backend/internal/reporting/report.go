@@ -130,23 +130,23 @@ type LedgerReport struct {
 type aggregate struct{ name, expression string }
 
 var betAggregates = []aggregate{
-	{"order_count", "count(*)"}, {"stake_points", "coalesce(sum(total_points::numeric),0)"},
-	{"placed_count", "count(*) FILTER(WHERE status='placed')"}, {"won_count", "count(*) FILTER(WHERE status='won')"},
-	{"lost_count", "count(*) FILTER(WHERE status='lost')"}, {"abnormal_count", "count(*) FILTER(WHERE status='abnormal')"},
-	{"cancelled_count", "count(*) FILTER(WHERE status IN ('bet_cancelled','judged_cancelled'))"},
+	{"order_count", "coalesce(sum(weight),0)"}, {"stake_points", "coalesce(sum(total_points::numeric),0)"},
+	{"placed_count", "coalesce(sum(weight) FILTER(WHERE status='placed'),0)"}, {"won_count", "coalesce(sum(weight) FILTER(WHERE status='won'),0)"},
+	{"lost_count", "coalesce(sum(weight) FILTER(WHERE status='lost'),0)"}, {"abnormal_count", "coalesce(sum(weight) FILTER(WHERE status='abnormal'),0)"},
+	{"cancelled_count", "coalesce(sum(weight) FILTER(WHERE status IN ('bet_cancelled','judged_cancelled')),0)"},
 	{"refund_points", "coalesce(sum(refund_points::numeric),0)"},
 	{"settled_stake_points", "coalesce(sum(total_points::numeric) FILTER(WHERE final),0)"},
 	{"unfinalized_stake_points", "coalesce(sum(total_points::numeric) FILTER(WHERE NOT final AND status IN ('placed','won','lost')),0)"},
 	{"abnormal_stake_points", "coalesce(sum(total_points::numeric) FILTER(WHERE status='abnormal'),0)"},
 	{"current_prize_points", "coalesce(sum(prize_points::numeric) FILTER(WHERE final),0)"},
-	{"correction_open_count", "count(*) FILTER(WHERE correction_open)"},
+	{"correction_open_count", "coalesce(sum(weight) FILTER(WHERE correction_open),0)"},
 }
 var ledgerAggregates = []aggregate{
-	{"entry_count", "count(*)"}, {"net_points", "coalesce(sum(net_points),0)"},
-	{"recharge_points", "coalesce(sum(greatest(net_points,0)) FILTER(WHERE entry_type='recharge'),0)"},
-	{"prize_credit_points", "coalesce(sum(greatest(net_points,0)) FILTER(WHERE entry_type='prize'),0)"},
-	{"prize_reversal_points", "coalesce(sum(greatest(-net_points,0)) FILTER(WHERE entry_type='prize_reversal'),0)"},
-	{"refund_points", "coalesce(sum(greatest(net_points,0)) FILTER(WHERE entry_type='refund'),0)"},
+	{"entry_count", "coalesce(sum(weight),0)"}, {"net_points", "coalesce(sum(net_points),0)"},
+	{"recharge_points", "coalesce(sum(positive_points) FILTER(WHERE entry_type='recharge'),0)"},
+	{"prize_credit_points", "coalesce(sum(positive_points) FILTER(WHERE entry_type='prize'),0)"},
+	{"prize_reversal_points", "coalesce(sum(negative_points) FILTER(WHERE entry_type='prize_reversal'),0)"},
+	{"refund_points", "coalesce(sum(positive_points) FILTER(WHERE entry_type='refund'),0)"},
 }
 
 func aggregateJSON(fields []aggregate) string {
@@ -157,7 +157,7 @@ func aggregateJSON(fields []aggregate) string {
 	return "jsonb_build_object(" + strings.Join(parts, ",") + ")"
 }
 
-const scopedBrand = `WITH scope AS (SELECT id,timezone FROM brands WHERE id=$1), validity AS (
+const scopedBrand = `WITH scope AS (SELECT id,retention_report_timezone(id,$2,$3) AS timezone FROM brands WHERE id=$1), validity AS (
  SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_platform_games WHERE brand_id=$1 AND game_id=$4)) AND
  ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$5)) AS valid)`
 
@@ -195,12 +195,12 @@ func (s Service) betting(ctx context.Context, runner rowQuerier, brand string, q
 	}
 	sql := scopedBrand + `, facts AS (SELECT o.*,` + group + ` AS key,` + label + ` AS label,
  false AS correction_open,o.status IN('won','lost') AS finalized
- FROM betting_financial_facts o JOIN scope b ON b.id=o.brand_id JOIN platform_games g ON g.id=o.game_id
+ FROM retention_betting_report_facts o JOIN scope b ON b.id=o.brand_id JOIN platform_games g ON g.id=o.game_id
  WHERE o.placed_at >= $2 AND o.placed_at < $3 AND ($4::uuid IS NULL OR o.game_id=$4) AND ($5::uuid IS NULL OR o.brand_member_id=$5)),
  base AS (SELECT facts.*,coalesce(finalized,false) AND NOT correction_open AS final FROM facts)` + reportTail(aggregateJSON(betAggregates), "")
 	var valid bool
 	var summary, rows []byte
-	e := runner.QueryRow(ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.GameID, q.MemberID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups)
+	e := historyQueryRow(runner, ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.GameID, q.MemberID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups)
 	if errors.Is(e, pgx.ErrNoRows) || e == nil && !valid {
 		return out, ErrNotFound
 	}
@@ -239,8 +239,8 @@ func (s Service) ledger(ctx context.Context, runner rowQuerier, brand string, q 
 		group = `l.entry_type`
 	}
 	sql := scopedBrand + `, base AS (SELECT l.entry_type,` + group + ` AS key,` + group + ` AS label,
- (SELECT sum(v.value::numeric) FROM jsonb_each(l.delta_snapshot) s CROSS JOIN LATERAL jsonb_each_text(s.value) v) AS net_points
- FROM point_ledger_entries l JOIN scope b ON b.id=l.brand_id WHERE l.created_at >= $2 AND l.created_at < $3 AND ($5::uuid IS NULL OR l.member_id=$5)),
+ l.net_points,l.positive_points,l.negative_points,l.weight
+ FROM retention_ledger_report_facts l JOIN scope b ON b.id=l.brand_id WHERE l.created_at >= $2 AND l.created_at < $3 AND ($5::uuid IS NULL OR l.member_id=$5)),
  accounts AS (SELECT id FROM point_accounts WHERE brand_id=$1 AND ($5::uuid IS NULL OR brand_member_id=$5)),
  balances AS (SELECT jsonb_build_object('account_count',(SELECT count(*)::text FROM accounts),
  'available_points',coalesce(sum(points::numeric) FILTER(WHERE state='available'),0)::text,
@@ -249,7 +249,7 @@ func (s Service) ledger(ctx context.Context, runner rowQuerier, brand string, q 
  'total_points',coalesce(sum(points::numeric),0)::text) AS totals FROM point_buckets WHERE brand_id=$1 AND account_id IN(SELECT id FROM accounts))` + reportTail(aggregateJSON(ledgerAggregates), `,(SELECT totals FROM balances)`)
 	var valid bool
 	var summary, rows, balances []byte
-	e := runner.QueryRow(ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.GameID, q.MemberID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups, &balances)
+	e := historyQueryRow(runner, ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.GameID, q.MemberID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups, &balances)
 	if errors.Is(e, pgx.ErrNoRows) || e == nil && !valid {
 		return out, ErrNotFound
 	}

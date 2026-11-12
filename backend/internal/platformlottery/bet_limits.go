@@ -25,7 +25,7 @@ type BetLimitGame struct {
 
 func (s Service) BetLimitGames(ctx context.Context, brand string) ([]BetLimitGame, error) {
 	rows, err := s.DB.Query(ctx, `SELECT g.id::text,g.name,EXISTS (
-		SELECT 1 FROM audit_logs a WHERE a.brand_id=b.brand_id AND a.resource_id=g.id
+		SELECT 1 FROM retention_audit_logs() a WHERE a.brand_id=b.brand_id AND a.resource_id=g.id
 		AND a.resource_type='platform_game' AND a.action='bet_limits.write'
 	) FROM platform_games g JOIN brand_platform_games b ON b.game_id=g.id
 	WHERE b.brand_id=$1 AND g.status<>'deleted' ORDER BY g.name,g.id`, brand)

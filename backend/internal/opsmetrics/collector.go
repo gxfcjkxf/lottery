@@ -369,7 +369,7 @@ func operationalQuery(s string) string {
  SELECT 'report_archive', count(*) FILTER (WHERE j.state='pending'),
    coalesce(floor(extract(epoch FROM clock_timestamp()-min(j.created_at) FILTER (WHERE j.state='pending'))),-1)::bigint,
    count(*) FILTER (WHERE j.state='failed')
- FROM %s.report_archive_automatic_tasks j
+ FROM %s.data_retention_tasks j
  UNION ALL
  SELECT 'withdrawal', count(*) FILTER (WHERE j.state='processing'),
    coalesce(floor(extract(epoch FROM clock_timestamp()-min(j.created_at) FILTER (WHERE j.state='processing'))),-1)::bigint,

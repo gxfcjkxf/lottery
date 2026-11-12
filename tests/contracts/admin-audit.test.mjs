@@ -25,7 +25,7 @@ test("audit list keeps its items envelope and requires a nullable brand_id", () 
   assert.deepEqual(identity.schemas.AdminAuditList.required, ["items"]);
   const list = document.paths["/api/v1/admin/audit"].get;
   assert.deepEqual(list.responses["200"].content["application/json"].schema.properties.data, { $ref: "#/components/schemas/AdminAuditList" });
-  assert.deepEqual(list.parameters.filter(parameter => parameter.in === "query").map(parameter => parameter.name), ["from", "to", "action", "actor_id", "resource_type", "resource_id", "request_id", "limit", "offset"]);
+  assert.deepEqual(list.parameters.filter(parameter => parameter.in === "query").map(parameter => parameter.name), ["from", "to", "action", "actor", "action_type", "actor_id", "resource_type", "resource_id", "request_id", "limit", "offset"]);
   assert.equal(list.parameters.find(parameter => parameter.name === "limit").schema.default, 100);
   assert.equal(list.parameters.find(parameter => parameter.name === "limit").schema.maximum, 200);
   assert.equal(list.parameters.find(parameter => parameter.name === "offset").schema.default, 0);
@@ -44,7 +44,7 @@ test("audit export declares a bounded raw CSV with exact authorization, filters,
   const operation = document.paths["/api/v1/admin/audit/export"].get;
   assert.deepEqual(operation["x-permissions"], ["audit.view.brand", "audit.view.platform", "audit.export.brand", "audit.export.platform"]);
   assert.equal(operation.parameters.find(parameter => parameter.name === "X-Brand-ID").required, true);
-  assert.deepEqual(operation.parameters.filter(parameter => parameter.in === "query").map(parameter => parameter.name), ["from", "to", "action", "actor_id", "resource_type", "resource_id", "request_id"]);
+  assert.deepEqual(operation.parameters.filter(parameter => parameter.in === "query").map(parameter => parameter.name), ["from", "to", "action", "actor", "action_type", "actor_id", "resource_type", "resource_id", "request_id"]);
   assert.ok(operation.parameters.filter(parameter => ["from", "to"].includes(parameter.name)).every(parameter => parameter.required));
   assert.ok(!operation.parameters.some(parameter => ["limit", "offset"].includes(parameter.name)));
   assert.deepEqual(Object.keys(operation.responses["200"].content), ["text/csv"]);

@@ -110,21 +110,21 @@ func (s Service) commission(ctx context.Context, runner rowQuerier, brand string
 	// Do not join adjustment history onto original credits: that would multiply
 	// a paid target when it has several adjustments. Do not compare current
 	// evidence/state: later draw corrections must retain past posting facts.
-	sql := `WITH scope AS (SELECT id,timezone FROM brands WHERE id=$1), validity AS (
+	sql := `WITH scope AS (SELECT id,retention_report_timezone(id,$2,$3) AS timezone FROM brands WHERE id=$1), validity AS (
  SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM agent_nodes WHERE brand_id=$1 AND id=$4)) AND
  ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM agent_accounts WHERE brand_id=$1 AND id=$5)) AND
  ($6::uuid IS NULL OR EXISTS(SELECT 1 FROM commission_cycles WHERE brand_id=$1 AND id=$6)) AS valid),
  facts AS (
  SELECT l.id,l.created_at AS posted_at,t.agent_id,t.member_id,p.cycle_id,'paid'::text AS kind,
  (l.delta_snapshot->'commission'->>'available')::numeric AS delta_points
- FROM point_ledger_entries l JOIN commission_payment_targets t ON t.brand_id=l.brand_id AND t.ledger_entry_id=l.id
+ FROM retention_point_ledger_entries() l JOIN commission_payment_targets t ON t.brand_id=l.brand_id AND t.ledger_entry_id=l.id
  JOIN commission_payments p ON p.brand_id=t.brand_id AND p.id=t.payment_id
  WHERE l.brand_id=$1 AND l.created_at >= $2 AND l.created_at < $3 AND t.state='paid'
  AND l.member_id=t.member_id AND l.entry_type='commission' AND l.reference_type='commission_payment_target' AND l.reference_id=t.id
  UNION ALL
  SELECT l.id,l.created_at,t.agent_id,t.member_id,p.cycle_id,'adjustment'::text,
  (l.delta_snapshot->'commission'->>'available')::numeric
- FROM point_ledger_entries l JOIN commission_adjustments a ON a.brand_id=l.brand_id AND a.ledger_entry_id=l.id
+ FROM retention_point_ledger_entries() l JOIN commission_adjustments a ON a.brand_id=l.brand_id AND a.ledger_entry_id=l.id
  JOIN commission_payment_targets t ON t.brand_id=a.brand_id AND t.id=a.target_id
  JOIN commission_payments p ON p.brand_id=a.brand_id AND p.id=a.payment_id
  WHERE l.brand_id=$1 AND l.created_at >= $2 AND l.created_at < $3
@@ -133,7 +133,7 @@ func (s Service) commission(ctx context.Context, runner rowQuerier, brand string
  SELECT l.id,l.created_at,t.agent_id,t.member_id,x.cycle_id,'correction'::text,t.delta_points::numeric
  FROM commission_correction_execution_targets t
  JOIN commission_correction_executions x ON x.brand_id=t.brand_id AND x.cycle_id=t.cycle_id AND x.id=t.execution_id
- JOIN point_ledger_entries l ON l.brand_id=t.brand_id AND l.id=t.ledger_entry_id
+ JOIN retention_point_ledger_entries() l ON l.brand_id=t.brand_id AND l.id=t.ledger_entry_id
  WHERE t.brand_id=$1 AND t.state='applied' AND t.delta_points<>0
  AND l.created_at >= $2 AND l.created_at < $3 AND l.member_id=t.member_id
  AND l.entry_type='commission_correction' AND l.reference_type='commission_correction_target' AND l.reference_id=t.id
@@ -147,7 +147,7 @@ func (s Service) commission(ctx context.Context, runner rowQuerier, brand string
  (SELECT count(*)::text FROM grouped) FROM scope CROSS JOIN validity`
 	var valid bool
 	var summary, rows []byte
-	err := runner.QueryRow(ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.AgentID, q.MemberID, q.CycleID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups)
+	err := historyQueryRow(runner, ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.AgentID, q.MemberID, q.CycleID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && !valid {
 		return out, ErrNotFound
 	}

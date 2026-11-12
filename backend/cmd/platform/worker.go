@@ -7,11 +7,11 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/brandops"
 	"github.com/gxfcjkxf/lottery/backend/internal/cash"
 	"github.com/gxfcjkxf/lottery/backend/internal/commission"
+	"github.com/gxfcjkxf/lottery/backend/internal/dataretention"
 	"github.com/gxfcjkxf/lottery/backend/internal/hkjccalendar"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
 	"github.com/gxfcjkxf/lottery/backend/internal/observability"
 	"github.com/gxfcjkxf/lottery/backend/internal/platformlottery"
-	"github.com/gxfcjkxf/lottery/backend/internal/reportarchive"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 	"time"
@@ -63,7 +63,7 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 	archiveDone := make(chan struct{})
 	go func() {
 		defer close(archiveDone)
-		runReportArchiveWorker(archiveCtx, reportarchive.Service{DB: db}, logger)
+		runDataRetentionWorker(archiveCtx, dataretention.Service{DB: db}, logger)
 	}()
 	defer func() { stopArchive(); <-archiveDone }()
 	commissionCtx, stopCommission := context.WithCancel(ctx)
@@ -145,7 +145,7 @@ func runHKJCCalendarWorker(ctx context.Context, service hkjccalendar.Service, lo
 
 // Archive reporting never shares the one-second betting clock. Policies are
 // opt-in; independent bounded transactions allow multiple workers safely.
-func runReportArchiveWorker(ctx context.Context, s reportarchive.Service, logger *slog.Logger) {
+func runDataRetentionWorker(ctx context.Context, s dataretention.Service, logger *slog.Logger) {
 	discovery := time.NewTicker(time.Minute)
 	processing := time.NewTicker(time.Second)
 	defer discovery.Stop()
@@ -156,14 +156,20 @@ func runReportArchiveWorker(ctx context.Context, s reportarchive.Service, logger
 			return
 		case <-discovery.C:
 			run, cancel := context.WithTimeout(ctx, 30*time.Second)
-			n, err := observedWork(run, "archive_discovery", func(ctx context.Context) (int, error) { return s.DiscoverAutomatic(ctx, 20) })
+			n, err := observedWork(run, "archive_discovery", func(ctx context.Context) (int, error) { return s.Discover(ctx) })
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("automatic archive discovery failed", "committed_tasks", n)
 			}
 		case <-processing.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, err := observedWork(run, "archive_processing", func(ctx context.Context) (int, error) { return s.ProcessAutomatic(ctx, 20) })
+			n, err := observedWork(run, "archive_processing", func(ctx context.Context) (int, error) {
+				worked, err := s.Process(ctx)
+				if worked {
+					return 1, err
+				}
+				return 0, err
+			})
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("automatic archive processing failed", "committed_tasks", n)

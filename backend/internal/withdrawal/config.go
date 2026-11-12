@@ -46,7 +46,7 @@ type GameInput struct {
 }
 
 func DefaultBrandConfig() BrandConfig {
-	return BrandConfig{MinPoints: 1, AllowedSources: []string{"recharge", "winning", "gift"}, ReviewMode: "manual", TurnoverMultiple: "1"}
+	return BrandConfig{MinPoints: 100, AllowedSources: []string{"recharge", "winning", "gift"}, ReviewMode: "manual", TurnoverMultiple: "1"}
 }
 func ValidMultiple(v string) bool {
 	if !multiplePattern.MatchString(v) {

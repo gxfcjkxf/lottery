@@ -59,7 +59,7 @@ func (s Service) UpdatePeriodOpening(ctx context.Context, tx pgx.Tx, a access.Ac
 		return p, ErrInvalid
 	}
 	var purchased bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM configured_orders WHERE period_id=$1)`, id).Scan(&purchased)
+	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM retention_configured_orders() WHERE period_id=$1)`, id).Scan(&purchased)
 	if err != nil {
 		return p, err
 	}

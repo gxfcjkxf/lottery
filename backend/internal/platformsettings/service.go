@@ -10,6 +10,7 @@ import (
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
+	"github.com/gxfcjkxf/lottery/backend/internal/dataretention"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -77,7 +78,7 @@ func validText(value string, max int) bool {
 	return utf8.ValidString(value) && utf8.RuneCountInString(value) <= max && !strings.ContainsAny(value, "\r\n")
 }
 
-const selectSQL = `SELECT version,display_name,logo_text,logo_url,timezone,date_format,time_format,theme,updated_at,COALESCE((SELECT id::text FROM audit_logs WHERE action='platform_settings.update' ORDER BY created_at DESC,id DESC LIMIT 1),'') FROM platform_settings WHERE id=true`
+const selectSQL = `SELECT version,display_name,logo_text,logo_url,timezone,date_format,time_format,theme,updated_at,COALESCE((SELECT id::text FROM retention_audit_logs() WHERE action='platform_settings.update' ORDER BY created_at DESC,id DESC LIMIT 1),'') FROM platform_settings WHERE id=true`
 
 func scan(row pgx.Row) (Settings, error) {
 	var out Settings
@@ -114,6 +115,9 @@ func (s Service) Update(ctx context.Context, tx pgx.Tx, a access.Account, in Inp
 	var after Settings
 	err = tx.QueryRow(ctx, `UPDATE platform_settings SET version=version+1,display_name=$1,logo_text=$2,logo_url=$3,timezone=$4,date_format=$5,time_format=$6,theme=$8,updated_by=$7,updated_at=clock_timestamp() WHERE id=true RETURNING version,display_name,logo_text,logo_url,timezone,date_format,time_format,theme,updated_at`, in.DisplayName, in.LogoText, in.LogoURL, in.Timezone, in.DateFormat, in.TimeFormat, a.ID, in.Theme).Scan(&after.Version, &after.DisplayName, &after.LogoText, &after.LogoURL, &after.Timezone, &after.DateFormat, &after.TimeFormat, &after.Theme, &after.UpdatedAt)
 	if err != nil {
+		return Settings{}, err
+	}
+	if err = (dataretention.Service{}).SyncTimezoneTx(ctx, tx, before.Timezone, after.Timezone, meta); err != nil {
 		return Settings{}, err
 	}
 	auditID, err := audit.Append(ctx, tx, audit.Record{ActorType: "admin", ActorID: a.ID, Action: "platform_settings.update", ResourceType: "platform_settings", RequestID: meta.RequestID, IP: meta.IP, Before: before, After: after})

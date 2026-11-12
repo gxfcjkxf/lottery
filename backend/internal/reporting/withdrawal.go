@@ -39,13 +39,13 @@ type WithdrawalReport struct {
 }
 
 var withdrawalAggregates = []aggregate{
-	{"order_count", "count(*)"}, {"requested_points", "coalesce(sum(points::numeric),0)"},
-	{"reviewing_count", "count(*) FILTER(WHERE state='reviewing')"}, {"reviewing_points", "coalesce(sum(points::numeric) FILTER(WHERE state='reviewing'),0)"},
-	{"processing_count", "count(*) FILTER(WHERE state='processing')"}, {"processing_points", "coalesce(sum(points::numeric) FILTER(WHERE state='processing'),0)"},
-	{"paid_count", "count(*) FILTER(WHERE state='paid')"}, {"paid_points", "coalesce(sum(points::numeric) FILTER(WHERE state='paid'),0)"},
-	{"rejected_count", "count(*) FILTER(WHERE state='rejected')"}, {"rejected_points", "coalesce(sum(points::numeric) FILTER(WHERE state='rejected'),0)"},
-	{"failed_count", "count(*) FILTER(WHERE state='failed')"}, {"failed_points", "coalesce(sum(points::numeric) FILTER(WHERE state='failed'),0)"},
-	{"cancelled_count", "count(*) FILTER(WHERE state='cancelled')"}, {"cancelled_points", "coalesce(sum(points::numeric) FILTER(WHERE state='cancelled'),0)"},
+	{"order_count", "coalesce(sum(weight),0)"}, {"requested_points", "coalesce(sum(points::numeric),0)"},
+	{"reviewing_count", "coalesce(sum(weight) FILTER(WHERE state='reviewing'),0)"}, {"reviewing_points", "coalesce(sum(points::numeric) FILTER(WHERE state='reviewing'),0)"},
+	{"processing_count", "coalesce(sum(weight) FILTER(WHERE state='processing'),0)"}, {"processing_points", "coalesce(sum(points::numeric) FILTER(WHERE state='processing'),0)"},
+	{"paid_count", "coalesce(sum(weight) FILTER(WHERE state='paid'),0)"}, {"paid_points", "coalesce(sum(points::numeric) FILTER(WHERE state='paid'),0)"},
+	{"rejected_count", "coalesce(sum(weight) FILTER(WHERE state='rejected'),0)"}, {"rejected_points", "coalesce(sum(points::numeric) FILTER(WHERE state='rejected'),0)"},
+	{"failed_count", "coalesce(sum(weight) FILTER(WHERE state='failed'),0)"}, {"failed_points", "coalesce(sum(points::numeric) FILTER(WHERE state='failed'),0)"},
+	{"cancelled_count", "coalesce(sum(weight) FILTER(WHERE state='cancelled'),0)"}, {"cancelled_points", "coalesce(sum(points::numeric) FILTER(WHERE state='cancelled'),0)"},
 }
 
 func (s Service) Withdrawal(ctx context.Context, brand string, q Query) (WithdrawalReport, error) {
@@ -81,9 +81,9 @@ func (s Service) withdrawal(ctx context.Context, runner rowQuerier, brand string
 		group, label = `o.state`, `o.state`
 	}
 	agg := aggregateJSON(withdrawalAggregates)
-	sql := `WITH scope AS (SELECT id,timezone FROM brands WHERE id=$1), validity AS (
+	sql := `WITH scope AS (SELECT id,retention_report_timezone(id,$2,$3) AS timezone FROM brands WHERE id=$1), validity AS (
  SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$4)) AS valid),
- base AS (SELECT o.*,` + group + ` AS key,` + label + ` AS label FROM withdrawal_orders o JOIN scope b ON b.id=o.brand_id
+ base AS (SELECT o.*,` + group + ` AS key,` + label + ` AS label FROM retention_withdrawal_report_facts o JOIN scope b ON b.id=o.brand_id
  WHERE o.created_at >= $2 AND o.created_at < $3 AND ($4::uuid IS NULL OR o.member_id=$4)),
  grouped AS (SELECT key,label,` + agg + ` AS totals FROM base GROUP BY key,label),
  page AS (SELECT key,label,totals FROM grouped ORDER BY key COLLATE "C" LIMIT $5 OFFSET $6)
@@ -92,7 +92,7 @@ func (s Service) withdrawal(ctx context.Context, runner rowQuerier, brand string
  (SELECT count(*)::text FROM grouped) FROM scope CROSS JOIN validity`
 	var valid bool
 	var summary, rows []byte
-	e := runner.QueryRow(ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.MemberID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups)
+	e := historyQueryRow(runner, ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.MemberID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups)
 	if errors.Is(e, pgx.ErrNoRows) || e == nil && !valid {
 		return out, ErrNotFound
 	}

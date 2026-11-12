@@ -11,7 +11,7 @@ const memberSearchPending = ref(false);
 import SelectControl from '@lottery/shared/SelectControl.vue'
 import { useOperationToast } from "@lottery/shared";
 import FilterAssociationSelect from "@lottery/shared/FilterAssociationSelect.vue";
-import { filterDateBoundary } from "@lottery/shared";
+import { platformDateBoundary, platformDisplaySettings } from "@lottery/shared";
 import { associationGroupLabel } from "@lottery/shared";
 import { useAdminI18n as useAssociationI18n } from "./i18n";
 const associationLocale = useAssociationI18n().locale;
@@ -47,7 +47,7 @@ const groups = computed(() => mode.value === "rewards" ? ["day", "member", "orde
 function abortRead() { readGeneration++; readController?.abort(); readController = undefined; busy.value = false; }
 function clearScope() { abortRead(); committed.value = null; result.value = null; error.value = ""; }
 async function queryDraft(): Promise<RewardReportQuery> {
-  const from = filterDateBoundary(fromDraft.value, false, 'utc').toISOString(), to = filterDateBoundary(toDraft.value, true, 'utc').toISOString(), fromMs = Date.parse(from), toMs = Date.parse(to);
+  const from = platformDateBoundary(fromDraft.value,false,platformDisplaySettings.value!.timezone).toISOString(), to = platformDateBoundary(toDraft.value,true,platformDisplaySettings.value!.timezone).toISOString(), fromMs = Date.parse(from), toMs = Date.parse(to);
   if (toMs <= fromMs || toMs - fromMs > 93 * 86_400_000) throw new Error(t('admin.copy.bddf70ec'));
   const member = memberDraft.value.trim(), order = orderDraft.value.trim();
   if (order && !uuid.test(order)) throw new Error(t('admin.copy.864d220e'));

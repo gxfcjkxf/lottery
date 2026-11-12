@@ -4,27 +4,17 @@ import test from 'node:test';
 
 const read = path => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
-test('archive queries remain scoped reads and notification templates retain explicit writes', () => {
-  for (const file of ['archives-api.ts']) {
-    const source = read(`platform-web/src/${file}`);
-    assert.match(source, /X-Brand-ID/);
-    assert.match(source, /method: 'GET'/);
-    assert.doesNotMatch(source, /method: '(POST|PUT|PATCH|DELETE)'/);
-  }
-  const app = read('platform-web/src/App.vue');
-  assert.match(app, /platform-operations-tabs/);
-  assert.match(app, /<ArchivesPanel/);
-  assert.match(app, /<NotificationsPanel/);
+test('monthly retention replaces daily and monthly snapshot entries', () => {
+  const api=read('platform-web/src/data-retention-api.ts'),app=read('platform-web/src/App.vue');
+  assert.match(api,/X-Data-Retention-Actor-ID/);assert.match(api,/data-retention-policy/);
+  assert.match(app,/<DataRetentionPanel/);assert.match(app,/<NotificationsPanel/);
+  assert.doesNotMatch(app,/ArchivesPanel|ArchiveTasksPanel|archive-tasks/);
 });
-
-test('archive snapshots show capture-time balances without a file download entry in phase one', () => {
-  const panel = read('platform-web/src/ArchivesPanel.vue');
-  const catalog = read('platform-web/src/i18n-catalog.ts');
-  assert.match(panel, /<ArchiveReport/);
-  assert.match(panel, /brand !== props.brandId/);
-  assert.match(panel, /onBeforeUnmount/);
-  assert.match(catalog, /not balances at the end of the report window/);
-  assert.doesNotMatch(panel, /api\.download|URL\.createObjectURL|\.download\s*=|v-html|Number\(.*points|parseFloat/);
+test('retention uses shared lists, exact counts and no export entry', () => {
+  const panel=read('platform-web/src/DataRetentionPanel.vue');
+  assert.match(panel,/<ManagementList/);assert.match(panel,/<ManagementTable/);assert.match(panel,/<TablePagination/);
+  assert.match(panel,/BigInt\(c\[key\]\)/);assert.match(panel,/onBeforeUnmount/);
+  assert.doesNotMatch(panel,/api\.download|URL\.createObjectURL|\.download\s*=|v-html|parseFloat/);
 });
 
 test('notification content stays plaintext and page sentinels do not invent total counts', () => {

@@ -59,10 +59,9 @@ import PlatformLottery from '@lottery/shared/PlatformLottery.vue'
 import OfficialDrawCalendar from './OfficialDrawCalendar.vue'
 import WithdrawalsPanel from './WithdrawalsPanel.vue'
 import CommissionPanel from './CommissionPanel.vue'
-import ArchivesPanel from './ArchivesPanel.vue'
+import DataRetentionPanel from './DataRetentionPanel.vue'
 import NotificationsPanel from './NotificationsPanel.vue'
-import ArchiveTasksPanel from './ArchiveTasksPanel.vue'
-import {clearPlatformArchiveIntents} from './platform-archive-policy-api'
+import {clearRetentionIntents} from './data-retention-api'
 import AccessPanel from './AccessPanel.vue'
 import BrandOperationPanel from './BrandOperationPanel.vue'
 import BrandDomainsPanel from './BrandDomainsPanel.vue'
@@ -165,9 +164,10 @@ watch(selectedBrand, brandId => {
 const section = ref<'home' | 'brands' | 'users' | 'audit' | 'rewards' | 'wallets' | 'bets' | 'games' | 'draws' | 'withdrawals' | 'commission' | 'access' | 'settings'>('home')
 const withdrawalInitialState = ref<'' | 'reviewing'>('')
 const settingsTab = ref<'general' | 'auth' | 'commission' | 'currency'>('general')
-const showBrandPicker = computed(() => section.value === 'settings' ? settingsTab.value === 'auth' : section.value === 'audit' && ['archive-tasks', 'notifications', 'announcements', 'maintenance'].includes(auditView.value) ? false : section.value === 'access' ? accessScope.value === 'brand' : !['home', 'brands', 'settings', 'games', 'draws'].includes(section.value))
+const retentionPolicyVisible=ref(false)
+const showBrandPicker = computed(() => section.value === 'settings' ? settingsTab.value === 'auth' : section.value === 'audit' && (auditView.value==='archives'&&retentionPolicyVisible.value || ['notifications', 'announcements', 'maintenance'].includes(auditView.value)) ? false : section.value === 'access' ? accessScope.value === 'brand' : !['home', 'brands', 'settings', 'games', 'draws'].includes(section.value))
 const { games: brandGames, selectedGameId, loading: gamesLoading } = useBrandGames(selectedBrand, () => section.value === 'bets' ? section.value : '', handleFailure)
-const auditView = ref<'audit' | 'archives' | 'archive-tasks' | 'notifications' | 'announcements' | 'deliveries' | 'maintenance'>('audit')
+const auditView = ref<'audit' | 'archives' | 'notifications' | 'announcements' | 'deliveries' | 'maintenance'>('audit')
 const expandedNavigation = ref<'brands' | 'operations' | 'wallets' | 'commission' | null>(null)
 function navigationExpanded(group: NonNullable<typeof expandedNavigation.value>) {
   return computed({
@@ -203,7 +203,7 @@ const agentsLabel = computed(() => t('common.agents'))
 const commissionLabel = computed(() => t('common.commission'))
 const commissionPageLabel = computed(() => commissionTab.value === 'agents' ? agentsLabel.value : commissionTab.value === 'cycles' ? t('platform.copy.39ac5c23') : t('platform.copy.48f3ae6f'))
 const operationsLabel = computed(() => t('common.operations'))
-const operationLabel = computed(() => auditView.value === 'announcements' ? t('announcements.title') : auditView.value === 'maintenance' ? t('maintenance.tools') : auditView.value === 'deliveries' ? t('platform.copy.42e5c206') : auditView.value === 'audit' ? lang.value.audit : auditView.value === 'archives' ? t('common.reportArchives') : auditView.value === 'archive-tasks' ? t('common.archiveTasks') : t('maintenance.notificationTemplates'))
+const operationLabel = computed(() => auditView.value === 'announcements' ? t('announcements.title') : auditView.value === 'maintenance' ? t('maintenance.tools') : auditView.value === 'deliveries' ? t('platform.copy.42e5c206') : auditView.value === 'audit' ? lang.value.audit : auditView.value === 'archives' ? t('retention.title') : t('maintenance.notificationTemplates'))
 const walletViewLabel = computed(() => walletView.value === 'quota' ? t('platform.quota.management') : walletView.value === 'recharges' ? t('platform.copy.20be6d4c') : t('platform.copy.67516591'))
 const accountsLabel = computed(() => t('common.platformAccounts'))
 const accessLabel = computed(() => accessScope.value === 'brand' ? lang.value.brandAccounts : accountsLabel.value)
@@ -277,7 +277,7 @@ function clearPrivateState() {
   walletsExpanded.value = false
   memberFinance.value = null
   resetMemberFilters()
-  clearPlatformArchiveIntents(); account.value = null; platformSettings.value = null; brands.value = []; members.value = []; [auditRows.value,auditTotal.value]=[[],'0']; selectedBrand.value = ''
+  clearRetentionIntents(); account.value = null; platformSettings.value = null; brands.value = []; members.value = []; [auditRows.value,auditTotal.value]=[[],'0']; selectedBrand.value = ''
   retryPayload.value = null; modal.value = false; confirming.value = false
   deleteBrandTarget.value = null; deleteError.value = ''; deleteBusy.value = false
   deleteMemberTarget.value = null; deleteMemberError.value = ''; deleteMemberBusy.value = false
@@ -413,7 +413,7 @@ async function chooseBrand(id: string) {
   if (section.value === 'audit' && auditView.value === 'audit') await loadAudit(id)
 }
 async function chooseAuditView(next: typeof auditView.value) {
-  if (accountWriteLocked.value || ['maintenance', 'archive-tasks', 'deliveries'].includes(next) && !account.value?.super_admin) return
+  if (accountWriteLocked.value || ['maintenance', 'deliveries'].includes(next) && !account.value?.super_admin) return
   memberFinance.value = null
   operationsExpanded.value = true
   section.value = 'audit'
@@ -613,7 +613,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
       <button type="button" :class="['nav-item', { selected: section === 'audit' }]" :aria-expanded="operationsExpanded" @click="withGlobalLoading(toggleOperations)"><span><SiteIcon name="more" /></span>{{ operationsLabel }}<SiteIcon class="console-nav-chevron" name="down" /></button>
       <div v-if="operationsExpanded" class="nav-submenu" data-testid="platform-operations-tabs" role="group" :aria-label="operationsLabel">
         <button class="nav-subitem" :class="{ selected: auditView === 'audit' }" type="button" @click="withGlobalLoading(chooseAuditView, 'audit')">{{ lang.audit }}</button>
-        <button class="nav-subitem" :class="{ selected: auditView === 'archives' }" type="button" @click="withGlobalLoading(chooseAuditView, 'archives')">{{ t('common.reportArchives') }}</button>
+        <button v-if="account.platform_permissions.includes('platform_settings.view.platform')" class="nav-subitem" :class="{ selected: auditView === 'archives' }" type="button" @click="withGlobalLoading(chooseAuditView, 'archives')">{{ t('retention.title') }}</button>
         <button v-if="account.platform_permissions.includes('announcement.view.platform')" class="nav-subitem" :class="{ selected: auditView === 'announcements' }" type="button" @click="withGlobalLoading(chooseAuditView, 'announcements')">{{t('announcements.title')}}</button>
         <button class="nav-subitem" :class="{ selected: auditView === 'notifications' }" type="button" @click="withGlobalLoading(chooseAuditView, 'notifications')">{{ t('maintenance.notificationTemplates') }}</button>
       </div>
@@ -648,7 +648,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
       <header class="topbar platform-topbar">
         <nav class="breadcrumb" aria-label="Breadcrumb"><button type="button" @click="withGlobalLoading(chooseSection, 'home')">{{ platformSettings?.display_name }}</button><span>/</span><button type="button" @click="withGlobalLoading(chooseSection, section)">{{ sectionLabel }}</button></nav>
         <label v-if="showBrandPicker" class="topbar-brand-picker">
-          <SelectControl :disabled="accountWriteLocked" :model-value="selectedBrand" :label="lang.brandLabel" @change="withGlobalLoading(chooseBrand, $event)" :options="[{ value: '', label: ('\u2014 ' + String(lang.selectBrand) + ' \u2014').trim() }, ...((brands).map((brand) => ({ value: brand.id, label: (String(brand.name)).trim() })))]" />
+          <SelectControl :disabled="accountWriteLocked" :model-value="selectedBrand" :label="lang.brandLabel" @change="withGlobalLoading(chooseBrand, $event)" :options="[{ value: '', label: section==='audit'&&auditView==='archives'?t('retention.allBrands'):('\u2014 ' + String(lang.selectBrand) + ' \u2014').trim() }, ...((brands).map((brand) => ({ value: brand.id, label: (String(brand.name)).trim() })))]" />
         </label>
         <div class="top-actions">
           <ThemeSwitcher :locale="locale" /><LanguageSwitcher :model-value="locale" :label="t('common.language')" :options="[{code:'zh-CN',label:nativeLocaleName('zh-CN')},{code:'en',label:nativeLocaleName('en')}]" @update:model-value="setLocale" />
@@ -726,12 +726,10 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ operationLabel }}</h1></div>
           <section v-if="auditView === 'maintenance' && account.super_admin" data-testid="platform-maintenance-tools" class="panel console-panel console-stack">
             <div class="form-actions ui-form-actions">
-              <button class="button button-secondary" type="button" @click="withGlobalLoading(chooseAuditView, 'archive-tasks')">{{t('common.archiveTasks')}}</button>
               <button class="button button-secondary" type="button" @click="withGlobalLoading(chooseAuditView, 'deliveries')">{{t('platform.copy.42e5c206')}}</button>
             </div>
           </section>
-          <ArchivesPanel v-else-if="selectedBrand && auditView === 'archives'" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
-          <ArchiveTasksPanel v-else-if="auditView === 'archive-tasks'" :key="account.id" :account-id="account.id" :can-manage="account.platform_permissions.includes('platform_settings.write.platform')" :locale="locale" @failure="handleFailure" />
+          <DataRetentionPanel @view-change="retentionPolicyVisible=$event==='policy'" v-else-if="auditView === 'archives'" :brand-id="selectedBrand" :account-id="account.id" :can-manage="account.platform_permissions.includes('platform_settings.write.platform')" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
           <AnnouncementsManagement v-else-if="auditView === 'announcements'" platform base-path="/api/v1/platform" :key="`announcements:${account.id}`" :actor-id="account.id" :locale="locale" :permissions="account.platform_permissions" @failure="handleFailure" />
           <NotificationsPanel v-else-if="auditView === 'notifications' || (auditView === 'deliveries' && selectedBrand)" :key="account.id + ':' + auditView" :view="auditView === 'deliveries' ? 'deliveries' : 'templates'" :account-id="account.id" :can-manage="account.platform_permissions.includes('notification_template.write.platform')" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
           <template v-else-if="auditView === 'audit'">
@@ -778,7 +776,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
           <CashConsole v-if="selectedBrand" :key="`cash-withdraw:${account.id}:${selectedBrand}`" base-path="/api/v1/platform" platform mode="withdrawal" :actor-id="account.id" :brand-id="selectedBrand" :locale="locale" :permissions="account.platform_permissions" @failure="handleFailure" />
           <WithdrawalsPanel v-if="selectedBrand" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" :initial-state="withdrawalInitialState || undefined" @failure="handleFailure" />
         </template>
-        <p v-if="showBrandPicker && !selectedBrand && !['games', 'draws'].includes(section) && !(section === 'settings')" class="empty-state" role="status" data-testid="platform-brand-required">{{ t('common.selectBrandFirst') }}</p>
+        <p v-if="showBrandPicker && !selectedBrand && !['games', 'draws'].includes(section) && !(section === 'settings') && !(section==='audit'&&auditView==='archives')" class="empty-state" role="status" data-testid="platform-brand-required">{{ t('common.selectBrandFirst') }}</p>
       </main>
       <BrandOperationPanel ref="brandOperationPanel" :locale="locale" :allowed="canManageBrandOperation" :display-settings="displaySettings" @updated="withGlobalLoading(refreshAfterBrandOperation, $event)" @failure="handleFailure" />
     </section>

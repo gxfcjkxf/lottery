@@ -66,6 +66,10 @@ func transact(t *testing.T, s Service, fn func(pgx.Tx) error) {
 }
 func str(v string) *string { return &v }
 func TestConfigParsingIsExactClosedAndCanonical(t *testing.T) {
+	defaultJSON, err := json.Marshal(DefaultBrandConfig())
+	if err != nil || !strings.Contains(string(defaultJSON), `"min_points":"1"`) {
+		t.Fatalf("default minimum must be one point: %s, %v", defaultJSON, err)
+	}
 	for _, v := range []string{"1", "2.5", "0.000001", "999999.999999", "1000000"} {
 		if !ValidMultiple(v) {
 			t.Errorf("valid N rejected %q", v)

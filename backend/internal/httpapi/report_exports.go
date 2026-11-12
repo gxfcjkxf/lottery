@@ -42,6 +42,8 @@ func reportExportQuery(r *http.Request, kind string) (reporting.Query, error) {
 }
 func exportError(w http.ResponseWriter, r *http.Request, e error) {
 	switch {
+	case errors.Is(e, reporting.ErrHistoricalRange):
+		failure(w,r,400,"REPORT_HISTORY_DAY_RANGE_INVALID","历史报表须按归档时区查询完整自然日")
 	case errors.Is(e, reporting.ErrNotFound):
 		failure(w, r, 404, "REPORT_SCOPE_NOT_FOUND", "当前品牌未找到筛选资源")
 	case errors.Is(e, reporting.ErrExportTooLarge):

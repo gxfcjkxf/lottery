@@ -3,7 +3,7 @@ import { selectLanguage } from '../language-switcher'
 import { notificationCatalog } from '../../shared/src/notification-catalog'
 import { selectControl } from '../select-control'
 import { test, expect } from '@playwright/test'
-import { gameId, origins, installLayoutApi, expectInsideViewport } from './fixture'
+import { gameId, origins, installLayoutApi, expectInsideViewport, cashBalanceFixture } from './fixture'
 import { REPORT_FIELDS, type ReportKind } from '../../platform-web/src/reports-api'
 import { registerPlatformMemberManagementTests } from './platform-member-management'
 registerPlatformMemberManagementTests(false)
@@ -18,15 +18,21 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
   const ledgerReads: URL[] = []
   const buckets = Object.fromEntries(['recharge','winning','gift','commission'].map(source => [source,{available:'0',manual_frozen:'0',system_frozen:'0',withdrawal:'0'}]))
   const balances = { account_count: '0', available_points: '0', frozen_points: '0', withdrawal_points: '0', total_points: '0' }
-  const archives = Array.from({ length: 51 }, (_, i) => ({ id: ids(100 + i), brand_id: gameId, window: { kind: 'daily', period_key: '2026-04-03', timezone: 'Asia/Singapore', from, to }, revision: 1, previous_id: null, snapshot_at: at, created_by: gameId, reason: 'Owned read-only platform browser verification', payload_sha256: '0'.repeat(64), audit_log_id: gameId, created_at: at, snapshot: { brand_id: gameId, format_version: 1, snapshot_at: at, timezone: 'Asia/Singapore', from, to, betting: zeroes(REPORT_FIELDS.betting), ledger: zeroes(REPORT_FIELDS.ledger), wallet_snapshot: { at_snapshot: at, balances }, withdrawals: zeroes(REPORT_FIELDS.withdrawal), commissions: zeroes(REPORT_FIELDS.commission), rewards: zeroes(REPORT_FIELDS.rewards), reward_orders: zeroes(REPORT_FIELDS.reward_orders) } }))
+  const archives = Array.from({length:51},(_,i)=>({id:ids(100+i),brand_id:gameId,brand_name:'Aurora',policy_version:1,timezone:'Asia/Singapore',execute_at:'2026-11-09T18:00:00Z',cutoff_at:'2026-09-30T16:00:00Z',state:'completed',counts:{audit_logs:{deleted:'1',receipts:'1',deferred:'0'}},error_code:'',created_at:at,finished_at:at}))
   await page.route('**/api/v1/platform/**', async route => {
     const req = route.request(), url = new URL(req.url()), path = url.pathname
     expect(req.method()).toBe('GET')
     const reply = (data: unknown) => route.fulfill({ json: { success: true, data, associations: { [`brand:${gameId}`]: { name: 'Aurora' }, ...Object.fromEntries(members.map(member => [`member:${member.id}`, { name: member.username }])) } } })
     if (path.endsWith('/presentation')) return reply({ display_name: 'Layout trial', logo_text: 'L', logo_url: '' })
-    if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'platform_list_reviewer', super_admin: true, platform_permissions: ['user.view.platform', 'wallet.view.platform', 'report_betting.view.platform', 'report_ledger.view.platform', 'report_withdrawal.view.platform', 'report_commission.view.platform', 'report_reward.view.platform', 'report_archive.view.platform'] } })
-    if (path.endsWith('/platform-settings')) return reply({ display_name: 'Layout trial', logo_text: 'L', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', version: 1, updated_at: at })
+    if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'platform_list_reviewer', super_admin: true, platform_permissions: ['user.view.platform', 'wallet.view.platform', 'report_betting.view.platform', 'report_ledger.view.platform', 'report_withdrawal.view.platform', 'report_commission.view.platform', 'report_reward.view.platform', 'platform_settings.view.platform'] } })
+    if (path.endsWith('/platform-settings')) return reply({ display_name: 'Layout trial', logo_text: 'L', logo_url: '', theme:'jade', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', version: 1, updated_at: at })
     if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status: 'active', member_count: '51', agent_count: '0', recharge_quota_available: '0', created_at: at }] })
+    if(path.endsWith('/data-retention-policy'))return reply({version:1,enabled:false,execution_day:10,execution_time:'02:00',timezone:'Asia/Singapore',next_run:null,updated_at:at})
+    if(path.endsWith('/data-retention-tasks')){
+      expect(req.headers()['x-brand-id']).toBeUndefined();archiveReads.push(url)
+      const limit=Number(url.searchParams.get('limit')),offset=Number(url.searchParams.get('offset'))
+      return reply({items:archives.slice(offset,offset+limit),total_count:'51',limit,offset})
+    }
     expect(req.headers()['x-brand-id']).toBe(gameId)
     if (path.endsWith('/users')) {
       memberReads.push(url)
@@ -34,6 +40,7 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
       const selected = members.filter(member => !username || member.username === username)
       return reply({ items: selected.slice(offset, offset + limit), limit, offset, total_count: String(selected.length) })
     }
+    if (path.startsWith('/api/v1/platform/cash/balances/')) return reply(cashBalanceFixture())
     if (path.includes('/wallets/')) {
       if (path.endsWith('/ledger')) {
         ledgerReads.push(url)
@@ -66,12 +73,6 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
       const query = { from: url.searchParams.get('from'), to: url.searchParams.get('to'), group_by: url.searchParams.get('group_by'), limit: Number(url.searchParams.get('limit')), offset: Number(url.searchParams.get('offset')), ...Object.fromEntries(keys.map(key => [key, url.searchParams.get(key)])) }
       return reply({ brand_id: gameId, snapshot_at: at, timezone: 'Asia/Singapore', query, summary: zeroes(REPORT_FIELDS[kind]), items: [], total_groups: '0', ...(kind === 'ledger' ? { balances } : {}) })
     }
-    if (path.endsWith('/report-archives')) {
-      archiveReads.push(url)
-      const limit = Number(url.searchParams.get('limit')), offset = Number(url.searchParams.get('offset'))
-      return reply({ brand_id: gameId, items: archives.slice(offset, offset + limit), total_count: '51', limit, offset })
-    }
-    if (path.includes('/report-archives/')) return reply(archives.find(record => path.endsWith(record.id)))
     throw Error(`Unexpected platform list request: ${path}`)
   })
   async function openNavigation() {
@@ -184,19 +185,17 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
   await openNavigation()
   const operations = page.locator('.sidebar').getByRole('button', { name: zh ? '运营' : 'Operations', exact: true })
   if (await operations.getAttribute('aria-expanded') === 'false') await operations.click()
-  await page.getByTestId('platform-operations-tabs').getByRole('button', { name: zh ? '归档记录' : 'Archive records', exact: true }).click()
-  const archiveList = page.getByTestId('platform-archive-list'), archivePages = page.getByTestId('platform-archive-pages')
+  await page.getByTestId('platform-operations-tabs').getByRole('button', { name: zh ? '数据保留' : 'Data retention', exact: true }).click()
+  const archiveList = page.getByTestId('data-retention'), archivePages = page.getByTestId('data-retention').locator('.table-pagination')
   await expect(archiveList.locator('tbody tr')).toHaveCount(50)
   await archivePages.getByRole('button', { name: zh ? '下一页' : 'Next page', exact: true }).click()
   await expect(archiveList.locator('tbody tr')).toHaveCount(1)
   const readsBefore = archiveReads.length
   await archiveList.locator('tbody button').click()
-  const detail = page.getByRole('dialog', { name: '2026-04-03', exact: true })
-  await expect(detail).toBeVisible(); await expect(detail.locator('.archive-report')).toBeVisible()
+  const detail = page.getByRole('dialog', { name: zh?'执行详情':'Execution details', exact: true })
+  await expect(detail).toBeVisible(); await expect(detail.locator('table')).toBeVisible()
   await expect(detail.locator('button').filter({hasText:zh?'返回列表':'Back to list'})).toHaveCount(0)
   await expect(detail.locator('.detail-modal-close')).toBeVisible()
-  await expect(detail.locator('.archive-report-record')).toContainText(zh ? '平台只读浏览器验证' : 'Platform read-only browser verification')
-  await expect(detail.locator('.archive-report-record')).not.toContainText('Owned read-only platform browser verification')
   await expectInsideViewport(detail); await expectRealEntry(page,'platform');await expectListLayout(page)
   await page.screenshot({ path: info.outputPath(`platform-archive-dialog-${locale}.png`) })
   await page.keyboard.press('Escape'); await expect(detail).toHaveCount(0)
@@ -216,7 +215,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`notification template names
     const reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
     if(path.endsWith('/presentation'))return reply({display_name:'Layout trial',logo_text:'L',logo_url:''})
     if(path.endsWith('/me'))return reply({account:{id:gameId,username:'template_reviewer',super_admin:true,platform_permissions:['notification_template.write.platform']}})
-    if(path.endsWith('/platform-settings'))return reply({display_name:'Layout trial',logo_text:'L',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',version:1,updated_at:at})
+    if(path.endsWith('/platform-settings'))return reply({display_name:'Layout trial',logo_text:'L',logo_url:'',theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',version:1,updated_at:at})
     if(path.endsWith('/brands'))return reply({items:[]})
     if(path.endsWith('/notification-templates'))return reply({items:Object.entries(notificationCatalog).map(([key,content])=>({key,version:1,content,updated_at:at,audit_log_id:null}))})
     throw Error(`Unexpected template request: ${path}`)
@@ -353,7 +352,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`notification template names
   await dialog.getByRole('button',{name:locale==='en'?'Close':'关闭',exact:true}).click()
   await page.locator('.account-trigger').click()
   await page.getByRole('menuitem',{name:locale==='en'?'Maintenance tools':'维护工具',exact:true}).click()
-  await expect(page.getByTestId('platform-maintenance-tools').getByRole('button')).toHaveCount(2)
+  await expect(page.getByTestId('platform-maintenance-tools').getByRole('button')).toHaveText([locale==='en'?'Deliveries':'发送记录'])
   await expect(page.locator('.sidebar').getByRole('button',{name:locale==='en'?'Deliveries':'发送记录',exact:true})).toHaveCount(0)
   await page.getByRole('button',{name:locale==='en'?'Deliveries':'发送记录',exact:true}).click()
   await expect(page.getByTestId('platform-brand-required')).toBeVisible()

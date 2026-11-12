@@ -39,7 +39,7 @@ func (s OrderService) ConvertTx(ctx context.Context, tx pgx.Tx, brand, member, o
 		return fail(e)
 	}
 	var active bool
-	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM withdrawal_orders WHERE brand_id=$1 AND member_id=$2 AND state IN('reviewing','processing'))`, brand, member).Scan(&active); e != nil {
+	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM retention_withdrawal_orders() WHERE brand_id=$1 AND member_id=$2 AND state IN('reviewing','processing'))`, brand, member).Scan(&active); e != nil {
 		return fail(e)
 	}
 	if active {

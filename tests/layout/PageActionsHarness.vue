@@ -2,7 +2,7 @@
 import {provide} from 'vue'
 import BrandPresentation from '../../admin-web/src/BrandPresentation.vue'
 import WithdrawalPolicySettings from '../../admin-web/src/WithdrawalPolicySettings.vue'
-import ArchiveTasksPanel from '../../platform-web/src/ArchiveTasksPanel.vue'
+import DataRetentionPanel from '../../platform-web/src/DataRetentionPanel.vue'
 import AutomationSettings from '../../shared/src/AutomationSettings.vue'
 import BettingPreferencesSettings from '../../user-web/src/BettingPreferencesSettings.vue'
 import {createAdminI18n,adminI18nKey} from '../../admin-web/src/i18n'
@@ -21,7 +21,7 @@ const account={id:actor,super_admin:false,brand_ids:[brand],permissions:[],permi
  <main :class="view==='preferences'?'page-actions-user':'management-console'" style="padding:12px;min-width:0">
   <BrandPresentation v-if="view==='presentation'" :account="account" :brand-id="brand" />
   <WithdrawalPolicySettings v-else-if="view==='withdrawal'" :account="account" :brand-id="brand" />
-  <ArchiveTasksPanel v-else-if="view==='archive'" :account-id="actor" can-manage :locale="locale" />
+  <DataRetentionPanel v-else-if="view==='archive'" :account-id="actor" :brand-id="brand" can-manage :locale="locale" :display-settings="{timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}" />
   <AutomationSettings v-else-if="view==='automation'" surface="platform" :game-id="brand" brand-id="" :locale="locale" can-write />
   <BettingPreferencesSettings v-else :brand-id="brand" :member-id="actor" :locale="locale" />
  </main>

@@ -357,7 +357,7 @@ func validateEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate string
 			return "", p, ErrInvalid
 		}
 		var ok bool
-		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM recharge_orders WHERE brand_id=$1 AND id=$2 AND member_id=$3 AND state='confirmed' AND points=$4::numeric)`, brand, aggregate, in.MemberID, *in.Points).Scan(&ok)
+		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM retention_recharge_orders() WHERE brand_id=$1 AND id=$2 AND member_id=$3 AND state='confirmed' AND points=$4::numeric)`, brand, aggregate, in.MemberID, *in.Points).Scan(&ok)
 		if err != nil {
 			return "", p, err
 		}

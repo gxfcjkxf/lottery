@@ -72,7 +72,7 @@ func (s Service) rewardOrders(ctx context.Context, runner rowQuerier, brand stri
 		group = `o.state`
 	}
 	agg := aggregateJSON(rewardOrderAggregates)
-	sql := `WITH scope AS (SELECT id,timezone FROM brands WHERE id=$1), validity AS (
+	sql := `WITH scope AS (SELECT id,retention_report_timezone(id,$2,$3) AS timezone FROM brands WHERE id=$1), validity AS (
  SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$4)) AND
         ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM reward_orders WHERE brand_id=$1 AND id=$5)) AS valid),
  base AS (SELECT o.id,o.member_id,o.points,o.state,` + group + ` AS key,` + group + ` AS label
@@ -85,7 +85,7 @@ func (s Service) rewardOrders(ctx context.Context, runner rowQuerier, brand stri
  (SELECT count(*)::text FROM grouped) FROM scope CROSS JOIN validity`
 	var valid bool
 	var summary, rows []byte
-	err := runner.QueryRow(ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.MemberID, q.OrderID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups)
+	err := historyQueryRow(runner, ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.MemberID, q.OrderID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && !valid {
 		return out, ErrNotFound
 	}

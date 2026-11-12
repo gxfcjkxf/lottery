@@ -290,7 +290,7 @@ func (s Service) Advance(ctx context.Context, tx pgx.Tx, brand, member, id, acti
 		}
 		var used bool
 		// Manual review consumes the entire hash; automatic review consumes its log.
-		e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM cash_orders prior JOIN cash_orders target ON target.id=$2 WHERE prior.currency='USDT' AND prior.kind='deposit' AND prior.state='confirmed' AND prior.reference=$1 AND (prior.event_index=-1 OR target.event_index=-1 OR prior.event_index=target.event_index))`, reference, id).Scan(&used)
+		e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM retention_cash_orders() prior JOIN cash_orders target ON target.id=$2 WHERE prior.currency='USDT' AND prior.kind='deposit' AND prior.state='confirmed' AND prior.reference=$1 AND (prior.event_index=-1 OR target.event_index=-1 OR prior.event_index=target.event_index))`, reference, id).Scan(&used)
 		if e != nil {
 			return Order{}, e
 		}

@@ -9,7 +9,7 @@ const memberSearchPending = ref(false);
 import SelectControl from '@lottery/shared/SelectControl.vue'
 import { useOperationToast } from "@lottery/shared";
 import FilterAssociationSelect from "@lottery/shared/FilterAssociationSelect.vue";
-import { filterDateBoundary } from "@lottery/shared";
+import { platformDateBoundary, platformDisplaySettings } from "@lottery/shared";
 import { associationGroupLabel } from "@lottery/shared";
 import { useAdminI18n as useAssociationI18n } from "./i18n";
 const associationLocale = useAssociationI18n().locale;
@@ -139,8 +139,8 @@ function handle401(cause: unknown, ticket: number, scope: string) {
 }
 
 async function queryValues(from: string, to: string, memberUsername: string, gameId: string) {
-  const start = filterDateBoundary(from, false, 'local').toISOString();
-  const end = filterDateBoundary(to, true, 'local').toISOString();
+  const start = platformDateBoundary(from,false,platformDisplaySettings.value!.timezone).toISOString();
+  const end = platformDateBoundary(to,true,platformDisplaySettings.value!.timezone).toISOString();
   if (!start || !end) throw new Error("请选择有效的报表开始时间和结束时间。");
   if (Date.parse(end) <= Date.parse(start)) throw new Error("报表结束时间必须晚于开始时间。");
   if (Date.parse(end) - Date.parse(start) > 93 * 24 * 60 * 60 * 1000) throw new Error("查询时间范围不能超过 93 天。");

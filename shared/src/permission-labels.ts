@@ -1,4 +1,5 @@
 const modules: Record<string, [string, string]> = {
+ data_retention: ['数据归档','Data retention'],data_retention_policy:['归档策略','Retention policy'],data_retention_task:['归档任务','Retention execution'],
 	announcement: ['公告', 'Announcements'],
 	overview: ['经营总览', 'Platform overview'],
   platform_game: ['平台彩种', 'Platform games'],
@@ -50,6 +51,8 @@ const auditResources: Record<string, [string, string]> = {
  "cash.order":["资金订单","Currency orders"],
  "cash.balances":["资金余额","Currency balances"],
   ...modules,
+  'platform.data_retention.policy':['归档策略','Retention policy'],
+  'platform.data_retention.task':['归档任务','Retention execution'],
   association: ['关联账号搜索', 'Account search'], filter: ['筛选选项', 'Filter options'],
   brand_contacts: ['品牌联系方式', 'Brand contact details'],
   'brand_contacts.image': ['联系图片', 'Contact image'],

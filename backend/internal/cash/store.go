@@ -204,7 +204,7 @@ func post(ctx context.Context, tx pgx.Tx, o Order, operation string, d, w, r int
 	}
 	var tailRaw []byte
 	var tailVersion int64
-	err := tx.QueryRow(ctx, `SELECT after_snapshot,version FROM cash_entries WHERE brand_id=$1 AND member_id=$2 AND currency=$3 ORDER BY version DESC LIMIT 1`, o.BrandID, o.MemberID, o.Currency).Scan(&tailRaw, &tailVersion)
+	err := tx.QueryRow(ctx, `SELECT after_snapshot,version FROM retention_cash_entries() WHERE brand_id=$1 AND member_id=$2 AND currency=$3 ORDER BY version DESC LIMIT 1`, o.BrandID, o.MemberID, o.Currency).Scan(&tailRaw, &tailVersion)
 	if version == 0 {
 		if !errors.Is(err, pgx.ErrNoRows) || before != [3]int64{} {
 			return points.ErrCorrupt

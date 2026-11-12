@@ -18,7 +18,9 @@ for(const locale of ['en','zh-CN'] as const)test(`low-frequency lists expose ref
   const list={brand_id:gameId,items:[],total_count:'0',limit:Number(url.searchParams.get('limit')),offset:Number(url.searchParams.get('offset'))}
   let data:unknown
   if(['/api/v1/platform/platform-accounts','/api/v1/platform/platform-roles','/api/v1/platform/notification-deliveries'].includes(path))data={items:[],total_count:'0'}
-  else if(['/api/v1/platform/report-archives','/api/v1/platform/commission-cycles','/api/v1/platform/commission-payments','/api/v1/platform/reward-orders'].includes(path))data=list
+  else if(['/api/v1/platform/commission-cycles','/api/v1/platform/commission-payments','/api/v1/platform/reward-orders'].includes(path))data=list
+  else if(path==='/api/v1/platform/data-retention-policy')data={version:1,enabled:false,execution_day:10,execution_time:'02:00',timezone:'Asia/Singapore',next_run:null,updated_at:'2026-11-12T00:00:00Z'}
+  else if(path==='/api/v1/platform/data-retention-tasks')data={items:[],total_count:'0',limit:Number(url.searchParams.get('limit')),offset:Number(url.searchParams.get('offset'))}
   else if(path==='/api/v1/platform/notification-templates')data={items:[]}
   else if(path==='/api/v1/agent/wallet')data={commission_points:'0'}
   else if(path==='/api/v1/agent/commission')data={items:[],total_count:'0',credited_points:'0',debited_points:'0'}
@@ -30,7 +32,7 @@ for(const locale of ['en','zh-CN'] as const)test(`low-frequency lists expose ref
  const cases:[string,Record<string,unknown>][]=[
   ['AccessPanel',{...base,scope:'platform',accountId:gameId,grants:[],initialTab:'accounts'}],
   ['AccessPanel',{...base,scope:'platform',accountId:gameId,grants:[],initialTab:'roles'}],
-  ['ArchivesPanel',base],['CommissionPanel',{...base,initialTab:'cycles'}],['CommissionPanel',{...base,initialTab:'payments'}],
+  ['DataRetentionPanel',{...base,accountId:gameId,canManage:true}],['CommissionPanel',{...base,initialTab:'cycles'}],['CommissionPanel',{...base,initialTab:'payments'}],
   ['NotificationsPanel',{...base,view:'deliveries',accountId:gameId,canManage:false}],
   ['NotificationTemplatesPanel',{...base,accountId:gameId,canManage:false}],['RewardsPanel',{...base,brandName:'Refresh review'}],
   ['AgentCommission',{}],['AgentChildren',{}],
@@ -65,11 +67,11 @@ for(const locale of ['en','zh-CN'] as const)test(`player history pages omit ordi
  const preset=page.viewportSize()!
  for(const path of ['/wallet','/wallet/buckets','/wallet/ledger','/orders','/notifications','/results']){
   await page.goto(origins.user+path)
-  await expect(page.locator('.workspace-trailing button')).toBeVisible()
+  await expect(page.locator('.workspace-menu-trigger')).toBeVisible()
   await expect(page.locator('[data-refresh-button]')).toHaveCount(0)
   for(const width of info.project.name.endsWith('reflow')?[320,900,1280]:[preset.width]){
    if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:preset.height})
-   await page.locator('.workspace-trailing button').click()
+   await page.locator('.workspace-menu-trigger').click()
    await expect(page.locator('#user-page-refresh button')).toHaveCount(0)
    await expectNoPageOverflow(page)
    await page.locator('.workspace-menu-close').click()
@@ -97,7 +99,7 @@ for(const locale of ['en','zh-CN'] as const)test(`fast-draw refresh is limited t
  await expect(refresh).toHaveCount(0)
  fail=true;await picker.click();await page.getByRole('option',{name:'2026-11-06',exact:true}).click()
  await expect(refresh).toHaveCount(1)
- fail=false;await page.locator('.workspace-trailing button').click();await refresh.click()
+ fail=false;await page.locator('.workspace-menu-trigger').click();await refresh.click()
  await expect(refresh).toHaveCount(0)
  await page.locator('.workspace-menu-close').click()
  await expectNoPageOverflow(page)

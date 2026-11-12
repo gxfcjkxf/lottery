@@ -68,7 +68,7 @@ func (s Service) CreditUSDT(ctx context.Context, tx pgx.Tx, transfer USDTTransfe
 		return false, nil
 	}
 	var used bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM cash_orders WHERE currency='USDT' AND kind='deposit' AND state='confirmed' AND reference=$1 AND (event_index=-1 OR event_index=$2))`, transfer.Transaction, transfer.Index).Scan(&used); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM retention_cash_orders() WHERE currency='USDT' AND kind='deposit' AND state='confirmed' AND reference=$1 AND (event_index=-1 OR event_index=$2))`, transfer.Transaction, transfer.Index).Scan(&used); err != nil {
 		return false, err
 	}
 	if used {

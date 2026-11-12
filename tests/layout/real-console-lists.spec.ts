@@ -27,7 +27,9 @@ for (const surface of ['brand', 'platform'] as const) for (const locale of ['en'
       if (endpoint === '/overview') { const { brands, ...summary } = overviewFixture(); return reply(surface === 'platform' ? overviewFixture() : { ...summary, brand_id: gameId }) }
       if (endpoint === '/brands') return reply({ items: [brand], total_count: '1' })
       if (endpoint === '/presentation') return reply({ display_name: 'Review platform', logo_text: 'R', logo_url: '' })
-      if (endpoint === '/platform-settings') return reply({ version: 1, display_name: 'Review platform', logo_text: 'R', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', updated_at: at })
+      if(endpoint==='/data-retention-tasks')return reply({items:[],total_count:'0',limit:Number(url.searchParams.get('limit')??50),offset:Number(url.searchParams.get('offset')??0)})
+      if(endpoint==='/data-retention-policy')return reply({version:1,enabled:false,execution_day:10,execution_time:'02:00',timezone:'Asia/Singapore',next_run:null,updated_at:at})
+      if (endpoint === '/platform-settings') return reply({ version: 1, display_name: 'Review platform', logo_text: 'R', logo_url: '', theme:'jade', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', updated_at: at })
       if (endpoint === '/brand-presentation') return reply({brand_id:gameId,version:1,status:'active',base_name:brand.name,config:{},effective:{...theme,display_name:brand.name}})
       if (endpoint === '/agent-policy') return reply({brand_id:gameId,version:1,config:{enabled:true,max_depth:5,loss_ratio_cap:'0.25',turnover_ratio_cap:'0.03',mode:'loss',cycle:'monthly'},updated_at:at})
       if (endpoint === '/platform-permissions') return reply({items:permissions.filter(p=>p.endsWith('.platform'))})
@@ -46,7 +48,7 @@ for (const surface of ['brand', 'platform'] as const) for (const locale of ['en'
         return reply({ brand_id: gameId, snapshot_at: at, timezone: 'Asia/Singapore', query, summary: Object.fromEntries(fields.map(key => [key, '0'])), items: [], total_groups: '0', ...(kind==='ledger'?{balances: { account_count: '0', available_points: '0', frozen_points: '0', withdrawal_points: '0', total_points: '0' }}:{}) })
       }
       // Each empty collection is explicitly registered. Unknown endpoints fail.
-      if (['/users', '/agents', '/accounts', '/roles', '/platform-accounts', '/platform-roles', '/recharges', '/withdrawals', '/reward-orders', '/audit', '/commission-cycles', '/commission-payments', '/report-archives', '/notification-deliveries', '/configured-orders'].includes(endpoint)) return reply({ brand_id: gameId, items: [], total_count: '0', limit: Number(url.searchParams.get('limit') ?? 50), offset: 0, ...(endpoint === '/withdrawals' ? { has_more: false } : {}) })
+      if (['/users', '/agents', '/accounts', '/roles', '/platform-accounts', '/platform-roles', '/recharges', '/withdrawals', '/reward-orders', '/audit', '/commission-cycles', '/commission-payments', '/notification-deliveries', '/configured-orders'].includes(endpoint)) return reply({ brand_id: gameId, items: [], total_count: '0', limit: Number(url.searchParams.get('limit') ?? 50), offset: 0, ...(endpoint === '/withdrawals' ? { has_more: false } : {}) })
       throw Error(`Unconfigured real ${surface} request: ${endpoint}`)
     })
     await page.goto(origins[surface])
@@ -137,7 +139,7 @@ for (const surface of ['brand', 'platform'] as const) for (const locale of ['en'
     if(surface==='platform'){
       await platformNav(zh?'运营':'Operations')
       await platformNav(zh?'审计日志':'Audit log');await review('audit','/audit')
-      await platformNav(zh?'归档记录':'Archive records');await review('archives','/report-archives')
+      await platformNav(zh?'数据保留':'Data retention');await review('archives','/data-retention-tasks')
       await platformNav(zh?'通知模板':'Notification templates')
       await expect(page.getByTestId('platform-template-list').locator('table')).toBeVisible();await reviewRealPage(page,info,'platform-templates-'+locale)
       await platformNav(zh?'彩种':'Games');await review('games','/platform-games')

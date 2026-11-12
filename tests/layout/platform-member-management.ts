@@ -1,7 +1,7 @@
 import { expectRealEntry, expectListLayout } from './real-page-review'
 import { selectControl } from '../select-control'
 import { test, expect } from '@playwright/test'
-import { gameId, origins, installLayoutApi, openPlatformBrandList, expectInsideViewport } from './fixture'
+import { gameId, origins, installLayoutApi, openPlatformBrandList, expectInsideViewport, cashBalanceFixture } from './fixture'
 
 export function registerPlatformMemberManagementTests(reflow = false) {
   for (const locale of ['en', 'zh-CN'] as const) test(`platform member directory uses full search, presence and shared actions (${locale})`, async ({ page }, info) => {
@@ -21,8 +21,12 @@ export function registerPlatformMemberManagementTests(reflow = false) {
       const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
       if (path.endsWith('/presentation')) return reply({ display_name: 'Layout trial', logo_text: 'L', logo_url: '' })
       if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'directory_reviewer', super_admin: true, platform_permissions: allowed ? ['user.view.platform', 'wallet.view.platform', 'user.delete.platform'] : ['user.view.platform'] } })
-      if (path.endsWith('/platform-settings')) return reply({ display_name: 'Layout trial', logo_text: 'L', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', version: 1, updated_at: '2026-10-21T00:00:00Z' })
+      if (path.endsWith('/platform-settings')) return reply({ display_name: 'Layout trial', logo_text: 'L', logo_url: '', theme:'jade', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', version: 1, updated_at: '2026-10-21T00:00:00Z' })
       if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z' }, { id: otherBrand, name: 'Second', code: 'second', status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z' }] , total_count: '2'})
+      if (path.startsWith('/api/v1/platform/cash/balances/')) {
+        expect(req.headers()['x-brand-id']).toBe(gameId)
+        return reply(cashBalanceFixture())
+      }
       if (path.includes('/wallets/')) {
         expect(req.headers()['x-brand-id']).toBe(gameId)
         const id=path.split('/wallets/')[1]!.split('/')[0]!
@@ -49,21 +53,22 @@ export function registerPlatformMemberManagementTests(reflow = false) {
     const rows = () => page.locator('.platform-member-table tbody tr:has(td:not(.empty-state)),.platform-member-cards .user-card').filter({ visible: true })
     const pagination = page.getByTestId('platform-member-pages')
     await expect(rows()).toHaveCount(50); await expect(pagination.locator('.table-pagination-summary .table-pagination-desktop')).toHaveText(zh ? '第 1 页 · 本页 50 条 · 共 51 条' : 'Page 1 · 50 records on this page · Total: 51')
-    await expect(rows().first()).toContainText('9007199254740993')
+    await expect(rows().first()).toContainText('9,007,199,254,740,993')
     await expect(rows().first().getByRole('button', { name: 'member001', exact: true })).toHaveCount(1)
     await pagination.getByRole('button', { name: zh ? '下一页' : 'Next page', exact: true }).click()
     await expect(rows()).toHaveCount(1); await expect(rows()).toContainText('member051')
     await expect(pagination.locator('.table-pagination-summary .table-pagination-desktop')).toHaveText(zh ? '第 2 页 · 本页 1 条 · 共 51 条' : 'Page 2 · 1 record on this page · Total: 51')
-    const search = page.getByRole('textbox', { name: zh ? '搜索账号或手机号' : 'Search account or phone', exact: true })
+    const search = page.getByRole('searchbox', { name: zh ? '搜索账号或手机号' : 'Search account or phone', exact: true })
     await search.fill('MEMBER001'); await search.press('Enter')
     await expect(rows()).toHaveCount(1); await expect(rows()).toContainText('member001')
     expect(queries.at(-1)!.searchParams.get('q')).toBe('MEMBER001'); expect(queries.at(-1)!.searchParams.get('offset')).toBe('0')
-    const clear = () => page.getByRole('button', { name: zh ? '清空' : 'Clear', exact: true })
-    await clear().click()
+    await page.getByRole('button', { name: zh ? '清除输入' : 'Clear input', exact: true }).click()
+    await expect(search).toHaveValue(''); await expect(rows()).toHaveCount(1)
+    await search.press('Enter'); await expect(rows()).toHaveCount(50)
     const online = page.getByRole('combobox', { name: zh ? '在线状态' : 'Online status', exact: true })
     await selectControl(online, 'false'); await page.locator('.member-filters button[type=submit]').click()
     await expect(rows()).toHaveCount(25); expect(queries.at(-1)!.searchParams.get('online')).toBe('false')
-    await clear().click(); await expect(rows()).toHaveCount(50)
+    await selectControl(online, ''); await page.locator('.member-filters button[type=submit]').click(); await expect(rows()).toHaveCount(50)
     await rows().first().getByRole('button', { name: 'member001', exact: true }).click()
     const detail = page.getByRole('dialog', { name: zh ? '会员详情' : 'Member details', exact: true })
     await expect(detail).toContainText('9007199254740993'); await expectInsideViewport(detail); await page.keyboard.press('Escape')
@@ -74,7 +79,7 @@ export function registerPlatformMemberManagementTests(reflow = false) {
     await menu.getByRole('menuitem', { name: zh ? '会员详情' : 'Member details', exact: true }).click(); await expect(detail).toBeVisible(); await page.keyboard.press('Escape')
     await search.fill('member001'); await search.press('Enter')
     await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), otherBrand)
-    await expect(search).toHaveValue(''); await expect(online).toHaveAttribute('data-value', ''); await expect(rows()).toHaveCount(0); await expect(pagination).toContainText(zh ? '共 0 条' : 'Total: 0')
+    await expect(search).toHaveValue(''); await expect(online).toHaveAttribute('data-value', ''); await expect(rows()).toHaveCount(0); await expect(pagination).toHaveCount(0); await expect(page.getByRole('cell', {name:zh?'没有匹配的会员。':'No matching members.',exact:true})).toBeVisible()
     expect(queries.at(-1)!.searchParams.has('q')).toBe(false)
     await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), gameId)
     await expect(rows()).toHaveCount(50)

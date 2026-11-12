@@ -23,6 +23,8 @@ func platformLotteryResult(status int, out any, err error) (mutation.Result, err
 	switch {
 	case errors.Is(err, platformlottery.ErrDrawCalendar):
 		return mutation.Fail(409, "DRAW_CALENDAR_UNAVAILABLE", "Official draw calendar or reference period is missing"), nil
+	case errors.Is(err, platformlottery.ErrPeriodArchived):
+		return mutation.Fail(409, "PLATFORM_PERIOD_ARCHIVED", "本期明细已归档，无法修改开奖结果"), nil
 	case errors.Is(err, platformlottery.ErrPeriodInUse):
 		return mutation.Fail(409, "PLATFORM_PERIOD_IN_USE", "Opening time cannot change after orders, closing, or publication"), nil
 	case errors.Is(err, platformlottery.ErrGameInUse):

@@ -203,7 +203,17 @@ func (s Service) WriteConfiguredSales(ctx context.Context, tx pgx.Tx, a access.A
 	return in, e
 }
 
+var ErrPeriodArchived = errors.New("period details have been archived")
+
 func validateConfiguredPeriodDraw(ctx context.Context, tx pgx.Tx, id string, result rules.Draw) error {
+	var archived bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM data_retention_receipts WHERE family='configured_orders' AND payload->>'period_id'=$1::text)`, id).Scan(&archived); err != nil {
+		return err
+	}
+	if archived {
+		return ErrPeriodArchived
+	}
+
 	rows, err := tx.Query(ctx, `SELECT DISTINCT snapshot FROM configured_orders WHERE period_id=$1`, id)
 	if err != nil {
 		return err

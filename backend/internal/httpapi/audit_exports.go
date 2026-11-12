@@ -158,7 +158,7 @@ func auditItems(r *http.Request, tx pgx.Tx, brand string, q auditQuery, export b
  CASE WHEN octet_length(coalesce(a.before_json,'null'::jsonb)::text)<=$11 THEN coalesce(a.before_json,'null'::jsonb) ELSE NULL END,
  CASE WHEN octet_length(coalesce(a.after_json,'null'::jsonb)::text)<=$11 THEN coalesce(a.after_json,'null'::jsonb) ELSE NULL END
  FROM bounds b LEFT JOIN LATERAL (
- SELECT * FROM audit_logs WHERE ($1='' OR brand_id=NULLIF($1,'')::uuid)
+ SELECT * FROM retention_audit_logs() audit_logs WHERE ($1='' OR brand_id=NULLIF($1,'')::uuid)
  AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)
  AND created_at <= b.at AND ($4='' OR action=$4) AND ($5='' OR actor_id=NULLIF($5,'')::uuid)
  AND ($6='' OR resource_type=$6) AND ($7='' OR resource_id=NULLIF($7,'')::uuid) AND ($8='' OR request_id=$8)
@@ -290,7 +290,7 @@ func registerAuditRoutes(handle func(string, string, http.HandlerFunc), d Depend
 			if e != nil {
 				return nil, e
 			}
-			return countedItems(r.Context(), tx, items, `SELECT count(*)::text FROM audit_logs WHERE ($1='' OR brand_id=NULLIF($1,'')::uuid) AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3) AND ($4='' OR action=$4) AND ($5='' OR actor_id=NULLIF($5,'')::uuid) AND ($6='' OR resource_type=$6) AND ($7='' OR resource_id=NULLIF($7,'')::uuid) AND ($8='' OR request_id=$8) AND created_at <= $9 AND ($10='' OR strpos(lower(`+auditActorNameSQL+`),lower($10))>0) AND ($11='' OR (`+auditActionTypeSQL+`)=$11)`, brand, q.From, q.To, q.Action, q.ActorID, q.ResourceType, q.ResourceID, q.RequestID, snapshot, q.Actor, q.ActionType)
+			return countedItems(r.Context(), tx, items, `SELECT count(*)::text FROM retention_audit_logs() audit_logs WHERE ($1='' OR brand_id=NULLIF($1,'')::uuid) AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3) AND ($4='' OR action=$4) AND ($5='' OR actor_id=NULLIF($5,'')::uuid) AND ($6='' OR resource_type=$6) AND ($7='' OR resource_id=NULLIF($7,'')::uuid) AND ($8='' OR request_id=$8) AND created_at <= $9 AND ($10='' OR strpos(lower(`+auditActorNameSQL+`),lower($10))>0) AND ($11='' OR (`+auditActionTypeSQL+`)=$11)`, brand, q.From, q.To, q.Action, q.ActorID, q.ResourceType, q.ResourceID, q.RequestID, snapshot, q.Actor, q.ActionType)
 		})
 		if historyFailure(w, r, e) {
 			return

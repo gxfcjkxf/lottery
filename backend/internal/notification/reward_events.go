@@ -101,8 +101,8 @@ func validateRewardEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate 
  SELECT 1
  FROM reward_order_actions a
  JOIN reward_orders o ON o.brand_id=a.brand_id AND o.id=a.order_id
- JOIN audit_logs au ON au.id=a.audit_log_id AND au.brand_id=a.brand_id
- LEFT JOIN point_ledger_entries l ON l.id=a.ledger_entry_id AND l.brand_id=a.brand_id
+ JOIN retention_audit_logs() au ON au.id=a.audit_log_id AND au.brand_id=a.brand_id
+ LEFT JOIN retention_point_ledger_entries() l ON l.id=a.ledger_entry_id AND l.brand_id=a.brand_id
 	 WHERE a.brand_id=$1::uuid AND a.id=$2::uuid AND a.order_id=$4::uuid
    AND a.audit_log_id=$8::uuid
    AND o.member_id=$3::uuid AND o.points=$7::text::numeric
@@ -140,8 +140,8 @@ func validateRewardEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate 
        'commission',jsonb_build_object('available','0','manual_frozen','0','system_frozen','0','withdrawal','0'))
      AND l.source_allocation=jsonb_build_array(jsonb_build_object('source','gift','state','available','points',o.points::text))
      AND EXISTS(SELECT 1 FROM reward_order_actions g
-       JOIN point_ledger_entries gl ON gl.id=g.ledger_entry_id AND gl.brand_id=g.brand_id
-       JOIN audit_logs ga ON ga.id=g.audit_log_id AND ga.brand_id=g.brand_id
+       JOIN retention_point_ledger_entries() gl ON gl.id=g.ledger_entry_id AND gl.brand_id=g.brand_id
+       JOIN retention_audit_logs() ga ON ga.id=g.audit_log_id AND ga.brand_id=g.brand_id
        WHERE g.brand_id=o.brand_id AND g.order_id=o.id AND g.operation='grant' AND g.version=1
          AND g.state_before IS NULL AND g.state_after='granted'
          AND g.ledger_entry_id=o.grant_ledger_entry_id AND gl.member_id=o.member_id

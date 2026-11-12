@@ -95,11 +95,11 @@ func saveReceipt(ctx context.Context, tx pgx.Tx, o Order, key, hash string, meta
 	return err
 }
 func (s OrderService) orderTx(ctx context.Context, tx pgx.Tx, brand, id string, lock bool) (Order, error) {
-	suffix := ""
+	source, suffix := "retention_withdrawal_orders()", ""
 	if lock {
-		suffix = " FOR UPDATE"
+		source, suffix = "withdrawal_orders", " FOR UPDATE"
 	}
-	out, err := scanOrder(tx.QueryRow(ctx, `SELECT `+orderColumns+` FROM withdrawal_orders WHERE brand_id=$1 AND id=$2`+suffix, brand, id))
+	out, err := scanOrder(tx.QueryRow(ctx, `SELECT `+orderColumns+` FROM `+source+` WHERE brand_id=$1 AND id=$2`+suffix, brand, id))
 	if err == nil {
 		err = tx.QueryRow(ctx, `SELECT audit_log_id::text FROM withdrawal_order_transitions WHERE order_id=$1 AND version=$2`, id, out.Version).Scan(&out.AuditLogID)
 	}
@@ -203,7 +203,7 @@ func (s OrderService) Create(ctx context.Context, tx pgx.Tx, brand, member strin
 		return empty, err
 	}
 	var active bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM withdrawal_orders WHERE brand_id=$1 AND member_id=$2 AND state IN('reviewing','processing'))`, brand, member).Scan(&active); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM retention_withdrawal_orders() WHERE brand_id=$1 AND member_id=$2 AND state IN('reviewing','processing'))`, brand, member).Scan(&active); err != nil {
 		return empty, err
 	}
 	if active {

@@ -30,16 +30,17 @@ test('platform admin entry documents only registered independent routes and its 
       || route.method === 'DELETE' && route.path === '/api/v1/admin/brands/{id}'
       || route.method === 'PATCH' && ['/api/v1/admin/accounts/{id}', '/api/v1/admin/roles/{id}', '/api/v1/admin/brand-operation'].includes(route.path))
     .map(route => ({ ...route, path: route.path.replace('/api/v1/admin/', '/api/v1/platform/') }));
-  for (const [method, path] of [['GET','/notification-templates'],['GET','/notification-templates/{key}/history'],['PUT','/notification-templates/{key}'],['GET','/commission-settings'], ['GET','/brand-domains'], ['GET','/brand-domains/history'], ['GET','/platform-games/official-calendar'], ['GET','/platform-games/{id}/draw-overview'], ['GET','/presentation'], ['GET','/announcements/brands'],['GET','/platform-games/{id}/draw-sources'], ['GET', '/platform-accounts'], ['GET', '/platform-roles'], ['GET','/platform-permissions'], ['GET','/platform-settings'], ['POST', '/platform-accounts'], ['PATCH', '/platform-accounts/{id}'], ['POST', '/platform-accounts/{id}/reset-password']]) {
+  for (const [method, path] of [['GET','/notification-templates'],['GET','/notification-templates/{key}/history'],['PUT','/notification-templates/{key}'],['GET','/commission-settings'], ['GET','/brand-domains'], ['GET','/brand-domains/history'], ['GET','/platform-games/official-calendar'], ['GET','/presentation'], ['GET','/announcements/brands'],['GET','/platform-games/{id}/draw-sources'], ['GET', '/platform-accounts'], ['GET', '/platform-roles'], ['GET','/platform-permissions'], ['GET','/platform-settings'], ['POST', '/platform-accounts'], ['PATCH', '/platform-accounts/{id}'], ['POST', '/platform-accounts/{id}/reset-password']]) {
     expectedPlatformRoutes.push({ method, path: `/api/v1/platform${path}` });
   }
-  for (const path of ['/report-archive-policy']) expectedPlatformRoutes.push({method:'GET',path:`/api/v1/platform${path}`});
+  for (const path of ['/data-retention-policy','/data-retention-tasks']) expectedPlatformRoutes.push({method:'GET',path:`/api/v1/platform${path}`});
   const platformExtraWrites = [
     'PUT /api/v1/platform/commission-settings',
     'POST /api/v1/platform/brand-domains',
     'PATCH /api/v1/platform/brand-domains/{domainID}',
     'DELETE /api/v1/platform/brand-domains/{domainID}',
-    'PUT /api/v1/platform/report-archive-policy',
+    'PUT /api/v1/platform/data-retention-policy',
+    'POST /api/v1/platform/data-retention-tasks/{id}/retry',
     'POST /api/v1/platform/platform-games/periods/{id}/opening',
     'POST /api/v1/platform/platform-games/{id}/draw-schedule',
     'POST /api/v1/platform/recharge-quota/grants',

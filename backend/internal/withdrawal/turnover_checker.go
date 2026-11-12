@@ -51,7 +51,7 @@ func (TurnoverChecker) Check(ctx context.Context, tx pgx.Tx, in EligibilityInput
 	// no reservation rather than introducing an inverse-order deadlock. Locks
 	// also prevent a new correction from starting between the read and commit.
 	rows, err := tx.Query(ctx, `SELECT p.id::text FROM platform_game_periods p WHERE true
- AND EXISTS(SELECT 1 FROM betting_financial_facts o JOIN point_ledger_entries l ON l.id=o.debit_entry_id
+ AND EXISTS(SELECT 1 FROM betting_financial_facts o JOIN retention_point_ledger_entries() l ON l.id=o.debit_entry_id
  WHERE o.period_id=p.id AND `+turnoverWalletRange+` AND o.status IN ('won','lost'))
  ORDER BY p.id FOR SHARE OF p NOWAIT`, args...)
 	if err != nil {
@@ -76,7 +76,7 @@ func (TurnoverChecker) Check(ctx context.Context, tx pgx.Tx, in EligibilityInput
 	rows, err = tx.Query(ctx, `SELECT o.id::text,o.game_id::text,o.period_id::text,o.rule_version_id::text,
  o.effective_points,l.version,o.withdrawal_rule_snapshot,o.result::text,
  (o.settled_at IS NOT NULL AND p.result IS NOT NULL AND lottery_business_ledger_applied(l,o.brand_id,o.account_id))
- FROM betting_financial_facts o JOIN point_ledger_entries l ON l.id=o.debit_entry_id JOIN platform_game_periods p ON p.id=o.period_id
+ FROM betting_financial_facts o JOIN retention_point_ledger_entries() l ON l.id=o.debit_entry_id JOIN platform_game_periods p ON p.id=o.period_id
  WHERE `+turnoverWalletRange+` AND o.status IN('won','lost') ORDER BY l.version,o.id`, args...)
 	if err != nil {
 		return empty, err

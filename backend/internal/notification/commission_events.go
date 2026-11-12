@@ -82,7 +82,7 @@ func validateCommissionEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggreg
 	case "commission.paid":
 		err = tx.QueryRow(ctx, `SELECT EXISTS(
  SELECT 1 FROM commission_payment_targets t
- JOIN point_ledger_entries l ON l.id=t.ledger_entry_id AND l.brand_id=t.brand_id
+ JOIN retention_point_ledger_entries() l ON l.id=t.ledger_entry_id AND l.brand_id=t.brand_id
  WHERE t.brand_id=$1 AND t.id=$2 AND t.state='paid' AND t.points=$5::numeric
  AND t.member_id=$3 AND t.ledger_entry_id=$4
  AND l.member_id=t.member_id AND l.entry_type='commission' AND l.reference_type='commission_payment_target'
@@ -97,7 +97,7 @@ func validateCommissionEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggreg
 		err = tx.QueryRow(ctx, `SELECT EXISTS(
  SELECT 1 FROM commission_adjustments a
  JOIN commission_payment_targets t ON t.brand_id=a.brand_id AND t.id=a.target_id
- JOIN point_ledger_entries l ON l.id=a.ledger_entry_id AND l.brand_id=a.brand_id
+ JOIN retention_point_ledger_entries() l ON l.id=a.ledger_entry_id AND l.brand_id=a.brand_id
  WHERE a.brand_id=$1 AND a.id=$2 AND a.delta_points=$5::numeric AND a.delta_points<>0 AND a.target_id=$6
  AND t.member_id=$3 AND a.ledger_entry_id=$4
  AND l.member_id=t.member_id AND l.entry_type='commission_adjustment' AND l.reference_type='commission_adjustment'

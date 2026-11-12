@@ -31,6 +31,7 @@ func TestWithdrawalReportsRealOrdersExactLargeSumsAndCurrentProjection(t *testin
 			t.Fatal(err)
 		}
 	}
+	// Amount stores hundredths; report and CSV totals use point units.
 	const amount points.Amount = 6000000000000000000
 	f.fund(t, oneRechargeAllocation(amount))
 	g.fund(t, oneRechargeAllocation(amount))
@@ -46,7 +47,7 @@ func TestWithdrawalReportsRealOrdersExactLargeSumsAndCurrentProjection(t *testin
 	s := reporting.Service{DB: f.db}
 	q := reporting.Query{From: a.CreatedAt.Add(-time.Nanosecond), To: b.CreatedAt.Add(time.Nanosecond), GroupBy: "state", Limit: 20}
 	r, err := s.Withdrawal(ctx, orderTestBrand, q)
-	if err != nil || r.Summary.OrderCount != "2" || r.Summary.RequestedPoints != "12000000000000000000" || r.Summary.PaidPoints != "6000000000000000000" || r.Summary.ReviewingPoints != "6000000000000000000" || r.TotalGroups != "2" {
+	if err != nil || r.Summary.OrderCount != "2" || r.Summary.RequestedPoints != "120000000000000000" || r.Summary.PaidPoints != "60000000000000000" || r.Summary.ReviewingPoints != "60000000000000000" || r.TotalGroups != "2" {
 		t.Fatal(r, err)
 	}
 	q.Offset = 1
@@ -70,7 +71,7 @@ func TestWithdrawalReportsRealOrdersExactLargeSumsAndCurrentProjection(t *testin
 		t.Fatal(err)
 	}
 	csv, err := reporting.WithdrawalCSV(export)
-	if err != nil || !strings.Contains(string(csv), "12000000000000000000") {
+	if err != nil || !strings.Contains(string(csv), "120000000000000000") {
 		t.Fatal("CSV lost exact total", err)
 	}
 	_ = tx.Rollback(ctx)
@@ -78,7 +79,7 @@ func TestWithdrawalReportsRealOrdersExactLargeSumsAndCurrentProjection(t *testin
 		t.Fatal(err)
 	}
 	r, err = s.Withdrawal(ctx, orderTestBrand, q)
-	if err != nil || r.Summary.RejectedPoints != "6000000000000000000" || r.Summary.ReviewingCount != "0" || r.Summary.RequestedPoints != "12000000000000000000" {
+	if err != nil || r.Summary.RejectedPoints != "60000000000000000" || r.Summary.ReviewingCount != "0" || r.Summary.RequestedPoints != "120000000000000000" {
 		t.Fatal(r, err)
 	}
 	// Submitted-time grouping remains unchanged by a later terminal transition.

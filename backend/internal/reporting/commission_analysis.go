@@ -89,7 +89,7 @@ func (s Service) commissionAnalysis(ctx context.Context, runner rowQuerier, bran
 	sql := commissionAnalysisSQL(q.GroupBy)
 	var valid, integrity bool
 	var coverage, summary, items []byte
-	err := runner.QueryRow(ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.AgentID, q.MemberID, q.CycleID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &integrity, &coverage, &summary, &items, &out.TotalGroups)
+	err := historyQueryRow(runner, ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.AgentID, q.MemberID, q.CycleID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &integrity, &coverage, &summary, &items, &out.TotalGroups)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && !valid {
 		return out, ErrNotFound
 	}

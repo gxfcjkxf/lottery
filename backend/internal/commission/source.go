@@ -52,7 +52,7 @@ func (Source) FinalOrderTx(ctx context.Context, tx pgx.Tx, brand, order string) 
 		return Resolution{}, ErrInvalid
 	}
 	var period string
-	err := tx.QueryRow(ctx, `SELECT p.id::text FROM platform_game_periods p JOIN configured_orders o ON o.period_id=p.id WHERE o.brand_id=$1 AND o.id=$2 FOR SHARE OF p NOWAIT`, brand, order).Scan(&period)
+	err := tx.QueryRow(ctx, `SELECT p.id::text FROM platform_game_periods p JOIN retention_configured_orders() o ON o.period_id=p.id WHERE o.brand_id=$1 AND o.id=$2 FOR SHARE OF p NOWAIT`, brand, order).Scan(&period)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Resolution{}, ErrNotFound
 	}
@@ -72,7 +72,7 @@ func (Source) FinalOrderTx(ctx context.Context, tx pgx.Tx, brand, order string) 
 	err = tx.QueryRow(ctx, `SELECT o.brand_id::text,o.id::text,o.brand_member_id::text,o.account_id::text,o.game_id::text,o.period_id::text,o.rule_version_id::text,o.debit_entry_id::text,
  o.status,o.effective_points,o.prize_points,o.loss_points,o.placed_at,o.settled_at,o.deduction_allocation,o.attribution_snapshot,l.version,
  coalesce(o.snapshot->'catalog'->>'funding'='reserve',false),o.payout_entry_id::text,o.refund_entry_id::text,o.loss_entry_id::text
- FROM betting_financial_facts o JOIN point_ledger_entries l ON l.id=o.debit_entry_id WHERE o.brand_id=$1 AND o.id=$2`, brand, order).Scan(
+ FROM betting_financial_facts o JOIN retention_point_ledger_entries() l ON l.id=o.debit_entry_id WHERE o.brand_id=$1 AND o.id=$2`, brand, order).Scan(
 		&fact.BrandID, &fact.OrderID, &fact.MemberID, &fact.AccountID, &fact.GameID, &fact.PeriodID, &fact.RuleVersionID, &fact.DebitEntryID,
 		&fact.Status, &fact.Basis.TurnoverPoints, &fact.PrizePoints, &loss, &fact.PlacedAt, &settled, &allocation, &attribution, &fact.BetLedgerVersion, &reserved, &payout, &refund, &lossEntry)
 	if err != nil {
@@ -110,7 +110,7 @@ func (Source) FinalOrderTx(ctx context.Context, tx pgx.Tx, brand, order string) 
 		}
 		var raw []byte
 		var alloc []points.Allocation
-		if err = tx.QueryRow(ctx, `SELECT source_allocation FROM point_ledger_entries WHERE id=$1`, *entry.id).Scan(&raw); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT source_allocation FROM retention_point_ledger_entries() WHERE id=$1`, *entry.id).Scan(&raw); err != nil {
 			return Resolution{}, err
 		}
 		if json.Unmarshal(raw, &alloc) != nil {
@@ -127,7 +127,7 @@ func (Source) FinalOrderTx(ctx context.Context, tx pgx.Tx, brand, order string) 
 func verifyPosting(ctx context.Context, tx pgx.Tx, fact OrderFact, id, kind, reference, referenceID string, expectedAllocation []points.Allocation, from, to string) error {
 	var allocation, delta, before, after []byte
 	err := tx.QueryRow(ctx, `SELECT source_allocation,delta_snapshot,before_snapshot,after_snapshot
- FROM point_ledger_entries WHERE brand_id=$1 AND member_id=$2 AND account_id=$3 AND id=$4
+ FROM retention_point_ledger_entries() WHERE brand_id=$1 AND member_id=$2 AND account_id=$3 AND id=$4
  AND entry_type=$5 AND reference_type=$6 AND reference_id=$7`, fact.BrandID, fact.MemberID, fact.AccountID, id, kind, reference, referenceID).Scan(&allocation, &delta, &before, &after)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrEvidence

@@ -38,7 +38,7 @@
 | `platform-web/src/WithdrawalsPanel.vue` | 提现记录、详情来源分配及历史：业务记录分页；来源分配是订单快照内有限明细 |
 | `platform-web/src/RewardsPanel.vue` | 奖励记录及操作历史：刷新进入工具栏；历史属于详情内独立列表 |
 | `platform-web/src/WalletPanel.vue` | 会员流水：详情内统一列表、刷新和分页；四来源×余额状态是固定维度表，不添加分页 |
-| `platform-web/src/ArchivesPanel.vue` | 日/月归档：视图页签、刷新、记录和分页归属同一列表 |
+| `platform-web/src/DataRetentionPanel.vue` | 月度数据归档：执行记录与保留策略共用列表容器；记录表、实际分页及详情明细使用共享组件；不提供逐条删除、批量动作或导出；重试仅针对失败任务 |
 | `platform-web/src/NotificationsPanel.vue` | 消息投递：刷新、空表及分页；失败保留已读取的记录 |
 | `platform-web/src/NotificationTemplatesPanel.vue` | 通知模板是固定事件目录，展示全部已支持事件并使用共享表格/工具栏，不伪造分页 |
 | `platform-web/src/ReportsPanel.vue` | 六类业务报表：查询、导出、汇总和结果属于同一列表，实际总数驱动分页 |

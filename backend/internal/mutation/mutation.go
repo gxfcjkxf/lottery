@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"regexp"
+	"time"
 )
 
 type Failure struct {
@@ -162,15 +163,19 @@ func (e *Engine) execute(ctx context.Context, brand, actor, operation, key, fing
 		}
 	}
 	var storedHash string
+	var archivedAt *time.Time
 	var sealed []byte
 	if brand == "" {
-		err = tx.QueryRow(ctx, `SELECT request_hash,response FROM platform_idempotency_requests WHERE actor_id=$1 AND operation=$2 AND key=$3`, actorID, operation, key).Scan(&storedHash, &sealed)
+		err = tx.QueryRow(ctx, `SELECT request_hash,response,archived_at FROM platform_idempotency_requests WHERE actor_id=$1 AND operation=$2 AND key=$3`, actorID, operation, key).Scan(&storedHash, &sealed, &archivedAt)
 	} else {
-		err = tx.QueryRow(ctx, `SELECT request_hash,response FROM idempotency_requests WHERE brand_id=$1 AND actor_id=$2 AND operation=$3 AND key=$4`, brand, actorID, operation, key).Scan(&storedHash, &sealed)
+		err = tx.QueryRow(ctx, `SELECT request_hash,response,archived_at FROM idempotency_requests WHERE brand_id=$1 AND actor_id=$2 AND operation=$3 AND key=$4`, brand, actorID, operation, key).Scan(&storedHash, &sealed, &archivedAt)
 	}
 	if err == nil {
 		if storedHash != fingerprint {
 			return Fail(409, "IDEMPOTENCY_CONFLICT", "幂等键已用于不同请求"), nil
+		}
+		if archivedAt != nil {
+			return Fail(409, "IDEMPOTENCY_RECEIPT_ARCHIVED", "原请求回执已归档，请查询当前记录"), nil
 		}
 		var stored sealedResponse
 		if err = json.Unmarshal(sealed, &stored); err != nil {

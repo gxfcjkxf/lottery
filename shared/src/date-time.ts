@@ -36,6 +36,23 @@ function parts(value: string, timezone: string) {
   return Object.fromEntries(values.map(part => [part.type, part.value]))
 }
 
+/** Date-only report filters use complete natural days in an explicit zone. */
+export function platformDateBoundary(value: string, end: boolean, timezone: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !timezone || timezone === 'Local') throw new TypeError('Invalid report date')
+  const date = new Date(`${value}T00:00:00Z`)
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new TypeError('Invalid report date')
+  if (end) date.setUTCDate(date.getUTCDate() + 1)
+  const wall = date.getTime()
+  let instant = wall
+  for (let step = 0; step < 4; step++) {
+    const p = parts(new Date(instant).toISOString(), timezone)
+    const represented = Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}Z`)
+    if (represented === wall) return new Date(instant)
+    instant += wall - represented
+  }
+  throw new TypeError('This report date has no midnight in its timezone')
+}
+
 export function formatPlatformDateTime(value: string | null | undefined, settings: PlatformDisplaySettings, locale: 'en' | 'zh-CN'): string {
   if (!value) return '—'
   const valueParts = parts(value, settings.timezone)

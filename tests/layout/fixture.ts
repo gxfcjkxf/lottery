@@ -1,6 +1,7 @@
 import { expect, type Page, type Locator } from '@playwright/test'
 import { expectFilterSpacing } from './filter-spacing'
 import {readFileSync} from 'node:fs'
+import {currencies,type CashConfig,type CashBalance} from '../../shared/src/cash'
 import {configuredDemo} from '../../shared/src/configured-rules'
 import { redundantAnnotation } from '../ui-copy-contract.mjs'
 const configuredSnapshot=configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/mark_six_v2.json','utf8')))
@@ -255,7 +256,7 @@ export async function expectPlayTabLabelsFit(page: Page) {
 export async function expectRefreshControls(page: Page) {
   const menu=page.locator('.workspace-menu-layer');
   const open=await menu.count()>0 && !await menu.isVisible();
-  if(open)await page.locator('.workspace-trailing > button.icon-button').click();
+  if(open)await page.locator('.workspace-menu-trigger').click();
   const buttons = page.locator('[data-refresh-button]').filter({ visible: true });
   for (const button of await buttons.all()) {
     const management = await button.evaluate(el => !!el.closest('.management-console'));
@@ -282,9 +283,20 @@ export async function expectRefreshControls(page: Page) {
   if(open)await page.locator('.workspace-menu-close').click();
 }
 
+export const cashBalanceFixture = (): CashBalance[] => currencies.map(currency => ({currency,deposited:'0',withdrawable:'0',reserved:'0'}))
+
 // Populated wallet snapshots deliberately distinguish available, frozen and reserved points.
 export async function installWalletLayoutApi(page: Page) {
   await installOrdersLayoutApi(page);
+  const config: CashConfig = {version:1,rules:currencies.map(currency=>({currency,enabled:false,rate:'1',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'1'}))}
+  await page.route('**/api/v1/cash',route=>{
+    expect(route.request().method()).toBe('GET')
+    return route.fulfill({json:{success:true,data:{auto_usdt:false,actor_context:'a'.repeat(64),brand_id:gameId,member_id:gameId,balances:cashBalanceFixture(),destinations:[],platform:config,brand:config}}})
+  })
+  await page.route('**/api/v1/cash/orders?**',route=>{
+    expect(route.request().method()).toBe('GET')
+    return route.fulfill({json:{success:true,data:{items:[],total_count:'0'}}})
+  })
   const buckets = (available: string, manual: string) => Object.fromEntries(
     ['recharge', 'winning', 'gift', 'commission'].map(source => [source, source === 'recharge'
       ? { available, manual_frozen: manual, system_frozen: '30', withdrawal: '40' }

@@ -81,6 +81,7 @@ func registerReportAdminRoutes(handle func(string, string, http.HandlerFunc), d 
 			} else {
 				data, e = s.Ledger(r.Context(), brand, q)
 			}
+			if errors.Is(e,reporting.ErrHistoricalRange){failure(w,r,400,"REPORT_HISTORY_DAY_RANGE_INVALID","历史报表须按归档时区查询完整自然日");return}
 			if errors.Is(e, reporting.ErrNotFound) {
 				failure(w, r, 404, "REPORT_SCOPE_NOT_FOUND", "当前品牌未找到对应报表筛选资源")
 				return

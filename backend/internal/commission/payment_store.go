@@ -233,9 +233,9 @@ func invalidatePayment(ctx context.Context, tx pgx.Tx, p paymentRow, meta points
 	// is zero. Reverse bindings also prevent a missing pointer hiding money.
 	if err := tx.QueryRow(ctx, `SELECT
  EXISTS(SELECT 1 FROM commission_payment_targets t WHERE t.brand_id=$1 AND t.payment_id=$2 AND
- (t.ledger_entry_id IS NOT NULL OR EXISTS(SELECT 1 FROM point_ledger_entries l WHERE l.brand_id=$1 AND l.reference_type='commission_payment_target' AND l.reference_id=t.id)))
+ (t.ledger_entry_id IS NOT NULL OR EXISTS(SELECT 1 FROM retention_point_ledger_entries() l WHERE l.brand_id=$1 AND l.reference_type='commission_payment_target' AND l.reference_id=t.id)))
  OR EXISTS(SELECT 1 FROM commission_adjustments a WHERE a.brand_id=$1 AND a.payment_id=$2 AND
- (a.ledger_entry_id IS NOT NULL OR EXISTS(SELECT 1 FROM point_ledger_entries l WHERE l.brand_id=$1 AND l.reference_type='commission_adjustment' AND l.reference_id=a.id)))`, p.Brand, p.ID).Scan(&credited); err != nil {
+ (a.ledger_entry_id IS NOT NULL OR EXISTS(SELECT 1 FROM retention_point_ledger_entries() l WHERE l.brand_id=$1 AND l.reference_type='commission_adjustment' AND l.reference_id=a.id)))`, p.Brand, p.ID).Scan(&credited); err != nil {
 		return err
 	}
 	state := "stale"

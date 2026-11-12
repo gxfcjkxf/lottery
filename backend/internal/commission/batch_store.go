@@ -182,7 +182,7 @@ func (s Service) RetryCycleTx(ctx context.Context, tx pgx.Tx, brand, id string, 
 
 func pendingCycle(ctx context.Context, tx pgx.Tx, c cycleRow) (bool, error) {
 	var pending bool
-	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM commission_cycle_targets t JOIN configured_orders o ON o.brand_id=t.brand_id AND o.id=t.order_id WHERE t.cycle_id=$1 AND o.status='placed')`, c.ID).Scan(&pending)
+	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM commission_cycle_targets t JOIN retention_configured_orders() o ON o.brand_id=t.brand_id AND o.id=t.order_id WHERE t.cycle_id=$1 AND o.status='placed')`, c.ID).Scan(&pending)
 	return pending, err
 }
 

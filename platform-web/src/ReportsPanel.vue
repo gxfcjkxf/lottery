@@ -91,7 +91,7 @@ watch(() => props.brandId, () => {
 onBeforeUnmount(() => { generation++; })
 
 async function makeQuery(pageOffset: number): Promise<ReportQuery> {
-  const query: ReportQuery = { ...reportDateRange(from.value, to.value), group_by: groupBy.value, limit: pageSize.value, offset: pageOffset }
+  const query: ReportQuery = { ...reportDateRange(from.value, to.value, props.displaySettings.timezone), group_by: groupBy.value, limit: pageSize.value, offset: pageOffset }
   const username = memberFilter.value.trim()
   const optional: Partial<Record<'member_id' | 'game_id' | 'agent_id' | 'cycle_id' | 'order_id', string>> = {
     ...(username ? { member_id: username } : {}), game_id: gameFilter.value.trim(), agent_id: agentFilter.value.trim(), cycle_id: cycleFilter.value.trim(), order_id: orderFilter.value.trim(),

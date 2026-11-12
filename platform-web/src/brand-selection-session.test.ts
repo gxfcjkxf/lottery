@@ -1,6 +1,6 @@
 import { SelectControlTestComponent } from '../../admin-web/src/select-control-test-helper'
 import * as BrandDomainsState from '../../admin-web/src/brand-domains-state'
-import * as ArchivePolicyState from './platform-archive-policy-api'
+import * as ArchivePolicyState from './data-retention-api'
 import { securityIntents } from './security-settings-api'
 import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -50,7 +50,7 @@ async function mount() {
     },
     './security-settings-api': { securityIntents },
  '../../admin-web/src/brand-domains-state': BrandDomainsState,
-    './platform-archive-policy-api': ArchivePolicyState,
+    './data-retention-api': ArchivePolicyState,
     './platform-api': { createPlatformApi: () => api, PlatformApiError },
     './use-brand-games': { useBrandGames: () => ({ games: Vue.ref([]), selectedGameId: Vue.ref(''), loading: Vue.ref(false), refresh() {} }) },
     './platform-error-message': { platformErrorMessage: String },

@@ -154,7 +154,7 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 		prefix = "/api/v1/platform"
 	}
 	handle := func(method, path string, fn http.HandlerFunc) {
-		if platform && method != "GET" && path != "/auth/login" && path != "/auth/logout" && path != "/me/password" && !(method == "POST" && path == "/brands") && !(method == "DELETE" && path == "/brands/{id}") && !(method == "PATCH" && path == "/brands/{id}/game-settings") && !(method == "PATCH" && path == "/brand-operation") && !(method == "PATCH" && path == "/platform-settings") && !(method == "PUT" && (path == "/commission-settings" || path == "/report-archive-policy" || path == "/notification-templates/{key}")) && !(method == "POST" && (path == "/recharge-quota/grants" || path == "/recharge-quota/reclaims")) && !(method == "POST" && path == "/global-users/{id}/delete") && !(method == "PUT" && path == "/cash/config") && !(method == "POST" && (path == "/announcements" || path == "/announcements/image")) && !(method == "PUT" && path == "/announcements/{id}") && !platformBrandDomainWriteRoute(method, path) && !platformSecurityWriteRoute(method, path) && !platformAccountWriteRoute(method, path) && !platformLotteryWriteRoute(method, path) {
+		if platform && method != "GET" && path != "/auth/login" && path != "/auth/logout" && path != "/me/password" && !(method == "POST" && path == "/brands") && !(method == "DELETE" && path == "/brands/{id}") && !(method == "PATCH" && path == "/brands/{id}/game-settings") && !(method == "PATCH" && path == "/brand-operation") && !(method == "PATCH" && path == "/platform-settings") && !(method == "PUT" && (path == "/commission-settings" || path == "/data-retention-policy" || path == "/notification-templates/{key}")) && !(method == "POST" && (path == "/recharge-quota/grants" || path == "/recharge-quota/reclaims" || path == "/data-retention-tasks/{id}/retry")) && !(method == "POST" && path == "/global-users/{id}/delete") && !(method == "PUT" && path == "/cash/config") && !(method == "POST" && (path == "/announcements" || path == "/announcements/image")) && !(method == "PUT" && path == "/announcements/{id}") && !platformBrandDomainWriteRoute(method, path) && !platformSecurityWriteRoute(method, path) && !platformAccountWriteRoute(method, path) && !platformLotteryWriteRoute(method, path) {
 			return
 		}
 		mux.HandleFunc(method+" "+prefix+path, func(w http.ResponseWriter, r *http.Request) {
@@ -524,7 +524,7 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 		registerPlatformAccountRoutes(handle, d)
 		registerPlatformUserDelete(handle, d)
 		registerPlatformSettingsRoutes(handle, d)
-		registerPlatformArchivePolicyRoutes(handle, d)
+		registerDataRetentionRoutes(handle, d)
 	}
 	if !platform {
 		registerBrandOverview(handle, d)

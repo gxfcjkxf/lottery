@@ -13,6 +13,9 @@ export const publicApiErrorCatalog = {
     customGamesDisabled: 'Custom games are disabled. Contact the platform administrator.',
     denied: 'You do not have permission to perform this action.',
     entry: 'This account cannot sign in through this entrance. Use the correct sign-in page.',
+    receiptArchived: 'This request receipt was archived. Check the current records.',
+    historyArchived: 'This period has been archived. Its result cannot be changed.',
+    historyDays: 'Historical reports require complete days in the archive timezone.',
     input: 'Check the information you entered and try again.',
     missing: 'This record is no longer available. Refresh the page and check again.',
     changed: 'The data or status has changed. Refresh and review the latest information before continuing.',
@@ -66,6 +69,9 @@ export const publicApiErrorCatalog = {
     customGamesDisabled: '未开放自建彩种，请联系平台管理员。',
     denied: '你没有执行此操作的权限。',
     entry: '此账号不能从当前入口登录，请使用对应的登录页面。',
+    receiptArchived: '原请求回执已归档，请查询当前记录。',
+    historyArchived: '本期明细已归档，无法修改开奖结果。',
+    historyDays: '历史报表须按归档时区查询完整自然日。',
     input: '请检查填写的信息后重试。',
     missing: '该记录已不存在或当前不可用，请刷新后查看。',
     changed: '数据或状态已变化，请刷新并核对最新信息后再操作。',
@@ -147,6 +153,9 @@ export function publicApiErrorKey(cause: unknown): ErrorKey {
   const code = typeof error.code === 'string' ? error.code.toUpperCase() : ''
   if (codes[code]) return codes[code]
   if (error.network === true) return 'network'
+  if (code === 'IDEMPOTENCY_RECEIPT_ARCHIVED') return 'receiptArchived'
+  if (code === 'PLATFORM_PERIOD_ARCHIVED') return 'historyArchived'
+  if (code === 'REPORT_HISTORY_DAY_RANGE_INVALID') return 'historyDays'
   if (/_VERSION_CONFLICT$|_STATE_CONFLICT$|_EVIDENCE_CONFLICT$|^VERSION_CONFLICT$/.test(code)) return 'changed'
   if (/_INPUT_INVALID$|_INVALID$|^REQUEST_INVALID$/.test(code)) return 'input'
   if (/_TOO_LARGE$/.test(code)) return 'tooLarge'

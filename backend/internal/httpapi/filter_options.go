@@ -77,9 +77,9 @@ func registerFilterOptions(handle func(string, string, http.HandlerFunc), d Depe
 		case "bet_order":
 			query = `SELECT DISTINCT o.id::text,g.name||' · '||p.period_no||' · '||u.username||' · '||to_char(o.placed_at AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')||' UTC' AS name FROM commission_allocations a JOIN betting_financial_facts o ON o.id=a.order_id AND o.brand_id=a.brand_id JOIN platform_games g ON g.id=o.game_id JOIN platform_game_periods p ON p.id=o.period_id JOIN brand_members m ON m.id=o.brand_member_id AND m.brand_id=o.brand_id JOIN global_users u ON u.id=m.global_user_id WHERE a.brand_id=$1`
 		case "actor":
-			query = `SELECT DISTINCT a.id::text,a.username AS name FROM audit_logs l JOIN admin_accounts a ON a.id=l.actor_id WHERE l.brand_id=$1 UNION SELECT DISTINCT u.id::text,u.username AS name FROM audit_logs l JOIN global_users u ON u.id=l.actor_id WHERE l.brand_id=$1`
+			query = `SELECT DISTINCT a.id::text,a.username AS name FROM retention_audit_logs() l JOIN admin_accounts a ON a.id=l.actor_id WHERE l.brand_id=$1 UNION SELECT DISTINCT u.id::text,u.username AS name FROM retention_audit_logs() l JOIN global_users u ON u.id=l.actor_id WHERE l.brand_id=$1`
 		case "audit_resource":
-			query = `SELECT DISTINCT ON (l.resource_id) l.resource_id::text AS id, l.resource_type||' · '||l.action||' · '||to_char(l.created_at AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')||' UTC' AS name FROM audit_logs l WHERE l.brand_id=$1 AND l.resource_id IS NOT NULL ORDER BY l.resource_id,l.created_at DESC`
+			query = `SELECT DISTINCT ON (l.resource_id) l.resource_id::text AS id, l.resource_type||' · '||l.action||' · '||to_char(l.created_at AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')||' UTC' AS name FROM retention_audit_logs() l WHERE l.brand_id=$1 AND l.resource_id IS NOT NULL ORDER BY l.resource_id,l.created_at DESC`
 		}
 		search := strings.TrimSpace(q.Get("search"))
 		if _, supplied := q["search"]; supplied && !slices.Contains([]string{"member", "agent", "actor"}, kind) {

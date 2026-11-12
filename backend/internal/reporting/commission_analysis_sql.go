@@ -36,7 +36,7 @@ func commissionAnalysisSQL(group string) string {
 		complete += " AND NOT EXISTS(SELECT 1 FROM cohort WHERE NOT ready)"
 	}
 	summaryComplete := "NOT EXISTS(SELECT 1 FROM cohort WHERE NOT ready)"
-	return `WITH scope AS (SELECT id,timezone FROM brands WHERE id=$1), validity AS (
+	return `WITH scope AS (SELECT id,retention_report_timezone(id,$2,$3) AS timezone FROM brands WHERE id=$1), validity AS (
  SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM agent_nodes WHERE brand_id=$1 AND id=$4))
  AND ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM agent_accounts WHERE brand_id=$1 AND id=$5))
  AND ($6::uuid IS NULL OR EXISTS(SELECT 1 FROM commission_cycles WHERE brand_id=$1 AND id=$6)) AS valid),
@@ -67,7 +67,7 @@ func commissionAnalysisSQL(group string) string {
  OR (p.approval_actor_type='admin' AND aa.actor_type='admin' AND aa.actor_id=p.approved_by AND aa.action='commission.payment.approve'))
  ) AS source_valid
  FROM commission_payment_targets t LEFT JOIN commission_payments p ON p.brand_id=t.brand_id AND p.id=t.payment_id
- LEFT JOIN commission_earnings e ON e.id=t.earning_id LEFT JOIN audit_logs a ON a.id=t.audit_log_id LEFT JOIN audit_logs aa ON aa.id=p.approval_audit_log_id
+ LEFT JOIN commission_earnings e ON e.id=t.earning_id LEFT JOIN retention_audit_logs() a ON a.id=t.audit_log_id LEFT JOIN retention_audit_logs() aa ON aa.id=p.approval_audit_log_id
  WHERE t.brand_id=$1 AND (t.state='paid' OR t.ledger_entry_id IS NOT NULL)
  UNION ALL
  SELECT x.id,p.cycle_id,t.agent_id,t.member_id,x.ledger_entry_id,x.audit_log_id,'adjustment','commission_adjustment','commission_adjustment',
@@ -83,7 +83,7 @@ func commissionAnalysisSQL(group string) string {
  AND a.after_json->>'version'=x.version::text AND a.after_json->>'points'=x.points_after::text
  AND a.after_json->>'delta_points'=x.delta_points::text AND a.after_json->>'target_id'=x.target_id::text AND a.after_json->>'payment_id'=x.payment_id::text)
  FROM commission_adjustments x LEFT JOIN commission_payment_targets t ON t.brand_id=x.brand_id AND t.id=x.target_id
- LEFT JOIN commission_payments p ON p.brand_id=x.brand_id AND p.id=x.payment_id LEFT JOIN audit_logs a ON a.id=x.audit_log_id WHERE x.brand_id=$1
+ LEFT JOIN commission_payments p ON p.brand_id=x.brand_id AND p.id=x.payment_id LEFT JOIN retention_audit_logs() a ON a.id=x.audit_log_id WHERE x.brand_id=$1
  UNION ALL
  SELECT t.id,x.cycle_id,t.agent_id,t.member_id,t.ledger_entry_id,t.audit_log_id,'correction','commission_correction','commission_correction_target',
  'commission-correction:'||t.id::text,t.delta_points::numeric,x.evidence_epoch,'system',NULL::uuid,
@@ -103,7 +103,7 @@ func commissionAnalysisSQL(group string) string {
  FROM commission_correction_execution_targets t LEFT JOIN commission_correction_executions x ON x.brand_id=t.brand_id AND x.id=t.execution_id
  LEFT JOIN commission_correction_plan_targets pt ON pt.brand_id=t.brand_id AND pt.id=t.plan_target_id
  LEFT JOIN commission_correction_execution_steps s ON s.brand_id=t.brand_id AND s.execution_id=t.execution_id AND s.version=t.execution_version+1 AND s.operation='apply' AND s.target_id=t.id
- LEFT JOIN audit_logs a ON a.id=t.audit_log_id LEFT JOIN audit_logs aa ON aa.id=x.approval_audit_log_id
+ LEFT JOIN retention_audit_logs() a ON a.id=t.audit_log_id LEFT JOIN retention_audit_logs() aa ON aa.id=x.approval_audit_log_id
  WHERE t.brand_id=$1 AND (t.state='applied' OR t.ledger_entry_id IS NOT NULL)),
  relevant AS MATERIALIZED (
  SELECT e.*,
@@ -116,24 +116,24 @@ func commissionAnalysisSQL(group string) string {
  AND validated_point_snapshot(l.delta_snapshot)=jsonb_set(point_zero_snapshot(),'{commission,available}',to_jsonb(e.delta::text))
  AND l.source_allocation=jsonb_build_array(jsonb_build_object('source','commission','state','available','points',abs(e.delta)::text))
  AND lottery_business_ledger_applied(l,$1,pa.id) END,false) AS valid
- FROM raw_edges e LEFT JOIN point_ledger_entries l ON l.id=e.ledger_id
+ FROM raw_edges e LEFT JOIN retention_point_ledger_entries() l ON l.id=e.ledger_id
  LEFT JOIN point_accounts pa ON pa.brand_id=$1 AND pa.brand_member_id=e.member_id
- LEFT JOIN agent_nodes n ON n.brand_id=$1 AND n.id=e.agent_id LEFT JOIN audit_logs a ON a.id=e.audit_log_id
+ LEFT JOIN agent_nodes n ON n.brand_id=$1 AND n.id=e.agent_id LEFT JOIN retention_audit_logs() a ON a.id=e.audit_log_id
  WHERE e.cycle_id IS NULL OR NOT EXISTS(SELECT 1 FROM commission_cycles c WHERE c.brand_id=$1 AND c.id=e.cycle_id) OR EXISTS(SELECT 1 FROM cohort c WHERE c.id=e.cycle_id)),
  duplicate_ledgers AS (
  SELECT ledger_id FROM raw_edges WHERE ledger_id IS NOT NULL GROUP BY ledger_id HAVING count(*)<>1),
  attributed_ledgers AS MATERIALIZED (
  SELECT e.ledger_id AS id FROM raw_edges e JOIN commission_cycles c ON c.brand_id=$1 AND c.id=e.cycle_id WHERE e.ledger_id IS NOT NULL
  UNION SELECT l.id FROM raw_edges e JOIN commission_cycles c ON c.brand_id=$1 AND c.id=e.cycle_id
- JOIN point_ledger_entries l ON l.brand_id=$1 AND l.reference_type=e.reference_type AND l.reference_id=e.source_id),
+ JOIN retention_point_ledger_entries() l ON l.brand_id=$1 AND l.reference_type=e.reference_type AND l.reference_id=e.source_id),
  integrity AS (
  SELECT NOT EXISTS(SELECT 1 FROM cohort WHERE current_evidence AND NOT ready)
  AND NOT EXISTS(SELECT 1 FROM relevant WHERE NOT valid OR cycle_id IS NULL)
  AND NOT EXISTS(SELECT 1 FROM relevant e WHERE e.kind='adjustment' AND NOT EXISTS(SELECT 1 FROM relevant original WHERE original.kind='paid' AND original.agent_id=e.agent_id AND original.member_id=e.member_id AND original.cycle_id=e.cycle_id))
  AND NOT EXISTS(SELECT 1 FROM relevant e JOIN duplicate_ledgers dup ON dup.ledger_id=e.ledger_id)
- AND NOT EXISTS(SELECT 1 FROM raw_edges e JOIN point_ledger_entries l ON l.brand_id=$1 AND l.reference_type=e.reference_type AND l.reference_id=e.source_id
+ AND NOT EXISTS(SELECT 1 FROM raw_edges e JOIN retention_point_ledger_entries() l ON l.brand_id=$1 AND l.reference_type=e.reference_type AND l.reference_id=e.source_id
  WHERE l.id IS DISTINCT FROM e.ledger_id)
- AND NOT EXISTS(SELECT 1 FROM point_ledger_entries l WHERE l.brand_id=$1 AND
+ AND NOT EXISTS(SELECT 1 FROM retention_point_ledger_entries() l WHERE l.brand_id=$1 AND
  (l.entry_type IN('commission','commission_adjustment','commission_correction') OR l.reference_type IN('commission_payment_target','commission_adjustment','commission_correction_target'))
  AND NOT EXISTS(SELECT 1 FROM attributed_ledgers e WHERE e.id=l.id)) AS valid),
  coverage AS (

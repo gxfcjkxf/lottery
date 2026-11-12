@@ -121,14 +121,14 @@ func (s Service) attribution(ctx context.Context, runner rowQuerier, brand strin
 	// path links, but mutable configs/status/path never reconstruct provenance.
 	// Fail the whole cohort on malformed current provenance before applying
 	// attribution filters, so bad snapshots cannot disappear from the report.
-	sql := `WITH scope AS (SELECT id,timezone FROM brands WHERE id=$1), validity AS (
+	sql := `WITH scope AS (SELECT id,retention_report_timezone(id,$2,$3) AS timezone FROM brands WHERE id=$1), validity AS (
  SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_platform_games WHERE brand_id=$1 AND game_id=$4)) AND
  ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$5)) AND
  ($6::uuid IS NULL OR EXISTS(SELECT 1 FROM agent_nodes WHERE brand_id=$1 AND id=$6)) AS valid),
  cohort AS (
  SELECT o.*,g.name AS game_name,o.attribution_snapshot AS a,
  false AS correction_open,o.status IN('won','lost') AS finalized
- FROM betting_financial_facts o JOIN scope b ON b.id=o.brand_id JOIN platform_games g ON g.id=o.game_id
+ FROM retention_betting_report_facts o JOIN scope b ON b.id=o.brand_id JOIN platform_games g ON g.id=o.game_id
  WHERE o.placed_at >= $2 AND o.placed_at < $3 AND ($4::uuid IS NULL OR o.game_id=$4) AND ($5::uuid IS NULL OR o.brand_member_id=$5)),
  shapes AS (SELECT cohort.*,
  CASE WHEN jsonb_typeof(a->'agent_configs_at_bet')='array' THEN a->'agent_configs_at_bet' ELSE '[]'::jsonb END AS saved_nodes,
@@ -170,7 +170,7 @@ func (s Service) attribution(ctx context.Context, runner rowQuerier, brand strin
  (SELECT count(*)::text FROM grouped) FROM scope CROSS JOIN validity`
 	var valid, evidence bool
 	var summary, rows []byte
-	err := runner.QueryRow(ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.GameID, q.MemberID, q.AgentID, q.AgentScope, q.JoinMethod, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &evidence, &summary, &rows, &out.TotalGroups)
+	err := historyQueryRow(runner, ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.GameID, q.MemberID, q.AgentID, q.AgentScope, q.JoinMethod, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &evidence, &summary, &rows, &out.TotalGroups)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && !valid {
 		return out, ErrNotFound
 	}

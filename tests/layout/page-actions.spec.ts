@@ -19,7 +19,8 @@ for(const locale of ['en','zh-CN'] as const)for(const view of ['presentation','w
    if(path.endsWith('/filter-options'))return reply({brand_id:gameId,items:[{id:actor,name:'Trial game'}],limit:100,offset:0})
    if(path.endsWith('/games/'+actor+'/withdrawal-policy'))return reply({brand_id:gameId,game_id:actor,version:1,config:{turnover_multiple:null},effective:{turnover_multiple:'1',source:'brand',brand_version:1,game_version:1},updated_at:at})
    if(path.endsWith('/withdrawal-policy'))return reply({brand_id:gameId,version:1,points_step:'1',config:{enabled:false,min_points:'1',max_points:null,allowed_sources:['recharge','winning','gift'],review_mode:'manual',turnover_multiple:'1'},updated_at:at,audit_log_id:gameId})
-   if(path.endsWith('/report-archive-policy'))return reply({version:1,daily_enabled:true,monthly_enabled:true,daily_execution_time:'07:30',daily_period_offset:1,monthly_execution_day:5,monthly_execution_time:'06:00',monthly_period_offset:2,timezone:'Asia/Singapore',next_runs:{daily:null,monthly:null},updated_at:at})
+   if(path.endsWith('/data-retention-policy'))return reply({version:1,enabled:false,execution_day:10,execution_time:'02:00',timezone:'Asia/Singapore',next_run:null,updated_at:at})
+   if(path.endsWith('/data-retention-tasks'))return reply({items:[],total_count:'0',limit:50,offset:0})
    if(path.endsWith('/betting-preferences'))return reply({brand_id:gameId,member_id:actor,quick_amounts:['10','100']})
    throw Error('Unexpected page action read '+path)
   })
@@ -27,8 +28,9 @@ for(const locale of ['en','zh-CN'] as const)for(const view of ['presentation','w
   const app=view==='preferences'?'user-web':(view==='archive'||view==='automation')?'platform-web':'admin-web'
   await page.route('**/__page-actions',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import Harness from'/@fs${resolve('tests/layout/PageActionsHarness.vue')}';import'/@fs${resolve('shared/src/styles.css')}';import'/@fs${resolve(app+'/src/style.css')}';import'/@fs${resolve('shared/src/management.css')}';import'/@fs${resolve('shared/src/controls.css')}';createApp(Harness,${JSON.stringify({view,locale})}).mount('#app')</script></html>`}))
   await page.goto(origin+'/__page-actions')
+  if(view==='archive')await page.getByRole('tab',{name:locale==='en'?'Retention policy':'保留策略'}).click()
   if(view==='automation')await page.getByRole('button',{name:locale==='en'?'Add data source':'新增数据源',exact:true}).click()
-  const actions=page.locator(view==='presentation'?'.reset-settings':view==='withdrawal'?'.action-row':view==='archive'?'.archive-platform-form > .ui-form-actions':view==='automation'?'.automation-settings .ui-form-actions':'.betting-preferences .ui-form-actions')
+  const actions=page.locator(view==='presentation'?'.reset-settings':view==='withdrawal'?'.action-row':view==='archive'?'.retention-form > .ui-form-actions':view==='automation'?'.automation-settings .ui-form-actions':'.betting-preferences .ui-form-actions')
   await expect(actions.first()).toBeVisible()
   if(view==='withdrawal'){
    await selectControl(page.locator('#withdraw-game-select'),actor)

@@ -222,7 +222,7 @@ func (s Service) correctionExecutionWork(ctx context.Context, tx pgx.Tx, x corre
 			}
 		} else {
 			var latest string
-			if e = tx.QueryRow(ctx, `SELECT id::text FROM point_ledger_entries WHERE brand_id=$1 AND account_id=$2 AND version=$3`, x.Brand, wallet.AccountID, wallet.Version).Scan(&latest); e != nil {
+			if e = tx.QueryRow(ctx, `SELECT id::text FROM retention_point_ledger_entries() WHERE brand_id=$1 AND account_id=$2 AND version=$3`, x.Brand, wallet.AccountID, wallet.Version).Scan(&latest); e != nil {
 				return points.ErrCorrupt
 			}
 			entry, e := (points.Store{DB: s.DB}).Entry(ctx, tx, x.Brand, t.MemberID, latest)
