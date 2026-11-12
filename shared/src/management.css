@@ -7,6 +7,8 @@
   --refresh-icon-size: 16px;
   --console-sidebar-width: 224px;
   --console-gutter: 16px;
+  --console-block-gap: 12px;
+  --console-summary-inset: 2px;
   --console-nav-count: 5;
   --console-sidebar-bg: var(--surface);
   --console-sidebar-art: none;
@@ -130,7 +132,7 @@
 .management-console .top-actions { gap: 10px; min-width: 0; }
 .management-console :is(.button, .account-trigger) { min-height: var(--console-control-height); }
 .management-console .account-trigger { font-size: var(--body-font-size); }
-.management-console :is(.page-content, .content) { min-width: 0; width: 100%; padding-top: 12px; }
+.management-console :is(.page-content, .content) { min-width: 0; width: 100%; padding-top: var(--console-block-gap); }
 .management-console :is(.page-heading, .page-head, .withdrawal-heading) {
   min-height: var(--console-control-height);
   margin: 0 0 12px;
@@ -153,7 +155,7 @@
 .management-console :is(.page-heading, .withdrawal-heading) .eyebrow { display: none; }
 .management-console :is(.panel, .card) { border-color: var(--line); }
 .management-console .console-panel { padding: 16px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
-.management-console .console-stack { display: grid; gap: 12px; min-width: 0; }
+.management-console .console-stack { display: grid; gap: var(--console-block-gap); min-width: 0; }
 .management-console .console-stack > :is(h2, h3, p) { margin: 0; }
 .management-console .console-stack > .console-tabs { margin-bottom: 0; }
 .management-console .console-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin: 0; }
@@ -519,8 +521,8 @@
 .management-console .management-list-summary > .console-facts dd { white-space:nowrap !important; }
 
 /* Reports share compact summary tags and independent display choices. */
-#app .management-console dl.report-summary-tags { display:flex; flex-wrap:wrap; gap:6px; margin:0; padding:0; }
-#app .management-console .report-results > dl.report-summary-tags { padding:0 12px 12px; }
+#app .management-console dl.report-summary-tags { display:flex; flex-wrap:wrap; gap:6px; margin:0; padding:var(--console-summary-inset); }
+#app .management-console .report-results > dl.report-summary-tags { padding:var(--console-summary-inset) 12px var(--console-block-gap); }
 #app .management-console dl.report-summary-tags > div { display:inline-flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; flex:0 1 auto; min-width:0; max-width:100%; padding:4px 8px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--canvas); }
 #app .management-console dl.report-summary-tags dt { min-width:0; color:var(--muted); white-space:normal; overflow-wrap:anywhere; }
 #app .management-console dl.report-summary-tags dd { margin:0; color:var(--ink); font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -530,7 +532,8 @@
 
 /* All three consoles use the same compact vertical rhythm on touch screens. */
 @media (max-width: 900px), (pointer: coarse) {
-  #app .management-console :is(.page-content, .content) { padding-top: 8px; }
+  #app .management-console { --console-block-gap: 8px; }
+  #app .management-console :is(.page-content, .content) { padding-top: var(--console-block-gap); }
   #app .management-console :is(.console-stack, .console-grid, .console-facts, .am-form) { row-gap: 8px; }
   #app .management-console :is(.page-heading, .page-head, .withdrawal-heading, .console-page-heading, .am-head, .nt-heading, .nd-heading) { row-gap: 4px; margin-bottom: 8px; }
   #app .management-console .console-stack > .console-page-heading { margin-bottom: 0; }
@@ -581,3 +584,9 @@
 .agent-transfer .console-facts{grid-template-columns:minmax(0,1fr)}
 .agent-transfer fieldset{border:0;padding:0;margin:0;display:grid;gap:8px;min-width:0}
 .management-console .mobile-nav>button{border:0;background:transparent;font:inherit}
+
+/* Block spacing belongs to the parent; tab margins must not double it. */
+#app .management-console .reports-management { gap: var(--console-block-gap); }
+#app .management-console :is(.console-stack, .reports-management) > .console-tabs { margin-block: 0; }
+#app .management-console .reports-management .report-panel:not(.management-list),
+#app .management-console .reports-management .report-view { row-gap: var(--console-block-gap); }

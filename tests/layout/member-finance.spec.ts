@@ -283,6 +283,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`reports load the default ra
   await expect(page.locator('.management-console')).toBeVisible()
   const more = page.locator('.mobile-nav > button').last(), mobile = await more.isVisible()
   if (mobile) { await more.click(); await expect(more).toHaveAttribute('aria-expanded', 'true') }
+  await page.locator(mobile ? '.mobile-more-menu' : '.side-nav').getByText(zh ? '报表管理' : 'Reports', { exact: true }).click()
   await page.locator(mobile ? '.mobile-more-menu' : '.side-nav').getByRole('button', { name: zh ? '业务报表' : 'Business reports', exact: true }).click()
   await expect.poll(() => reads.length).toBe(2)
   await expect(page.locator('.reports-summary').first()).toBeVisible()
@@ -293,6 +294,19 @@ for (const locale of ['zh-CN', 'en'] as const) test(`reports load the default ra
     const fields = page.locator('.reports-filter-grid'), last = fields.locator('label').last(), query = fields.locator('button').last()
     const a = (await last.boundingBox())!, b = (await query.boundingBox())!
     if (Math.abs(a.y + a.height - b.y - b.height) < 2) expect(b.x - a.x - a.width).toBeLessThanOrEqual(12)
+    const spacing = await page.locator('.reports-management').evaluate(root => {
+      const tabs = root.querySelector('.reports-tabs')!.getBoundingClientRect()
+      const panel = root.querySelector('[role="tabpanel"]')!.getBoundingClientRect()
+      const content = root.closest('.page-content')!
+      const expected = parseFloat(getComputedStyle(root).getPropertyValue('--console-block-gap'))
+      const summary = root.querySelector('.report-summary-tags')!
+      const box = summary.getBoundingClientRect()
+      const tag = summary.firstElementChild!.getBoundingClientRect()
+      return { expected, gap: panel.top - tabs.bottom, top: parseFloat(getComputedStyle(content).paddingTop), inset: tag.top - box.top }
+    })
+    expect(spacing.gap).toBeCloseTo(spacing.expected, 0)
+    expect(spacing.top).toBe(spacing.expected)
+    expect(spacing.inset).toBeGreaterThanOrEqual(2)
     await page.screenshot({ path: info.outputPath(`default-reports-${locale}-${width}.png`) })
     const reportTabs = page.locator('.reports-tabs').getByRole('tab')
     for (let index = 0; index < 5; index++) {
