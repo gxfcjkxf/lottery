@@ -12,7 +12,7 @@ const displayPublicError = publicErrorI18n.displayError;
 import { withGlobalLoading } from '@lottery/shared';
 import { vRefreshButton } from '@lottery/shared';
 import { vGlobalLoading } from "@lottery/shared";
-import { formatDisplayDateTime } from "@lottery/shared";
+import { formatDisplayDateTime, formatDisplayMonthDayTime } from "@lottery/shared";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useUserI18n } from './i18n';
 import {
@@ -249,7 +249,7 @@ async function changePage(direction: number) {
           <tbody>
             <tr v-for="entry in entries" :key="entry.id" class="ledger-entry">
               <td class="ledger-type">
-                <div class="ledger-heading"><b>{{ ledgerLabel(entry) }}</b><time class="ledger-mobile-time" :datetime="entry.created_at">{{ formatDisplayDateTime(entry.created_at, props.locale) }}</time></div>
+                <div class="ledger-heading"><b>{{ ledgerLabel(entry) }}</b><time class="ledger-mobile-time" :datetime="entry.created_at">{{ formatDisplayMonthDayTime(entry.created_at, props.locale) }}</time></div>
                 <dl v-if="entry.agent_transfer" class="ledger-result agent-transfer-receipt"><div><dt>{{ ui('user.wallet.agentTransferFrom') }}</dt><dd>{{ entry.agent_transfer.agent_account ?? '—' }}</dd></div></dl>
               </td>
               <td class="ledger-amount" :data-label="ui('user.wallet.availableChange')"><strong :class="{ 'change-negative': availableChange(entry).startsWith('−'), 'change-positive': availableChange(entry).startsWith('+') }">{{ availableChange(entry) }}</strong></td>

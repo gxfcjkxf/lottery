@@ -2,7 +2,7 @@ import { applyTheme, themeIds, type ThemeId } from './theme'
 import { readApiEnvelope } from './api-response'
 
 import { shallowRef } from 'vue'
-import { formatPlatformDateTime, type PlatformDisplaySettings } from './date-time'
+import { formatPlatformDateTime, formatPlatformMonthDayTime, type PlatformDisplaySettings } from './date-time'
 
 export const platformDisplaySettings = shallowRef<PlatformDisplaySettings | null>(null)
 export const displaySettingsCatalog = {
@@ -30,4 +30,11 @@ export function formatDisplayDateTime(value: string | null | undefined, locale: 
   const language = locale === 'zh' || locale === 'zh-CN' ? 'zh-CN' : 'en'
   if (!platformDisplaySettings.value) return displaySettingsCatalog[language].unavailable
   return formatPlatformDateTime(value, platformDisplaySettings.value, language)
+}
+
+/** Compact month/day and 24-hour minute display, still using the platform timezone. */
+export function formatDisplayMonthDayTime(value: string | null | undefined, locale: string): string {
+  const language = locale === 'zh' || locale === 'zh-CN' ? 'zh-CN' : 'en'
+  if (!platformDisplaySettings.value) return displaySettingsCatalog[language].unavailable
+  return formatPlatformMonthDayTime(value, platformDisplaySettings.value.timezone)
 }

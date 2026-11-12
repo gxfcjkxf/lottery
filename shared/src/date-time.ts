@@ -46,6 +46,12 @@ export function formatPlatformDateTime(value: string | null | undefined, setting
   return `${date} ${time}`
 }
 
+export function formatPlatformMonthDayTime(value: string | null | undefined, timezone: string): string {
+  if (!value) return '—'
+  const valueParts = parts(value, timezone)
+  return `${valueParts.month}-${valueParts.day} ${valueParts.hour}:${valueParts.minute}`
+}
+
 export type DateRangePreset = 'today' | 'yesterday' | 'last-week' | 'this-month' | 'last-month'
 
 /** Returns a local-device half-open range for common report date shortcuts. */

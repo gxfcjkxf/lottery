@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { formatDisplayDateTime, loadPlatformDisplaySettings, platformDisplaySettings, setPlatformDisplaySettings } from './display-settings'
+import { formatDisplayDateTime, formatDisplayMonthDayTime, loadPlatformDisplaySettings, platformDisplaySettings, setPlatformDisplaySettings } from './display-settings'
 afterEach(() => { platformDisplaySettings.value = null; vi.unstubAllGlobals() })
 it('uses platform date order, clock and timezone regardless of device locale', () => {
   setPlatformDisplaySettings({ timezone: 'Asia/Singapore', date_format: 'DD/MM/YYYY', time_format: 'hh:mm:ss A' })
@@ -23,4 +23,17 @@ it('rejects unavailable or invalid policies rather than inventing a default form
   await expect(loadPlatformDisplaySettings(vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ success: false }), { status: 503 })))).rejects.toThrow()
   expect(() => setPlatformDisplaySettings({ timezone: 'not-a-zone', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' })).toThrow()
   expect(platformDisplaySettings.value).toBeNull()
+})
+
+it('formats compact month/day and minutes in the platform timezone across year boundaries', () => {
+  setPlatformDisplaySettings({ timezone: 'Asia/Singapore', date_format: 'DD/MM/YYYY', time_format: 'hh:mm:ss A' })
+  expect(formatDisplayMonthDayTime('2026-12-31T20:59:58Z', 'en')).toBe('01-01 04:59')
+  expect(formatDisplayMonthDayTime('2026-12-31T20:59:58Z', 'zh-CN')).toBe('01-01 04:59')
+  setPlatformDisplaySettings({ timezone: 'UTC', date_format: 'MM/DD/YYYY', time_format: 'HH:mm:ss' })
+  expect(formatDisplayMonthDayTime('2026-12-31T20:59:58Z', 'en')).toBe('12-31 20:59')
+  expect(formatDisplayMonthDayTime(null, 'en')).toBe('—')
+})
+it('does not invent a timezone for compact timestamps when settings are unavailable', () => {
+  expect(formatDisplayMonthDayTime('2026-12-31T20:59:58Z', 'en')).toBe('Unable to load display settings.')
+  expect(formatDisplayMonthDayTime('2026-12-31T20:59:58Z', 'zh-CN')).toBe('无法加载显示设置。')
 })

@@ -5,6 +5,8 @@ async function expectLedgerHeading(row:Locator,width:number){
  if(width>700){await expect(time).toBeHidden();await expect(row.locator('.ledger-time')).toBeVisible();return}
  await expect(time).toBeVisible();await expect(row.locator('.ledger-time')).toBeHidden()
  await expect(time).toHaveCSS('white-space','nowrap')
+ await expect(time).toHaveText('11-12 16:00')
+ await expect(row.locator('.ledger-time')).toHaveText('2026-11-12 16:00:00')
  const metrics=await row.locator('.ledger-heading').evaluate(el=>{
   const heading=el.getBoundingClientRect(),label=el.querySelector('b')!.getBoundingClientRect(),time=el.querySelector('time')!.getBoundingClientRect()
   return {left:heading.left,right:heading.right,top:heading.top,labelRight:label.right,timeLeft:time.left,timeRight:time.right,timeTop:time.top,timeHeight:time.height,lineHeight:parseFloat(getComputedStyle(el).lineHeight)}
