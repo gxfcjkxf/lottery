@@ -212,6 +212,8 @@ useOperationToast(() => notice.value, value => display(value), 'success');
           <span>{{ t('admin.copy.a38ce499') }}</span>
           <span v-global-loading="loading && !record" class="status-chip" :class="record ? statusStyle(record.status) : ''">{{ record ? statusText(record.status) : loading ? t('admin.copy.ab7239f3') : t('admin.copy.5dc10169') }}</span>
         </div>
+      </div>
+      <div class="ui-form-actions">
         <button v-if="pending" class="button button-secondary" type="button" :disabled="busy" @click="confirmationOpen = true">{{ t('brandOperation.pendingAction') }}</button>
         <button v-else-if="nextStatus && permissions.write && !readonlyBrand" class="button" :class="nextStatus === 'paused' ? 'button-secondary' : 'button-primary'" type="button" :disabled="!canWrite" @click="reviewChange">{{ actionLabel }}</button>
       </div>

@@ -357,6 +357,8 @@ for (const locale of ['zh-CN', 'en'] as const) {
         if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, code: 'layout', name: 'Aurora', status: 'active', member_count: '0', agent_count: '0', recharge_quota_available: '0', created_at: '2026-10-26T00:00:00Z' }] })
         expect(request.headers()['x-brand-id']).toBe(gameId)
         if (request.method() === 'GET') {
+          if (path.endsWith('/cash/config')) return reply({version:1,rules:['CNY','USD','THB','USDT'].map(currency=>({currency,rate:'7',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'2',enabled:true}))})
+          if (path.endsWith('/cash/destinations')) return reply([])
           if (path.endsWith('/point-policy')) return reply(points)
           if (path.endsWith('/withdrawal-policy')) return reply(withdrawal)
           if (path.endsWith('/filter-options')) return reply({ brand_id: gameId, items: [], limit: 100, offset: 0 })
@@ -396,7 +398,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
       await expect(menu.getByRole('button', { name: zh ? '资金策略' : 'Financial policies', exact: true })).toHaveCount(0)
       await menu.getByRole('button', { name: zh ? '品牌设置' : 'Brand settings', exact: true }).click()
       const tabs = page.locator('.console-tabs')
-      await expect(tabs.getByRole('button')).toHaveText(zh ? ['运行状态', '品牌展示', '域名', '资金', '提现设置', '投注限额', '代理设置', '通知模板'] : ['Status', 'Presentation', 'Domains', 'Funds', 'Withdrawal settings', 'Betting limits', 'Agent settings', 'Notification templates'])
+      await expect(tabs.getByRole('button')).toHaveText(zh ? ['运行状态', '品牌展示', '资金', '提现设置', '投注限额', '代理设置', '公告', '联系方式'] : ['Status', 'Presentation', 'Funds', 'Withdrawal settings', 'Betting limits', 'Agent settings', 'Announcements', 'Contact details'])
       expect(requests.some(request => /point-policy|withdrawal-policy/.test(request))).toBe(false)
       await tabs.getByRole('button', { name: zh ? '资金' : 'Funds', exact: true }).click()
       const pointPanel = page.locator('.point-policy-settings'), withdrawalPanel = page.getByTestId('withdrawal-policy-settings')
@@ -424,7 +426,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
         await expect.poll(() => pointWrites.length).toBe(1)
         await tabs.getByRole('button', { name: zh ? '提现设置' : 'Withdrawal settings', exact: true }).click()
         await withdrawalPanel.getByLabel(zh ? '提现积分步长' : 'Withdrawal increment', { exact: true }).fill('10')
-        await withdrawalPanel.getByLabel(zh ? '最低提现积分' : 'Minimum withdrawal points', { exact: true }).fill('17')
+        await withdrawalPanel.getByLabel(zh ? '最低提现积分' : 'Minimum withdrawal points', { exact: true }).fill('20')
         await withdrawalPanel.locator('button[type=submit]').click()
         const dialog = page.getByRole('dialog')
         await expect(dialog).toBeVisible()
@@ -441,10 +443,10 @@ for (const locale of ['zh-CN', 'en'] as const) {
         await tabs.getByRole('button', { name: zh ? '运行状态' : 'Status', exact: true }).click()
         await tabs.getByRole('button', { name: zh ? '提现设置' : 'Withdrawal settings', exact: true }).click()
         await expect(withdrawalPanel.locator('[role=alert]')).toBeVisible()
-        await expect(withdrawalPanel.locator('#withdraw-brand-min')).toHaveValue('17')
+        await expect(withdrawalPanel.locator('#withdraw-brand-min')).toHaveValue('20')
         await withdrawalPanel.locator('[role=alert] button').first().click()
         await expect(withdrawalPanel.locator('[role=alert]')).toHaveCount(0)
-        await expect(withdrawalPanel.locator('#withdraw-brand-min')).toHaveValue('17')
+        await expect(withdrawalPanel.locator('#withdraw-brand-min')).toHaveValue('20')
         await tabs.getByRole('button', { name: zh ? '资金' : 'Funds', exact: true }).click()
         await expect(pointPanel.getByLabel(zh ? '单笔充值上限' : 'Per-recharge limit', { exact: true })).toHaveValue('50')
         expect(withdrawalWrites).toHaveLength(2)
@@ -539,4 +541,59 @@ for (const locale of ['zh-CN', 'en'] as const) {
     await dialog.getByRole('button', { name: zh ? '关闭' : 'Close', exact: true }).click()
     await expect(dialog).toHaveCount(0)
   })
+}
+
+for (const locale of ['zh-CN', 'en'] as const) {
+ test(`brand settings actions align inside panels (${locale})`, async ({page},info) => {
+  await installLayoutApi(page,locale)
+  const zh=locale==='zh-CN',at='2026-11-12T00:00:00Z'
+  const errors:string[]=[]
+  page.on('pageerror',error=>errors.push(error.message))
+  const permissions=['brand_operation.view.brand','brand_operation.write.brand','point_policy.view.brand','point_policy.write.brand','agent_policy.view.brand','agent_policy.write.brand','commission_policy.view.brand']
+  await page.route('**/api/v1/admin/**',route=>{
+   expect(route.request().method()).toBe('GET')
+   const path=new URL(route.request().url()).pathname
+   const reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
+   if(path.endsWith('/me'))return reply({account:{id:gameId,username:'settings_actions_reviewer',super_admin:false,brand_ids:[gameId],permissions_by_brand:{[gameId]:permissions}}})
+   if(path.endsWith('/brands'))return reply({items:[{id:gameId,code:'layout',name:'Aurora',status:'active',member_count:'0',agent_count:'0',recharge_quota_available:'0',created_at:at}]})
+   if(path.endsWith('/brand-operation'))return reply({brand_id:gameId,name:'Aurora',status:'active',version:1,updated_at:at})
+   if(path.endsWith('/point-policy'))return reply({brand_id:gameId,version:1,max_balance_points:'10000',max_recharge_points:null,max_adjustment_points:null})
+   if(path.endsWith('/cash/config'))return reply({version:1,rules:['CNY','USD','THB','USDT'].map(currency=>({currency,rate:'7',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'2',enabled:true}))})
+   if(path.endsWith('/cash/destinations'))return reply([])
+   if(path.endsWith('/agent-policy'))return reply({brand_id:gameId,version:1,config:{enabled:true,max_depth:5,loss_ratio_cap:'0.25',turnover_ratio_cap:'0.03',mode:'loss',cycle:'monthly'},updated_at:at})
+   if(path.endsWith('/commission-policy'))return reply({brand_id:gameId,version:1,config:{enabled:false,calendar:null,payout_mode:'manual'},created_at:at,updated_at:at,revision_id:gameId})
+   throw Error(`Unexpected settings request: ${path}`)
+  })
+  await page.goto(origins.brand)
+  await expect(page.locator('.management-console')).toBeVisible()
+  const more=page.locator('.mobile-nav > button').last()
+  if(await more.isVisible())await more.click()
+  await page.locator(await more.isVisible()?'.mobile-more-menu':'.side-nav').getByRole('button',{name:zh?'品牌设置':'Brand settings',exact:true}).click()
+  const preset=page.viewportSize()!
+  const review=async(panel:ReturnType<typeof page.locator>,name:string)=>{
+   for(const width of info.project.name.includes('reflow')?[320,700,900,1440]:[preset.width]){
+    if(info.project.name.includes('reflow'))await page.setViewportSize({width,height:preset.height})
+    const actions=panel.locator('.ui-form-actions').last()
+    await expect(actions).toBeVisible()
+    const button=actions.locator('button').last(),area=await actions.boundingBox(),box=await button.boundingBox()
+    expect(Math.abs(area!.x+area!.width-box!.x-box!.width)).toBeLessThanOrEqual(1)
+    expect(await actions.evaluate(node=>getComputedStyle(node).justifyContent)).toBe('flex-end')
+    await expectNoPageOverflow(page)
+    await page.screenshot({path:info.outputPath(`${name}-${locale}-${width}.png`),fullPage:true})
+   }
+  }
+  await review(page.locator('.brand-operation'),'status-actions')
+  await page.locator('.console-tabs').getByRole('button',{name:zh?'资金':'Funds',exact:true}).click()
+  const points=page.locator('.point-policy-settings')
+  await expect(points.locator('form')).toBeVisible()
+  await review(points,'points-actions')
+  await page.locator('.console-tabs').getByRole('button',{name:zh?'代理设置':'Agent settings',exact:true}).click()
+  const agents=page.locator('.agent-management')
+  await expect(agents.locator('.am-facts')).toBeVisible()
+  await review(agents,'agent-edit-actions')
+  await agents.getByRole('button',{name:zh?'编辑':'Edit',exact:true}).click()
+  await review(page.getByRole('dialog'),'agent-save-actions')
+  await expect(page.locator('.toast')).toHaveCount(0)
+  expect(errors).toEqual([])
+ })
 }

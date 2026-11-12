@@ -250,9 +250,9 @@ useOperationToast(() => notice.value, value => display(value), 'success');
         <p v-if="!validLimits" class="field-error" role="alert">
           {{ t('admin.copy.d51ced59') }}
         </p>
-        <button class="button button-primary" type="submit" :disabled="!canSave">
+        <div class="ui-form-actions"><button class="button button-primary" type="submit" :disabled="!canSave">
           {{ saving ? t('admin.copy.2462134b') : t('admin.copy.780ef330') }}
-        </button>
+        </button></div>
       </form>
     </template>
   </section>
@@ -263,7 +263,7 @@ useOperationToast(() => notice.value, value => display(value), 'success');
 .policy-form, .current-limits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; min-width: 0; }
 .policy-form label { display: grid; gap: 6px; min-width: 0; }
 .policy-form input { width: 100%; min-width: 0; box-sizing: border-box; }
-.policy-form .field-error, .policy-form button { grid-column: 1 / -1; }
+.policy-form .field-error, .policy-form > .ui-form-actions { grid-column: 1 / -1; }
 .current-limits div { min-width: 0; }
 .current-limits dt { color: var(--muted); }
 .current-limits dd { margin: 4px 0 0; font-weight: 600; overflow-wrap: anywhere; }

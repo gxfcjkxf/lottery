@@ -105,11 +105,9 @@ useOperationToast(error, value => displayError(value), 'error');
 
 <template>
   <section class="security-settings-section brand-settings-panel" :data-kind="kind">
-    <div class="panel-heading"><h2>{{ t(kind === 'auth' ? 'security.auth' : 'security.compliance') }}</h2></div>
     <p v-if="!canView" role="status">{{ t('security.noPermission') }}</p>
     <p v-global-loading v-else-if="loading && !(selected === 'auth' ? auth : policy)">{{ t('platform.copy.fa02e7b1') }}</p>
     <template v-else-if="canView && (selected === 'auth' ? auth : policy)">
-      <button class="button button-secondary" type="button" :disabled="!editable" @click="startEdit">{{ t('common.editSettings') }}</button>
       <dl v-if="selected === 'auth' && auth" class="confirm-list">
         <div><dt>{{ t('security.captcha') }}</dt><dd>{{ t(auth.captcha_enabled ? 'platform.copy.997d5f45' : 'platform.copy.6762439b') }}</dd></div>
         <div><dt>{{ t('security.telegram') }}</dt><dd>{{ t(auth.telegram_enabled ? 'platform.copy.997d5f45' : 'platform.copy.6762439b') }}</dd></div>
@@ -120,6 +118,7 @@ useOperationToast(error, value => displayError(value), 'error');
         <div v-if="policy.config.age_enabled"><dt>{{ t('security.minimumAge') }}</dt><dd>{{ policy.config.minimum_age }}</dd></div>
         <div v-if="policy.config.region_enabled"><dt>{{ t('security.countries') }}</dt><dd>{{ policy.config.allowed_countries.map(countryName).join(', ') || '—' }}</dd></div>
       </dl>
+      <div class="ui-form-actions"><button class="button button-secondary" type="button" :disabled="!editable" @click="startEdit">{{ t('common.editSettings') }}</button></div>
     </template>
     <DetailModal class="brand-settings-dialog" v-if="editorOpen && canView" :open="!confirmOpen && !pending" :title="t(selected === 'auth' ? 'settings.tab.auth' : 'security.compliance')" :close-label="t('platform.copy.27b2fd29')" :close-disabled="busy" @close="!busy && (editorOpen = false)">
 
@@ -166,6 +165,7 @@ useOperationToast(error, value => displayError(value), 'error');
   </section>
 </template>
 <style scoped>
+.confirm-list { margin-bottom: 0; }
 .security-settings-section form { display:grid; gap:12px; min-width:0; }
 .security-settings-section fieldset { display:grid; gap:12px; margin:0; padding:0; border:0; min-width:0; }
 .security-option { display:grid; gap:6px; min-width:0; }

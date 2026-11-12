@@ -1,3 +1,4 @@
+import {openPlatformPage} from './real-console-session'
 import {test,expect,type Page,type TestInfo} from '@playwright/test'
 import {resolve} from 'node:path'
 import {origins,gameId,theme,installLayoutApi,expectNoPageOverflow} from './fixture'
@@ -21,7 +22,12 @@ for(const locale of ['en','zh-CN'] as const){
   const settings=page.locator('.security-settings')
   await expect(settings.getByRole('button',{name:zh?'品牌设置':'Brand settings',exact:true})).toHaveCount(0)
   let panel=settings.locator('[data-kind=auth]'),edit=panel.getByRole('button',{name:zh?'编辑设置':'Edit settings',exact:true})
-  await expect(edit).toBeEnabled();await edit.click();await expect(panel.getByRole('checkbox',{name:zh?'继承平台默认':'Inherit platform defaults'})).toHaveCount(0)
+  await expect(panel.locator('h2')).toHaveCount(0)
+  await expect(edit).toBeEnabled()
+  await review(page,info,`platform-auth-summary-${locale}`)
+  const fields=await panel.locator('dl').boundingBox(),action=await edit.boundingBox()
+  expect(action!.y).toBeGreaterThanOrEqual(fields!.y+fields!.height)
+  await edit.click();await expect(panel.getByRole('checkbox',{name:zh?'继承平台默认':'Inherit platform defaults'})).toHaveCount(0)
   await review(page,info,`platform-auth-${locale}`);await page.keyboard.press('Escape')
   await page.getByTestId('select-brand').click();await expect(settings.locator('.console-tabs')).toHaveCount(0)
   for(const kind of ['auth','compliance']){
@@ -83,7 +89,7 @@ test('actual platform entry opens defaults without selecting a brand',async({pag
   const reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
   if(path.endsWith('/presentation'))return reply({display_name:'Trial platform',logo_text:'T',logo_url:''})
   if(path.endsWith('/me'))return reply({account:{id:gameId,username:'security_test',super_admin:true,platform_permissions:['auth_config.view.platform','auth_config.write.platform','compliance_policy.view.platform','compliance_policy.write.platform']}})
-  if(path.endsWith('/platform-settings'))return reply({version:1,display_name:'Trial platform',logo_text:'T',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',updated_at:'2026-10-29T00:00:00Z'})
+  if(path.endsWith('/platform-settings'))return reply({theme:'jade',version:1,display_name:'Trial platform',logo_text:'T',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',updated_at:'2026-10-29T00:00:00Z'})
   if(path.endsWith('/brands'))return reply({items:[]})
   expect(route.request().headers()['x-brand-id']).toBeUndefined()
   if(path.endsWith('/auth-settings'))return reply({version:1,inherit_platform:false,captcha_enabled:false,telegram_enabled:false,telegram_client_id:'',privacy_policy_version:'',service_terms_version:''})
@@ -91,7 +97,13 @@ test('actual platform entry opens defaults without selecting a brand',async({pag
   throw Error('Unexpected platform read: '+path)
  })
  await page.goto(origins.platform)
- await page.locator('.sidebar').getByRole('button',{name:'Platform settings',exact:true}).click()
+ await openPlatformPage(page,'Settings')
+ const general=page.locator('.platform-settings-page > .panel')
+ const generalEdit=general.getByRole('button',{name:'Edit settings',exact:true})
+ await expect(generalEdit).toBeVisible()
+ await review(page,info,'platform-general-summary')
+ const fields=await general.locator('dl').boundingBox(),action=await generalEdit.boundingBox()
+ expect(action!.y).toBeGreaterThanOrEqual(fields!.y+fields!.height)
  await page.locator('.platform-settings-tabs').getByRole('button',{name:'Login',exact:true}).click()
  const panel=page.locator('.security-settings');await expect(panel.locator('[data-kind=auth]').getByRole('button',{name:'Edit settings'})).toBeEnabled()
  await expect(page.getByTestId('platform-brand-required')).toHaveCount(0)

@@ -74,8 +74,7 @@ useOperationToast(error, value => displayPublicError(value), 'error');
     <div class="console-tabs platform-settings-tabs">
       <button v-for="item in ['general', 'auth', 'commission'] as const" :key="item" type="button" :class="{ selected: tab === item }" :aria-pressed="tab === item" :disabled="securityLocked || busy" @click="tab = item">{{ t(`settings.tab.${item}`) }}</button>
     </div>
-    <section v-show="tab === 'general'" class="panel">
-      <div class="panel-heading"><button type="button" class="button button-secondary" :disabled="!canManage" @click="startEdit">{{ t('common.editSettings') }}</button></div>
+    <section v-show="tab === 'general'" class="panel brand-settings-panel">
       <dl class="confirm-list">
         <div><dt>{{ copy.displayName }}</dt><dd>{{ current.display_name }}</dd></div>
         <div><dt>{{ copy.logoText }}</dt><dd>{{ current.logo_text }}</dd></div>
@@ -84,6 +83,7 @@ useOperationToast(error, value => displayPublicError(value), 'error');
         <div><dt>{{ copy.dateFormat }}</dt><dd>{{ current.date_format === 'YYYY-MM-DD' ? copy.dateYMD : current.date_format === 'DD/MM/YYYY' ? copy.dateDMY : copy.dateMDY }}</dd></div>
         <div><dt>{{ copy.timeFormat }}</dt><dd>{{ current.time_format === 'HH:mm:ss' ? copy.time24 : copy.time12 }}</dd></div>
       </dl>
+      <div class="ui-form-actions"><button type="button" class="button button-secondary" :disabled="!canManage" @click="startEdit">{{ t('common.editSettings') }}</button></div>
     </section>
     <SecuritySettingsPanel v-if="securityVisited" v-show="tab === 'auth'" :account="account" @locked="securityLocked = $event" @failure="emit('failure', $event)" />
     <CommissionSettings v-if="commissionVisited" v-show="tab === 'commission'" :timezone="current.timezone" :can-manage="canManage" @failure="emit('failure', $event)" />
@@ -101,6 +101,7 @@ useOperationToast(error, value => displayPublicError(value), 'error');
 </template>
 
 <style scoped>
+.platform-settings-page > .panel > .confirm-list { margin-bottom: 0; }
 .platform-settings-page { display: grid; gap: 12px; min-width: 0; }
 .platform-settings-page > .page-heading, .platform-settings-page > .console-tabs { margin-bottom: 0; }
 </style>
