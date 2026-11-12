@@ -26,7 +26,7 @@ for(const locale of ['zh-CN','en'] as const)test(`user ledger shows transfer, hi
    await expect(cell).toHaveCSS('white-space','nowrap')
    expect(await cell.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true)
    const labelHeight=await cell.evaluate(el=>parseFloat(getComputedStyle(el,'::before').lineHeight))
-   expect((await cell.boundingBox())!.height).toBeLessThanOrEqual(labelHeight+1)
+   expect((await cell.boundingBox())!.height).toBeLessThanOrEqual(2*labelHeight+1)
   }
  }
  await checkMobileAmounts()
@@ -70,7 +70,7 @@ for(const locale of ['zh-CN','en'] as const)test(`large ledger amounts remain co
    const geometry=await cells.evaluateAll(nodes=>nodes.map(node=>{
     const cell=node.getBoundingClientRect(),row=node.parentElement!.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(node)
     const text=range.getBoundingClientRect(),style=getComputedStyle(node)
-    return {left:cell.left,right:cell.right,top:cell.top,bottom:cell.bottom,rowLeft:row.left,rowRight:row.right,textLeft:text.left,textRight:text.right,textHeight:text.height,lineHeight:parseFloat(style.lineHeight),fontSize:parseFloat(style.fontSize),overflow:node.scrollWidth>node.clientWidth+1,textOverflow:style.textOverflow}
+    return {left:cell.left,right:cell.right,top:cell.top,bottom:cell.bottom,rowLeft:row.left,rowRight:row.right,textLeft:text.left,textRight:text.right,textHeight:text.height,textTop:text.top,textBottom:text.bottom,lineHeight:parseFloat(style.lineHeight),fontSize:parseFloat(style.fontSize),overflow:node.scrollWidth>node.clientWidth+1,textOverflow:style.textOverflow}
    }))
    for(const cell of geometry){
     expect(cell.overflow).toBe(false);expect(cell.textOverflow).not.toBe('ellipsis');expect(cell.fontSize).toBeGreaterThanOrEqual(14)
@@ -79,6 +79,16 @@ for(const locale of ['zh-CN','en'] as const)test(`large ledger amounts remain co
     expect(cell.textHeight).toBeLessThanOrEqual(cell.lineHeight+1)
    }
    const [a,b]=geometry
+   if(width<=700){
+    expect(Math.abs(a!.top-b!.top)).toBeLessThanOrEqual(1)
+    expect(Math.abs(a!.textTop-b!.textTop)).toBeLessThanOrEqual(1)
+    expect(Math.abs(a!.textBottom-b!.textBottom)).toBeLessThanOrEqual(1)
+    expect(a!.right).toBeLessThan(b!.left)
+    expect(Math.abs(a!.textLeft-a!.left)).toBeLessThanOrEqual(1)
+    expect(Math.abs(b!.textRight-b!.right)).toBeLessThanOrEqual(1)
+    expect(a!.textTop-a!.top).toBeGreaterThanOrEqual(a!.lineHeight-1)
+    expect(b!.textTop-b!.top).toBeGreaterThanOrEqual(b!.lineHeight-1)
+   }
    expect(a!.right<=b!.left+1||b!.right<=a!.left+1||a!.bottom<=b!.top+1||b!.bottom<=a!.top+1).toBe(true)
   }
   await page.screenshot({path:info.outputPath(`large-ledger-${locale}-${width}.png`),fullPage:true})

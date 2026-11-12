@@ -306,12 +306,13 @@ async function changePage(direction: number) {
 @media (max-width: 700px) {
   .ledger-table, .ledger-table tbody { display: block; }
   .ledger-table thead { display: none; }
-  .ledger-entry { display: flex; flex-wrap: wrap; gap: 4px 12px; padding-block: 8px; border-bottom: 1px solid var(--line); }
+  .ledger-entry { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; padding-block: 8px; border-bottom: 1px solid var(--line); }
   .ledger-table td { min-width: 0; padding: 0; border: 0; }
-  .ledger-type, .ledger-time { flex: 0 0 100%; }
+  .ledger-type, .ledger-time { grid-column: 1 / -1; }
   .ledger-time { white-space: normal; }
-  .ledger-table .ledger-amount { display: flex; flex: 1 0 max-content; align-items: baseline; justify-content: space-between; gap: 4px; white-space: nowrap; text-align: left; }
-  .ledger-amount::before { display: inline; content: attr(data-label); color: var(--muted); }
+  .ledger-table .ledger-amount { display: flex; flex-direction: column; align-items: flex-start; gap: 0; white-space: nowrap; text-align: left; }
+  .ledger-table .ledger-balance-after { align-items: flex-end; text-align: right; }
+  .ledger-amount::before { display: block; content: attr(data-label); color: var(--muted); }
 }
 .change-negative { color: var(--danger-text); }
 .change-positive { color: var(--success-text); }
