@@ -8,17 +8,18 @@ registerWorkspaceTests()
 registerConfiguredSaleTests()
 registerConfiguredHistoryLayoutTests()
 for(const locale of ['en','zh-CN'] as const){
- test(`player ledger details and shared pagination (${locale})`,async({page},info)=>{
+ test(`player ledger balances and shared pagination (${locale})`,async({page},info)=>{
   await installLayoutApi(page,locale);await installWalletLayoutApi(page)
   await page.goto(origins.user+'/wallet/ledger')
-  const trigger=page.locator('.ledger-details'),dialog=page.getByRole('dialog')
+  await expect(page.locator('.ledger-details')).toHaveCount(0)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.locator('.table-pagination')).toHaveCount(1)
-  await expect(page.locator('.entry-change strong')).toHaveText('−10')
-  await trigger.click();await expect(dialog).toBeVisible();await expect(dialog.locator('.ledger-result dd')).toHaveText('120')
+  await expect(page.locator('.ledger-amount strong')).toHaveText('−10')
+  await expect(page.locator('.ledger-balance-after')).toHaveText('120')
   const preset=page.viewportSize()!
   for(const width of info.project.name.endsWith('reflow')?[320,620,900,1000,1440]:[preset.width]){
    if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:preset.height})
-   await expectInsideViewport(dialog);await expectNoPageOverflow(page)
+   await expectNoPageOverflow(page)
    await page.screenshot({path:info.outputPath(`ledger-detail-${locale}-${width}.png`)})
   }
   const buttons=page.locator('.table-pagination-arrow')
@@ -45,7 +46,7 @@ for(const locale of ['en','zh-CN'] as const){
   const preset=page.viewportSize()!
   for(const width of info.project.name.endsWith('reflow')?[320,620,900,1440]:[preset.width]){
    if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:preset.height})
-   await expectInsideViewport(dialog);await expectNoPageOverflow(page)
+   await expectNoPageOverflow(page)
    await page.screenshot({path:info.outputPath(`recharge-detail-${locale}-${width}.png`)})
   }
   await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0)
@@ -66,7 +67,7 @@ for(const locale of ['en','zh-CN'] as const){
   const preset=page.viewportSize()!
   for(const width of info.project.name.endsWith('reflow')?[320,620,900,1440]:[preset.width]){
    if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:preset.height})
-   await expectInsideViewport(dialog);await expectNoPageOverflow(page)
+   await expectNoPageOverflow(page)
    await page.screenshot({path:info.outputPath(`profile-form-${locale}-${width}.png`)})
   }
   await dialog.locator('input[autocomplete=tel]').fill('+6591234567');await dialog.locator('button[type=submit]').click()

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { pointsMinor, pointsFromMinor } from '@lottery/shared'
 
-import { auditReasonLabel, readPaginationTotal } from '@lottery/shared'
+import { readPaginationTotal } from '@lottery/shared'
 const ledgerTotal = ref('0')
 
 import TablePagination from "@lottery/shared/TablePagination.vue"
@@ -9,7 +9,6 @@ import { useUserI18n as usePublicErrorI18n } from "./i18n";
 const publicErrorI18n = usePublicErrorI18n();
 const publicErrorMessage = publicErrorI18n.errorMessage;
 const displayPublicError = publicErrorI18n.displayError;
-import DetailModal from "@lottery/shared/DetailModal.vue";
 import { withGlobalLoading } from '@lottery/shared';
 import { vRefreshButton } from '@lottery/shared';
 import { vGlobalLoading } from "@lottery/shared";
@@ -35,24 +34,23 @@ const ui = useUserI18n().t;
 const copy = computed(() => ({
   title: ui('user.wallet.title'), refresh: ui('user.wallet.refresh'), loading: ui('user.wallet.loading'), reading: ui('user.wallet.reading'), unauthenticated: ui('user.wallet.unauthenticated'), recheck: ui('user.wallet.recheck'), retry: ui('user.wallet.retry'), balance: ui('user.wallet.balance'), points: ui('user.wallet.points'), frozen: ui('user.wallet.frozen'), withdrawal: ui('user.wallet.withdrawal'), buckets: ui('user.wallet.buckets'), ledger: ui('user.wallet.ledger'), empty: ui('user.wallet.empty'), page: (number: number) => ui('user.wallet.page', { number }), previous: ui('user.wallet.previous'), next: ui('user.wallet.next'), sources: { recharge: ui('user.wallet.source.recharge'), winning: ui('user.wallet.source.winning'), gift: ui('user.wallet.source.gift'), commission: ui('user.wallet.source.commission') }, states: { available: ui('user.wallet.state.available'), manual_frozen: ui('user.wallet.state.manualFrozen'), system_frozen: ui('user.wallet.state.systemFrozen'), withdrawal: ui('user.wallet.state.withdrawal') }, networkError: ui('user.wallet.networkError'), brandMismatch: ui('user.wallet.brandMismatch'),
 }));
-function ledgerLabel(entry:LedgerEntry,reason=false):string{
+function ledgerLabel(entry:LedgerEntry):string{
  if(entry.entry_type==="currency_exchange_credit")return ui("cash.to_points");
  if(entry.entry_type==="currency_exchange_debit")return ui("cash.from_points");
  if(entry.reference_type==="canada_order"){
  const frozenDelta=Object.values(entry.delta_snapshot).reduce((sum,b)=>sum+pointsMinor(b.system_frozen),0n);
- if(entry.entry_type==='bet'&&frozenDelta>0n)return ui(reason?'user.wallet.canada.reserveReason':'user.wallet.canada.reserve');
- if(entry.entry_type==='bet'&&frozenDelta<0n)return ui(reason?'user.wallet.canada.lossReason':'user.wallet.canada.loss');
- if(entry.entry_type==='refund'&&frozenDelta<0n)return ui(reason?'user.wallet.canada.releaseReason':'user.wallet.canada.release');
- switch(entry.entry_type){case "bet":return ui(reason?'user.wallet.canada.betReason':'user.wallet.canada.bet');case "prize":return ui(reason?'user.wallet.canada.prizeReason':'user.wallet.canada.prize');case "refund":return ui(reason?'user.wallet.canada.refundReason':'user.wallet.canada.refund');default:throw new Error('Unsupported Canada ledger entry')}
+ if(entry.entry_type==='bet'&&frozenDelta>0n)return ui('user.wallet.canada.reserve');
+ if(entry.entry_type==='bet'&&frozenDelta<0n)return ui('user.wallet.canada.loss');
+ if(entry.entry_type==='refund'&&frozenDelta<0n)return ui('user.wallet.canada.release');
+ switch(entry.entry_type){case "bet":return ui('user.wallet.canada.bet');case "prize":return ui('user.wallet.canada.prize');case "refund":return ui('user.wallet.canada.refund');default:throw new Error('Unsupported Canada ledger entry')}
  }
  if(entry.reference_type!=="mark_six_order") {
-   if (reason) return auditReasonLabel(entry.reason, publicErrorI18n.locale.value);
    return ui(`user.wallet.entry.${entry.entry_type}`);
  }
  switch(entry.entry_type){
- case "bet":return ui(reason?'user.wallet.markSix.betReason':'user.wallet.markSix.bet');
- case "prize":return ui(reason?'user.wallet.markSix.prizeReason':'user.wallet.markSix.prize');
- case "refund":return ui(reason?'user.wallet.markSix.refundReason':'user.wallet.markSix.refund');
+ case "bet":return ui('user.wallet.markSix.bet');
+ case "prize":return ui('user.wallet.markSix.prize');
+ case "refund":return ui('user.wallet.markSix.refund');
  default:throw new Error('Unsupported Mark Six ledger entry');
  }
 }
@@ -73,7 +71,6 @@ const states: WalletState[] = [
 ];
 const wallet = ref<Wallet | null>(null);
 const entries = ref<LedgerEntry[]>([]);
-const detailEntry = ref<LedgerEntry | null>(null);
 const state = ref<"loading" | "ready" | "unauthenticated" | "error">("loading");
 const error = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const offset = ref(0);
@@ -94,7 +91,6 @@ async function load(requestedOffset = offset.value) {
   const generation = ++loadGeneration;
   const isCurrent = () =>
     generation === loadGeneration && props.brandCode === requestedBrandCode;
-  detailEntry.value = null;
   loading.value = true;
   if (!wallet.value) state.value = "loading";
   error.value = "";
@@ -246,9 +242,9 @@ async function changePage(direction: number) {
         <table v-if="entries.length" class="ledger-table">
           <thead><tr>
             <th scope="col">{{ ui('user.wallet.entryType') }}</th>
-            <th scope="col">{{ ui('user.wallet.entryTime') }}</th>
             <th scope="col" class="ledger-amount">{{ ui('user.wallet.availableChange') }}</th>
-            <th scope="col" class="ledger-action">{{ ui('user.wallet.viewDetails') }}</th>
+            <th scope="col" class="ledger-amount">{{ ui('user.wallet.availableAfter') }}</th>
+            <th scope="col">{{ ui('user.wallet.entryTime') }}</th>
           </tr></thead>
           <tbody>
             <tr v-for="entry in entries" :key="entry.id" class="ledger-entry">
@@ -256,24 +252,12 @@ async function changePage(direction: number) {
                 <b>{{ ledgerLabel(entry) }}</b>
                 <dl v-if="entry.agent_transfer" class="ledger-result agent-transfer-receipt"><div><dt>{{ ui('user.wallet.agentTransferFrom') }}</dt><dd>{{ entry.agent_transfer.agent_account ?? '—' }}</dd></div></dl>
               </td>
-              <td class="ledger-time">{{ formatDisplayDateTime(entry.created_at, props.locale) }}</td>
               <td class="ledger-amount" :data-label="ui('user.wallet.availableChange')"><strong :class="{ 'change-negative': availableChange(entry).startsWith('−'), 'change-positive': availableChange(entry).startsWith('+') }">{{ availableChange(entry) }}</strong></td>
-              <td class="ledger-action"><button type="button" class="text-button ledger-details" tabindex="0" aria-haspopup="dialog" @click="detailEntry = entry">{{ ui('user.wallet.viewDetails') }}</button></td>
+              <td class="ledger-amount ledger-balance-after" :data-label="ui('user.wallet.availableAfter')">{{ availableAfter(entry) }}</td>
+              <td class="ledger-time">{{ formatDisplayDateTime(entry.created_at, props.locale) }}</td>
             </tr>
           </tbody>
         </table>
-        <DetailModal v-if="detailEntry" :title="ui('user.wallet.viewDetails')" :close-label="ui('user.notifications.close')" @close="detailEntry = null">
-          <div class="ledger-detail-body">
-            <dl v-if="detailEntry.agent_transfer" class="ledger-result agent-transfer-receipt">
-              <div><dt>{{ui('user.wallet.agentTransferFrom')}}</dt><dd>{{detailEntry.agent_transfer.agent_account??'—'}}</dd></div>
-              <div><dt>{{ui('user.wallet.agentTransferAmount')}}</dt><dd>{{formatIntegerAmount(detailEntry.agent_transfer.amount)}}</dd></div>
-              <div><dt>{{ui('user.wallet.agentTransferTime')}}</dt><dd>{{formatDisplayDateTime(detailEntry.agent_transfer.created_at,props.locale)}}</dd></div>
-            </dl>
-            <p v-else class="entry-reason">{{ ledgerLabel(detailEntry,true) }}</p>
-            <p v-if="['mark_six_order','canada_order','configured_order'].includes(detailEntry.reference_type)" class="entry-reference">{{ ui('user.wallet.orderReference') }} · {{ detailEntry.reference_id }}</p>
-            <dl class="ledger-result"><div><dt>{{ ui('user.wallet.availableAfter') }}</dt><dd>{{ availableAfter(detailEntry) }}</dd></div></dl>
-          </div>
-        </DetailModal>
         <TablePagination class="pager" :total="ledgerTotal" :page="Math.floor(offset / PAGE_SIZE + 1)" :count="entries.length" :locale="publicErrorI18n.locale.value" :page-size="PAGE_SIZE" :previous-disabled="offset === 0 || loading" :next-disabled="BigInt(offset + entries.length) >= BigInt(ledgerTotal) || loading" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => changePage(target - (Math.floor(offset / PAGE_SIZE + 1)))" :change-page-size="async (size: number) => { PAGE_SIZE = size; await load(0) }" :busy="loading" />
       </section>
     </template>
@@ -313,8 +297,8 @@ async function changePage(direction: number) {
 .bucket-source dd { margin: 0; font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .bucket-available dd { color: var(--success-text); }
 .ledger-table { width: 100%; border-collapse: collapse; font-size: var(--body-font-size); }
-.ledger-table th, .ledger-table td { padding: 8px var(--table-cell-padding-inline); text-align: left; vertical-align: middle; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
-.ledger-table .ledger-amount, .ledger-table .ledger-action { text-align: right; }
+.ledger-table th, .ledger-table td { position: static; padding: 8px var(--table-cell-padding-inline); text-align: left; vertical-align: middle; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.ledger-table .ledger-amount { text-align: right; }
 .ledger-amount { font-variant-numeric: tabular-nums; }
 .ledger-time { white-space: nowrap; color: var(--muted); }
 .ledger-type b, .ledger-amount strong { font-weight: 650; }
@@ -322,18 +306,15 @@ async function changePage(direction: number) {
 @media (max-width: 700px) {
   .ledger-table, .ledger-table tbody { display: block; }
   .ledger-table thead { display: none; }
-  .ledger-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; padding-block: 8px; border-bottom: 1px solid var(--line); }
+  .ledger-entry { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; padding-block: 8px; border-bottom: 1px solid var(--line); }
   .ledger-table td { min-width: 0; padding: 0; border: 0; }
   .ledger-type, .ledger-time { grid-column: 1 / -1; }
   .ledger-time { white-space: normal; }
   .ledger-table .ledger-amount { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; text-align: left; }
   .ledger-amount::before { display: inline; content: attr(data-label); color: var(--muted); }
-  .ledger-action { align-self: center; }
 }
 .change-negative { color: var(--danger-text); }
 .change-positive { color: var(--success-text); }
-.entry-reason { margin: 12px 0; font-size: var(--body-font-size); line-height: 1.6; color: var(--ink-secondary); overflow-wrap: anywhere; }
-.entry-reference { font-size: var(--body-font-size); color: var(--muted); overflow-wrap: anywhere; }
 .state-card { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; line-height: 1.6; }
 .state-error { color: var(--danger); }
 @media (max-width: 700px) {
@@ -350,8 +331,6 @@ async function changePage(direction: number) {
   .wallet-head:has(button) { margin-bottom: 12px; }
   .balance-amount strong { font-size: 32px; }
 }
-@media (min-width: 901px) and (pointer: fine) {
-  .entry-reason { margin-block: 6px; }
-}
-.ledger-detail-body{display:grid;gap:12px;min-width:0}.ledger-detail-body p{margin:0}.ledger-result{margin:8px 0 0}.ledger-result>div{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px}.ledger-result dt{color:var(--muted)}.ledger-result dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+
+.ledger-result{margin:8px 0 0}.ledger-result>div{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px}.ledger-result dt{color:var(--muted)}.ledger-result dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 </style>

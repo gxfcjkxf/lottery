@@ -155,7 +155,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     if (info.project.use.contextOptions?.screen) expect(metrics.screen).toEqual(info.project.use.contextOptions.screen)
     await info.attach('viewport.json', { body: JSON.stringify(metrics), contentType: 'application/json' })
   })
-  test(`wallet overview and expandable changes keep point states distinct (${locale})`, async ({ page }, info) => {
+  test(`wallet overview and ledger balances keep point states distinct (${locale})`, async ({ page }, info) => {
     await installLayoutApi(page, locale);
     await installWalletLayoutApi(page);
     let ledgerRequests = 0;
@@ -198,29 +198,16 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await expect(headerRefresh).toHaveCount(0);
     await expect(wallet.locator('.totals, .bucket-grid, .wallet-links')).toHaveCount(0);
     await expect(wallet.locator('.totals p, .source-head p, .panel-title p')).toHaveCount(0);
-    await expect(wallet.locator('.entry-head b')).toHaveText(locale === 'en' ? 'Points frozen' : '积分冻结');
+    await expect(wallet.locator('.ledger-type b')).toHaveText(locale === 'en' ? 'Points frozen' : '积分冻结');
     expect(ledgerRequests).toBeGreaterThan(0);
     // A freeze moves points between states: the net total is zero, while available points decrease.
-    await expect(wallet.locator('.entry-change strong')).toHaveText('−10');
-    const details = wallet.locator('.ledger-details');
+    await expect(wallet.locator('.ledger-amount strong')).toHaveText('−10');
+    await expect(wallet.locator('.ledger-balance-after')).toHaveText('120');
+    await expect(wallet.locator('.ledger-details')).toHaveCount(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(wallet.locator('.ledger-result')).toBeHidden();
-    await expect(wallet.locator('.entry-reason')).toBeHidden();
     await expectRefreshControls(page);
     await expectNoPageOverflow(page);
     await page.screenshot({ path: info.outputPath(`wallet-ledger-${locale}.png`) });
-    await details.click();
-    const ledgerDialog = page.getByRole('dialog', {name: locale === 'en' ? 'Details' : '明细'});
-    await expect(ledgerDialog).toBeVisible();
-    await expectInsideViewport(ledgerDialog);
-    await expect(wallet.locator('.snapshot-grid')).toHaveCount(0);
-    await expect(wallet.locator('.entry-reason')).toBeVisible();
-    await expect(wallet.locator('.ledger-result dd')).toHaveText('120');
-    await expectNoPageOverflow(page);
-    await page.screenshot({ path: info.outputPath(`wallet-details-${locale}.png`) });
-    await page.keyboard.press('Escape');
-    await expect(ledgerDialog).toHaveCount(0);
-    await expect(details).toBeFocused();
   });
 
 }
