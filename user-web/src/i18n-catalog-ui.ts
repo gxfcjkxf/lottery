@@ -116,7 +116,7 @@ export const userUiCatalog = {
     'user.wallet.entry.commission_correction': 'Commission correction',
     'user.wallet.entry.withdrawal_reserve': 'Withdrawal requested',
     'user.wallet.entry.withdrawal_paid': 'Withdrawal completed',
-    'user.wallet.entry.withdrawal_release': 'Withdrawal points returned',
+    'user.wallet.entry.withdrawal_release': 'Withdrawal returned',
     'user.wallet.entry.reward_grant': 'Reward credited',
     'user.wallet.entry.reward_reversal': 'Reward reversed',
     'user.wallet.entry.freeze': 'Points frozen',

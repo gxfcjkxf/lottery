@@ -1,3 +1,4 @@
+import {userUiCatalog} from '../../user-web/src/i18n-catalog-ui'
 import {test,expect,type Locator} from '@playwright/test'
 import {installLayoutApi,installOrdersLayoutApi,origins,gameId,expectNoPageOverflow} from './fixture'
 async function expectLedgerHeading(row:Locator,width:number){
@@ -111,5 +112,28 @@ for(const locale of ['zh-CN','en'] as const)test(`large ledger amounts remain co
    expect(a!.right<=b!.left+1||b!.right<=a!.left+1||a!.bottom<=b!.top+1||b!.bottom<=a!.top+1).toBe(true)
   }
   await page.screenshot({path:info.outputPath(`large-ledger-${locale}-${width}.png`),fullPage:true})
+ }
+})
+
+for(const locale of ['zh-CN','en'] as const)test(`all ledger types and compact times fit one mobile line (${locale})`,async({page},info)=>{
+ await installLayoutApi(page,locale);await installOrdersLayoutApi(page)
+ const buckets=(available='0',frozen='0')=>Object.fromEntries(['recharge','winning','gift','commission'].map(source=>[source,{available:source==='recharge'?available:'0',manual_frozen:'0',system_frozen:source==='recharge'?frozen:'0',withdrawal:'0'}]))
+ const types=Object.keys(userUiCatalog.en).filter(key=>key.startsWith('user.wallet.entry.')).map(key=>({entry_type:key.slice('user.wallet.entry.'.length),reference_type:'manual',frozen:'0'}))
+ types.push(...['bet','prize','refund'].map(entry_type=>({entry_type,reference_type:'mark_six_order',frozen:'0'})),...['bet','prize','refund'].map(entry_type=>({entry_type,reference_type:'canada_order',frozen:'0'})),{entry_type:'bet',reference_type:'canada_order',frozen:'1'},{entry_type:'bet',reference_type:'canada_order',frozen:'-1'},{entry_type:'refund',reference_type:'canada_order',frozen:'-1'},...['currency_exchange_credit','currency_exchange_debit'].map(entry_type=>({entry_type,reference_type:'manual',frozen:'0'})))
+ await page.route('**/api/v1/wallet/ledger?**',route=>route.fulfill({json:{success:true,data:{total_count:String(types.length),items:types.map((c,i)=>({entry_type:c.entry_type,reference_type:c.reference_type,...(c.entry_type==='agent_transfer_credit'?{agent_transfer:{agent_id:gameId,agent_account:'ledger_sender',amount:'1',created_at:'2026-11-12T08:00:00Z'}}:{}),id:`bbbbbbbb-bbbb-4bbb-8bbb-${String(i+1).padStart(12,'0')}`,brand_id:gameId,member_id:gameId,account_id:gameId,reference_id:gameId,before_snapshot:buckets('1','1'),delta_snapshot:buckets('1',c.frozen),after_snapshot:buckets('2','1'),reason:'',version:i+1,created_at:'2026-11-12T08:00:00Z'}))}}}))
+ await page.goto(origins.user+'/wallet/ledger');await expect(page.locator('.ledger-entry')).toHaveCount(types.length)
+ const preset=page.viewportSize()!
+ for(const width of info.project.name.endsWith('reflow')?[320,360,375,390,412,700,701,915,1440]:[preset.width]){
+  if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:preset.height})
+  await expectNoPageOverflow(page)
+  if(width<=700){
+   const issues=await page.locator('.ledger-heading').evaluateAll(nodes=>nodes.flatMap(el=>{
+    const label=el.querySelector('b')!,time=el.querySelector('time')!,a=label.getBoundingClientRect(),b=time.getBoundingClientRect(),box=el.getBoundingClientRect(),line=parseFloat(getComputedStyle(label).lineHeight)
+    const range=document.createRange();range.selectNodeContents(label);const text=range.getBoundingClientRect()
+    return a.height>line+1||b.height>line+1||a.right>b.left||b.right>box.right+1||text.width>label.clientWidth+1||label.scrollWidth>label.clientWidth+1||getComputedStyle(label).textOverflow==='ellipsis'?[{label:label.textContent,time:time.textContent,labelHeight:a.height,lineHeight:line,labelWidth:label.clientWidth,textWidth:text.width}]:[]
+   }))
+   expect(issues,`${locale} ${width}px headings`).toEqual([])
+  }
+  if(width===320||width===375||width===preset.width)await page.screenshot({path:info.outputPath(`all-types-${locale}-${width}.png`),fullPage:true})
  }
 })
