@@ -249,7 +249,7 @@ async function changePage(direction: number) {
           <tbody>
             <tr v-for="entry in entries" :key="entry.id" class="ledger-entry">
               <td class="ledger-type">
-                <b>{{ ledgerLabel(entry) }}</b>
+                <div class="ledger-heading"><b>{{ ledgerLabel(entry) }}</b><time class="ledger-mobile-time" :datetime="entry.created_at">{{ formatDisplayDateTime(entry.created_at, props.locale) }}</time></div>
                 <dl v-if="entry.agent_transfer" class="ledger-result agent-transfer-receipt"><div><dt>{{ ui('user.wallet.agentTransferFrom') }}</dt><dd>{{ entry.agent_transfer.agent_account ?? '—' }}</dd></div></dl>
               </td>
               <td class="ledger-amount" :data-label="ui('user.wallet.availableChange')"><strong :class="{ 'change-negative': availableChange(entry).startsWith('−'), 'change-positive': availableChange(entry).startsWith('+') }">{{ availableChange(entry) }}</strong></td>
@@ -300,6 +300,7 @@ async function changePage(direction: number) {
 .ledger-table th, .ledger-table td { position: static; padding: 8px var(--table-cell-padding-inline); text-align: left; vertical-align: middle; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .ledger-table .ledger-amount { text-align: right; }
 .ledger-amount { font-variant-numeric: tabular-nums; }
+.ledger-mobile-time { display: none; }
 .ledger-time { white-space: nowrap; color: var(--muted); }
 .ledger-type b, .ledger-amount strong { font-weight: 650; }
 .ledger-amount::before { display: none; }
@@ -308,8 +309,11 @@ async function changePage(direction: number) {
   .ledger-table thead { display: none; }
   .ledger-entry { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; padding-block: 8px; border-bottom: 1px solid var(--line); }
   .ledger-table td { min-width: 0; padding: 0; border: 0; }
-  .ledger-type, .ledger-time { grid-column: 1 / -1; }
-  .ledger-time { white-space: normal; }
+  .ledger-type { grid-column: 1 / -1; }
+  .ledger-table .ledger-time { display: none; }
+  .ledger-heading { display: flex; align-items: baseline; gap: 8px; }
+  .ledger-heading b { flex: 1; min-width: 0; }
+  .ledger-heading .ledger-mobile-time { display: block; flex: none; white-space: nowrap; color: var(--muted); font-weight: 400; }
   .ledger-table .ledger-amount { display: flex; flex-direction: column; align-items: flex-start; gap: 0; white-space: nowrap; text-align: left; }
   .ledger-table .ledger-balance-after { align-items: flex-end; text-align: right; }
   .ledger-amount::before { display: block; content: attr(data-label); color: var(--muted); }

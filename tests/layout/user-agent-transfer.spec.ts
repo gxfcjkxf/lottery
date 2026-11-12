@@ -1,5 +1,19 @@
-import {test,expect} from '@playwright/test'
+import {test,expect,type Locator} from '@playwright/test'
 import {installLayoutApi,installOrdersLayoutApi,origins,gameId,expectNoPageOverflow} from './fixture'
+async function expectLedgerHeading(row:Locator,width:number){
+ const time=row.locator('.ledger-mobile-time')
+ if(width>700){await expect(time).toBeHidden();await expect(row.locator('.ledger-time')).toBeVisible();return}
+ await expect(time).toBeVisible();await expect(row.locator('.ledger-time')).toBeHidden()
+ await expect(time).toHaveCSS('white-space','nowrap')
+ const metrics=await row.locator('.ledger-heading').evaluate(el=>{
+  const heading=el.getBoundingClientRect(),label=el.querySelector('b')!.getBoundingClientRect(),time=el.querySelector('time')!.getBoundingClientRect()
+  return {left:heading.left,right:heading.right,top:heading.top,labelRight:label.right,timeLeft:time.left,timeRight:time.right,timeTop:time.top,timeHeight:time.height,lineHeight:parseFloat(getComputedStyle(el).lineHeight)}
+ })
+ expect(metrics.labelRight).toBeLessThanOrEqual(metrics.timeLeft)
+ expect(Math.abs(metrics.timeRight-metrics.right)).toBeLessThanOrEqual(1)
+ expect(metrics.timeTop-metrics.top).toBeLessThanOrEqual(2)
+ expect(metrics.timeHeight).toBeLessThanOrEqual(metrics.lineHeight+1)
+}
 for(const locale of ['zh-CN','en'] as const)test(`user ledger shows transfer, historical points and ordered columns (${locale})`,async({page},info)=>{
  await installLayoutApi(page,locale);await installOrdersLayoutApi(page)
  const zh=locale==='zh-CN',agent='sending_agent_1234567890',at='2026-11-12T08:00:00Z'
@@ -30,6 +44,7 @@ for(const locale of ['zh-CN','en'] as const)test(`user ledger shows transfer, hi
   }
  }
  await checkMobileAmounts()
+ await expectLedgerHeading(entry,page.viewportSize()!.width)
  await expect(entry.getByRole('button')).toHaveCount(0)
  await expect(page.getByRole('dialog')).toHaveCount(0)
  if(info.project.name.endsWith('reflow')){
@@ -38,6 +53,7 @@ for(const locale of ['zh-CN','en'] as const)test(`user ledger shows transfer, hi
    await page.setViewportSize({width,height:viewport.height})
    await expectNoPageOverflow(page)
    await checkMobileAmounts()
+   await expectLedgerHeading(entry,width)
    await expect(entry.locator('td').nth(2)).toHaveCSS('display',width>700?'table-cell':'flex')
    if(width>700)await expect(page.locator('.ledger-table thead')).toBeVisible()
    else await expect(page.locator('.ledger-table thead')).toBeHidden()
@@ -66,6 +82,7 @@ for(const locale of ['zh-CN','en'] as const)test(`large ledger amounts remain co
   await expectNoPageOverflow(page)
   for(const [i,c] of cases.entries()){
    const row=rows.nth(i),cells=row.locator('.ledger-amount')
+   await expectLedgerHeading(row,width)
    await expect(cells.nth(0)).toHaveText(c.change);await expect(cells.nth(1)).toHaveText(c.balance)
    const geometry=await cells.evaluateAll(nodes=>nodes.map(node=>{
     const cell=node.getBoundingClientRect(),row=node.parentElement!.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(node)
