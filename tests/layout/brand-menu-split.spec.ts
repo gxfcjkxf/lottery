@@ -597,3 +597,46 @@ for (const locale of ['zh-CN', 'en'] as const) {
   expect(errors).toEqual([])
  })
 }
+
+for (const locale of ['zh-CN', 'en'] as const) {
+ test(`brand read-only draw history (${locale})`, async ({ page }, info) => {
+  await installLayoutApi(page, locale)
+  const zh = locale === 'zh-CN'
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.route('**/api/v1/admin/**', async route => {
+   expect(route.request().method()).toBe('GET')
+   const url = new URL(route.request().url())
+   const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
+   if (url.pathname.endsWith('/me')) return reply({account:{id:gameId,username:'draw_viewer',super_admin:false,brand_ids:[gameId],permissions_by_brand:{[gameId]:['platform_game.view.brand']}}})
+   if (url.pathname.endsWith('/brands')) return reply({items:[{id:gameId,code:'layout',name:'Layout',status:'active'}]})
+   expect(route.request().headers()['x-brand-id']).toBe(gameId)
+   if (url.pathname.endsWith('/platform-games')) return reply({games:[{id:gameId,name:'六合彩',connected:true},{id:'unconnected',name:'Hidden',connected:false}],total_count:'2',limit:100,offset:0})
+   if (url.pathname.endsWith('/draw-overview')) return reply({total_count:'1',mark_six:true,year:'2026',years:['2026','2025'],items:[{period_no:'2026110',draw_date:'2026-10-31',source:'manual',attributes:{'01':{wave:'red',zodiac:'rat',element:'wood'}},result:{regular:[1,2,3,4,5,6],special:[7],digits:[]}}],has_more:false,pending:[],pending_has_more:false})
+   throw Error(`Unexpected draw request: ${url.pathname}`)
+  })
+  await page.goto(origins.brand)
+  await expect(page.locator('.management-console')).toBeVisible()
+  const more = page.locator('.mobile-nav > button').last()
+  if (await more.isVisible()) await more.click()
+  const menu = page.locator(await more.isVisible() ? '.mobile-more-menu' : '.side-nav')
+  const betting = menu.locator('details').filter({has:page.locator('summary',{hasText:zh?'投注管理':'Betting'})})
+  if (await betting.count() && await betting.getAttribute('open') === null) await betting.locator('summary').click()
+  const target = menu.getByRole('button',{name:zh?'开奖记录':'Draw history',exact:true})
+  const group = target.locator('xpath=ancestor::details')
+  if (await group.count() && await group.getAttribute('open') === null) await group.locator('summary').click()
+  await target.click()
+  await expect(page.getByTestId('draw-overview')).toContainText('2026110')
+  await expect(page.getByTestId('draw-overview')).toContainText('2026-10-31')
+  await expect(page.getByRole('button',{name:zh?'手动添加开奖结果':'Manually add draw result',exact:true})).toHaveCount(0)
+  await expectNoPageOverflow(page)
+  await page.screenshot({path:info.outputPath(`brand-draw-${locale}.png`),fullPage:true})
+  if (info.project.name.includes('reflow')) {
+   for (const width of [320,640,900,1000,1440]) {
+    await page.setViewportSize({width,height:800})
+    await expectNoPageOverflow(page)
+   }
+  }
+  expect(errors).toEqual([])
+ })
+}

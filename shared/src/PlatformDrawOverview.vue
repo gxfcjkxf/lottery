@@ -14,7 +14,7 @@ import { createPlatformLotteryClient, PlatformLotteryError, type PlatformDrawOve
 import { platformDisplaySettings } from './display-settings'
 const pageSize = ref(50)
 
-const props = defineProps<{ gameId: string; locale: 'en' | 'zh-CN'; canManage: boolean }>()
+const props = defineProps<{ gameId: string; locale: 'en' | 'zh-CN'; canManage: boolean; surface?: 'platform' | 'admin'; brandId?: string }>()
 const emit = defineEmits<{ failure: [cause: unknown]; manual: [] }>()
 const i18n = createCatalogI18n(drawOverviewCatalog, props.locale)
 watch(() => props.locale, value => i18n.setLocale(value))
@@ -23,7 +23,7 @@ const numberI18n = createCatalogI18n(markSixCatalog, props.locale)
 watch(() => props.locale, value => numberI18n.setLocale(value))
 const attributeFor = (entry: PlatformDrawOverview['items'][number], number: number) => entry.attributes[String(number).padStart(2, '0')]
 const numbersFor = (entry: PlatformDrawOverview['items'][number]) => [...entry.result.regular.map(value => ({value, special: false})), ...entry.result.special.map((value, index) => ({value, special: index === 0}))]
-const api = createPlatformLotteryClient('platform', () => '')
+const api = createPlatformLotteryClient(props.surface ?? 'platform', () => props.brandId ?? '')
 const data = ref<PlatformDrawOverview | null>(null)
 const year = ref(''), offset = ref(0), busy = ref(false), failed = ref(false)
 let generation = 0, alive = true
@@ -52,7 +52,7 @@ onUnmounted(() => { alive = false; generation++; clearInterval(poll) })
  <p v-if="failed" class="message error" role="alert">{{ t(data ? 'failure' : 'initialFailure') }} <button class="button button-secondary" :disabled="busy" v-refresh-button="t('refresh')" @click="withGlobalLoading(load)">{{ t('refresh') }}</button></p>
  <p v-if="busy && !data" v-global-loading role="status">{{ t('loading') }}</p>
  <ManagementList v-if="data" :busy="busy">
- <template #filters><SelectControl :model-value="year" :disabled="busy" @change="withGlobalLoading(load, $event, 0)" :label="String(t('year'))" :options="data.years.map(choice => ({ value: choice, label: String(choice) }))" /></template>
+ <template #filters><div class="ui-filter-bar"><slot name="filters" /><SelectControl :model-value="year" :disabled="busy" @change="withGlobalLoading(load, $event, 0)" :label="String(t('year'))" :options="data.years.map(choice => ({ value: choice, label: String(choice) }))" /></div></template>
  <template #actions><button v-if="canManage" class="button button-primary" @click="emit('manual')">{{ t('manualAdd') }}</button></template>
  <ManagementTable :entries="data.items.map(item => ({...item,id:item.period_no}))" :columns="[{key:'period',label:t('period')},{key:'result',label:t('result'),cellClass:'draw-result-cell'},{key:'date',label:t('date')},{key:'source',label:t('source')}]" :empty="!data.items.length" :empty-label="t('empty')">
  <template #period="{entry}"><strong>{{ entry.period_no }}</strong></template>

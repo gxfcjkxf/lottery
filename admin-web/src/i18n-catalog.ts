@@ -4,6 +4,7 @@ import { associationCatalog, brandOverviewCatalog } from '@lottery/shared'
 
 export const adminCatalog = {
   en: {
+    'admin.nav.drawHistory': 'Draw history',
     'announcements.title': 'Announcements',
     ...cashCatalog.en,
     "distribution.title": "Bet distribution",
@@ -1647,6 +1648,7 @@ export const adminCatalog = {
     "admin.report.byDate": "By date",
   },
   'zh-CN': {
+    'admin.nav.drawHistory': '开奖记录',
     'announcements.title': '公告',
     ...cashCatalog['zh-CN'],
     "distribution.title": "注单分布",

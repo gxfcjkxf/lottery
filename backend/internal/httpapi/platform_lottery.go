@@ -129,28 +129,44 @@ func registerPlatformLotteryRoutes(register func(string, string, http.HandlerFun
 			result, e := platformLotteryResult(200, out, e)
 			outputMutation(w, r, result, e)
 		})
-		register("GET", "/platform-games/{id}/draw-overview", func(w http.ResponseWriter, r *http.Request) {
-			a, b, ok := platformLotteryActor(w, r, d, "view")
-			if !ok {
-				return
-			}
-			id, ok := ruleID(w, r, "id")
-			if !ok {
-				return
-			}
-			limit, offset, ok := pageParams(r)
-			if !ok {
-				failure(w, r, 400, "REQUEST_INVALID", "Invalid pagination")
-				return
-			}
-			out, e := s.DrawOverview(r.Context(), id, r.URL.Query().Get("year"), limit, offset)
-			if e == nil && !adminReadAudit(w, r, d, a, b, "platform_game.draws.view") {
-				return
-			}
-			result, e := platformLotteryResult(200, out, e)
-			outputMutation(w, r, result, e)
-		})
 	}
+	register("GET", "/platform-games/{id}/draw-overview", func(w http.ResponseWriter, r *http.Request) {
+		a, b, ok := platformLotteryActor(w, r, d, "view")
+		if !ok {
+			return
+		}
+		id, ok := ruleID(w, r, "id")
+		if !ok {
+			return
+		}
+		limit, offset, ok := pageParams(r)
+		if !ok {
+			failure(w, r, 400, "REQUEST_INVALID", "Invalid pagination")
+			return
+		}
+		if !platform {
+			var connected bool
+			if err := d.Admins.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM brand_platform_games WHERE brand_id=$1 AND game_id=$2)`, b, id).Scan(&connected); err != nil {
+				outputMutation(w, r, mutation.Result{}, err)
+				return
+			}
+			if !connected {
+				result, err := platformLotteryResult(200, nil, platformlottery.ErrNotFound)
+				outputMutation(w, r, result, err)
+				return
+			}
+		}
+		out, e := s.DrawOverview(r.Context(), id, r.URL.Query().Get("year"), limit, offset)
+		if !platform {
+			out.Pending = []platformlottery.PendingDraw{}
+			out.PendingHasMore = false
+		}
+		if e == nil && !adminReadAudit(w, r, d, a, b, "platform_game.draws.view") {
+			return
+		}
+		result, e := platformLotteryResult(200, out, e)
+		outputMutation(w, r, result, e)
+	})
 	handle("GET", "/platform-games", func(w http.ResponseWriter, r *http.Request) {
 		a, b, ok := platformLotteryActor(w, r, d, "view")
 		if !ok {

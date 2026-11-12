@@ -60,6 +60,7 @@ import {buildBrandCssTokens,defaultBrand,safeBrandAssetUrl,applyBrandPresentatio
 import {type BrandPresentationRecord} from "./brand-presentation-api";
 import PointPolicySettings from "./PointPolicySettings.vue";
 import FinanceManagement from "./FinanceManagement.vue";
+import BrandDrawHistory from "./BrandDrawHistory.vue";
 import WithdrawalManagement from "./WithdrawalManagement.vue";
 
 import BetOrderManagement from "./BetOrderManagement.vue";
@@ -113,7 +114,7 @@ const navLabels: Record<string, string> = {
   "投注管理": "admin.console.group.3",
   "品牌设置": "admin.settings.title", "会员管理": "admin.nav.users",
   "代理管理": "admin.nav.agents", "代理列表": "admin.nav.agentList", "彩种管理": "admin.nav.games", "盘口赔率": "admin.nav.odds", "规则配置": "admin.copy.db7e35eb",
-  "期次管理": "admin.nav.periods", "注单管理": "admin.copy.f83e2039", "注单分布": "distribution.title",
+  "开奖记录": "admin.nav.drawHistory", "期次管理": "admin.nav.periods", "注单管理": "admin.copy.f83e2039", "注单分布": "distribution.title",
   "佣金管理": "admin.commission.ui.management",
   "人工奖励": "admin.copy.3fecab01", "业务报表": "admin.nav.reports", "管理账号": "admin.copy.f8e4afe4",
   "审计日志": "admin.copy.315a9366",
@@ -135,6 +136,7 @@ type Page =
   | "品牌设置"
   | "会员管理"
   | "代理列表"
+  | "开奖记录"
   | "彩种管理"
   | "盘口赔率"
   | "规则配置"
@@ -152,6 +154,7 @@ const nav: { name: Page; icon: SiteIconName; group: string | null }[] = [
   { name: "会员管理", icon: "users", group: null },
   { name: "代理列表", icon: "network", group: "代理管理" },
   { name: "彩种管理", icon: "ticket", group: "投注管理" },
+  { name: "开奖记录", icon: "ticket", group: "投注管理" },
   { name: "盘口赔率", icon: "ticket", group: "投注管理" },
   { name: "注单管理", icon: "ticket", group: "投注管理" },
   { name: "注单分布", icon: "chart", group: "投注管理" },
@@ -305,7 +308,7 @@ const canViewJoinCodes = computed(() => {
   if (!account.value || !selectedBrandId.value) return false;
   return brandPermissionSet(account.value, selectedBrandId.value).has("join_code.view.brand");
 });
-const visibleNav = computed(() => nav.filter(item => (item.name !== "额度管理" || hasPermission("recharge.view.brand")) && (item.name !== "注单分布" || hasPermission("bet.view.brand"))));
+const visibleNav = computed(() => nav.filter(item => (item.name !== "开奖记录" || hasPermission("platform_game.view.brand")) && (item.name !== "额度管理" || hasPermission("recharge.view.brand")) && (item.name !== "注单分布" || hasPermission("bet.view.brand"))));
 const mobileNavPages = computed<Page[]>(() => ['首页', '会员管理', '彩种管理']);
 const memberDetail = ref<Member | null>(null);
 watch(() => [account.value?.id, selectedBrandId.value], () => { memberFinance.value = null; memberDetail.value = null; editTarget.value = null; kickTarget.value = null; resetTarget.value = null; memberActionError.value = ''; });
@@ -846,6 +849,11 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
           :can-sell="hasPermission('platform_game.sell.brand')"
           @failure="clearAdminData"
         />
+        <p v-else class="panel directory-state" role="status">{{ t('admin.games.viewDenied') }}</p>
+      </section>
+
+      <section v-else-if="page === '开奖记录'" class="page-content">
+        <BrandDrawHistory v-if="account && selectedBrandId && hasPermission('platform_game.view.brand')" :key="`${account.id}:${selectedBrandId}`" :brand-id="selectedBrandId" :locale="displayLocale" @failure="clearAdminData" />
         <p v-else class="panel directory-state" role="status">{{ t('admin.games.viewDenied') }}</p>
       </section>
 

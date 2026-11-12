@@ -92,6 +92,11 @@ func TestPlatformLotteryHTTPPermissionsReplayAndSharedRead(t *testing.T) {
 	mustStatus(t, f.call("POST", "/api/v1/admin/platform-games/"+game.ID+"/connect", "brand-connect-game", f.token, managedBrand, connect), 201)
 	mustStatus(t, f.call("POST", "/api/v1/admin/platform-games/"+game.ID+"/connect", "brand-connect-game", f.token, managedBrand, connect), 201)
 	mustStatus(t, f.call("POST", "/api/v1/admin/platform-games/"+game.ID+"/connect", "brand-connect-again", f.token, managedBrand, connect), 409)
+	brandOverviewPath := strings.Replace(overviewPath, "/platform/", "/admin/", 1)
+	mustStatus(t, f.call("GET", brandOverviewPath, "", f.token, managedBrand, nil), 200)
+	mustStatus(t, f.call("GET", brandOverviewPath+"?year=bad", "", f.token, managedBrand, nil), 400)
+	mustStatus(t, f.call("GET", brandOverviewPath, "", "", managedBrand, nil), 401)
+
 	no := false
 	yes := true
 	availabilityPath := "/api/v1/admin/platform-games/" + game.ID + "/availability"
@@ -158,6 +163,22 @@ func TestPlatformLotteryHTTPPermissionsReplayAndSharedRead(t *testing.T) {
 	managedData(t, historyRead, &historyOverview)
 	if len(historyOverview.Items) != 1 || historyOverview.Items[0].PeriodNo != historical.PeriodNo {
 		t.Fatal("manual history missing")
+	}
+
+	brandHistory := f.call("GET", brandOverviewPath+"?year=1999", "", f.token, managedBrand, nil)
+	mustStatus(t, brandHistory, 200)
+	var brandDraws platformlottery.DrawOverview
+	managedData(t, brandHistory, &brandDraws)
+	if len(brandDraws.Items) != 1 || brandDraws.Items[0].PeriodNo != historical.PeriodNo || len(brandDraws.Pending) != 0 || brandDraws.PendingHasMore {
+		t.Fatal("brand history differs from canonical history or exposes pending operations")
+	}
+
+	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='platform_game.view.brand'`, brandRole); err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, f.call("GET", brandOverviewPath, "", f.token, managedBrand, nil), 403)
+	if _, err := f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) VALUES($1,'platform_game.view.brand')`, brandRole); err != nil {
+		t.Fatal(err)
 	}
 	now := time.Now().UTC()
 	futureBody := platformlottery.PeriodInput{PeriodNo: "opening-edit", BetStartAt: now.Add(time.Hour), BetEndAt: now.Add(3 * time.Hour), DrawAt: now.Add(4 * time.Hour)}
