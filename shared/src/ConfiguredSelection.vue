@@ -88,7 +88,7 @@ const plateOptions = computed(() => props.snapshot.catalog.plates.map(value => (
 const priceCharacters = computed(() => Math.max(0, ...options.value.map(option => option.prices.join(' / ').length)))
 function update(key: keyof ConfiguredRequest, value: string | string[]) {
   const next = { ...props.modelValue, [key]: value }
-  if (key === 'play_id') { next.options = []; next.multiplier = '1'; const target=props.snapshot.catalog.plays.find(p=>p.id===value)!; next.points = independent(target)&&play.value&&independent(play.value) ? props.modelValue.points : target.stake_mode === 'unit_multiplier' ? '0' : props.sale ? '' : '10' }
+  if (key === 'play_id') { next.options = []; next.multiplier = '1'; const target=props.snapshot.catalog.plays.find(p=>p.id===value)!; next.points = props.sale&&target.stake_mode==='per_line'&&play.value?.stake_mode==='per_line' ? props.modelValue.points : target.stake_mode === 'unit_multiplier' ? '0' : props.sale ? '' : '10' }
   emit('update:modelValue', next)
 }
 function moveTab(event: KeyboardEvent, index: number) {

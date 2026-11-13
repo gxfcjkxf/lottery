@@ -19,7 +19,7 @@ for(const locale of ['zh-CN','en'] as const) test(`draw result saved attributes 
  for(const width of info.project.name.includes('reflow')?[320,620,900,1000,1440]:[preset.width]){
   if(info.project.name.includes('reflow'))await page.setViewportSize({width,height:preset.height})
   await expectNoPageOverflow(page)
-  expect(await balls.first().evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(220, 38, 38)')
+  expect(await balls.first().evaluate(el=>{const probe=document.createElement('span');probe.style.color='var(--lottery-wave-red)';el.append(probe);const color=getComputedStyle(probe).color;probe.remove();return getComputedStyle(el).backgroundColor===color})).toBe(true)
   await page.screenshot({path:info.outputPath(`draw-attributes-${locale}-${width}.png`),fullPage:true})
  }
  expect(errors).toEqual([])

@@ -41,7 +41,7 @@ export function registerPlatformBrandNavigationTests(reflow = false) {
         const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
         if (path.endsWith('/presentation')) return reply({ display_name: 'Layout', logo_text: 'L', logo_url: '' })
         if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'operator', super_admin: true, platform_permissions: [] } })
-        if (path.endsWith('/platform-settings')) return reply({ timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', display_name: 'Layout', logo_text: 'L', logo_url: '', version: 1, updated_at: '2026-10-18T00:00:00Z' })
+        if (path.endsWith('/platform-settings')) return reply({theme:'jade', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', display_name: 'Layout', logo_text: 'L', logo_url: '', version: 1, updated_at: '2026-10-18T00:00:00Z' })
         if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, code: 'aurora', name: 'Aurora', status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z' }] })
         if (path.endsWith('/users')) { const url = new URL(route.request().url()); return reply({ items: [], limit: Number(url.searchParams.get('limit')), offset: Number(url.searchParams.get('offset')), total_count: '0' }) }
         if (path.endsWith('/accounts') || path.endsWith('/notification-templates')) return reply({ items: [] })

@@ -38,6 +38,7 @@ export function registerAgentPortalTests(reflow=false){
    }
    if(path.endsWith('/auth/config'))return reply({captcha_enabled:false})
    reads.push(path)
+   if(path.endsWith('/auth/config'))return reply({captcha_enabled:false})
    if(path.endsWith('/me'))return reply({account:{agent_account_id:gameId,username:'agent_a'},agent:root,code:'A1B2C3D4E5F607182930ABCD',user_origin:origins.user})
    if(path.endsWith('/wallet'))return reply({commission_points:'5',available_points:'5'})
    if(path.endsWith('/commission'))return reply({items:[{id:gameId,created_at:at,entry_type:'commission',points:'7'},{id:memberId,created_at:at,entry_type:'commission_correction',points:'-2'}],total_count:'2',limit:20,offset:0,credited_points:'7',debited_points:'2'})
@@ -53,11 +54,12 @@ export function registerAgentPortalTests(reflow=false){
   await expect(page).toHaveTitle(zh?'代理管理':'Agent management');await expect(page.locator('.brand-lockup b')).toHaveText('Partner Brand');await expect(page.locator('.brand-lockup img')).toHaveAttribute('src','/icons/agent-brand.png');await expect.poll(()=>page.locator('.brand-lockup img').evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBeGreaterThan(0)
   await expect(page.locator('link[rel=icon]')).toHaveCount(1);await expect(page.locator('link[data-brand-favicon]')).toHaveAttribute('href','/icons/agent-brand.png')
   const preset=page.viewportSize()!
-  const navigate=async(id:string)=>{const nav=page.locator(preset.width<=700?'.mobile-nav':'.side-nav');await nav.locator(`a[href="#/${id}"]`).click();await expect(page).toHaveURL(new RegExp('#/'+id+'$'))}
-  const labels=zh?['会员管理','下级代理','佣金']:['Member management','Subagents','Commission']
-  const visibleNav=page.locator(preset.width<=700?'.mobile-nav':'.side-nav')
+  const navigate=async(id:string)=>{const nav=page.locator(await page.locator('.mobile-nav').isVisible()?'.mobile-nav':'.side-nav');await nav.locator(`a[href="#/${id}"]`).click();await expect(page).toHaveURL(new RegExp('#/'+id+'$'))}
+  const mobileNavigation=await page.locator('.mobile-nav').isVisible()
+  const labels=mobileNavigation?(zh?['会员','下级代理','佣金']:['Members','Subagents','Earnings']):(zh?['会员管理','下级代理','佣金']:['Member management','Subagents','Commission'])
+  const visibleNav=page.locator(mobileNavigation?'.mobile-nav':'.side-nav')
   for(const label of labels)await expect(visibleNav.getByRole('link',{name:label,exact:true})).toBeVisible()
-  if(preset.width>700)await expect(page.locator('.sidebar')).toBeVisible();else await expect(page.locator('.sidebar')).toBeHidden()
+  if(!mobileNavigation)await expect(page.locator('.sidebar')).toBeVisible();else await expect(page.locator('.sidebar')).toBeHidden()
   await expect(page.locator('.member-directory')).toContainText('member_a');await expect(page.locator('.member-directory table.console-table')).toHaveCount(1);expect(reads.some(p=>p.endsWith('/commission')||p.endsWith('/wallet')||p.endsWith('/children')||p.endsWith('/bets'))).toBe(false)
   await page.screenshot({path:info.outputPath(`agent-members-${locale}.png`)})
   await navigate('children');await expect(page.locator('.children-directory')).toBeVisible();await expect(page.locator('.children-directory td.empty-state')).toHaveAttribute('colspan','3');await expect(page.locator('.children-directory td.empty-state')).toHaveCSS('display','table-cell');await expect(page.locator('.member-directory')).toHaveCount(0)
@@ -72,10 +74,10 @@ export function registerAgentPortalTests(reflow=false){
   await page.screenshot({path:info.outputPath(`agent-commission-${locale}.png`)})
   await page.goBack();await expect(page.locator('.member-bets')).toContainText('Game A');await page.goForward();await expect(page.locator('.commission-page')).toContainText('+7')
   await page.locator('.account-trigger').click();await page.getByRole('menuitem',{name:zh?'个人信息':'Profile',exact:true}).click()
-  const profile=page.getByRole('dialog',{name:zh?'个人信息':'Profile',exact:true});await expect(profile).toContainText('agent_a');await expectInsideViewport(profile)
+  const profile=page.locator('.agent-profile');await expect(profile).toContainText('agent_a');await expectNoPageOverflow(page)
   const registrationUrl=`${origins.user}/register?agent_code=A1B2C3D4E5F607182930ABCD`
   await expect(profile.locator('.registration-link code')).toHaveText(registrationUrl)
-  await profile.getByRole('button',{name:zh?'复制链接':'Copy link',exact:true}).click();await expect(profile.getByRole('status').locator('.toast-message')).toHaveText(zh?'链接已复制':'Link copied');expect(await page.evaluate(()=>(window as any).__copiedLinks)).toEqual([registrationUrl])
+  await profile.getByRole('button',{name:zh?'复制链接':'Copy link',exact:true}).click();await expect(page.getByRole('status').locator('.toast-message')).toHaveText(zh?'链接已复制':'Link copied');expect(await page.evaluate(()=>(window as any).__copiedLinks)).toEqual([registrationUrl])
   const qrImage=profile.getByRole('img',{name:zh?'注册链接二维码':'Registration link QR code',exact:true});await expect(qrImage).toBeVisible()
   const png=PNG.sync.read(Buffer.from((await qrImage.getAttribute('src'))!.split(',')[1]!, 'base64'));expect(png.width).toBe(768);expect(png.height).toBe(768);expect(jsQR(new Uint8ClampedArray(png.data),png.width,png.height)?.data).toBe(registrationUrl)
   const saveQr=profile.getByRole('link',{name:zh?'保存二维码':'Save QR code',exact:true}),hint=profile.locator('.registration-qr-hint')
@@ -88,8 +90,8 @@ export function registerAgentPortalTests(reflow=false){
   for(const width of reflow?[320,359,700,701,900,1440]:[preset.width]){if(reflow)await page.setViewportSize({width,height:preset.height});await expectNoPageOverflow(page);await expectInsideViewport(profile);const box=await qrImage.boundingBox();expect(box!.width).toBeLessThanOrEqual(Math.min(240,width));expect(box!.width).toBeCloseTo(box!.height,1)}if(reflow)await page.setViewportSize(preset)
   await expectMobileLinkShare(page,profile,'Partner Brand',registrationUrl,zh)
   await page.screenshot({path:info.outputPath(`agent-registration-link-${locale}.png`)})
-  await page.evaluate(()=>{(window as any).__copyFailure=true});await profile.getByRole('button',{name:zh?'复制链接':'Copy link',exact:true}).click();await expect(profile.getByRole('alert').locator('.toast-message')).toHaveText(zh?'复制失败，请手动复制链接。':'Unable to copy. Copy the link manually.')
-  await profile.locator('.detail-modal-close').click()
+  await page.evaluate(()=>{(window as any).__copyFailure=true});await profile.getByRole('button',{name:zh?'复制链接':'Copy link',exact:true}).click();await expect(page.getByRole('alert').locator('.toast-message')).toHaveText(zh?'复制失败，请手动复制链接。':'Unable to copy. Copy the link manually.')
+  await navigate('members')
   await page.locator('.account-trigger').click();await page.getByRole('menuitem',{name:zh?'修改密码':'Change password',exact:true}).click()
   const dialog=page.getByRole('dialog',{name:zh?'修改密码':'Change password',exact:true});await expectInsideViewport(dialog);await expect(dialog.locator('input[type=password]')).toHaveCount(3)
   const current=dialog.getByLabel(zh?'当前密码':'Current password',{exact:true}),next=dialog.getByLabel(zh?'新密码':'New password',{exact:true}),confirm=dialog.getByLabel(zh?'确认新密码':'Confirm new password',{exact:true})
@@ -113,6 +115,7 @@ export function registerSharedAccountMenuTests(){
   const zh=locale==='zh-CN';await installLayoutApi(page,locale)
   await page.route('**/api/v1/admin/**',async route=>{
    expect(route.request().method()).toBe('GET');const path=new URL(route.request().url()).pathname,reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
+   if(path.endsWith('/auth/config'))return reply({captcha_enabled:false})
    if(path.endsWith('/me'))return reply({account:{id:gameId,username:'shared_operator',super_admin:false,brand_ids:[gameId],permissions:[],platform_permissions:[],permissions_by_brand:{[gameId]:['user.view.brand']}}})
    if(path.endsWith('/brands'))return reply({items:[{id:gameId,name:'Aurora',code:'aurora',status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z'}], total_count: '1'})
    if(path.endsWith('/users'))return reply({items:[],total_count:'0',limit:100,offset:0})
@@ -122,14 +125,16 @@ export function registerSharedAccountMenuTests(){
   await page.route('**/api/v1/platform/**',async route=>{
    expect(route.request().method()).toBe('GET');const path=new URL(route.request().url()).pathname,reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
    if(path.endsWith('/presentation'))return reply({display_name:'Platform',logo_text:'P',logo_url:''})
+   if(path.endsWith('/auth/config'))return reply({captcha_enabled:false})
    if(path.endsWith('/me'))return reply({account:{id:gameId,username:'shared_platform',super_admin:true,platform_permissions:[]}})
-   if(path.endsWith('/platform-settings'))return reply({version:1,display_name:'Platform',logo_text:'P',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',updated_at:'2026-10-21T00:00:00Z'})
+   if(path.endsWith('/platform-settings'))return reply({theme:'jade',version:1,display_name:'Platform',logo_text:'P',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',updated_at:'2026-10-21T00:00:00Z'})
    if(path.endsWith('/brands'))return reply({items:[], total_count: '0'})
    throw Error('Unexpected shared platform read '+path)
   })
   await page.route('**/api/v1/agent/**',async route=>{
    expect(route.request().method()).toBe('GET');const path=new URL(route.request().url()).pathname,reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
-   if(path.endsWith('/me'))return reply({account:{agent_account_id:gameId,username:'shared_agent'},agent:{id:gameId,depth:1,config:{can_create_children:false}},code:'A1B2C3D4E5F607182930ABCD',user_origin:origins.user})
+   if(path.endsWith('/auth/config'))return reply({captcha_enabled:false})
+   if(path.endsWith('/me'))return reply({account:{agent_account_id:gameId,username:'shared_agent'},agent:{id:gameId,brand_id:gameId,depth:1,config:{can_create_children:false}},code:'A1B2C3D4E5F607182930ABCD',user_origin:origins.user})
    if(path.endsWith('/members'))return reply({items:[],total_count:'0',limit:20,offset:0,summary:{member_count:'0',available_points:'0',bet_count:'0',stake_points:'0',unsettled_points:'0',net_points:'0'}})
    throw Error('Unexpected shared agent read '+path)
   })
@@ -139,7 +144,7 @@ export function registerSharedAccountMenuTests(){
    await page.goto(url);const trigger=page.locator('.account-trigger');await expect(trigger).toBeVisible();await trigger.click()
    const menu=page.getByRole('menu');await expect(menu).toBeVisible();await expectInsideViewport(menu)
    await page.keyboard.press('Escape');await expect(menu).toHaveCount(0)
-   await trigger.click();await page.getByRole('menuitem',{name:zh?'个人信息':'Profile',exact:true}).click();const profile=page.getByRole('dialog',{name:zh?'个人信息':'Profile',exact:true});await expect(profile).toBeVisible();await expectInsideViewport(profile);await expect(profile).toContainText(url===origins.brand?'shared_operator':url===origins.platform?'shared_platform':'shared_agent');const profileStyle=await dialogStyle(profile,['dl','dt','dd','.detail-modal-close']);profileStyles.push(profileStyle);expect(profileStyle).toEqual(profileStyles[0]);await page.screenshot({path:info.outputPath(`profile-${new URL(url).port}-${locale}.png`)});await profile.locator('.detail-modal-close').click()
+   await trigger.click();await page.getByRole('menuitem',{name:zh?'个人信息':'Profile',exact:true}).click();if(url===origins.agent){await expect(page.locator('.agent-profile')).toContainText('shared_agent')}else{const profile=page.getByRole('dialog',{name:zh?'个人信息':'Profile',exact:true});await expect(profile).toBeVisible();await expectInsideViewport(profile);await expect(profile).toContainText(url===origins.brand?'shared_operator':url===origins.platform?'shared_platform':'shared_agent');const profileStyle=await dialogStyle(profile,['dl','dt','dd','.detail-modal-close']);profileStyles.push(profileStyle);expect(profileStyle).toEqual(profileStyles[0]);await page.screenshot({path:info.outputPath(`profile-${new URL(url).port}-${locale}.png`)});await profile.locator('.detail-modal-close').click()}
    await trigger.click();await page.getByRole('menuitem',{name:zh?'修改密码':'Change password',exact:true}).click();const password=page.getByRole('dialog',{name:zh?'修改密码':'Change password',exact:true});await expect(password.locator('input[type=password]')).toHaveCount(3);await expectInsideViewport(password);await expectNoPageOverflow(page);const passwordStyle=await dialogStyle(password,['form','fieldset','label','input','.form-actions','.button-primary','.detail-modal-close']);passwordStyles.push(passwordStyle);expect(passwordStyle).toEqual(passwordStyles[0]);await page.screenshot({path:info.outputPath(`password-${new URL(url).port}-${locale}.png`)});await page.keyboard.press('Escape');await expect(password).toHaveCount(0)
    const tableStyle=await page.locator('.management-console').evaluate(root=>{
     const wrap=document.createElement('div');wrap.className='table-wrap';wrap.innerHTML='<table class="member-directory-table console-table console-responsive-table"><thead><tr><th>Account</th><th>Points</th><th>Details</th></tr></thead><tbody><tr><td data-label="Account">table_member</td><td data-label="Points">100</td><td data-label="Details">View</td></tr><tr><td data-label="Account">other_member</td><td data-label="Points">200</td><td data-label="Details">View</td></tr></tbody></table>';root.querySelector('.page-content,.content')!.append(wrap)
@@ -163,6 +168,7 @@ export function registerSharedAccountMenuTests(){
     await new Promise<void>(resolve=>{release=resolve});return reply({id:gameId,created_at:at})
    }
    expect(req.method()).toBe('GET')
+   if(path.endsWith('/auth/config'))return reply({captcha_enabled:false})
    if(path.endsWith('/me'))return reply(own)
    if(path.endsWith('/children'))return reply({items:[],limit:20,offset:0,total_count:'0'})
    if(path.endsWith('/members'))return reply({items:[],limit:20,offset:0,total_count:'0',summary:{member_count:'0',available_points:'0',bet_count:'0',stake_points:'0',unsettled_points:'0',net_points:'0'}})
@@ -199,16 +205,17 @@ export function registerSharedAccountMenuTests(){
  for(const locale of ['en','zh-CN'] as const)test(`agent registration link reaches user registration attribution (${locale})`,async({page},info)=>{
   const zh=locale==='zh-CN',code='A1B2C3D4E5F607182930ABCD',referral='B1B2C3D4E5F607182930ABCD',at='2026-10-21T00:00:00Z',registerBodies:any[]=[],errors:string[]=[]
   await installLayoutApi(page,locale);page.on('pageerror',e=>errors.push(e.message))
-  await page.route('**/api/v1/agent/**',route=>{expect(route.request().method()).toBe('GET');const path=new URL(route.request().url()).pathname,reply=(data:unknown)=>route.fulfill({json:{success:true,data}});if(path.endsWith('/me'))return reply({account:{agent_account_id:gameId,username:'link_agent'},agent:{id:gameId,depth:1,config:{can_create_children:false}},code});if(path.endsWith('/members'))return reply({items:[],total_count:'0',limit:20,offset:0,summary:{}});throw Error('Unexpected invitation test read '+path)})
+  await page.route('**/api/v1/agent/**',route=>{expect(route.request().method()).toBe('GET');const path=new URL(route.request().url()).pathname,reply=(data:unknown)=>route.fulfill({json:{success:true,data}});if(path.endsWith('/auth/config'))return reply({captcha_enabled:false})
+   if(path.endsWith('/me'))return reply({account:{agent_account_id:gameId,username:'link_agent'},agent:{id:gameId,brand_id:gameId,depth:1,config:{can_create_children:false}},code,user_origin:origins.user});if(path.endsWith('/members'))return reply({items:[],total_count:'0',limit:20,offset:0,summary:{}});throw Error('Unexpected invitation test read '+path)})
   await page.goto(origins.agent);await page.locator('.account-trigger').click();await page.getByRole('menuitem',{name:zh?'个人信息':'Profile',exact:true}).click();const link=await page.locator('.registration-link code').textContent();expect(link).toBe(`${origins.user}/register?agent_code=${code}`)
   let validations=0
   await page.route('**/api/v1/join-codes/validate?*',route=>{expect(route.request().method()).toBe('GET');expect(new URL(route.request().url()).searchParams.get('agent_code')).toBe(code);validations++;return route.fulfill({json:{success:true,data:{valid:true}}})})
   await page.route('**/api/v1/auth/register',route=>{expect(route.request().method()).toBe('POST');registerBodies.push(route.request().postDataJSON());return route.fulfill({status:400,json:{success:false,error:{code:'USERNAME_TAKEN',message:'Account exists'}}})})
   await page.goto(link!);await expect(page.locator('.auth-form')).toBeVisible();await expect.poll(()=>validations).toBeGreaterThan(0)
-  await page.locator('.auth-form').getByLabel(zh?'账号':'Account',{exact:true}).fill('invited_member');await page.locator('.auth-form input[type=password]').fill('member123');await page.locator('.combined-terms input[type=checkbox]').check();await page.locator('.auth-form').getByRole('button',{name:zh?'注册':'Register',exact:true}).click();await expect.poll(()=>registerBodies.length).toBe(1);expect(registerBodies[0]).toMatchObject({username:'invited_member',agent_code:code});expect(registerBodies[0]).not.toHaveProperty('referral_code')
+  await page.locator('.auth-form').getByLabel(zh?'账号':'Account',{exact:true}).fill('invited_member');await page.locator('.auth-form input[type=password]').fill('member123');await page.locator('.auth-form').getByRole('button',{name:zh?'注册':'Register',exact:true}).click();await expect.poll(()=>registerBodies.length).toBe(1);expect(registerBodies[0]).toMatchObject({username:'invited_member',agent_code:code});expect(registerBodies[0]).not.toHaveProperty('referral_code')
   await installOrdersLayoutApi(page)
   await page.route('**/api/v1/me/join-codes?*',route=>{expect(route.request().method()).toBe('GET');return route.fulfill({json:{success:true,data:{brand_id:gameId,member_id:gameId,items:[{id:gameId,brand_id:gameId,owner_member_id:gameId,kind:'referral',agent_id:null,code:referral,status:'active',starts_at:null,expires_at:null,version:1,usable:true,created_at:at,updated_at:at}],limit:20,offset:0,total_count:'1'}}})})
-  await page.goto(origins.user+'/invites');const card=page.locator('.join-code-card');await expect(card.locator('code')).toHaveText(`${origins.user}/register?referral_code=${referral}`);const image=card.getByRole('img',{name:zh?'注册链接二维码':'Registration link QR code',exact:true});await expect(image).toBeVisible();const png=PNG.sync.read(Buffer.from((await image.getAttribute('src'))!.split(',')[1]!,'base64'));expect(jsQR(new Uint8ClampedArray(png.data),png.width,png.height)?.data).toBe(`${origins.user}/register?referral_code=${referral}`);await expect(card.locator('.registration-link-address button svg')).toBeVisible();await expect(card.locator('.registration-link-address button')).toHaveAttribute('aria-label',zh?'复制链接':'Copy link');const mobile=await page.evaluate(()=>matchMedia('(max-width:700px), (pointer:coarse)').matches);await expect(card.locator('.registration-qr-hint')).toBeVisible({visible:mobile});await expect(card.getByRole('link',{name:zh?'保存二维码':'Save QR code',exact:true})).toBeVisible({visible:!mobile});await expectMobileLinkShare(page,card,'Layout trial',`${origins.user}/register?referral_code=${referral}`,zh);await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`referral-registration-link-${locale}.png`)});expect(errors).toEqual([])
+  await page.route('**/api/v1/me/referrals?*',route=>route.fulfill({json:{success:true,data:{items:[],total_count:'0',limit:20,offset:0}}}));await page.goto(origins.user+'/invites');await page.getByRole('tab',{name:zh?'推荐码':'Referral code',exact:true}).click();const card=page.locator('.join-code-card');await expect(card.locator('code')).toHaveText(`${origins.user}/register?referral_code=${referral}`);const image=card.getByRole('img',{name:zh?'注册链接二维码':'Registration link QR code',exact:true});await expect(image).toBeVisible();const png=PNG.sync.read(Buffer.from((await image.getAttribute('src'))!.split(',')[1]!,'base64'));expect(jsQR(new Uint8ClampedArray(png.data),png.width,png.height)?.data).toBe(`${origins.user}/register?referral_code=${referral}`);await expect(card.locator('.registration-link-address button svg')).toBeVisible();await expect(card.locator('.registration-link-address button')).toHaveAttribute('aria-label',zh?'复制链接':'Copy link');const mobile=await page.evaluate(()=>matchMedia('(max-width:700px), (pointer:coarse)').matches);await expect(card.locator('.registration-qr-hint')).toHaveCount(0);await expect(card.getByRole('link',{name:zh?'保存二维码':'Save QR code',exact:true})).toBeVisible({visible:!mobile});await expectMobileLinkShare(page,card,'Layout trial',`${origins.user}/register?referral_code=${referral}`,zh);await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`referral-registration-link-${locale}.png`)});expect(errors).toEqual([])
  })
 
 }

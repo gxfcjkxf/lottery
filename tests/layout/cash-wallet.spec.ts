@@ -256,7 +256,7 @@ for (const locale of ["en", "zh-CN"] as const) {
     await page.goto(origins.agent + '/#/recharge');
     const cash=page.locator('.currency-wallet');
     await expect(cash.locator('.cash-balance')).toHaveCount(0);
-    await expect(cash.getByRole('button',{name:zh?'兑换':'Exchange',exact:true})).toHaveCount(0);
+    await expect(cash.getByRole('button',{name:zh?'兑换':'Exchange',exact:true})).toBeVisible();
     await cash.getByRole('button',{name:zh?'充值':'Deposit'}).click();
     let dialog=page.getByRole('dialog');
     await expect(dialog).toContainText('100.03');

@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { provide, ref } from 'vue'
 import { setPlatformDisplaySettings } from '../../shared/src/display-settings'
-import OperationsWorkbench from '../../admin-web/src/OperationsWorkbench.vue'
 import BrandPresentation from '../../admin-web/src/BrandPresentation.vue'
-import CompliancePolicy from '../../admin-web/src/CompliancePolicy.vue'
 import Templates from '../../platform-web/src/NotificationTemplatesPanel.vue'
 import LoadingOverlay from '../../shared/src/LoadingOverlay.vue'
 import { createAdminI18n, adminI18nKey } from '../../admin-web/src/i18n'
 import { createPlatformI18n, platformI18nKey } from '../../platform-web/src/i18n'
-const props = defineProps<{ locale: 'en' | 'zh-CN'; view: 'presentation' | 'compliance' | 'templates' | 'workbench' }>()
+const props = defineProps<{ locale: 'en' | 'zh-CN'; view: 'presentation' | 'templates' }>()
 const admin = createAdminI18n(); admin.setLocale(props.locale); provide(adminI18nKey, admin)
 const platform = createPlatformI18n(); platform.setLocale(props.locale); provide(platformI18nKey, platform)
 const mounted = ref(true)
@@ -23,9 +21,7 @@ setPlatformDisplaySettings(displaySettings)
   <button data-testid="toggle-settings" class="button" @click="mounted = !mounted">Toggle fixture</button>
   <template v-if="mounted">
    <BrandPresentation v-if="view === 'presentation'" :account="account" :brand-id="brand" />
-   <CompliancePolicy v-else-if="view === 'compliance'" :account="account" :brand-id="brand" />
-   <OperationsWorkbench v-else-if="view === 'workbench'" :account="account" :brand-id="brand" />
-   <Templates v-else :account-id="account.id" can-manage :locale="locale" :display-settings="displaySettings" />
+   <Templates can-view v-else :account-id="account.id" can-manage :locale="locale" :display-settings="displaySettings" />
   </template>
  </div>
  <LoadingOverlay label="Loading…" />

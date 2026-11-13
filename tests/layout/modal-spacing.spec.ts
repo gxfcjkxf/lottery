@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import {expect,test} from '@playwright/test'
 import {resolve} from 'node:path'
 import {origins,gameId,expectNoPageOverflow,expectInsideViewport} from './fixture'
@@ -7,6 +8,7 @@ for(const locale of ['en','zh-CN'] as const)test(`manual calculation has compact
  await page.route('**/api/**',route=>{
   expect(route.request().method()).toBe('GET')
   const url=new URL(route.request().url()),path=url.pathname
+  if(path.endsWith('/commission-cycles/candidates'))return route.fulfill({json:{success:true,data:{brand_id:gameId,items:[{anchor_order_id:orderId,window_from:'2026-10-05T16:00:00Z',window_to:'2026-10-12T16:00:00Z',cycle:'weekly'}],limit:100,offset:0}}})
   if(path.endsWith('/commission-cycles'))return route.fulfill({json:{success:true,data:{brand_id:gameId,items:[],total_count:'0',limit:20,offset:0}}})
   if(path.endsWith('/filter-options'))return route.fulfill({json:{success:true,data:{brand_id:gameId,items:url.searchParams.get('kind')==='anchor_order'?[{id:orderId,name:'20261101 · review_member'}]:[],limit:100,offset:0}}})
   throw Error('Unexpected modal read '+path)
@@ -15,8 +17,8 @@ for(const locale of ['en','zh-CN'] as const)test(`manual calculation has compact
  const vue=source.match(/from "([^"]*deps\/vue\.js[^"]*)"/)![1]
  await page.route('**/__manual-spacing',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'${vue}';import Harness from'/@fs/${resolve('tests/layout/ManualCalculationHarness.vue')}';import'/@fs/${resolve('shared/src/styles.css')}';import'/src/style.css';import'/@fs/${resolve('shared/src/management.css')}';import'/@fs/${resolve('shared/src/controls.css')}';import'/@fs/${resolve('shared/src/refresh-button.css')}';createApp(Harness,{locale:'${locale}'}).mount('#app')</script></html>`}))
  await page.goto(origins.brand+'/__manual-spacing')
- await page.getByRole('button',{name:locale==='en'?'Create calculation':'手动创建核算',exact:true}).click()
- const dialog=page.getByRole('dialog'),select=dialog.getByRole('combobox'),review=dialog.getByRole('button',{name:locale==='en'?'Review and confirm registration':'检查并确认登记',exact:true})
+ await page.getByRole('button',{name:locale==='en'?'Add missing calculation':'补建核算',exact:true}).click()
+ const dialog=page.getByRole('dialog'),select=dialog.getByRole('combobox'),review=dialog.getByRole('button',{name:locale==='en'?'Review cycle':'核对周期',exact:true})
  await expect(select).toBeEnabled();await expect(review).toBeDisabled()
  const preset=page.viewportSize()!
  for(const width of info.project.name.endsWith('reflow')?[320,620,900,901,1440]:[preset.width]){
@@ -34,10 +36,11 @@ for(const locale of ['en','zh-CN'] as const)test(`manual calculation has compact
   await expectInsideViewport(dialog);await expectNoPageOverflow(page)
   await page.screenshot({path:info.outputPath(`manual-spacing-${locale}-${width}.png`)})
  }
- await select.click();await page.getByRole('option',{name:'20261101 · review_member',exact:true}).click()
+ await selectControl(select,orderId)
  await expect(review).toBeEnabled();await review.click()
  await expect(page.getByRole('dialog')).toHaveCount(1)
- await expect(page.getByRole('dialog')).toContainText(orderId)
+ await expect(page.getByRole('dialog')).not.toContainText(orderId)
+ await expect(page.getByRole('dialog')).toContainText('2026-10-06')
  await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0)
  expect(errors).toEqual([])
 })

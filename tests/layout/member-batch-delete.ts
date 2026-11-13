@@ -19,7 +19,7 @@ export function registerMemberBatchDeleteTests(reflow = false) {
       await page.route(`**${base}/**`, async route => {
         const req = route.request(), url = new URL(req.url()), path = url.pathname
         const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
-        if (path === '/api/v1/platform/platform-settings') return reply({ display_name: 'Layout trial', logo_text: 'L', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', version: 1, updated_at: '2026-10-25T00:00:00Z' })
+        if (path === '/api/v1/platform/platform-settings') return reply({theme:'jade', display_name: 'Layout trial', logo_text: 'L', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', version: 1, updated_at: '2026-10-25T00:00:00Z' })
         if (path === `${base}/me`) {
           const grants = app === 'brand' ? ['user.view.brand', ...(allowed ? ['user.delete.brand'] : [])] : ['user.view.platform', ...(allowed ? ['user.delete.platform'] : [])]
           return reply({ account: { id: gameId, username: 'batch_reviewer', super_admin: app === 'platform', brand_ids: [gameId], permissions_by_brand: { [gameId]: grants }, platform_permissions: grants } })

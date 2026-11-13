@@ -15,7 +15,7 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','ad
   await page.route('**/api/**',route=>{
    const req=route.request(),path=new URL(req.url()).pathname
    const ok=(data:unknown)=>route.fulfill({json:{success:true,data}})
-   if(path.endsWith('/display-settings'))return ok({timezone:'UTC',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'})
+   if(path.endsWith('/display-settings'))return ok({theme:'jade',timezone:'UTC',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'})
    if(req.method()==='POST'){
     expect(surface).toBe('platform');expect(path).toBe(`/api/v1/platform/platform-games/${gameID}/name`)
     const body=req.postDataJSON();expect(body).toEqual({name:'Renamed game',expected_version:1});expect(req.headers()['idempotency-key']).toBeTruthy();writes.push(body);game.name=body.name;game.version++;return ok(game)

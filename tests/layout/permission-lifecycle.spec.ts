@@ -2,7 +2,7 @@ import {test,expect,type Page} from '@playwright/test'
 import {resolve} from 'node:path'
 const origin=`http://127.0.0.1:${process.env.LOTTERY_LAYOUT_PORT_BASE??15273}`
 const brand='aaaaaaaa-aaaa-4aaa-8aaa-000000000001', actor='aaaaaaaa-aaaa-4aaa-8aaa-000000000002'
-const settings={timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
+const settings={theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
 async function mount(page:Page,file:string,props:unknown,locale:string,setup='') {
  const app=file.startsWith('admin')?'admin-web':'platform-web',factory=app==='admin-web'?'createAdminI18n':'createPlatformI18n',key=app==='admin-web'?'adminI18nKey':'platformI18nKey'
  const path='/@fs'+resolve(file),source=await(await page.request.get(origin+path)).text()

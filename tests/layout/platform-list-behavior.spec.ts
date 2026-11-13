@@ -214,7 +214,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`notification template names
     reads.push(path)
     const reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
     if(path.endsWith('/presentation'))return reply({display_name:'Layout trial',logo_text:'L',logo_url:''})
-    if(path.endsWith('/me'))return reply({account:{id:gameId,username:'template_reviewer',super_admin:true,platform_permissions:['notification_template.write.platform']}})
+    if(path.endsWith('/me'))return reply({account:{id:gameId,username:'template_reviewer',super_admin:true,platform_permissions:['notification_template.view.platform','notification_template.write.platform']}})
     if(path.endsWith('/platform-settings'))return reply({display_name:'Layout trial',logo_text:'L',logo_url:'',theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',version:1,updated_at:at})
     if(path.endsWith('/brands'))return reply({items:[]})
     if(path.endsWith('/notification-templates'))return reply({items:Object.entries(notificationCatalog).map(([key,content])=>({key,version:1,content,updated_at:at,audit_log_id:null}))})

@@ -10,7 +10,7 @@ test('real-page checks reject missing headers, legacy pagers and nested surfaces
     const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
     if (path.endsWith('/presentation')) return reply({ display_name: 'Review', logo_text: 'R', logo_url: '' })
     if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'guard_reviewer', super_admin: true, platform_permissions: ['brand.view.platform'] } })
-    if (path.endsWith('/platform-settings')) return reply({ version: 1, display_name: 'Review', logo_text: 'R', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', updated_at: '2026-11-02T00:00:00Z' })
+    if (path.endsWith('/platform-settings')) return reply({theme:'jade', version: 1, display_name: 'Review', logo_text: 'R', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', updated_at: '2026-11-02T00:00:00Z' })
     if (path.endsWith('/brands')) return reply({ items: [], total_count: '0' })
     throw Error('Unconfigured guard request: ' + path)
   })

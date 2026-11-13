@@ -18,11 +18,11 @@ export function registerAssociationNameTests() {
    await page.route('**/api/**',async route=>{
     const req=route.request(),path=new URL(req.url()).pathname
     const reply=(data:unknown,status=200)=>route.fulfill({status,json:{success:true,data,associations:{[`role:${role}`]:{name:'Bootstrap administrator',built_in:true},[`brand:${gameId}`]:{name:'Aurora'}}}})
-    const display={timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
+    const display={theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
     if(path==='/api/v1/platform/presentation')return reply({display_name:'Layout',logo_text:'L',logo_url:''})
     if(path==='/api/v1/display-settings')return reply(display)
     if(path==='/api/v1/platform/me')return reply({account:{id:gameId,username:'admin',super_admin:true,platform_permissions:['admin.view.platform','admin.write.platform','role.view.platform']}})
-    if(path==='/api/v1/platform/platform-settings')return reply({...display,display_name:'Layout',logo_text:'L',logo_url:'',version:1,updated_at:'2026-10-18T00:00:00Z'})
+    if(path==='/api/v1/platform/platform-settings')return reply({theme:'jade',...display,display_name:'Layout',logo_text:'L',logo_url:'',version:1,updated_at:'2026-10-18T00:00:00Z'})
     if(path==='/api/v1/platform/brands')return reply({items:[{id:gameId,name:'Aurora',code:'aurora',status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z'}],total_count:'1'})
     if(path==='/api/v1/platform/roles'){
      expect(req.method()).toBe('GET');expect(req.headers()['x-brand-id']).toBe(gameId)
@@ -72,7 +72,7 @@ export function registerAssociationNameTests() {
    await form.getByRole('button',{name:zh?'保存':'Save',exact:true}).click()
    await expect(form).toHaveCount(0)
    await expect(page.getByTestId('platform-access-list')).toContainText('dialog_test')
-   await expect(accountList.getByRole('columnheader')).toHaveCount(4)
+   await expect(accountList.locator('thead th')).toHaveCount(4)
    await expect(accountList.locator('tbody tr').first().getByRole('cell')).toHaveCount(4)
    await accountList.getByRole('button',{name:/dialog_test/}).click()
    await expect(page.getByTestId('platform-access-detail')).not.toContainText(superAdminLabel)
@@ -91,9 +91,9 @@ export function registerAssociationNameTests() {
     if(path==='/api/v1/platform/presentation')return reply({display_name:'Layout',logo_text:'L',logo_url:''})
     if(path==='/api/v1/display-settings')return reply({theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'})
     if(path==='/api/v1/platform/me')return reply({account:{...account,platform_permissions:['admin.view.platform']}})
-    if(path==='/api/v1/platform/platform-settings')return reply({timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',display_name:'Layout',logo_text:'L',logo_url:'',version:1,updated_at:'2026-10-18T00:00:00Z'})
+    if(path==='/api/v1/platform/platform-settings')return reply({theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',display_name:'Layout',logo_text:'L',logo_url:'',version:1,updated_at:'2026-10-18T00:00:00Z'})
     if(path==='/api/v1/platform/brands')return reply({items:[]})
-    if(path==='/api/v1/platform/platform-accounts')return reply({items:[account]})
+    if(path==='/api/v1/platform/platform-accounts')return reply({items:[account],total_count:'1'})
     if(path===`/api/v1/platform/platform-accounts/${gameId}`)return reply(account)
     throw Error(`Unauthorized or unexpected association request: ${path}`)
    })
@@ -101,7 +101,7 @@ export function registerAssociationNameTests() {
    await expect(page.locator('.app-frame')).toBeVisible()
    const mobileMenu=page.locator('button[aria-controls="platform-navigation"]')
    if(await mobileMenu.isVisible())await mobileMenu.click()
-   await page.getByRole('button',{name:locale==='en'?'Admin accounts':'管理账号',exact:true}).filter({visible:true}).click()
+   await page.getByRole('button',{name:locale==='en'?'Admin':'管理',exact:true}).filter({visible:true}).click()
    const list=page.getByTestId('platform-access-list')
    await expect(list.locator('table')).toHaveClass(/console-table console-responsive-table.*account-directory-table/)
    await expect(list).toContainText(locale==='en'?'System administrator':'系统管理员')

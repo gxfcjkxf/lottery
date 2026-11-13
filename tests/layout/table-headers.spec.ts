@@ -1,3 +1,4 @@
+import { tokenStyle } from './navigation-style'
 import { test, expect } from '@playwright/test'
 import { resolve } from 'node:path'
 import { origins, expectNoPageOverflow } from './fixture'
@@ -20,12 +21,12 @@ for (const locale of ['en','zh-CN'] as const) {
     for(const header of await headers.all()){
      if(!await header.isVisible())continue
      const target = await header.getAttribute('role')==='columnheader' ? header.locator('..') : header
-     await expect(target).toHaveCSS('background-color','rgb(241, 245, 249)')
-     await expect(header).toHaveCSS('color','rgb(51, 65, 85)')
+     await expect(target).toHaveCSS('background-color',await tokenStyle(target,'background-color','--table-header-bg'))
+     await expect(header).toHaveCSS('color',await tokenStyle(header,'color','--ink-secondary'))
      await expect(header).toHaveCSS('font-weight','650')
-     await expect(target).toHaveCSS('border-bottom-color','rgb(226, 232, 240)')
+     await expect(target).toHaveCSS('border-bottom-color',await tokenStyle(target,'border-bottom-color','--line'))
     }
-    await expect(page.locator('tbody th[scope="row"]')).not.toHaveCSS('background-color','rgb(241, 245, 249)')
+    await expect(page.locator('tbody th[scope="row"]')).not.toHaveCSS('background-color',await tokenStyle(page.locator('tbody th[scope="row"]'),'background-color','--table-header-bg'))
     const shared = page.getByTestId('shared-table')
     if(width<=1080){
      await expect(shared.locator('thead')).not.toBeVisible()
@@ -37,7 +38,7 @@ for (const locale of ['en','zh-CN'] as const) {
    await page.screenshot({path:info.outputPath(`table-headers-${surface}-${locale}.png`),fullPage:true})
    await page.getByRole('button',{name:locale==='en'?'Details':'详情',exact:true}).click()
    const dialog = page.getByRole('dialog')
-   await expect(dialog.locator('thead th').first()).toHaveCSS('background-color','rgb(241, 245, 249)')
+   await expect(dialog.locator('thead th').first()).toHaveCSS('background-color',await tokenStyle(dialog.locator('thead th').first(),'background-color','--table-header-bg'))
    await expectNoPageOverflow(page)
    await page.screenshot({path:info.outputPath(`dialog-table-header-${surface}-${locale}.png`)})
    await dialog.getByRole('button',{name:locale==='en'?'Close':'关闭',exact:true}).click()

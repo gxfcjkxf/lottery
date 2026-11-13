@@ -54,10 +54,10 @@ for (const locale of ['zh-CN', 'en'] as const) {
    const path = new URL(route.request().url()).pathname
    if (path.endsWith('/me')) return route.fulfill({json:{success:true,data:{
     account:{username:'isolated_agent'},
-    agent:{id:'test-agent',depth:1,config:{can_create_children:false}},
+    agent:{id:gameId,brand_id:gameId,depth:1,config:{can_create_children:false}},
    }}})
    if (path.endsWith('/auth/config')) return route.fulfill({json:{success:true,data:{captcha_enabled:false}}})
-   if (path.endsWith('/commission') || path.endsWith('/wallet')) {
+   if (path.includes('/commission') || path.endsWith('/wallet')) {
     failures++
     return route.fulfill({status:401,json:expired})
    }
@@ -89,7 +89,7 @@ for (const locale of ['en','zh-CN'] as const) for (const stage of ['catalog','sc
    const ok=(data:unknown)=>route.fulfill({json:{success:true,data}})
    if(path.endsWith('/presentation'))return ok({display_name:'Trial platform',logo_text:'T',logo_url:''})
    if(path.endsWith('/me'))return ok({account:{id:gameId,username:'expiry_reviewer',super_admin:true,platform_permissions:['platform_game.view.platform','platform_game.write.platform']}})
-   if(path.endsWith('/platform-settings'))return ok({version:1,display_name:'Trial platform',logo_text:'T',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',updated_at:'2026-11-01T00:00:00Z'})
+   if(path.endsWith('/platform-settings'))return ok({theme:'jade',version:1,display_name:'Trial platform',logo_text:'T',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',updated_at:'2026-11-01T00:00:00Z'})
    if(path.endsWith('/brands'))return ok({items:[]})
    if(expired&&(stage==='catalog'?path==='/api/v1/platform/platform-games':path.endsWith('/automation')||stage==='sources'&&path.endsWith('/draw-sources'))){
     failures++

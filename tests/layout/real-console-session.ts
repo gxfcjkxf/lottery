@@ -23,7 +23,7 @@ export async function installConsoleSession(page: Page, surface: 'brand' | 'plat
 
 export async function openBrandPage(page: Page, label: string) {
   const mobile = await page.locator('.mobile-nav').isVisible()
-  if (mobile) await page.locator('.mobile-nav button').last().click()
+  if (mobile && await page.locator('.mobile-nav button').last().getAttribute('aria-expanded') !== 'true') await page.locator('.mobile-nav button').last().click()
   const navigation = page.locator(mobile ? '.mobile-more-menu' : '.side-nav')
   const target = navigation.getByRole('button', { name: label, exact: true, includeHidden: true })
   const group = navigation.locator('details').filter({ has: page.getByRole('button', { name: label, exact: true, includeHidden: true }) })

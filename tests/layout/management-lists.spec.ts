@@ -43,7 +43,7 @@ for(const locale of ['en','zh-CN'] as const){
    const reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
    if(path.endsWith('/me'))return reply({account:{id:gameId,username:'list_reviewer',super_admin:true,platform_permissions:['brand.view.platform','brand.delete.platform']}})
    if(path.endsWith('/brands'))return reply({items:brands})
-   if(path.endsWith('/platform-settings'))return reply({display_name:'Layout',logo_text:'L',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',version:1,updated_at:at})
+   if(path.endsWith('/platform-settings'))return reply({theme:'jade',display_name:'Layout',logo_text:'L',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',version:1,updated_at:at})
    return route.fallback()
   })
   await page.goto(origins.platform);await openPlatformBrandList(page,locale)

@@ -31,7 +31,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`missing cycle selection and
  import{createPlatformI18n,platformI18nKey}from'/@fs${resolve('platform-web/src/i18n.ts')}';
  import{setPlatformDisplaySettings}from'/@fs${resolve('shared/src/index.ts')}';
  import'/@fs${resolve('shared/src/styles.css')}';import'/src/style.css';import'/@fs${resolve('shared/src/management.css')}';import'/@fs${resolve('shared/src/controls.css')}';
- const settings={timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'};setPlatformDisplaySettings(settings);
+ const settings={theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'};setPlatformDisplaySettings(settings);
  const admin=createAdminI18n();admin.setLocale('${locale}');const platform=createPlatformI18n();platform.setLocale('${locale}');
  const account={id:'${member}',super_admin:false,brand_ids:['${brand}'],permissions_by_brand:{'${brand}':['commission.view.brand','commission.run.brand']}};
  createApp({render:()=>h('div',{class:'management-console'},[h(${surface==='cycles'?'Cycles':'Wallet'},${surface==='cycles'?`{account,brandId:'${brand}'}`:`{brandId:'${brand}',memberId:'${member}',memberName:'isolated_member',locale:'${locale}',displaySettings:settings,view:'ledger'}`})])}).provide(adminI18nKey,admin).provide(platformI18nKey,platform).mount('#app');

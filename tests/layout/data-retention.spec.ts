@@ -5,7 +5,7 @@ import {selectControl} from '../select-control'
 const brand='aaaaaaaa-aaaa-4aaa-8aaa-000000000001',actor='bbbbbbbb-bbbb-4bbb-8bbb-000000000001'
 for(const locale of ['en','zh-CN'] as const)test(`monthly retention records, policy and original retry ${locale}`,async({page},info)=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
- const settings={timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
+ const settings={theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
  let policy={version:1,enabled:false,execution_day:10,execution_time:'02:00',timezone:settings.timezone,next_run:null as null|{execute_at:string;cutoff_at:string},updated_at:'2026-11-12T00:00:00Z'}
  const tasks=Array.from({length:51},(_,i)=>({id:`cccccccc-cccc-4ccc-8ccc-${String(i+1).padStart(12,'0')}`,brand_id:brand,brand_name:locale==='en'?'Retention trial':'归档试用品牌',policy_version:1,timezone:settings.timezone,execute_at:'2026-11-09T18:00:00Z',cutoff_at:'2026-09-30T16:00:00Z',state:i===1?'failed':'deferred',counts:{configured_orders:{deleted:i===0?'9007199254740993123':'12',receipts:'12',deferred:'2'},audit_logs:{deleted:'240',receipts:'3',deferred:'0'}},error_code:i===1?'DATA_RETENTION_BATCH_FAILED':'',created_at:'2026-11-09T18:00:00Z',finished_at:'2026-11-09T18:01:00Z'}))
  const writes:Array<{key:string|null;actor:string|null;body:string}> = []

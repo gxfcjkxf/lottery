@@ -1,3 +1,4 @@
+import { openBrandPage } from './real-console-session'
 import {test,expect} from '@playwright/test'
 import {readFileSync} from 'node:fs'
 import {configuredDemo} from '../../shared/src/configured-rules'
@@ -168,7 +169,7 @@ for(const locale of ['en','zh-CN'] as const)test(`brand odds menu read-only ${lo
  const more=page.locator('.mobile-nav > button').last()
  if(await more.isVisible())await more.click()
  const nav=page.locator(await more.isVisible()?'.mobile-more-menu':'.side-nav')
- await nav.getByRole('button',{name:zh?'盘口赔率':'Plates & odds',exact:true}).click()
+ await openBrandPage(page,zh?'盘口赔率':'Plates & odds')
  await expect(page.locator('.breadcrumbs b')).toHaveText(zh?'盘口赔率':'Plates & odds')
  await expect(page.getByText('Unconnected game',{exact:true})).toHaveCount(0)
  await expect(page.locator('.management-list tbody tr')).toHaveCount(1)

@@ -51,7 +51,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
       await expect(page.locator('main')).not.toContainText(id)
       await expect(page.locator('.history-table tbody')).toContainText('2026115')
       await expect(page.locator('.history-table tbody')).toContainText('48.99')
-      await expect(page.locator('.history-table td').nth(4)).toHaveText('—')
+      await expect(page.locator('.history-table td[data-label="'+(locale==='en'?'Prize points':'中奖积分')+'"]')).toHaveText('—')
       await expect(page.locator('.history-content')).not.toContainText('48.99')
       await expect(page.locator('.history-odds')).toHaveText('48.99')
       await expect(page.locator('.history-status')).toHaveCSS('border-width', '0px')
@@ -90,10 +90,10 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await page.screenshot({ path: info.outputPath(`bet-table-${locale}.png`), fullPage: true })
     await page.locator('.workspace-game-picker .select-control-trigger').click()
     await page.locator('.workspace-game-picker [role="option"]').filter({ hasText: locale === 'en' ? 'All games' : '全部彩种' }).click()
-    await expect(page.locator('.history-game')).toHaveText('Mark Six')
+    await expect(page.locator('.history-table td[data-label="'+(locale==='en'?'Game':'彩种')+'"]')).toHaveText('Mark Six')
     await page.locator('.workspace-game-picker .select-control-trigger').click()
     await page.locator('.workspace-game-picker [role="option"]').filter({ hasText: 'Mark Six' }).click()
-    await expect(page.locator('.history-game')).toHaveCount(0)
+    await expect(page.locator('.history-table td[data-label="'+(locale==='en'?'Game':'彩种')+'"]')).toHaveCount(0)
     await expect(page).toHaveURL(/\/orders$/)
     for (const [path, title] of [['/help', locale === 'en' ? 'Help centre' : '帮助中心'], ['/account', locale === 'en' ? 'Me' : '个人'], ['/results', locale === 'en' ? 'Draw history' : '开奖记录']]) {
       await page.goto(`${origins.user}${path}`)
@@ -132,18 +132,18 @@ for (const locale of ['en', 'zh-CN'] as const) {
     settled = true
     await page.reload()
     await expect(page.locator('.history-content')).toHaveText(content)
-    await expect(page.locator('.history-table th')).toHaveCount(7)
-    await expect(page.locator('.history-table td').nth(4)).toHaveText('—')
+    await expect(page.locator('.history-table th')).toHaveCount(8)
+    await expect(page.locator('.history-table td[data-label="'+(locale==='en'?'Prize points':'中奖积分')+'"]')).toHaveText('0')
     await expect(page.locator('.history-table')).not.toContainText(locale === 'en' ? 'Refund points' : '退本积分')
     extraAmounts = true
     await page.reload()
     await expect(page.locator('.history-table tbody tr')).toHaveCount(4)
-    const refundLabel = locale === 'en' ? 'Tie refund points' : '和局退款积分'
+    const refundLabel = locale === 'en' ? 'Refund points' : '退本积分'
     await expect(page.locator('.history-table th').filter({ hasText: refundLabel })).toHaveCount(1)
-    for (const [index, prize, refund] of [[0, '—', '—'], [1, '1960', '—'], [2, '—', '40'], [3, '—', '—']] as const) {
+    for (const [index, prize, refund] of [[0, '0', '—'], [1, '1960', '—'], [2, '0', '40'], [3, '0', '—']] as const) {
       const row = page.locator('.history-table tbody tr').nth(index)
       await expect(row.locator('.history-content')).toHaveText(content)
-      await expect(row.locator('td').nth(4)).toHaveText(prize)
+      await expect(row.locator('td[data-label="'+(locale==='en'?'Prize points':'中奖积分')+'"]')).toHaveText(prize)
       await expect(row.locator(`td[data-label="${refundLabel}"]`)).toHaveText(refund)
     }
     const preset = page.viewportSize()!

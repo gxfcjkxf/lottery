@@ -9,7 +9,7 @@ export function registerPlatformSettingsEditorTests(reflow = false) {
   test(`platform settings edit in a modal (${locale})`, async ({ page }, info) => {
    const zh = locale === 'zh-CN', errors: string[] = [], writes: unknown[] = []
    page.on('pageerror', error => errors.push(error.message))
-   const initial = {version: 3, display_name: 'Platform', logo_text: 'P', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', updated_at: '2026-10-21T00:00:00Z'}
+   const initial = {theme:'jade',version: 3, display_name: 'Platform', logo_text: 'P', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', updated_at: '2026-10-21T00:00:00Z'}
    await page.route('**/api/**', async route => {
     const request = route.request()
     if (new URL(request.url()).pathname === '/api/v1/platform/commission-settings') {
@@ -28,10 +28,10 @@ export function registerPlatformSettingsEditorTests(reflow = false) {
     writes.push(body)
     return route.fulfill({json: {success: true, data: {...initial, ...body, version: 4}}})
    })
-   await installConsoleSession(page,'platform',locale,'aaaaaaaa-aaaa-4aaa-8aaa-000000000001',['platform_settings.write.platform'],'22222222-2222-4222-8222-222222222222',initial)
+   await installConsoleSession(page,'platform',locale,'aaaaaaaa-aaaa-4aaa-8aaa-000000000001',['platform_settings.view.platform','platform_settings.write.platform'],'22222222-2222-4222-8222-222222222222',initial)
    await page.goto(origins.platform);await expect(page.locator('.management-console')).toBeVisible();await openPlatformPage(page,zh?'设置':'Settings');await expectRealEntry(page,'platform')
    const tabs = page.locator('.platform-settings-tabs')
-   await expect(tabs.getByRole('button')).toHaveCount(3)
+   await expect(tabs.getByRole('button')).toHaveCount(4)
    await expect(tabs.getByRole('button', {name: zh ? '基础' : 'General', exact:true})).toHaveAttribute('aria-pressed', 'true')
    const edit = page.getByRole('button', {name: zh ? '编辑设置' : 'Edit settings', exact: true})
    const dialog = page.getByRole('dialog', {name: zh ? '设置' : 'Settings', exact: true})
@@ -52,7 +52,7 @@ export function registerPlatformSettingsEditorTests(reflow = false) {
    }
    await page.screenshot({path: info.outputPath(`platform-settings-editor-${locale}.png`)})
    await name.fill('Updated platform')
-   const selectors = dialog.locator('.select-control-trigger')
+   const selectors = dialog.locator('.form-row .select-control-trigger')
    await selectors.nth(0).click()
    const popup = page.getByRole('listbox').filter({visible:true})
    await expectInsideViewport(popup)

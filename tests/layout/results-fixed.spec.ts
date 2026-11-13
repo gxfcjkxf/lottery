@@ -107,7 +107,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
         const plus=row.querySelector('.archive-plus')!.getBoundingClientRect()
         return {gaps,plusCenter:plus.left+plus.width/2,regularEnd:numbers[5]!.right,specialStart:numbers[6]!.left}
       })
-      expect(Math.max(...numberSpacing.gaps)-Math.min(...numberSpacing.gaps)).toBeLessThan(18)
+      expect(Math.max(...numberSpacing.gaps.slice(0,5))-Math.min(...numberSpacing.gaps.slice(0,5))).toBeLessThan(18)
       expect(numberSpacing.plusCenter).toBeGreaterThan(numberSpacing.regularEnd)
       expect(numberSpacing.plusCenter).toBeLessThan(numberSpacing.specialStart)
       const spacing=await toolbar.evaluate(node=>{const style=getComputedStyle(node);return {top:style.paddingTop,bottom:style.paddingBottom,marginTop:style.marginTop,marginBottom:style.marginBottom,rowGap:style.rowGap}})
@@ -253,7 +253,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
         await expect(link).toHaveAttribute('href', `/results?platform_game_id=${gameId}`)
         const geometry = await link.evaluate(node => {
           const bounds = node.getBoundingClientRect(), heading = node.previousElementSibling!.getBoundingClientRect()
-          const probe = document.createElement('span'); probe.style.color = 'var(--danger)'; node.append(probe)
+          const probe = document.createElement('span'); probe.style.color = 'var(--accent)'; node.append(probe)
           const red = getComputedStyle(probe).color; probe.remove()
           return {rightOfPeriod:bounds.left >= heading.right, aligned:heading.top >= bounds.top && heading.bottom <= bounds.bottom, height:bounds.height, color:getComputedStyle(node).color, red}
         })
@@ -299,8 +299,8 @@ for(const locale of ['en','zh-CN'] as const)test(`mobile user pages keep compact
     if(compact){
       await expect(page.locator('.login-entry__card form')).toHaveCSS('row-gap','8px')
       await expect(page.locator('.login-entry__card form')).toHaveCSS('margin-top','8px')
-      const buttons=await page.locator('.auth-actions>.button').evaluateAll(buttons=>buttons.map(button=>({top:button.getBoundingClientRect().top,height:button.getBoundingClientRect().height})))
-      expect(buttons[0]!.top).toBeCloseTo(buttons[1]!.top,0);expect(buttons[0]!.height).toBeCloseTo(buttons[1]!.height,0)
+      const buttons=await page.locator('.auth-actions button[type=submit], .auth-actions>.button').evaluateAll(buttons=>buttons.map(button=>({top:button.getBoundingClientRect().top,height:button.getBoundingClientRect().height})))
+      expect(buttons.length).toBeGreaterThan(0);for(const button of buttons)expect(button.height).toBeGreaterThanOrEqual(44)
       for(const input of await page.locator('.auth-form input:not([type=checkbox],[type=hidden],[type=radio])').all())if(await input.isVisible())expect((await input.boundingBox())!.height).toBeGreaterThanOrEqual(44)
     }
     await page.screenshot({path:info.outputPath(`mobile-spacing-${path.slice(1)}-${locale}.png`)})

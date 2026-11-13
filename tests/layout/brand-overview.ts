@@ -17,6 +17,7 @@ export function registerBrandOverviewTests(reflow = false) {
         const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
         if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'brand_viewer', super_admin: false, brand_ids: [gameId], permissions: [], permissions_by_brand: { [gameId]: ['overview.view.brand', 'withdrawal.view.brand'] }, platform_permissions: [] } })
         if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, code: 'aurora', name: 'Aurora', status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z' }] })
+        if (path.endsWith('/cash/orders')) return reply({items:[],total_count:'0',limit:20,offset:0})
         if (path.endsWith('/withdrawals')) {
           expect(new URL(route.request().url()).searchParams.get('state')).toBe('reviewing')
           expect(route.request().headers()['x-brand-id']).toBe(gameId)

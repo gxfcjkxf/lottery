@@ -4,7 +4,7 @@ import {origins,gameId,expectNoPageOverflow} from './fixture'
 for(const locale of ['zh-CN','en'] as const) for(const modelType of ['X_PLUS_Y','M_SELECT_N','DIGITS_0_9']) test(`manual results ${locale} ${modelType}`,async({page},info)=>{
  const zh=locale==='zh-CN', digits=modelType==='DIGITS_0_9'
  const model={model:modelType,regular_count:digits?0:6,special_count:digits?0:1,length:digits?3:0,allow_repeat:false,regular_pool:{min:1,max:49,allow_repeat:false},special_pool:{min:1,max:49,allow_repeat:false}}
- const settings={timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
+ const settings={theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
  const game={id:gameId,name:'Mark Six',model,status:'active',rule_published:true}
  const period={id:gameId,game_id:gameId,period_no:'2026117',draw_at:'2026-10-01T13:30:00Z',bet_start_at:'2026-10-01T00:00:00Z',bet_end_at:'2026-10-01T13:29:00Z',result:null,published_at:null,state:'waiting'}
  const writes:unknown[]=[],errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));let published=false
@@ -52,7 +52,7 @@ for(const locale of ['zh-CN','en'] as const) for(const modelType of ['X_PLUS_Y',
 })
 
 for(const format of ['YYYY-MM-DD','DD/MM/YYYY','MM/DD/YYYY'] as const)test(`manual date keyboard and calendar ${format}`,async({page})=>{
- const settings={timezone:'Asia/Singapore',date_format:format,time_format:'HH:mm:ss'}
+ const settings={theme:'jade',timezone:'Asia/Singapore',date_format:format,time_format:'HH:mm:ss'}
  await page.route('**/__manual-date',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import {createApp,h,ref} from '/node_modules/.vite/deps/vue.js';import C from '/@fs${resolve('shared/src/PlatformDateInput.vue')}';import '/@fs${resolve('shared/src/styles.css')}';import '/@fs${resolve('shared/src/controls.css')}';const date=ref('');createApp({render:()=>h('form',[h(C,{modelValue:date.value,'onUpdate:modelValue':v=>date.value=v,displaySettings:${JSON.stringify(settings)},locale:'en',label:'Draw date',editable:true,required:true}),h('output',{'data-testid':'value'},date.value)])}).mount('#app')</script></html>`}))
  await page.goto(origins.platform+'/__manual-date')
  const input=page.getByRole('textbox',{name:'Draw date'})

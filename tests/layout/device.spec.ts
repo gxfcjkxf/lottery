@@ -78,7 +78,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await page.screenshot({path:info.outputPath(`configured-betting-${locale}.png`),fullPage:true})
     await page.goto(`${origins.user}/help`)
     const help = page.locator('.help-page')
-    await expect(help.locator('details')).toHaveCount(6)
+    await expect(help.locator('details')).toHaveCount(13)
     await expect(page.locator('.workspace-page-title')).toHaveText(locale==='en'?'Help centre':'帮助中心')
     await expect(page.locator('.workspace-page-title')).toBeVisible()
     await expect(help.locator('.help-intro,a[href^="mailto:"]')).toHaveCount(0)
@@ -117,13 +117,13 @@ for (const locale of ['en', 'zh-CN'] as const) {
     expect(layouts[2]).toEqual(layouts[0])
     expect(layouts[3]).toEqual(layouts[0])
     const compactSpacing = await page.evaluate(() => matchMedia('(max-width:900px), (pointer:coarse)').matches)
-    expect(layouts[0]).toMatchObject({ align: 'center', gap: compactSpacing ? '8px' : '12px' })
+    expect(layouts[0]).toMatchObject({ align: 'center', gap: compactSpacing ? '8px 0px' : '12px 0px' })
     await page.screenshot({ path: info.outputPath(`orders-${locale}.png`), fullPage: true })
     await page.goto(`${origins.user}/wallet`)
     const zeroWallet = page.locator('.wallet-summary')
     await expect(zeroWallet.locator('.total-card')).toHaveCount(3)
     await expect(zeroWallet.locator('.total-primary strong')).toHaveText('0')
-    await expect(zeroWallet.locator('.wallet-links a')).toHaveCount(2)
+    await expect(zeroWallet.locator('.wallet-links a')).toHaveCount(0)
     await expectRefreshControls(page)
     await expectNoPageOverflow(page)
     for (const path of ['/wallet/ledger', '/notifications', '/results']) {
@@ -171,14 +171,14 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await expect(wallet.locator('.total-primary strong')).toHaveText('170');
     await expect(wallet.locator('.wallet-available b')).toHaveText(locale === 'en' ? '120 pts' : '120 分');
     await expect(wallet.locator('.metric-amount strong')).toHaveText(['50', '40']);
-    await expect(wallet.locator('.wallet-available')).toHaveCSS('color', 'rgb(255, 255, 255)');
+    await expect(wallet.locator('.wallet-available')).toHaveCSS('color', 'rgb(17, 24, 39)');
     await expect(wallet.locator('.bucket-grid, .ledger-panel')).toHaveCount(0);
-    await expect(wallet.locator('.wallet-links a')).toHaveCount(2);
+    await expect(wallet.locator('.wallet-links a')).toHaveCount(0);
     expect(ledgerRequests).toBe(0);
     await expect(wallet.locator('.total-label').last()).toHaveText(locale === 'en' ? 'Withdrawal points' : '提现积分');
     await expectNoPageOverflow(page);
     await page.screenshot({ path: info.outputPath(`wallet-overview-${locale}.png`) });
-    await wallet.locator('a[href="/wallet/buckets"]').click();
+    await page.goto(origins.user+'/wallet/buckets');
     await expect(page).toHaveURL(`${origins.user}/wallet/buckets`);
     await expect(headerRefresh).toHaveCount(0);
     await expect(wallet.locator('.totals, .ledger-panel, .wallet-links')).toHaveCount(0);
@@ -193,7 +193,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await expectNoPageOverflow(page);
     await page.screenshot({ path: info.outputPath(`wallet-buckets-${locale}.png`) });
     await page.goto(`${origins.user}/wallet`);
-    await wallet.locator('a[href="/wallet/ledger"]').click();
+    await page.goto(origins.user+'/wallet/ledger');
     await expect(page).toHaveURL(`${origins.user}/wallet/ledger`);
     await expect(headerRefresh).toHaveCount(0);
     await expect(wallet.locator('.totals, .bucket-grid, .wallet-links')).toHaveCount(0);

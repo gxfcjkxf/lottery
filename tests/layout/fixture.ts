@@ -68,6 +68,11 @@ export async function installLayoutApi(page: Page, locale: 'en' | 'zh-CN') {
     if (path === '/api/v1/display-settings') return respond({ theme: 'jade', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' })
     if (path === '/api/v1/configured/games') return respond({games:[{id:gameId,name:'Mark Six'}], total_count: '1'})
     if (path === '/api/v1/games') return respond({items:[], total_count: '0'})
+    if (path === '/api/v1/cash') {
+      const config: CashConfig = {version:1,rules:currencies.map(currency=>({currency,inherit:false,enabled:false,rate:'1',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'1'}))}
+      return respond({auto_usdt:false,actor_context:'a'.repeat(64),brand_id:gameId,member_id:gameId,balances:cashBalanceFixture(),destinations:[],platform:config,brand:config})
+    }
+    if (path === '/api/v1/cash/orders') return respond({items:[],total_count:'0'})
     if (path === '/api/v1/announcements') return respond({items:[]})
     if (path === '/api/v1/brand-contacts') return respond({items:[], default_id:null})
     if (path === '/api/v1/me/betting-preferences') return respond({brand_id:gameId,member_id:gameId,quick_amounts:[]})

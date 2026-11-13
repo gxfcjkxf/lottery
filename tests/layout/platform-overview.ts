@@ -28,8 +28,9 @@ export function registerPlatformOverviewTests(reflow = false) {
         const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
         if (path.endsWith('/presentation')) return reply({ display_name: 'Platform', logo_text: 'P', logo_url: '' })
         if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'operator', super_admin: true, platform_permissions: ['overview.view.platform', 'withdrawal.view.platform'] } })
-        if (path.endsWith('/platform-settings')) return reply({ timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', display_name: 'Platform', logo_text: 'P', logo_url: '', version: 1, updated_at: '2026-10-18T00:00:00Z' })
+        if (path.endsWith('/platform-settings')) return reply({theme:'jade', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', display_name: 'Platform', logo_text: 'P', logo_url: '', version: 1, updated_at: '2026-10-18T00:00:00Z' })
         if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, code: 'aurora', name: 'Aurora', status: 'active', member_count: '12', agent_count: '3', recharge_quota_available: '1000', created_at: '2026-10-24T00:00:00Z' }] })
+        if (path.endsWith('/cash/orders')) return reply({items:[],total_count:'0'})
         if (path.endsWith('/withdrawals')) {
           expect(new URL(route.request().url()).searchParams.get('state')).toBe('reviewing')
           expect(route.request().headers()['x-brand-id']).toBe(gameId)

@@ -8,7 +8,7 @@ const webkit = { browserName: 'webkit' as const, launchOptions: { executablePath
 
 export default defineConfig({
   testDir: './tests/layout',
-  fullyParallel: false,
+  fullyParallel: true,
   workers: 2,
   retries: 0,
   timeout: 60_000,

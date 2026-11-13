@@ -23,6 +23,7 @@ test('layout acceptance covers both engines, device orientations and explicit re
   for (const device of ['Pixel 7', 'Pixel 7 landscape', 'iPhone SE', 'iPhone 13', 'iPhone 13 Pro Max', 'iPhone 13 landscape']) assert.ok(config.includes(`devices['${device}']`))
   for (const engine of ['chromium', 'webkit']) assert.ok(config.includes(`browserName: '${engine}'`))
   assert.match(config, /retries: 0/)
+  assert.match(config, /fullyParallel: true/)
   assert.equal((config.match(/reuseExistingServer: false/g) ?? []).length, 4)
   assert.doesNotMatch(config, /viewport:|test\.skip|DATABASE_URL/)
   const workflow = read('.github/workflows/ci.yaml').split('  mobile-layout:\n')[1].split('  webkit-functional:\n')[0]

@@ -16,7 +16,7 @@ export function registerAgentDirectoryTests(reflow = false) {
    const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
    if (path.endsWith('/presentation')) return reply({ display_name: 'Layout trial', logo_text: 'L', logo_url: '' })
    if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'agent_reviewer', super_admin: platform, brand_ids: [gameId], permissions_by_brand: { [gameId]: ['agent.view.brand','wallet.view.brand'] }, platform_permissions: platform ? ['agent.view.platform','wallet.view.platform'] : [] } })
-   if (path.endsWith('/platform-settings')) return reply({ display_name: 'Layout trial', logo_text: 'L', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', version: 1, updated_at: at })
+   if (path.endsWith('/platform-settings')) return reply({theme:'jade', display_name: 'Layout trial', logo_text: 'L', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', version: 1, updated_at: at })
    if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z' }] , total_count: '1'})
    expect(req.headers()['x-brand-id']).toBe(gameId)
    if (path.endsWith('/agents')) {
@@ -37,7 +37,7 @@ export function registerAgentDirectoryTests(reflow = false) {
   } else {
    const mobile = page.locator('.mobile-nav'); if (await mobile.isVisible()) await mobile.locator('button').last().click()
    const menu = page.locator(await mobile.isVisible() ? '.mobile-more-menu' : '.side-nav')
-   const item = menu.getByRole('button', { name: zh ? '代理列表' : 'Agent list', exact: true })
+   const item = menu.getByRole('button', { name: zh ? '代理列表' : 'Agent list', exact: true, includeHidden:true })
    if (!await item.isVisible()) await item.locator('xpath=ancestor::details').locator('summary').click()
    await item.click()
   }
@@ -54,14 +54,14 @@ export function registerAgentDirectoryTests(reflow = false) {
   await expect.poll(() => queries.length).toBe(initialReads + 1)
   await expect(rows).toHaveCount(size)
   await pagination.locator('.table-pagination-arrow').last().click(); await expect(rows).toHaveCount(1); await expect(rows).toContainText(`agent${String(size + 1).padStart(3, '0')}`)
-  const search = page.getByRole('textbox', { name: zh ? '搜索账号或手机号' : 'Search account or phone', exact: true })
+  const search = page.getByRole('searchbox', { name: zh ? '搜索账号或手机号' : 'Search account or phone', exact: true })
   await search.fill('AGENT001'); await search.press('Enter'); await expect(rows).toHaveCount(1); await expect(rows).toContainText('agent001')
   expect(queries.at(-1)!.searchParams.get('q')).toBe('AGENT001'); expect(queries.at(-1)!.searchParams.get('offset')).toBe('0')
-  const clear = () => page.getByRole('button', { name: zh ? '清空' : 'Clear', exact: true })
-  await clear().click(); const online = page.getByRole('combobox', { name: zh ? '在线状态' : 'Online status', exact: true })
+  const clear=async()=>{await search.fill('');await selectControl(page.getByRole('combobox',{name:zh?'在线状态':'Online status',exact:true}),'');await search.press('Enter')}
+  await clear(); const online = page.getByRole('combobox', { name: zh ? '在线状态' : 'Online status', exact: true })
   await selectControl(online, 'false'); await page.locator('.member-filters button[type=submit]').click(); await expect(rows).toHaveCount(size / 2)
   expect(queries.at(-1)!.searchParams.get('online')).toBe('false')
-  await clear().click(); await expect(rows).toHaveCount(size)
+  await clear(); await expect(rows).toHaveCount(size)
   await rows.first().locator('.member-menu-trigger').click(); const menu = page.getByRole('menu', { name: zh ? '代理 agent001 的操作' : 'Actions for agent agent001', exact: true })
   await expectInsideViewport(menu); await expect(menu.getByRole('menuitem')).toHaveCount(platform ? 1 : 2); await menu.getByRole('menuitem').first().click()
   const detail = page.getByRole('dialog'); await expectInsideViewport(detail); await page.keyboard.press('Escape')

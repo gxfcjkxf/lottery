@@ -202,7 +202,7 @@ export function registerConfiguredHistoryLayoutTests(){
    await page.setViewportSize(original)
   }
   await rules.locator('.detail-modal-close').click()
-  await page.locator('.workspace-trailing > button.icon-button').click()
+  await page.getByRole('button',{name:locale==='en'?'Menu':'菜单',exact:true}).click()
   await page.locator('.workspace-menu a[href^="/results"]').click()
   await expect(page.locator('[data-testid="draw-archive"]')).toBeVisible()
   await expect(page.locator('.workspace-overview,.workspace-overview-control')).toHaveCount(0)

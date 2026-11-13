@@ -31,7 +31,7 @@ export function registerAgentModeChangeTests(reflow=false){
   })
   await page.goto(origins.brand);await expect(page.locator('.management-console')).toBeVisible()
   const mobile=page.locator('.mobile-nav');if(await mobile.isVisible())await mobile.locator('button').last().click()
-  const nav=page.locator(await mobile.isVisible()?'.mobile-more-menu':'.side-nav'),item=nav.getByRole('button',{name:zh?'代理列表':'Agent list',exact:true})
+  const nav=page.locator(await mobile.isVisible()?'.mobile-more-menu':'.side-nav'),item=nav.getByRole('button',{name:zh?'代理列表':'Agent list',exact:true,includeHidden:true})
   if(!await item.isVisible())await item.locator('xpath=ancestor::details').locator('summary').click()
   await item.click();await page.getByRole('button',{name:'level1_agent',exact:true}).click()
   const detail=page.getByRole('dialog'),mode=detail.getByRole('combobox',{name:zh?'代理模式':'Agent mode',exact:true})

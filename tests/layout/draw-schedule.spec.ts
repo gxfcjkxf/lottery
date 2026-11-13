@@ -13,7 +13,7 @@ for(const locale of ['en','zh-CN'] as const)test(`game-level draw times and coll
   if(writes.length===1)return route.fulfill({status:503,json:{success:false,error:{code:'SERVICE_UNAVAILABLE',message:'private detail'}}})
   expect(writes[1]).toEqual(writes[0]);return route.fulfill({json:{success:true,data:{...writes[1]!.body,version:2}}})
  })
- const settings={timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
+ const settings={theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
  await page.route('**/__schedule',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app" class="management-console"></div><script type="module">import {createApp,h} from '/node_modules/.vite/deps/vue.js';import C from '/@fs${resolve('shared/src/DrawScheduleSettings.vue')}';import Host from '/@fs${resolve('shared/src/OperationToastHost.vue')}';import {setPlatformDisplaySettings} from '/@fs${resolve('shared/src/display-settings.ts')}';import '/@fs${resolve('shared/src/styles.css')}';import '/@fs${resolve('shared/src/management.css')}';import '/@fs${resolve('shared/src/controls.css')}';import '/@fs${resolve('shared/src/form-validation.css')}';setPlatformDisplaySettings(${JSON.stringify(settings)});createApp({render:()=>[h(C,${JSON.stringify({gameId,timezone:'Asia/Macau',locale,canWrite:true})}),h(Host,{locale:'${locale}'})]}).mount('#app')</script></html>`}))
  await page.goto(origins.platform+'/__schedule')
  await expect(page.getByRole('region',{name:zh?'时间设置':'Time settings'})).toBeVisible()
@@ -45,7 +45,7 @@ test('Mark Six schedule belongs to the game, source has result fields only',asyn
   const request=route.request(),path=new URL(request.url()).pathname;expect(request.method()).toBe('GET')
   const ok=(data:unknown)=>route.fulfill({json:{success:true,data}})
   if(path==='/api/v1/platform/me')return ok({account:{id:gameId,username:'schedule_reviewer',super_admin:true,platform_permissions:['platform_game.view.platform','platform_game.write.platform']}})
-  if(path==='/api/v1/platform/platform-settings')return ok({display_name:'Layout trial',logo_text:'L',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',version:1,updated_at:'2026-10-28T00:00:00Z'})
+  if(path==='/api/v1/platform/platform-settings')return ok({theme:'jade',display_name:'Layout trial',logo_text:'L',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',version:1,updated_at:'2026-10-28T00:00:00Z'})
   if(path==='/api/v1/platform/brands')return ok({items:[]})
   if(path==='/api/v1/platform/presentation'||path==='/api/v1/display-settings')return route.fallback()
   if(path==='/api/v1/platform/platform-games')return ok({games:[game],limit:50,offset:0,total_count:'1'})
@@ -55,7 +55,7 @@ test('Mark Six schedule belongs to the game, source has result fields only',asyn
   if(path.endsWith('/draw-sources'))return ok({version:2,active_source_id:gameId,active_source_revision:2,items:[{id:gameId,name:'新澳门公开来源',revision:2,plan}]})
   throw new Error('Unexpected request '+path)
  })
- const settings={timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
+ const settings={theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
  await page.route('**/__schedule-page*',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app" class="management-console" style="padding:12px"></div><script type="module">import {createApp,h} from '/node_modules/.vite/deps/vue.js';import C from '/@fs${resolve('shared/src/PlatformLottery.vue')}';import {setPlatformDisplaySettings} from '/@fs${resolve('shared/src/display-settings.ts')}';import '/@fs${resolve('shared/src/styles.css')}';import '/@fs${resolve('shared/src/management.css')}';import '/@fs${resolve('shared/src/controls.css')}';import '/@fs${resolve('shared/src/form-validation.css')}';setPlatformDisplaySettings(${JSON.stringify(settings)});createApp({render:()=>h(C,${JSON.stringify({surface:'platform',brandId:'',initialGameId:gameId,drawsOnly:!new URL(route.request().url()).searchParams.has('catalog'),locale:'zh-CN',canManage:true,canConnect:false,displaySettings:settings})})}).mount('#app')</script></html>`}))
  await page.goto(origins.platform+'/__schedule-page')
  await expect(page.getByRole('button',{name:'设置开盘日期时间',exact:true})).toHaveCount(0)
@@ -100,7 +100,7 @@ test('Mark Six schedule belongs to the game, source has result fields only',asyn
 
 for(const locale of ['en','zh-CN'] as const)test(`Canada28 independent time settings and original-request retry ${locale}`,async({page},info)=>{
  const zh=locale==='zh-CN',errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
- const settings={timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
+ const settings={theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
  const game={id:gameId,name:zh?'加拿大28':'Canada28',code:'canada_28_trial',timezone:'America/Toronto',model:{model:'DIGITS_0_9',length:3,ordered:true,allow_repeat:true},version:1,status:'active',rule_published:true}
  const mapping={format:'json',schedule:'source',time_format:'rfc3339',time_layout:'',timezone:'',period:{path:'/period_no',attribute:''},draw_time:{path:'/drawn_at',attribute:''},digits:{path:'/result/digits',attribute:'',separator:'',offset:0,count:3},regular:null,special:null,next_period:{path:'/next_period_no',attribute:''},next_draw_time:{path:'/next_draw_at',attribute:''},complete:null,period_query:'',game_query:''}
  let plan={version:1,enabled:true,source_type:'mapped',source_url:'https://draw.example.test/latest',mapping,anchor_draw_at:null,anchor_period_no:null,interval_seconds:null,open_before_seconds:210,close_before_seconds:15,credential_ref:''}

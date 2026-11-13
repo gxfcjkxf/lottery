@@ -12,11 +12,11 @@ export function registerMemberDeleteTests(reflow = false) {
       await page.route('**/api/**', async route => {
         const req = route.request(), path = new URL(req.url()).pathname
         const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
-        const settings = { timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' }
+        const settings = {theme:'jade', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' }
         if (path === '/api/v1/platform/presentation') return reply({ display_name: 'Layout', logo_text: 'L', logo_url: '' })
         if (path === '/api/v1/display-settings') return reply(settings)
         if (path === '/api/v1/platform/me') return reply({ account: { id: gameId, username: 'layout', super_admin: true, platform_permissions: allowed ? ['user.view.platform', 'user.delete.platform'] : ['user.view.platform'] } })
-        if (path === '/api/v1/platform/platform-settings') return reply({ ...settings, display_name: 'Layout', logo_text: 'L', logo_url: '', version: 1, updated_at: '2026-10-18T00:00:00Z' })
+        if (path === '/api/v1/platform/platform-settings') return reply({theme:'jade', ...settings, display_name: 'Layout', logo_text: 'L', logo_url: '', version: 1, updated_at: '2026-10-18T00:00:00Z' })
         if (path === '/api/v1/platform/brands') return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z' }] })
         if (path === '/api/v1/platform/users') { const url = new URL(req.url()); return reply({ items: deleted ? [] : [member], limit: Number(url.searchParams.get('limit')), offset: Number(url.searchParams.get('offset')), total_count: deleted ? '0' : '1' }) }
         if (path === `/api/v1/platform/global-users/${userId}/delete`) {

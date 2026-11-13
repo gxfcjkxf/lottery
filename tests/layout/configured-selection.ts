@@ -1,3 +1,4 @@
+import {tokenStyle} from './navigation-style'
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { configuredDemo } from '../../shared/src/configured-rules'
@@ -104,9 +105,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await expect(inputs.last()).toHaveValue('999999')
   const sizes=await settings.locator('.quick-amount-chip').evaluateAll(chips=>chips.map(chip=>chip.getBoundingClientRect().width))
   for(let i=1;i<sizes.length;i++)expect(sizes[i]).toBeGreaterThan(sizes[i-1]!)
-  const before=await inputs.last().evaluate(input=>getComputedStyle(input).backgroundColor)
   await inputs.last().click();await expect(inputs.last()).toBeFocused()
-  expect(await inputs.last().evaluate(input=>getComputedStyle(input).backgroundColor)).not.toBe(before)
+  await expect(inputs.last()).toHaveCSS('background-color','rgb(255, 255, 255)')
   await expect(inputs.last()).toHaveCSS('border-top-width','2px')
   await expect(inputs.last()).toHaveCSS('cursor','text')
   expect(await inputs.last().evaluate(input=>getComputedStyle(input).caretColor)).not.toBe('rgba(0, 0, 0, 0)')
@@ -335,14 +335,14 @@ for (const locale of ['en', 'zh-CN'] as const) {
    reads++
    return route.fulfill({json: {success: true, data: {
     game: {id: gameId, name: 'Mark Six', status: 'active', brand_enabled: true},
-    snapshot, rule_id: gameId, snapshot_hash: 'compact-selection', sales: {version: 1, enabled: true},
+    snapshot, rule_id: gameId, snapshot_hash: 'compact-selection', previous_draw:{period_no:'2026110',result:{regular:[1,2,3,4,5,6],special:[7],digits:[]},regular_order:[1,2,3,4,5,6],attributes:Object.fromEntries([1,2,3,4,5,6,7].map(n=>[String(n).padStart(2,'0'),{wave:['red','blue','green'][(n-1)%3],zodiac:'rat',element:'wood'}]))}, sales: {version: 1, enabled: true},
     period: !closed ? {id: gameId, period_no: '2026111', bet_start_at: new Date(start - 3600000).toISOString(), bet_end_at: new Date(start + 3600000).toISOString(), draw_at: new Date(start + 3660000).toISOString()} : null,
    }}})
   })
   const currentPeriod = {id: gameId, game_id: gameId, period_no: '2026111', bet_start_at: new Date(start - 3600000).toISOString(), bet_end_at: new Date(start + 3600000).toISOString(), draw_at: new Date(start + 3660000).toISOString(), result: null, published_at: null}
   await page.route(`**/api/v1/platform-games/${gameId}?*`, route => {
    periodReads++
-   return route.fulfill({json: {success: true, data: {game: {id: gameId, name: 'Mark Six'}, plays: [], rule_protocol: 'configured', periods: [currentPeriod, {...currentPeriod, id: 'previous-draw', period_no: '2026110', draw_at: new Date(start - 3600000).toISOString(), result: {regular: [1, 2, 3, 4, 5, 6], special: [7], digits: []}}]}}})
+   return route.fulfill({json: {success: true, data: {game: {id: gameId, name: 'Mark Six'}, plays: [], total_count:'2', rule_protocol: 'configured', periods: [currentPeriod, {...currentPeriod, id: 'previous-draw', period_no: '2026110', draw_at: new Date(start - 3600000).toISOString(), result: {regular: [1, 2, 3, 4, 5, 6], special: [7], digits: []}}]}}})
   })
   await page.goto(`${origins.user}/configured/${gameId}`)
   const selection = page.getByTestId('configured-selection')
@@ -369,8 +369,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await expect(dock).toHaveCSS('position', 'fixed')
   await expect(dock.locator('.configured-available strong')).toHaveText('40')
   for (const label of await dock.locator('label').all()) {
-   const title = await label.locator(':scope > span').boundingBox()
-   const field = await label.locator('input,select').boundingBox()
+   const title = await label.locator(':scope > span').first().boundingBox()
+   const field = await label.locator('input:not([aria-hidden=true]):not([type=hidden]),select,.select-control-trigger').boundingBox()
    expect(title!.x + title!.width).toBeLessThanOrEqual(field!.x)
    expect(title!.y).toBeLessThan(field!.y + field!.height)
    expect(field!.y).toBeLessThan(title!.y + title!.height)
@@ -383,13 +383,13 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await page.getByRole('dialog').getByRole('button', {name: locale === 'en' ? 'Continue choosing' : '继续选号', exact: true}).last().click()
   await selection.locator('.configured-options button').first().click()
   await betButton.click()
-  await expect(page.getByRole('dialog').getByRole('alert')).toContainText(locale==='en'?'positive whole-point':'正整数积分')
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText(locale==='en'?'up to 2 decimal places':'最多两位小数')
   await page.getByRole('dialog').getByRole('button',{name:locale==='en'?'Continue choosing':'继续选号',exact:true}).last().click()
   await dock.getByRole('button',{name:locale==='en'?'Clear':'清空',exact:true}).click()
   await dock.locator('input[type="number"]').fill('10')
   const first = selection.locator('.configured-options button').first()
   await expect(first.locator('.configured-option-price')).toHaveCount(1)
-  await expect(first.locator('.configured-option-price')).toHaveCSS('color', 'rgb(185, 28, 28)')
+  await expect(first.locator('.configured-option-price')).toHaveCSS('color', await tokenStyle(first,'color','--danger-text'))
   await first.evaluate(element => element.scrollIntoView({block:'start'}))
   await first.click()
   const total = dock.locator('.configured-total-points')
@@ -402,7 +402,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await points.fill('25')
   await expect(total).toHaveText('50')
   await expect(betButton).toBeDisabled()
-  await expect(betButton).toHaveCSS('background-color','rgb(226, 232, 240)')
+  await expect(betButton).toHaveCSS('background-color',await tokenStyle(betButton,'background-color','--line'))
   await expect(page.locator('.operation-toast-stack .toast-error')).toContainText(locale==='en'?'Insufficient available points':'可用积分不足')
   await expect(page.locator('.operation-toast-stack .toast-error')).toBeInViewport({ratio:1})
   await expectNoPageOverflow(page)
@@ -451,10 +451,10 @@ for (const locale of ['en', 'zh-CN'] as const) {
   for (const [index, wave, background] of [[0,'red','rgb(254, 226, 226)'],[1,'blue','rgb(219, 234, 254)'],[2,'green','rgb(209, 250, 229)']] as const) {
    const option = selection.locator('.configured-options button').nth(index)
    await expect(option).toHaveClass(new RegExp(`lottery-wave-${wave}`))
-   await expect(option).toHaveCSS('background-color', background)
+   await expect(option).toHaveCSS('background-color', await tokenStyle(option,'background-color','--wave-light'))
   }
   await selection.locator('.configured-options button').first().click()
-  await expect(selection.locator('.configured-options button').first()).toHaveCSS('background-color', 'rgb(220, 38, 38)')
+  await expect(selection.locator('.configured-options button').first()).toHaveCSS('background-color', await tokenStyle(selection.locator('.configured-options button').first(),'background-color','--wave-color'))
   await expect(selection.locator('.configured-option-price').first()).toHaveCSS('color', 'rgb(255, 255, 255)')
   await tabs.nth(1).click()
   await tabs.nth(1).press('ArrowUp')
@@ -466,7 +466,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
   for (const primary of ['#20594c', '#274c75', '#694477']) {
    await page.evaluate(color => document.documentElement.style.setProperty('--primary', color), primary)
    await expect(first.locator('.configured-option-price')).toHaveCSS('color', 'rgb(255, 255, 255)')
-   await expect(selection.locator('.configured-options button').nth(1).locator('.configured-option-price')).toHaveCSS('color', 'rgb(185, 28, 28)')
+   await expect(selection.locator('.configured-options button').nth(1).locator('.configured-option-price')).toHaveCSS('color', await tokenStyle(first,'color','--danger-text'))
   }
   await page.evaluate(() => document.documentElement.style.removeProperty('--primary'))
   await expectNoPageOverflow(page)

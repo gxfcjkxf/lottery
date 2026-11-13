@@ -1,3 +1,4 @@
+import { openBrandPage } from './real-console-session'
 import { selectControl } from '../select-control'
 import { expect, test } from '@playwright/test'
 import { origins, gameId, installLayoutApi, expectNoPageOverflow } from './fixture'
@@ -20,7 +21,7 @@ export function registerBuiltinRoleTests() {
     if(path==='/api/v1/admin/me')return reply({account:{id:gameId,username:'brand_admin',super_admin:false,brand_ids:[gameId],permissions:grants,permissions_by_brand:{[gameId]:grants}}})
     if(path==='/api/v1/platform/presentation')return reply({display_name:'Layout',logo_text:'L',logo_url:''})
     if(path==='/api/v1/platform/me')return reply({account:{id:gameId,username:'platform_admin',super_admin:true,platform_permissions:grants}})
-    if(path==='/api/v1/platform/platform-settings')return reply({timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',display_name:'Layout',logo_text:'L',logo_url:'',version:1,updated_at:'2026-10-18T00:00:00Z'})
+    if(path==='/api/v1/platform/platform-settings')return reply({theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',display_name:'Layout',logo_text:'L',logo_url:'',version:1,updated_at:'2026-10-18T00:00:00Z'})
     if(path==='/api/v1/admin/brands'||path==='/api/v1/platform/brands')return reply({items:[{id:gameId,code:'aurora',name:'Aurora',status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z'}], total_count: '1'})
     if(path==='/api/v1/admin/users')return reply({items:[],limit:100,offset:0,total_count:'0'})
     if(path==='/api/v1/platform/accounts'||path==='/api/v1/platform/platform-accounts')return reply({items:[], total_count: '0'})
@@ -55,8 +56,9 @@ export function registerBuiltinRoleTests() {
     const name=zh?'角色权限':'Roles and permissions'
     if(await page.locator('.mobile-nav').isVisible()){
      await page.locator('.mobile-nav button').last().click()
-     await page.locator('.mobile-more-menu').getByRole('button',{name:new RegExp(name)}).click()
+     await openBrandPage(page,name)
     }else {
+     await openBrandPage(page,name)
      const navigation=page.locator('.side-nav').getByRole('button',{name:new RegExp(name)})
      await navigation.scrollIntoViewIfNeeded()
      await expect(navigation).toBeInViewport()
@@ -66,7 +68,7 @@ export function registerBuiltinRoleTests() {
     await expect(page.locator('.app-frame')).toBeVisible()
     const menu=page.locator('button[aria-controls="platform-navigation"]');if(await menu.isVisible())await menu.click()
     if (!platformRole && await page.locator('button[aria-controls="platform-brand-tabs"]').getAttribute('aria-expanded') === 'false') await page.locator('button[aria-controls="platform-brand-tabs"]').click()
-    const name=platformRole?(zh?'管理账号':'Admin accounts'):(zh?'后台账号':'Back-office accounts')
+    const name=platformRole?(zh?'管理':'Admin'):(zh?'后台账号':'Back-office accounts')
     await page.getByRole('button',{name,exact:true}).filter({visible:true}).click()
     if(!platformRole)await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), gameId)
     await page.getByRole('tab',{name:zh?'角色':'Roles',exact:true}).click()
@@ -80,8 +82,8 @@ export function registerBuiltinRoleTests() {
      await page.setViewportSize(size)
      await expect(pagination).toBeVisible()
      await expect(pagination).toHaveCSS('display','flex')
-     await expect(actions).toHaveCSS('gap','8px')
-     await expect(actions.getByRole('button')).toHaveCount(2)
+     await expect(actions).toHaveCSS('gap','0px')
+     await expect(actions.getByRole('button')).toHaveCount(5)
      for(const button of await actions.getByRole('button').all()){
       await expect(button).toBeDisabled()
       await expect(button).toHaveCSS('height',size.width>900&&!await page.evaluate(()=>matchMedia('(pointer: coarse)').matches)?'32px':'44px')
@@ -91,8 +93,9 @@ export function registerBuiltinRoleTests() {
     }
     await page.setViewportSize(viewport)
    }
-   const row=list.locator(brandEntry?'article.record':'tbody tr').filter({has:page.getByRole('button',{name:label,exact:true})})
-   await expect(row.getByRole('button')).toHaveCount(1)
+   const row=list.locator('tbody tr').filter({has:page.getByRole('button',{name:label,exact:true})})
+   await expect(row.getByRole('button',{name:label,exact:true})).toHaveCount(1)
+   await expect(row.getByRole('button',{name:zh?'编辑':'Edit',exact:true})).toHaveCount(0)
    await row.getByRole('button',{name:label,exact:true}).click()
    const dialog=page.getByRole('dialog',{name:zh?'角色详情':'Role details',exact:true})
    await expect(list).not.toContainText(note)
@@ -105,8 +108,9 @@ export function registerBuiltinRoleTests() {
    await dialog.getByRole('button',{name:zh?'关闭':'Close',exact:true}).click()
    // Custom roles remain editable; read-only is not applied to every role.
    if(brandEntry){
-    const ordinary=list.locator('article.record').filter({has:page.getByRole('button',{name:'Operations',exact:true})})
-    await ordinary.getByRole('button',{name:zh?'编辑':'Edit',exact:true}).click()
+    const ordinary=list.locator('tbody tr').filter({has:page.getByRole('button',{name:'Operations',exact:true})})
+    await ordinary.locator('.member-menu-trigger').click()
+    await page.getByRole('menuitem',{name:zh?'编辑':'Edit',exact:true}).click()
     await expect(page.locator('.access-page .form input').filter({visible:true}).first()).toHaveValue('Operations')
    }else{
     await list.getByRole('button',{name:'Operations',exact:true}).click()

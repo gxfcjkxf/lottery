@@ -18,7 +18,7 @@ for(const locale of ['en','zh-CN'] as const){
     const state={starts:0};(window as any).__dropdownLoading=state
     new MutationObserver(records=>{for(const record of records)for(const node of record.addedNodes)if(node instanceof Element&&(node.matches('.global-loading-overlay')||node.querySelector('.global-loading-overlay')))state.starts++}).observe(document.body,{childList:true,subtree:true})
    })
-   await page.locator('.login-entry input').first().focus();await page.keyboard.press('Shift+Tab');await expect(trigger).toBeFocused()
+   await trigger.focus();await expect(trigger).toBeFocused()
    await activate(trigger);await expect(list).toBeVisible();await expect(trigger).toHaveAttribute('aria-expanded','true')
    await activate(list.locator('[lang="zh-CN"]'));await expect(list).toBeHidden();await expect(trigger).toBeFocused()
    await trigger.press('Enter');await expect(list).toBeVisible()

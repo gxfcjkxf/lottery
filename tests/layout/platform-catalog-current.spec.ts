@@ -1,3 +1,4 @@
+import { openPlatformPage } from './real-console-session'
 import {expect,test} from '@playwright/test'
 import {readFileSync} from 'node:fs'
 import {gameId,origins,installLayoutApi,expectNoPageOverflow} from './fixture'
@@ -15,7 +16,7 @@ for(const locale of ['en','zh-CN'] as const)test(`platform catalogue uses curren
   expect(req.method()).toBe('GET')
   if(path.endsWith('/presentation'))return ok({display_name:'Trial platform',logo_text:'T',logo_url:''})
   if(path.endsWith('/me'))return ok({account:{id:gameId,username:'catalog_reviewer',super_admin:true,platform_permissions:['platform_game.view.platform','platform_game.write.platform','bet.view.platform']}})
-  if(path.endsWith('/platform-settings'))return ok({version:1,display_name:'Trial platform',logo_text:'T',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',updated_at:'2026-11-01T00:00:00Z'})
+  if(path.endsWith('/platform-settings'))return ok({theme:'jade',version:1,display_name:'Trial platform',logo_text:'T',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',updated_at:'2026-11-01T00:00:00Z'})
   if(path.endsWith('/brands'))return ok({items:[{id:gameId,code:'trial',name:'Trial Brand',status:'active',member_count:'0',agent_count:'0',recharge_quota_available:'0',created_at:'2026-11-01T00:00:00Z'}]})
   if(path==='/api/v1/platform/platform-games')return ok({games:[game],limit:50,offset:0,total_count:'1'})
   if(path==='/api/v1/platform/platform-games/official-calendar')return ok({current_month:'2026-11',months:[],status:'pending',last_success_at:null,last_attempt_at:null,next_attempt_at:null})
@@ -34,7 +35,7 @@ for(const locale of ['en','zh-CN'] as const)test(`platform catalogue uses curren
  })
  await page.goto(origins.platform)
  await expect(page.locator('.management-console')).toBeVisible()
- const go=async(label:string)=>{const more=page.locator('.platform-mobile-nav button[aria-controls="platform-navigation"]');if(await more.isVisible())await more.click();await page.locator('.sidebar').getByRole('button',{name:label,exact:true}).click()}
+ const go=(label:string)=>openPlatformPage(page,label)
  await go(zh?'彩种':'Games')
  await expect(page.locator('.platform-lottery-catalog-table')).toContainText('Mark Six')
  await expect(page.locator('.topbar-brand-picker')).toHaveCount(0)
@@ -50,7 +51,7 @@ for(const locale of ['en','zh-CN'] as const)test(`platform catalogue uses curren
  await expect.poll(()=>seen.includes(`/api/v1/platform/platform-games/${gameId}/draw-overview`)).toBe(true)
  await expectNoPageOverflow(page)
  await page.screenshot({path:info.outputPath('draws.png'),fullPage:true})
- await go(zh?'投注订单':'Bet orders')
+ await go(zh?'注单':'Bets')
  await expect.poll(()=>seen.includes('/api/v1/platform/filter-options')).toBe(true)
  await selectControl(page.locator('.brand-picker').getByRole('combobox'),gameId)
  await expect(page.locator('.configured-orders')).toBeVisible();await expectNoPageOverflow(page)

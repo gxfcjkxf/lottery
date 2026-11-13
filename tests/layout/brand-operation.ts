@@ -6,7 +6,7 @@ export function registerBrandOperationLayoutTests(reflow = false) {
   for (const locale of ['en', 'zh-CN'] as const) {
     test(`brand status schedules, stopped state and original-request retry (${locale})`, async ({ page }, info) => {
       await page.context().addCookies([{ name: 'lottery-locale', value: locale, url: origins.platform }])
-      const settings = { timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' }
+      const settings = {theme:'jade', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' }
       let record: Record<string, unknown> = { brand_id: gameId, name: 'Aurora', version: 2, status: 'active', updated_at: '2026-10-18T00:00:00Z' }
       const attempts: { body: string | null; key: string | undefined }[] = []
       let loseReceipt = true
@@ -16,7 +16,7 @@ export function registerBrandOperationLayoutTests(reflow = false) {
         if (path === '/api/v1/platform/presentation') return reply({ display_name: 'Layout', logo_text: 'L', logo_url: '' })
         if (path === '/api/v1/display-settings') return reply(settings)
         if (path === '/api/v1/platform/me') return reply({ account: { id: gameId, username: 'layout', super_admin: true, platform_permissions: ['brand_operation.view.platform', 'brand_operation.write.platform'] } })
-        if (path === '/api/v1/platform/platform-settings') return reply({ ...settings, display_name: 'Layout', logo_text: 'L', logo_url: '', version: 1, updated_at: '2026-10-18T00:00:00Z' })
+        if (path === '/api/v1/platform/platform-settings') return reply({theme:'jade', ...settings, display_name: 'Layout', logo_text: 'L', logo_url: '', version: 1, updated_at: '2026-10-18T00:00:00Z' })
         if (path === '/api/v1/platform/brands') return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status: record.status, member_count: '12', agent_count: '3', recharge_quota_available: '1000', created_at: '2026-10-24T00:00:00Z' }] })
         if (path === '/api/v1/platform/brand-operation') {
           expect(req.headers()['x-brand-id']).toBe(gameId)
@@ -71,8 +71,7 @@ export function registerBrandOperationLayoutTests(reflow = false) {
       await selectControl(selects.nth(1), 'true')
       const controls = dialog.locator('.platform-temporal-input')
       await expect(controls).toHaveCount(2)
-      await expect(controls.first().locator(".select-control-trigger").first()).toHaveCSS('background-repeat', 'no-repeat')
-      await expect(controls.first().locator(".select-control-trigger").first()).toHaveCSS('background-size', '20px 20px')
+      await expect(controls.first().locator(".select-control-trigger").first().locator('.site-icon')).toBeVisible()
       // Choose dates and times through the actual shared controls.
       for (const [i, hour] of [[0, '12'], [1, '14']] as const) {
         await controls.nth(i).locator('.platform-date-input-button').click()

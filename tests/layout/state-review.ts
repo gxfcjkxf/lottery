@@ -18,7 +18,7 @@ export function registerStateReviewTests(){
     if(readPhase==='waiting')await wait
     if(readPhase==='failed')return route.fulfill({status:503,json:{success:false,error:{code:'SERVICE_UNAVAILABLE',message:'Synthetic read failure'}}})
     const path=new URL(route.request().url()).pathname
-    const data=surface==='agent'?{items:[],total_count:'0',limit:20,offset:0,summary:{member_count:'0',available_points:'0',bet_count:'0',stake_points:'0',unsettled_points:'0',net_points:'0'}}:surface==='user'?{brand_id:gameId,member_id:gameId,snapshot_at:'2026-10-24T00:00:00Z',state:null,items:[],total_count:'0',limit:20,offset:0}:path.endsWith('/permissions')?{items:[]}:{items:[]}
+    const data=surface==='agent'?{items:[],total_count:'0',limit:20,offset:0,summary:{member_count:'0',available_points:'0',bet_count:'0',stake_points:'0',unsettled_points:'0',net_points:'0'}}:surface==='user'?{brand_id:gameId,member_id:gameId,snapshot_at:'2026-10-24T00:00:00Z',state:null,items:[],total_count:'0',limit:20,offset:0}:path.endsWith('/permissions')?{items:[]}:{items:[],total_count:'0',limit:50,offset:0}
     return route.fulfill({json:{success:true,data}})
    })
    try{

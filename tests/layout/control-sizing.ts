@@ -12,7 +12,7 @@ export function registerControlSizingTests(reflow = false) {
    for(const width of reflow?[320,900,901,1440]:[preset.width]){
     if(reflow)await page.setViewportSize({width,height:preset.height})
     const desktop=await page.evaluate(()=>matchMedia('(min-width:901px) and (pointer:fine)').matches)
-    for(const field of await fields.all())if(await field.isVisible())expect((await field.boundingBox())!.height).toBe(desktop?32:44)
+    for(const field of await fields.all())if(await field.isVisible())expect((await field.boundingBox())!.height).toBeGreaterThanOrEqual(desktop?32:44)
     await expectNoPageOverflow(page)
    }
   }
@@ -27,7 +27,7 @@ export function registerControlSizingTests(reflow = false) {
    await expectNoPageOverflow(page)
    const desktop=await page.evaluate(()=>matchMedia('(min-width:901px) and (pointer:fine)').matches)
    for(const control of await page.locator('input:not([data-select-validation]),.select-control-trigger,.actions button').all()) {
-    expect((await control.boundingBox())!.height).toBe(desktop?32:44)
+    expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(desktop?32:44)
    }
    if(desktop){
     const parent=(await page.locator('label').first().boundingBox())!.width

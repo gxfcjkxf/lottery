@@ -1,3 +1,4 @@
+import { openBrandPage } from './real-console-session'
 import {expect,test} from '@playwright/test'
 import {gameId,origins,installLayoutApi,openPlatformBrandList,expectNoPageOverflow} from './fixture'
 for(const locale of ['en','zh-CN'] as const)test(`quota write permission restores the grant form (${locale})`,async({page},info)=>{
@@ -8,7 +9,7 @@ for(const locale of ['en','zh-CN'] as const)test(`quota write permission restore
   const path=new URL(route.request().url()).pathname,reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
   if(path.endsWith('/presentation'))return reply({display_name:'Quota review',logo_text:'Q',logo_url:''})
   if(path.endsWith('/me'))return reply({account:{id:gameId,username:'quota_permission_review',super_admin:true,platform_permissions:['brand.view.platform','recharge.view.platform',...(canGrant?['recharge_quota.write.platform']:[])]}})
-  if(path.endsWith('/platform-settings'))return reply({display_name:'Quota review',logo_text:'Q',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',version:1,updated_at:'2026-11-01T00:00:00Z'})
+  if(path.endsWith('/platform-settings'))return reply({theme:'jade',display_name:'Quota review',logo_text:'Q',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',version:1,updated_at:'2026-11-01T00:00:00Z'})
   if(path.endsWith('/brands'))return reply({items:[{id:gameId,name:'Quota Brand',code:'quota_review',status:'active',member_count:'0',agent_count:'0',recharge_quota_available:'0',created_at:'2026-11-01T00:00:00Z'}],total_count:'1'})
   expect(route.request().headers()['x-brand-id']).toBe(gameId)
   if(path.endsWith('/recharge-quota'))return reply({brand_id:gameId,available:'0'})
@@ -71,7 +72,7 @@ for(const locale of ['en','zh-CN'] as const)test(`brand quota management is a se
  await expect(page.locator('.management-console')).toBeVisible()
  const more=page.locator('.mobile-nav > button').last()
  if(await more.isVisible())await more.click()
- await page.locator(await more.isVisible()?'.mobile-more-menu':'.side-nav').getByRole('button',{name:locale==='en'?'Quota management':'额度管理',exact:true}).click()
+ await openBrandPage(page,locale==='en'?'Quota management':'额度管理')
  const quota=page.getByTestId('recharge-quota')
  await expect(quota.locator('tbody tr')).toHaveCount(10)
  await expect(quota.locator('.quota-form')).toHaveCount(0)

@@ -17,7 +17,7 @@ export function registerFormValidationTests() {
         await password.fill('')
         const submit = form.locator('button[type=submit], button:not([type])').last()
         await submit.click()
-        const error = form.locator(surface === 'user' ? '#auth-feedback' : '.inline-validation-error')
+        const error = form.locator('.inline-validation-error')
         await expect(error).toContainText(locale === 'en' ? /[Pp]assword/ : '密码')
         await expect(error).not.toContainText(/填写内容过短|填写内容过长|The value is too short|The value is too long|必填项/)
         if (surface === 'agent') {

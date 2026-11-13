@@ -1,3 +1,4 @@
+import { openBrandPage } from './real-console-session'
 import {test,expect} from '@playwright/test'
 import {installLayoutApi,origins,gameId,expectNoPageOverflow} from './fixture'
 for(const locale of ['zh-CN','en'] as const)test(`recharge detail uses a readable table (${locale})`,async({page},info)=>{
@@ -11,14 +12,15 @@ for(const locale of ['zh-CN','en'] as const)test(`recharge detail uses a readabl
   if(path.endsWith('/brands'))return reply({items:[{id:gameId,code:'layout',name:'Aurora',status:'active',member_count:'1',agent_count:'0',recharge_quota_available:'0',created_at:at}]})
   if(path.endsWith('/users'))return reply({items:[],limit:Number(url.searchParams.get('limit')),offset:Number(url.searchParams.get('offset')),total_count:'0'})
   if(path.endsWith('/recharge-quota'))return reply({brand_id:gameId,available:'100'})
-  if(path.endsWith('/recharges'))return reply({items:[{id:gameId,brand_id:gameId,member_id:memberId,account_id:gameId,method:'manual',points:'10',state:'confirmed',proof_reference:'proof-'+ '1234567890'.repeat(8),remark:zh?'已核对充值凭证及积分。':'Recharge proof and points checked.',version:1,created_by:gameId,confirmed_by:gameId,created_at:at}]})
+  if(path.endsWith('/cash/orders'))return reply({items:[],total_count:'0'})
+  if(path.endsWith('/recharges'))return reply({total_count:'1',items:[{id:gameId,brand_id:gameId,member_id:memberId,account_id:gameId,method:'manual',points:'10',state:'confirmed',proof_reference:'proof-'+ '1234567890'.repeat(8),remark:zh?'已核对充值凭证及积分。':'Recharge proof and points checked.',version:1,created_by:gameId,confirmed_by:gameId,created_at:at}]})
   throw Error(`Unexpected recharge detail request: ${path}`)
  })
  await page.goto(origins.brand)
  await expect(page.locator('.management-console')).toBeVisible()
  const more=page.locator('.mobile-nav > button').last(),mobile=await more.isVisible()
  if(mobile)await more.click()
- await page.locator(mobile?'.mobile-more-menu':'.side-nav').getByRole('button',{name:zh?'充值记录':'Recharge records',exact:true}).click()
+ await openBrandPage(page,zh?'充值记录':'Recharge records')
  await page.locator('.console-recharges-table').getByRole('button',{name:zh?'详情':'Details',exact:true}).click()
  const dialog=page.getByRole('dialog',{name:zh?'详情':'Details',exact:true}),table=dialog.locator('.recharge-detail-table')
  await expect(table.locator('th[scope=row]')).toHaveCount(9)
