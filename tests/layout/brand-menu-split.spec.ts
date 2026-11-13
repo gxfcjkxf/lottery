@@ -252,7 +252,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
     await expect(panel.locator('.policy-header')).toHaveCount(0)
     await expect(panel.locator('input, form')).toHaveCount(0)
     await expect(panel.locator('.game-tags button')).toHaveCount(2)
-    await expect(panel.locator('.policy-card').first()).not.toContainText(/品牌：|Brand:|品牌默认策略|Brand default/)
+    await expect(panel.locator('.policy-card').first()).not.toContainText(/品牌：|Brand:|品牌默认设置|Brand default/)
     await expect(panel.locator('.policy-header p, .brand-pill')).toHaveCount(0)
     await expect(panel.locator('.game-tag').first()).not.toHaveClass(/is-configured/)
     await expect(panel.locator('.game-tag').first().getByRole('button')).toHaveText(locale === 'zh-CN' ? '设置' : 'Set up')
@@ -398,7 +398,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
         await expect(more).toHaveAttribute('aria-expanded', 'true')
       }
       const menu = page.locator(await more.isVisible() ? '.mobile-more-menu' : '.side-nav')
-      await expect(menu.getByRole('button', { name: zh ? '资金策略' : 'Financial policies', exact: true })).toHaveCount(0)
+      await expect(menu.getByRole('button', { name: zh ? '资金设置' : 'Financial policies', exact: true })).toHaveCount(0)
       await menu.getByRole('button', { name: zh ? '品牌设置' : 'Brand settings', exact: true }).click()
       const tabs = page.locator('.console-tabs')
       await expect(tabs.getByRole('button')).toHaveText(zh ? ['运行状态', '品牌展示', '资金', '提现设置', '投注限额', '代理设置', '公告', '联系方式'] : ['Status', 'Presentation', 'Funds', 'Withdrawal settings', 'Betting limits', 'Agent settings', 'Announcements', 'Contact details'])

@@ -543,3 +543,9 @@ deploy/test-host/03-update.sh lottery --upgrade-data-retention
 此版本使用 `03-update.sh SSH_HOST --upgrade-brand-presentation` 升级。脚本先备份，将备份恢复到独立副本并执行清理，再与全新基线比较结构、校验所有业务表数据。仅删除 `brands.theme` 和品牌展示／修订 JSON 中的九个样式字段；审计原文及幂等证据保持不变。验证通过后才应用并同步基线记录，不清库。公开 context 的 `brand.theme` 仅保留品牌名称、标志、素材、语言和文案，不再包含样式字段；提交旧字段明确报错。
 
 2026-11-13 已通过该入口部署版本 `20261113T133740Z-cb5e8493`：测试库从 `b1b5c380…` 升级至 `98f69547…`，完成备份恢复副本演练、与新基线结构比对及 163 张原业务表数据校验。API、worker、Nginx、全部固定 HTTPS 入口及实际来源读取检查通过；已绑定品牌 `yx.cp1608.xyz` 的公开 context 确认只含七个身份与内容字段。备份和验证证据保存在测试机 `/var/backups/lottery/fixed-entries/20261113T133740Z-cb5e8493/`，本地发布日志为 `.local/deploy-all-20261113-brand-cleanup.log`。
+
+### 2026-11-13 登录页 Telegram 入口修复
+
+通过 `03-update.sh lottery --web-only` 发布 `20261113T143634Z-f9077f4e`。用户端登录、注册页移除独立刷新图标及文字重试按钮；失败恢复复用正常 Telegram 图标入口，重新检查 SDK 并获取授权挑战，初始化失败的脚本会移除以便再次加载。保留测试机现有后端及数据库基线，没有迁移。
+
+四端生产构建通过。发布后 API、worker、Nginx active，readiness 正常，备份 `/var/backups/lottery/20261113T143634Z-f9077f4e.dump` SHA-256 校验通过。实际发布资源配合模拟认证接口完成桌面、安卓及 iOS 共24项验证；首次一项导航超时，单独复跑通过。覆盖登录／注册、SDK下载失败、初始化失败及挑战获取失败后的恢复；未登录共享账号或写入业务数据。发布日志 `.local/deploy-telegram-20261113.log`，浏览器验证记录 `.local/telegram-deploy-review/`。

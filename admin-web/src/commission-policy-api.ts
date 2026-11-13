@@ -130,7 +130,7 @@ function validPolicy(value: unknown, brand: string): value is CommissionPolicy {
 }
 
 function invalidResponse(): never {
-  throw new AdminApiError("佣金策略响应格式无效。", 502, "INVALID_RESPONSE");
+  throw new AdminApiError("佣金设置响应格式无效。", 502, "INVALID_RESPONSE");
 }
 
 function invalidInput(message: string): never {
@@ -144,7 +144,7 @@ function validateBrand(brand: string): void {
 function validateBody(body: UpdateCommissionPolicyBody): void {
   if (!isRecord(body) || !hasOnlyKeys(body, ["version", "config", "reason"]) || !isVersion(body.version) || body.version >= Number.MAX_SAFE_INTEGER || !isValidCommissionPolicyConfig(body.config) ||
     typeof body.reason !== "string"  || Array.from(body.reason).length > 500 || body.reason.includes("\0")) {
-    invalidInput("佣金策略输入无效。");
+    invalidInput("佣金设置输入无效。");
   }
 }
 

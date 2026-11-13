@@ -36,7 +36,7 @@ const formatPoints = (input: string) => displayPoints(input,props.locale)
     <header class="archive-report-heading">
       <div class="archive-report-actions"><slot name="actions" /></div>
     </header>
-    <div class="archive-report-context"><span>{{ record.window.kind==='daily'?t('dailyArchives'):t('monthlyArchives') }}</span><span>{{ t('archived') }}</span><span>{{ t('revision') }} {{ record.revision }}</span><span>{{ t('from') }} {{ formatTime(record.window.from) }}</span><span>{{ t('to') }} {{ formatTime(record.window.to) }}</span><span>{{ t('timezone') }} {{ record.window.timezone }}</span><span>{{ t('snapshotAt') }} {{ formatTime(record.snapshot_at) }}</span></div>
+    <div class="archive-report-context"><span>{{ record.window.kind==='daily'?t('dailyArchives'):t('monthlyArchives') }}</span><span>{{ t('archived') }}</span><span>{{ t('revision') }} {{ record.revision }}</span><span>{{ t('from') }} {{ formatTime(record.window.from) }}</span><span>{{ t('to') }} {{ formatTime(record.window.to) }}</span><span>{{ t('snapshotAt') }} {{ formatTime(record.snapshot_at) }}</span></div>
 
     <section class="archive-report-overview" :aria-label="t('overview')"><h3>{{ t('overview') }}</h3><dl><div v-for="item in overview" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ formatPoints(item.value) }}</dd></div></dl></section>
     <div class="archive-report-groups">

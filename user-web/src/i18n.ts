@@ -54,7 +54,6 @@ const catalog = {
     'common.hidePassword': 'Hide password',
     'common.telegramUnavailable': 'Telegram sign-in unavailable',
     'common.botNotConfigured': 'Bot authorization is not configured.',
-    'common.refreshTelegram': 'Refresh Telegram verification',
     
     
     'common.accountInfo': 'YOUR ACCOUNT',
@@ -144,7 +143,7 @@ const catalog = {
     'betting.returnSelection': 'Return to selection',
     'betting.browseGames': 'Browse games',
     'betting.prizeOdds': 'Prize odds',
-    'betting.policyVersions': 'Brand/game policy versions',
+    'betting.policyVersions': 'Brand/game settings versions',
     'betting.bettingClosed': 'Betting has closed. Return to select a new period.',
     'betting.confirmImmutable': 'Confirming submits this immutable request. If the network result is uncertain, retry uses the same request key.',
     'betting.backToEdit': 'Back to edit',
@@ -168,7 +167,7 @@ const catalog = {
     'betting.retryCancellation': 'Retry cancellation',
     'betting.cancelOrder': 'Cancel this order',
     'betting.sessionExpired': 'Your session expired. Please sign in again.',
-    'betting.stateChanged': 'The period, rules, or betting policy changed. Refresh and request a new quote.',
+    'betting.stateChanged': 'The period, rules, or betting settings changed. Refresh and request a new quote.',
     'betting.uncertainNetwork': 'The network result is uncertain. Retry the same action; its request key is preserved.',
     'betting.serviceUnavailable': 'The service is temporarily unavailable. Please try again.',
     'betting.noOpenPeriodError': 'No open period is available.',
@@ -268,7 +267,6 @@ const catalog = {
     'common.hidePassword': '隐藏密码',
     'common.telegramUnavailable': 'Telegram 登录暂不可用',
     'common.botNotConfigured': 'Telegram 尚未配置机器人授权。',
-    'common.refreshTelegram': '刷新 Telegram 验证',
     
     
     'common.accountInfo': '账号信息',
@@ -358,7 +356,7 @@ const catalog = {
     'betting.returnSelection': '返回选号',
     'betting.browseGames': '浏览彩种',
     'betting.prizeOdds': '奖级赔率',
-    'betting.policyVersions': '品牌/游戏政策版本',
+    'betting.policyVersions': '品牌/游戏设置版本',
     'betting.bettingClosed': '投注已截止，请返回查看新期次。',
     'betting.confirmImmutable': '确认将按上述报价提交不可变投注请求。网络不确定时重试会使用同一请求编号。',
     'betting.backToEdit': '返回修改',
@@ -382,7 +380,7 @@ const catalog = {
     'betting.retryCancellation': '重试取消',
     'betting.cancelOrder': '取消此注单',
     'betting.sessionExpired': '登录已过期，请重新登录。',
-    'betting.stateChanged': '期次、规则或投注政策已变化。请刷新信息并重新获取报价。',
+    'betting.stateChanged': '期次、规则或投注设置已变化。请刷新信息并重新获取报价。',
     'betting.uncertainNetwork': '网络结果不确定。请重试同一操作；系统会保留请求编号。',
     'betting.serviceUnavailable': '服务暂时不可用，请稍后重试。',
     'betting.noOpenPeriodError': '当前没有开放期次。',

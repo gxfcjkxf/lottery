@@ -4,7 +4,7 @@ export const overviewCatalog = {
   en: {
     'overview.refresh': 'Refresh', 'overview.retry': 'Retry', 'overview.openWorkbench': 'Operations workbench',
     'overview.home': 'Home', 'overview.title': 'Platform overview', 'overview.scope': 'Platform-wide · All brands',
-    'overview.snapshot': 'Snapshot: {time}', 'overview.timezone': 'Platform time zone: {timezone}',
+    'overview.snapshot': 'Snapshot: {time}',
     'overview.denied': 'You do not have permission to view the platform overview. Contact an administrator to request access.',
     'overview.totalMembers': 'Total members', 'overview.unique': 'Members summed across brands',
     'overview.online': 'Online now', 'overview.onlineNote': 'Valid session activity within 5 minutes',
@@ -30,7 +30,7 @@ export const overviewCatalog = {
     'overview.definitions': 'Metric definitions', 'overview.memberDefinition': 'Members',
     'overview.memberExplanation': 'Total, online, new and betting members are summed across brands; an account in two brands counts once in each brand. Total members include active and disabled accounts, excluding deleted accounts. New members use first brand join time. Online requires recent activity and a valid, unrevoked session on an enabled brand.',
     'overview.betDefinition': 'Betting',
-    'overview.betExplanation': 'Accepted stakes and order counts use placement time and include orders later cancelled. Refunds use the actual refund time. Niu stakes show nominal bets, excluding maximum risk reserves. All brands use the platform time zone.',
+    'overview.betExplanation': 'Accepted stakes and order counts use placement time and include orders later cancelled. Refunds use the actual refund time. Niu stakes show nominal bets, excluding maximum risk reserves.',
     'overview.netDefinition': 'Results',
     'overview.netExplanation': 'Results use settlement completion time. Positive means platform win; negative means platform loss. Refunds are neutral. Niu uses actual losses and winnings, excluding released risk reserves. Commission, rewards and operating costs are not deducted.',
     'overview.refreshDefinition': 'Updates',
@@ -40,7 +40,7 @@ export const overviewCatalog = {
   'zh-CN': {
     'overview.refresh': '刷新', 'overview.retry': '重试', 'overview.openWorkbench': '运营工作台',
     'overview.home': '首页', 'overview.title': '经营总览', 'overview.scope': '全平台 · 全部品牌',
-    'overview.snapshot': '数据快照：{time}', 'overview.timezone': '平台时区：{timezone}',
+    'overview.snapshot': '数据快照：{time}',
     'overview.denied': '你没有查看全平台经营总览的权限，请联系管理员授权。',
     'overview.totalMembers': '总会员', 'overview.unique': '按各品牌会员汇总',
     'overview.online': '当前在线', 'overview.onlineNote': '近 5 分钟有效会话活动',
@@ -66,7 +66,7 @@ export const overviewCatalog = {
     'overview.definitions': '统计口径', 'overview.memberDefinition': '会员口径',
     'overview.memberExplanation': '总会员、在线、新增和投注人数按各品牌汇总，同一账号在不同品牌分别计数。总会员含正常和停用账号，排除已删除账号。新增按首次加入各品牌的时间统计。在线要求最近有会话活动、会话有效且未撤销，所属品牌未停用。',
     'overview.betDefinition': '投注口径',
-    'overview.betExplanation': '成功投注积分与注单数按下单时间归日，包含后续取消的订单；退款按实际退款时间另列。牛牛展示名义投注，不使用最大风险冻结积分。所有品牌统一采用平台时区。',
+    'overview.betExplanation': '成功投注积分与注单数按下单时间归日，包含后续取消的订单；退款按实际退款时间另列。牛牛展示名义投注，不使用最大风险冻结积分。',
     'overview.netDefinition': '输赢口径',
     'overview.netExplanation': '按结算完成时间归日，正数为平台赢，负数为平台输。退款不计输赢；牛牛按实际损失与净赢计算，不将风险保留释放计为退款或利润。未扣佣金、奖励和运营成本。',
     'overview.refreshDefinition': '更新方式',
@@ -86,7 +86,7 @@ export const brandOverviewCatalog = {
     'overview.brands': 'Brand contribution',
     'overview.taskNote': 'Current brand only · Handle individual items in the operations workbench',
     'overview.memberExplanation': 'Member totals, online activity and betting counts include this brand only. Deleted global accounts are excluded. New members are counted by their first brand join time. Online requires activity within five minutes and a valid, unrevoked session for this brand.',
-    'overview.betExplanation': 'Accepted stakes and order counts use placement time and include orders later cancelled. Refunds use actual refund time. Niu stakes are nominal bets, excluding maximum risk reserves. All dates use the platform time zone.',
+    'overview.betExplanation': 'Accepted stakes and order counts use placement time and include orders later cancelled. Refunds use actual refund time. Niu stakes are nominal bets, excluding maximum risk reserves.',
     'overview.netExplanation': 'Results use settlement completion time. Positive means brand win; negative means brand loss. Refunds are neutral. Niu uses actual losses and winnings, excluding released risk reserves. Commission, rewards and operating costs are not deducted.',
   },
   'zh-CN': {
@@ -98,7 +98,7 @@ export const brandOverviewCatalog = {
     'overview.unit': '单位：积分 · 输赢以品牌视角展示',
     'overview.taskNote': '仅统计当前品牌 · 具体事项进入运营工作台处理',
     'overview.memberExplanation': '总会员、在线和投注人数仅统计当前品牌，排除已删除的平台账号。新增按首次加入当前品牌的时间统计；在线要求近 5 分钟有活动且当前品牌会话有效、未撤销。',
-    'overview.betExplanation': '成功投注积分与注单数按下单时间归日，包含后续取消的订单；退款按实际退款时间另列。牛牛展示名义投注，不使用最大风险冻结积分。日期统一采用平台时区。',
+    'overview.betExplanation': '成功投注积分与注单数按下单时间归日，包含后续取消的订单；退款按实际退款时间另列。牛牛展示名义投注，不使用最大风险冻结积分。',
     'overview.netExplanation': '按结算完成时间归日，正数为品牌赢，负数为品牌输。退款不计输赢；牛牛按实际损失与净赢计算，不将风险保留释放计为退款或利润。未扣佣金、奖励和运营成本。',
   },
 } satisfies TranslationCatalog

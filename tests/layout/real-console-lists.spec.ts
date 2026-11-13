@@ -139,7 +139,7 @@ for (const surface of ['brand', 'platform'] as const) for (const locale of ['en'
     if(surface==='platform'){
       await platformNav(zh?'运营':'Operations')
       await platformNav(zh?'审计日志':'Audit log');await review('audit','/audit')
-      await platformNav(zh?'数据保留':'Data retention');await review('archives','/data-retention-tasks')
+      await platformNav(zh?'数据归档':'Data archiving');await review('archives','/data-retention-tasks')
       await platformNav(zh?'通知模板':'Notification templates')
       await expect(page.getByTestId('platform-template-list').locator('table')).toBeVisible();await reviewRealPage(page,info,'platform-templates-'+locale)
       await platformNav(zh?'彩种':'Games');await review('games','/platform-games')

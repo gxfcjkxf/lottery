@@ -50,3 +50,41 @@ for (const locale of ['en', 'zh-CN'] as const) test(`Telegram login layout and c
     expect(input!.x + input!.width).toBeLessThanOrEqual(viewport.width)
   }
 })
+
+for (const path of ['/login', '/register']) for (const failure of ['script', 'initialize', 'challenge']) {
+  test(`Telegram retry recovers ${failure} on ${path}`, async ({ page }, info) => {
+    const locale = 'zh-CN' as const
+  await installLayoutApi(page, locale)
+  await page.context().addCookies([{ name: 'lottery-locale', value: locale, url: 'http://localhost:5173' }])
+  await page.route('**/api/v1/context', route => route.fulfill({ json: { success: true, data: {
+    auth: { captcha_enabled: false, telegram_enabled: true, telegram_client_id: '9267434645' },
+    available_locales: ['en', 'zh-CN'],
+    brand: { id: gameId, code: 'layout', name: 'Layout trial', status: 'active', default_locale: 'zh-CN', timezone: 'Asia/Singapore', theme, config_version: 1 },
+    features: { pwa: false, real_payments: false },
+  } } }))
+    let sdkRequests = 0, challengeRequests = 0
+    await page.route('https://oauth.telegram.org/js/telegram-login.js', async route => {
+      sdkRequests++
+      if (failure === 'script' && sdkRequests === 1) return route.abort()
+      await route.fulfill({ contentType: 'text/javascript', body: failure === 'initialize' && sdkRequests === 1 ? '' : 'window.Telegram = { Login: { auth() {} } };' })
+    })
+    await page.route('**/api/v1/auth/telegram/challenge', route => {
+      challengeRequests++
+      if (failure === 'challenge' && challengeRequests === 1) return route.fulfill({ status: 503, json: { success: false, error: { code: 'SERVICE_UNAVAILABLE', message: 'Unavailable' } } })
+      return route.fulfill({ json: { success: true, data: { id: gameId, nonce: 'retry-review', expires_at: new Date(Date.now() + 300000).toISOString() } } })
+    })
+    await page.goto('http://localhost:5173' + path)
+    const retry = page.getByRole('button', { name: '使用 Telegram 登录', exact: true })
+    await expect(page.locator('.auth-quick-login [role="alert"]')).toBeVisible()
+    await expect(retry).toBeEnabled()
+    await expect(page.locator('.auth-form [data-refresh-button]')).toHaveCount(0)
+    await expect(page.getByText('重试 Telegram 登录', { exact: true })).toHaveCount(0)
+    await page.screenshot({ path: info.outputPath('telegram-retry.png'), fullPage: true })
+    await retry.click()
+    await expect(page.getByRole('button', { name: '使用 Telegram 登录', exact: true })).toBeEnabled()
+    await expect(page.locator('.auth-quick-login [role="alert"]')).toHaveCount(0)
+    expect(sdkRequests).toBe(failure === 'challenge' ? 1 : 2)
+    expect(challengeRequests).toBe(failure === 'challenge' ? 2 : 1)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+  })
+}

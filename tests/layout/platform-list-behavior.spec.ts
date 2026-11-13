@@ -185,7 +185,7 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
   await openNavigation()
   const operations = page.locator('.sidebar').getByRole('button', { name: zh ? '运营' : 'Operations', exact: true })
   if (await operations.getAttribute('aria-expanded') === 'false') await operations.click()
-  await page.getByTestId('platform-operations-tabs').getByRole('button', { name: zh ? '数据保留' : 'Data retention', exact: true }).click()
+  await page.getByTestId('platform-operations-tabs').getByRole('button', { name: zh ? '数据归档' : 'Data archiving', exact: true }).click()
   const archiveList = page.getByTestId('data-retention'), archivePages = page.getByTestId('data-retention').locator('.table-pagination')
   await expect(archiveList.locator('tbody tr')).toHaveCount(50)
   await archivePages.getByRole('button', { name: zh ? '下一页' : 'Next page', exact: true }).click()

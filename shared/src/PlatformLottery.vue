@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { platformDisplaySettings } from './display-settings'
 import { readPaginationTotal } from './pagination'
 const catalogTotal = ref('0')
 
@@ -43,7 +44,6 @@ const emit = defineEmits<{ failure: [cause: unknown]; brandDetail: [id: string, 
 const i18n = createCatalogI18n(platformLotteryCatalog, props.locale)
 watch(() => props.locale, value => i18n.setLocale(value))
 const t = i18n.t
-const timezones = ['UTC', 'Asia/Shanghai', 'Asia/Singapore', 'Asia/Tokyo', 'Asia/Seoul', 'Asia/Kolkata', 'Asia/Dubai', 'Asia/Jakarta', 'Asia/Bangkok', 'Asia/Hong_Kong', 'Asia/Taipei', 'Europe/London', 'Europe/Berlin', 'Europe/Paris', 'Europe/Moscow', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Toronto', 'America/Sao_Paulo', 'Australia/Sydney', 'Pacific/Auckland']
 const api = createPlatformLotteryClient(props.surface, () => props.brandId, fetch, props.brandCode)
 const lifecycleFilter = ref('active'), lifecycleDraft = ref('active')
 const games = ref<PlatformGame[]>([]), detail = ref<PlatformGameDetail | null>(null)
@@ -176,7 +176,7 @@ async function submit() {
         case 'lifecycle': { const game=target.value as PlatformGame; path=`/${game.id}/lifecycle`; body={expected_version:game.version,status:lifecycleAction.value,reason:f.reason}; break }
         case 'availability': { const game=target.value as PlatformGame; path=`/${game.id}/availability`; body={expected_version:game.brand_version,enabled:availabilityEnabled.value,reason:f.reason}; break }
         case 'name': { const game = target.value as PlatformGame; path = `/${game.id}/name`; body = { name: f.name, expected_version: game.version }; break }
-        case 'game': body = { code: f.code, name: f.name, model: modelDraft.value, timezone: f.timezone }; break
+        case 'game': body = { code: f.code, name: f.name, model: modelDraft.value, timezone: platformDisplaySettings.value!.timezone }; break
         case 'model': path = `/${selectedId.value}/model`; body = { model: modelDraft.value, expected_version: detail.value!.game.version }; break
         case 'connect': path = `/${target.value!.id}/connect`; body = {}; break
         case 'period': path = `/${selectedId.value}/periods`; body = { period_no: f.periodNo, bet_start_at: inputTime(f.startDate, f.startTime), bet_end_at: inputTime(f.endDate, f.endTime), draw_at: inputTime(f.drawDate, f.drawTime) }; break
@@ -287,7 +287,7 @@ async function clearCatalog() { lifecycleDraft.value = 'active'; await searchCat
       <form v-write-guard="loading" novalidate v-inline-validation class="brand-form platform-lottery-form ui-form" @submit.prevent="withGlobalLoading(submit)"><fieldset :class="{ 'confirmation-form-fields': isConfirmation, 'period-form-fields': formKind === 'period', 'result-form-fields': formKind === 'result' }" :disabled="loading || !!pending">
         <div v-if="isConfirmation" class="platform-lottery-confirm-copy"><p class="platform-lottery-confirm-prompt">{{ t('gameActionPrompt', { action: actionLabel, name: target && 'name' in target ? target.name : '' }) }}</p><p v-if="actionHint" class="platform-lottery-note">{{ actionHint }}</p></div>
         <label v-if="formKind === 'name'">{{ t('name') }}<input v-model.trim="form.name" required maxlength="120" /></label><template v-if="formKind === 'game'"><label>{{ t('name') }}<input v-model.trim="form.name" required maxlength="120" /></label><label>{{ t('code') }}<input v-model.trim="form.code" pattern="[a-z][a-z0-9_]{0,47}" :data-validation-format="formValidationText('codeFormat', {min: 1, max: 48})" required /></label></template>
-        <template v-if="formKind === 'game'"><label>{{ t('timezone') }}<SelectControl v-model="form.timezone" class="lottery-timezone" required :label="String(t('timezone'))" :options="(timezones).map((zone) => ({ value: zone, label: (String(zone)).trim() }))" /></label><NumberModelEditor v-model="modelDraft" :locale="locale" :disabled="loading || !!pending" /></template><NumberModelEditor v-if="formKind === 'model'" v-model="modelDraft" :locale="locale" :disabled="loading || !!pending" />
+        <template v-if="formKind === 'game'"><NumberModelEditor v-model="modelDraft" :locale="locale" :disabled="loading || !!pending" /></template><NumberModelEditor v-if="formKind === 'model'" v-model="modelDraft" :locale="locale" :disabled="loading || !!pending" />
         <template v-if="formKind === 'period'">
           <label class="period-field">{{ t('periodNo') }}<input v-model.trim="form.periodNo" required /></label>
           <div v-for="field in (['start', 'end', 'draw'] as const)" :key="field" class="period-field">

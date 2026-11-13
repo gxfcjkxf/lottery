@@ -80,7 +80,7 @@ export function createWithdrawalReportApi(fetcher:FetchLike=fetch) {
     if(!isObject(body)||Object.keys(body).some(key=>!["success","data","request_id","associations","association_error"].includes(key))||body.success!==true||typeof body.request_id!=="string"||!/^[a-zA-Z0-9_.:-]{1,80}$/.test(body.request_id)||!isObject(body.data)) return invalid();
     const d=body.data;
     if(!exactKeys(d,["brand_id","snapshot_at","timezone","query","summary","items","total_groups"])||d.brand_id!==brand||typeof d.snapshot_at!=="string"||!Number.isFinite(Date.parse(d.snapshot_at))||typeof d.timezone!=="string"||!d.timezone||!isObject(d.query)||!Array.isArray(d.items)||typeof d.total_groups!=="string"||!INTEGER.test(d.total_groups)) return invalid();
-    try{new Intl.DateTimeFormat("en",{timeZone:d.timezone})}catch{return invalid("提现报表时区无效。")}
+    try{new Intl.DateTimeFormat("en",{timeZone:d.timezone})}catch{return invalid()}
     const echo=d.query;
     if(!exactKeys(echo,["from","to","group_by","limit","offset","game_id","member_id"]))return invalid();
     if(echo.from!==requested.from||echo.to!==requested.to||echo.group_by!==requested.group_by||echo.limit!==requested.limit||echo.offset!==requested.offset||echo.game_id!==null||echo.member_id!==requested.member_id) return invalid("提现报表回显范围与请求不一致。");

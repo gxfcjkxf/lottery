@@ -747,6 +747,8 @@ jobs:
           node-version: 24
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
+      - name: Check UI terminology
+        run: pnpm test:ui-terminology
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

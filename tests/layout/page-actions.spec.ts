@@ -28,7 +28,7 @@ for(const locale of ['en','zh-CN'] as const)for(const view of ['presentation','w
   const app=view==='preferences'?'user-web':(view==='archive'||view==='automation')?'platform-web':'admin-web'
   await page.route('**/__page-actions',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import Harness from'/@fs${resolve('tests/layout/PageActionsHarness.vue')}';import'/@fs${resolve('shared/src/styles.css')}';import'/@fs${resolve(app+'/src/style.css')}';import'/@fs${resolve('shared/src/management.css')}';import'/@fs${resolve('shared/src/controls.css')}';createApp(Harness,${JSON.stringify({view,locale})}).mount('#app')</script></html>`}))
   await page.goto(origin+'/__page-actions')
-  if(view==='archive')await page.getByRole('tab',{name:locale==='en'?'Retention policy':'保留策略'}).click()
+  if(view==='archive')await page.getByRole('tab',{name:locale==='en'?'Archive settings':'归档设置'}).click()
   if(view==='automation')await page.getByRole('button',{name:locale==='en'?'Add data source':'新增数据源',exact:true}).click()
   const actions=page.locator(view==='presentation'?'.reset-settings':view==='withdrawal'?'.action-row':view==='archive'?'.retention-form > .ui-form-actions':view==='automation'?'.automation-settings .ui-form-actions':'.betting-preferences .ui-form-actions')
   await expect(actions.first()).toBeVisible()

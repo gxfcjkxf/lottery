@@ -418,15 +418,7 @@ async function loadAuthFeatures() {
       authConfiguration.value.telegram_enabled &&
       isTelegramClientIdConfigured(authConfiguration.value.telegram_client_id)
     ) {
-      try {
-        await loadTelegramLoginSdk();
-        telegramSdkReady.value = true;
-        await refreshTelegramChallenge();
-      } catch (error) {
-        telegramSdkReady.value = false;
-        telegramChallenge.value = null;
-        telegramError.value = publicErrorMessage(error);
-      }
+      await prepareTelegramLogin();
     } else {
       telegramSdkReady.value = false;
       telegramChallenge.value = null;
@@ -436,6 +428,23 @@ async function loadAuthFeatures() {
     authError.value = publicErrorMessage(error);
   } finally {
     authConfigurationLoading.value = false;
+  }
+}
+const telegramLoading = ref(false);
+async function prepareTelegramLogin() {
+  if (telegramLoading.value) return;
+  telegramLoading.value = true;
+  telegramSdkReady.value = false;
+  telegramChallenge.value = null;
+  telegramError.value = "";
+  try {
+    await loadTelegramLoginSdk();
+    telegramSdkReady.value = true;
+    await refreshTelegramChallenge();
+  } catch (error) {
+    telegramError.value = publicErrorMessage(error);
+  } finally {
+    telegramLoading.value = false;
   }
 }
 async function refreshTelegramChallenge() {
@@ -567,7 +576,11 @@ async function authSubmit() {
 async function startTelegramAuth() {
   const epoch = authGeneration;
   sessionReplaced.value = false;
-  if (!telegramReady.value || authBusy.value || joinLinkChecking.value || joinLinkFailed.value || joinLinkUnavailable.value) return;
+  if (authBusy.value || telegramLoading.value || joinLinkChecking.value || joinLinkFailed.value || joinLinkUnavailable.value) return;
+  if (!telegramReady.value) {
+    await prepareTelegramLogin();
+    return;
+  }
   authBusy.value = true;
   authError.value = "";
   telegramError.value = "";
@@ -881,40 +894,20 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
                 }}
               </button>
               </div>
-              <div v-if="telegramReady" class="auth-quick-login">
+              <div v-if="authConfiguration.telegram_enabled && isTelegramClientIdConfigured(authConfiguration.telegram_client_id)" class="auth-quick-login">
               <div class="auth-quick-login-heading">{{ ui('common.quickLogin') }}</div>
               <button
                 :aria-label="ui('common.continueTelegram')"
                 class="button button-secondary telegram-login-button"
                 type="button"
-                :disabled="authBusy || joinLinkChecking || joinLinkFailed || joinLinkUnavailable"
+                :disabled="authBusy || telegramLoading || joinLinkChecking || joinLinkFailed || joinLinkUnavailable"
                 v-write-guard="authBusy" @click="withGlobalLoading(startTelegramAuth)"
               >
                 <img src="/icons/telegram.svg" width="44" height="44" alt="" aria-hidden="true" />
               </button>
+              <p v-if="telegramError" class="auth-error" role="alert">{{ displayPublicError(telegramError) }}</p>
               </div>
-              <button v-refresh-button="ui('common.refreshTelegram')"
-                v-if="
-                  authConfiguration.telegram_enabled &&
-                  isTelegramClientIdConfigured(
-                    authConfiguration.telegram_client_id,
-                  ) &&
-                  !telegramReady
-                "
-                class="captcha-refresh"
-                type="button"
-                :disabled="authBusy"
-                @click="withGlobalLoading(refreshTelegramChallenge)"
-              >
-                {{
-                  ui("common.refreshTelegram")
-                }}
-              </button>
 
-
-              <p v-if="telegramError" class="auth-error" role="alert">
-                {{ displayPublicError(telegramError) }}
-              </p>
             </form>
   </LoginEntry>
   <div v-else class="app-frame workspace-frame" :data-user-theme="resolvedTheme" :class="{ 'workspace-sidebar-collapsed': sidebarCollapsed }">

@@ -62,6 +62,7 @@ export function loadTelegramLoginSdk(): Promise<void> {
     );
     const script = existing ?? document.createElement("script");
     if (existing?.dataset.telegramLoginLoaded === "true") {
+      script.remove();
       reject(new Error("Telegram sign-in library did not initialize."));
       return;
     }
@@ -75,7 +76,10 @@ export function loadTelegramLoginSdk(): Promise<void> {
       if (window.Telegram?.Login?.auth) {
         script.dataset.telegramLoginLoaded = "true";
         resolve(undefined);
-      } else reject(new Error("Telegram sign-in library did not initialize."));
+      } else {
+        script.remove();
+        reject(new Error("Telegram sign-in library did not initialize."));
+      }
     };
     const onError = () => {
       cleanup();

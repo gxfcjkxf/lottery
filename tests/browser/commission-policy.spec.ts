@@ -46,7 +46,7 @@ test('real commission financial policy retains the original unknown receipt with
     await expect(panel.locator('.commission-policy-notice')).toContainText('独立后台');
     await expect(panel.locator('.commission-policy-notice')).toContainText('默认关闭运行开关');
     await expect(panel.locator('.commission-policy-notice')).toContainText('可能处理现存的 ready 周期');
-    await panel.getByLabel('启用佣金策略',{exact:true}).check();
+    await panel.getByLabel('启用佣金设置',{exact:true}).check();
     await panel.getByRole('button',{name:'配置日历',exact:true}).click();
     await panel.getByLabel('时区（IANA）',{exact:true}).fill('UTC');
     await selectControl(panel.getByRole('combobox',{name:'周期',exact:true}), 'weekly');

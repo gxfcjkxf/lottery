@@ -49,10 +49,10 @@ test("brand point policy persists; pending recharge cancellation does not credit
   );
   expect(created.status()).toBe(201);
   const member = (await created.json()).data.member_id;
-  await page.locator(".console-tabs").getByRole("button", { name: "资金策略", exact: true }).click();
+  await page.locator(".console-tabs").getByRole("button", { name: "资金设置", exact: true }).click();
   const policy = page.locator(".point-policy-settings");
   await expect(
-    policy.getByRole("heading", { name: "当前策略", exact: true }),
+    policy.getByRole("heading", { name: "当前设置", exact: true }),
   ).toBeVisible();
   await policy.getByLabel(/^余额上限/).fill("200");
   await policy.getByLabel(/^单笔充值上限/).fill("50");
@@ -213,7 +213,7 @@ test("brand point policy persists; pending recharge cancellation does not credit
   });
   await page.unroute("**/api/v1/admin/withdrawal-policy");
   await wp.getByLabel("彩种：直接输入 ID", { exact: true }).fill(game.id);
-  await wp.getByRole("button", { name: "读取此彩种策略", exact: true }).click();
+  await wp.getByRole("button", { name: "读取此彩种设置", exact: true }).click();
   const savedGame = wp.locator(".policy-card").filter({
     has: page.getByRole("heading", { name: "彩种流水倍数覆盖", exact: true }),
   });

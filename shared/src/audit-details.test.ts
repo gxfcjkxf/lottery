@@ -108,5 +108,5 @@ it('preserves free-form notes in either language', () => {
     expect(auditReasonLabel(note, 'zh-CN')).toBe(note)
   }
   expect(auditReasonLabel('withdrawal application', 'zh-CN')).toBe('提交提现申请')
-  expect(auditReasonLabel('automatic review by saved policy', 'en')).toBe('Automatically reviewed using the saved policy')
+  expect(auditReasonLabel('automatic review by saved policy', 'en')).toBe('Automatically reviewed using the saved settings')
 })

@@ -47,7 +47,7 @@ for (const locale of ['zh-CN', 'en'] as const) for (const view of ['user', 'bran
     }
     const dialog = page.getByRole('dialog')
     await expect(dialog).toContainText(locale === 'zh-CN' ? '提交提现申请' : 'Withdrawal application submitted')
-    await expect(dialog).toContainText(locale === 'zh-CN' ? '按已保存策略自动审核' : 'Automatically reviewed using the saved policy')
+    await expect(dialog).toContainText(locale === 'zh-CN' ? '按已保存设置自动审核' : 'Automatically reviewed using the saved settings')
     await expect(dialog).toContainText(manual)
     await expect(dialog).not.toContainText('withdrawal application')
     await expect(dialog).not.toContainText('automatic review by saved policy')

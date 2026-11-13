@@ -277,7 +277,7 @@ function validRevision(
 }
 
 function invalidResponse(): never {
-  throw new AdminApiError("提现策略响应格式无效。", 502, "INVALID_RESPONSE");
+  throw new AdminApiError("提现设置响应格式无效。", 502, "INVALID_RESPONSE");
 }
 
 function invalidInput(message: string): never {
@@ -302,7 +302,7 @@ function validateUpdateBody(
     Array.from(body.reason).length > 500 ||
     !(game ? validGameConfig(body.config) : validBrandConfig(body.config) && isPositivePoints((body as UpdateBrandWithdrawalPolicyBody).points_step))
   )
-    invalidInput("提现策略输入无效。");
+    invalidInput("提现设置输入无效。");
 }
 
 function validateHistoryArgs(limit: number, offset: number): void {

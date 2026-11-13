@@ -149,7 +149,7 @@ test('large integer policy values and withdrawal-config drafts remain language-i
   expect((await sent).postDataJSON()).toMatchObject({ max_balance_points: '9007199254740993', max_recharge_points: '10000', max_adjustment_points: '1000', reason: '中文限额原因' })
   await expect(policy.getByRole('status')).toContainText('saved and applied immediately')
   await language(page, 'zh-CN')
-  await expect(policy.getByRole('status')).toContainText('积分策略已保存')
+  await expect(policy.getByRole('status')).toContainText('积分设置已保存')
   await language(page, 'en')
   await policy.getByRole('button', { name: 'Refresh', exact: true }).click()
   await expect(policy.getByLabel(/^Balance limit/)).toHaveValue('9007199254740993')
