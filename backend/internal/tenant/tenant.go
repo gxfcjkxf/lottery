@@ -68,17 +68,17 @@ func NormalizeHost(raw string) string {
 }
 func (s Store) Resolve(ctx context.Context, host, code string) (Brand, error) {
 	var b Brand
-	query := `SELECT b.id::text,b.code,b.name,b.status,b.default_locale,b.timezone,b.theme,b.config_version,p.config
+	query := `SELECT b.id::text,b.code,b.name,b.status,b.default_locale,b.timezone,b.config_version,p.config
  FROM brands b JOIN brand_domains d ON d.brand_id=b.id JOIN brand_presentations p ON p.brand_id=b.id WHERE d.domain=$1 AND d.enabled AND b.status<>'disabled'`
 	args := []any{NormalizeHost(host)}
 	if code != "" {
-		query = `SELECT b.id::text,b.code,b.name,b.status,b.default_locale,b.timezone,b.theme,b.config_version,p.config
+		query = `SELECT b.id::text,b.code,b.name,b.status,b.default_locale,b.timezone,b.config_version,p.config
    FROM brands b JOIN brand_presentations p ON p.brand_id=b.id WHERE b.code=$2 AND b.status<>'disabled'
    AND EXISTS(SELECT 1 FROM platform_domains WHERE domain=$1 AND enabled)`
 		args = append(args, code)
 	}
 	var raw []byte
-	err := s.DB.QueryRow(ctx, query, args...).Scan(&b.ID, &b.Code, &b.Name, &b.Status, &b.DefaultLocale, &b.Timezone, &b.Theme, &b.ConfigVersion, &raw)
+	err := s.DB.QueryRow(ctx, query, args...).Scan(&b.ID, &b.Code, &b.Name, &b.Status, &b.DefaultLocale, &b.Timezone, &b.ConfigVersion, &raw)
 	if err == pgx.ErrNoRows {
 		return b, ErrNotFound
 	}

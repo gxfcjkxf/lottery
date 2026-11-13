@@ -2078,7 +2078,6 @@ CREATE TABLE brands (
     status text NOT NULL,
     default_locale text DEFAULT 'en'::text NOT NULL,
     timezone text DEFAULT 'Asia/Manila'::text NOT NULL,
-    theme jsonb DEFAULT '{}'::jsonb NOT NULL,
     config_version bigint DEFAULT 1 NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -2090,12 +2089,6 @@ CREATE FUNCTION initial_brand_presentation(b brands) RETURNS jsonb
     AS $_$
  SELECT jsonb_build_object(
  'display_name',NULL,'logo_text',NULL,'logo_url',NULL,'favicon_url',NULL,
- 'primary_color',CASE WHEN b.theme->>'primary_color' ~ '^#[0-9a-fA-F]{6}$' THEN b.theme->'primary_color' ELSE NULL END,
- 'accent_color',CASE WHEN b.theme->>'accent_color' ~ '^#[0-9a-fA-F]{6}$' THEN b.theme->'accent_color' ELSE NULL END,
- 'success_color',CASE WHEN b.theme->>'success_color' ~ '^#[0-9a-fA-F]{6}$' THEN b.theme->'success_color' ELSE NULL END,
- 'warning_color',CASE WHEN b.theme->>'warning_color' ~ '^#[0-9a-fA-F]{6}$' THEN b.theme->'warning_color' ELSE NULL END,
- 'danger_color',CASE WHEN b.theme->>'danger_color' ~ '^#[0-9a-fA-F]{6}$' THEN b.theme->'danger_color' ELSE NULL END,
- 'font_family',NULL,'font_scale',NULL,'radius',NULL,'shadow',NULL,
  'default_locale',CASE WHEN b.default_locale IN('en','zh-CN') THEN b.default_locale WHEN b.default_locale='zh' THEN 'zh-CN' ELSE NULL END,'available_locales',NULL,'content',NULL)
 $_$;
 CREATE FUNCTION initialize_agent_policy() RETURNS trigger
@@ -8476,3 +8469,8 @@ CREATE TABLE data_retention_account_days (
 DO $pin$ DECLARE f record;BEGIN
  FOR f IN SELECT p.oid::regprocedure signature FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=current_schema() AND p.proname LIKE 'retention_%' LOOP EXECUTE format('ALTER FUNCTION %s SET search_path=pg_catalog,%I,pg_temp',f.signature,current_schema()); END LOOP;
 END $pin$;
+
+-- Brand identity and content only; visual tokens belong to the platform.
+ALTER TABLE brand_presentations ADD CONSTRAINT brand_presentations_config_keys_check CHECK (jsonb_typeof(config) = 'object' AND config ?& ARRAY['display_name','logo_text','logo_url','favicon_url','default_locale','available_locales','content']::text[] AND config - ARRAY['display_name','logo_text','logo_url','favicon_url','default_locale','available_locales','content']::text[] = '{}'::jsonb);
+ALTER TABLE brand_presentation_revisions ADD CONSTRAINT brand_presentation_revisions_config_keys_check CHECK (jsonb_typeof(config) = 'object' AND config ?& ARRAY['display_name','logo_text','logo_url','favicon_url','default_locale','available_locales','content']::text[] AND config - ARRAY['display_name','logo_text','logo_url','favicon_url','default_locale','available_locales','content']::text[] = '{}'::jsonb);
+ALTER TABLE brand_presentation_revisions ADD CONSTRAINT brand_presentation_revisions_effective_keys_check CHECK (jsonb_typeof(effective) = 'object' AND effective ?& ARRAY['display_name','logo_text','logo_url','favicon_url','default_locale','available_locales','content']::text[] AND effective - ARRAY['display_name','logo_text','logo_url','favicon_url','default_locale','available_locales','content']::text[] = '{}'::jsonb);

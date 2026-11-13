@@ -23,10 +23,9 @@ var (
 	ErrVersion      = errors.New("brand presentation version conflict")
 	ErrState        = errors.New("brand presentation state conflict")
 	uuidPattern     = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-	colorPattern    = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 	hostPattern     = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$`)
 	numericHostTail = regexp.MustCompile(`^(?:[0-9]+|0x[0-9a-f]+)$`)
-	configKeys      = []string{"display_name", "logo_text", "logo_url", "favicon_url", "primary_color", "accent_color", "success_color", "warning_color", "danger_color", "font_family", "font_scale", "radius", "shadow", "default_locale", "available_locales", "content"}
+	configKeys      = []string{"display_name", "logo_text", "logo_url", "favicon_url", "default_locale", "available_locales", "content"}
 )
 
 type CopyOverrides struct {
@@ -42,15 +41,6 @@ type Config struct {
 	LogoText         *string           `json:"logo_text"`
 	LogoURL          *string           `json:"logo_url"`
 	FaviconURL       *string           `json:"favicon_url"`
-	PrimaryColor     *string           `json:"primary_color"`
-	AccentColor      *string           `json:"accent_color"`
-	SuccessColor     *string           `json:"success_color"`
-	WarningColor     *string           `json:"warning_color"`
-	DangerColor      *string           `json:"danger_color"`
-	FontFamily       *string           `json:"font_family"`
-	FontScale        *string           `json:"font_scale"`
-	Radius           *string           `json:"radius"`
-	Shadow           *string           `json:"shadow"`
 	DefaultLocale    *string           `json:"default_locale"`
 	AvailableLocales []string          `json:"available_locales"`
 	Content          *ContentOverrides `json:"content"`
@@ -68,15 +58,6 @@ type Effective struct {
 	LogoText         string   `json:"logo_text"`
 	LogoURL          *string  `json:"logo_url"`
 	FaviconURL       *string  `json:"favicon_url"`
-	PrimaryColor     string   `json:"primary_color"`
-	AccentColor      string   `json:"accent_color"`
-	SuccessColor     string   `json:"success_color"`
-	WarningColor     string   `json:"warning_color"`
-	DangerColor      string   `json:"danger_color"`
-	FontFamily       string   `json:"font_family"`
-	FontScale        string   `json:"font_scale"`
-	Radius           string   `json:"radius"`
-	Shadow           string   `json:"shadow"`
 	DefaultLocale    string   `json:"default_locale"`
 	AvailableLocales []string `json:"available_locales"`
 	Content          Content  `json:"content"`
@@ -236,7 +217,7 @@ func ValidAssetURI(value string) bool {
 	return true
 }
 func Resolve(baseName string, c Config) (Effective, error) {
-	e := Effective{DisplayName: baseName, PrimaryColor: "#20594c", AccentColor: "#d9ef9b", SuccessColor: "#287b59", WarningColor: "#a96d20", DangerColor: "#bc4b43", FontFamily: "system", FontScale: "standard", Radius: "round", Shadow: "subtle", DefaultLocale: "en", AvailableLocales: []string{"en", "zh-CN"}, Content: Content{English: Copy{Tagline: "Lottery platform"}, Chinese: Copy{Tagline: "彩票平台"}}}
+	e := Effective{DisplayName: baseName, DefaultLocale: "en", AvailableLocales: []string{"en", "zh-CN"}, Content: Content{English: Copy{Tagline: "Lottery platform"}, Chinese: Copy{Tagline: "彩票平台"}}}
 	if c.DisplayName != nil {
 		if !validText(*c.DisplayName, 80, true) || strings.TrimSpace(*c.DisplayName) == "" {
 			return e, ErrInvalid
@@ -267,28 +248,11 @@ func Resolve(baseName string, c Config) (Effective, error) {
 			*item.dest = &v
 		}
 	}
-	for _, item := range []struct {
-		value *string
-		dest  *string
-	}{{c.PrimaryColor, &e.PrimaryColor}, {c.AccentColor, &e.AccentColor}, {c.SuccessColor, &e.SuccessColor}, {c.WarningColor, &e.WarningColor}, {c.DangerColor, &e.DangerColor}} {
-		if item.value != nil {
-			if !colorPattern.MatchString(*item.value) {
-				return e, ErrInvalid
-			}
-			*item.dest = *item.value
+	if c.DefaultLocale != nil {
+		if !enum(*c.DefaultLocale, "en", "zh-CN") {
+			return e, ErrInvalid
 		}
-	}
-	for _, item := range []struct {
-		value   *string
-		dest    *string
-		options []string
-	}{{c.FontFamily, &e.FontFamily, []string{"system", "serif", "mono"}}, {c.FontScale, &e.FontScale, []string{"compact", "standard"}}, {c.Radius, &e.Radius, []string{"square", "soft", "round"}}, {c.Shadow, &e.Shadow, []string{"none", "subtle", "lifted"}}, {c.DefaultLocale, &e.DefaultLocale, []string{"en", "zh-CN"}}} {
-		if item.value != nil {
-			if !enum(*item.value, item.options...) {
-				return e, ErrInvalid
-			}
-			*item.dest = *item.value
-		}
+		e.DefaultLocale = *c.DefaultLocale
 	}
 	if c.AvailableLocales != nil {
 		if len(c.AvailableLocales) < 1 || len(c.AvailableLocales) > 2 {

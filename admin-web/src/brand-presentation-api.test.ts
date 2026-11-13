@@ -8,14 +8,12 @@ const actor = "00000000-0000-4000-8000-000000000003";
 const audit = "00000000-0000-4000-8000-000000000004";
 const config: BrandPresentationConfig = {
   display_name: null, logo_text: "Aurora", logo_url: "/brand-assets/logo.png", favicon_url: null,
-  primary_color: "#112233", accent_color: null, success_color: null, warning_color: null, danger_color: null,
-  font_family: "system", font_scale: null, radius: "soft", shadow: null, default_locale: "en",
+  default_locale: "en",
   available_locales: ["en", "zh-CN"], content: { en: { tagline: null, announcement: "Hello" }, "zh-CN": { tagline: "你好", announcement: null } },
 };
 const effective: EffectiveBrandPresentationConfig = {
   display_name: "Aurora", logo_text: "Aurora", logo_url: "/brand-assets/logo.png", favicon_url: null,
-  primary_color: "#112233", accent_color: "#445566", success_color: "#008800", warning_color: "#ffaa00", danger_color: "#cc0000",
-  font_family: "system", font_scale: "standard", radius: "soft", shadow: "subtle", default_locale: "en", available_locales: ["en", "zh-CN"],
+  default_locale: "en", available_locales: ["en", "zh-CN"],
   content: { en: { tagline: "Aurora", announcement: "Hello" }, "zh-CN": { tagline: "你好", announcement: "公告" } },
 };
 const at = "2026-10-06T04:00:00.123456Z";
@@ -46,11 +44,11 @@ describe("brand presentation API", () => {
     expect(new Headers(fetcher.mock.calls[0][1]?.headers).get("X-Brand-ID")).toBe(brand);
     for (const bad of [
       record({ brand_id: other }),
-      record({ config: { ...config, font_family: "comic" } as unknown as BrandPresentationConfig }),
-      record({ config: { ...config, primary_color: "red" } as unknown as BrandPresentationConfig }),
+      record({ config: { ...config, font_family: "mono" } as unknown as BrandPresentationConfig }),
+      record({ config: { ...config, primary_color: "#123456" } as unknown as BrandPresentationConfig }),
       record({ config: { ...config, available_locales: ["en", "en"] } as unknown as BrandPresentationConfig }),
       record({ config: { ...config, ignored: true } as unknown as BrandPresentationConfig }),
-      record({ effective: { ...effective, primary_color: null } as unknown as typeof effective }),
+      record({ effective: { ...effective, display_name: null } as unknown as typeof effective }),
       record({ updated_at: "2026-02-30T04:00:00Z" }),
       record({ audit_log_id: "bad" }),
     ]) await expect(createBrandPresentationApi(vi.fn<typeof fetch>().mockResolvedValue(response(bad))).get(brand)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
@@ -84,7 +82,7 @@ describe("brand presentation API", () => {
       { ...record({ version: 6, audit_log_id: audit }) },
       { ...record({ version: 5, audit_log_id: undefined }), audit_log_id: undefined },
       { ...record({ version: 5, audit_log_id: "bad" }) },
-      { ...record({ version: 5, audit_log_id: audit }), effective: { ...effective, font_family: "sans" } },
+      { ...record({ version: 5, audit_log_id: audit }), effective: { ...effective, default_locale: "fr" } },
     ]) await expect(createBrandPresentationApi(vi.fn<typeof fetch>().mockResolvedValue(response(receipt))).put(brand, body, key)).rejects.toMatchObject({ status: 0, code: "INVALID_RESPONSE" });
     await expect(createBrandPresentationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...record({ version: 5, audit_log_id: audit }) }, 201))).put(brand, body, key)).rejects.toMatchObject({ status: 0, code: "INVALID_RESPONSE" });
     const conflictResponse = new Response(JSON.stringify({ success: false, error: { code: "CONFLICT", message: "Version changed" } }), { status: 409 });

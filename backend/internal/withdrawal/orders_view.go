@@ -158,7 +158,7 @@ func (s OrderService) ReadViewTx(ctx context.Context, tx pgx.Tx, brand, id, memb
 		return OrderView{}, ErrInvalid
 	}
 	var audit string
-	o, err := scanOrder(orderAuditRow{tx.QueryRow(ctx, `SELECT `+viewColumns+` FROM retention_withdrawal_orders() WHERE brand_id=$1 AND id=$2 AND ($3::text='' OR member_id=NULLIF($3,'')::uuid)`, brand, id, member), &audit})
+	o, err := scanOrder(orderAuditRow{tx.QueryRow(ctx, `SELECT `+viewColumns+` FROM retention_withdrawal_orders() AS withdrawal_orders WHERE brand_id=$1 AND id=$2 AND ($3::text='' OR member_id=NULLIF($3,'')::uuid)`, brand, id, member), &audit})
 	if err != nil {
 		return OrderView{}, err
 	}
@@ -184,7 +184,7 @@ func (s OrderService) ListViewTx(ctx context.Context, tx pgx.Tx, brand, member, 
 	if err := tx.QueryRow(ctx, `SELECT count(*)::text FROM retention_withdrawal_orders() WHERE brand_id=$1 AND ($2::text='' OR member_id=NULLIF($2,'')::uuid) AND ($3::text='' OR state=$3)`, brand, member, state).Scan(&out.TotalCount); err != nil {
 		return out, err
 	}
-	rows, err := tx.Query(ctx, `SELECT `+viewColumns+` FROM retention_withdrawal_orders() WHERE brand_id=$1 AND ($2::text='' OR member_id=NULLIF($2,'')::uuid) AND ($3::text='' OR state=$3) ORDER BY created_at DESC,id DESC LIMIT $4 OFFSET $5`, brand, member, state, limit+1, offset)
+	rows, err := tx.Query(ctx, `SELECT `+viewColumns+` FROM retention_withdrawal_orders() AS withdrawal_orders WHERE brand_id=$1 AND ($2::text='' OR member_id=NULLIF($2,'')::uuid) AND ($3::text='' OR state=$3) ORDER BY created_at DESC,id DESC LIMIT $4 OFFSET $5`, brand, member, state, limit+1, offset)
 	if err != nil {
 		return out, err
 	}

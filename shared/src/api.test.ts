@@ -6,8 +6,7 @@ const context = {
     id: 'brand-1', code: 'luma', name: 'Harbor 🌅', status: 'active', default_locale: 'zh-CN', timezone: 'Asia/Singapore',
     theme: {
       display_name: 'Harbor 🌅', logo_text: '海', logo_url: 'https://cdn.example/logo.png', favicon_url: '/brand-assets/favicon.webp',
-      primary_color: '#123456', accent_color: '#abcdef', success_color: '#123456', warning_color: '#654321', danger_color: '#abcdef',
-      font_family: 'serif', font_scale: 'standard', radius: 'soft', shadow: 'lifted', default_locale: 'zh-CN', available_locales: ['en', 'zh-CN'],
+      default_locale: 'zh-CN', available_locales: ['en', 'zh-CN'],
       content: { en: { tagline: 'Play gently', announcement: 'A note' }, 'zh-CN': { tagline: '轻松参与', announcement: '' } },
     }, config_version: 7,
   },
@@ -26,8 +25,8 @@ describe('API envelope and tenant context', () => {
     const result = await api.getContext()
 
     expect(fetcher).toHaveBeenCalledWith('/api/v1/b/luma/context', expect.objectContaining({ credentials: 'same-origin' }))
-    expect(result.brand).toMatchObject({ id: 'brand-1', code: 'luma', name: 'Harbor 🌅', primary: '#123456', accent: '#abcdef', defaultLanguage: 'zh', version: '7' })
-    expect(result.brand).toMatchObject({ logoText: '海', logoUrl: 'https://cdn.example/logo.png', faviconUrl: '/brand-assets/favicon.webp', success: '#123456', warning: '#654321', danger: '#abcdef', fontFamily: 'serif', fontScale: 'standard', radius: 'soft', shadow: 'lifted' })
+    expect(result.brand).toMatchObject({ id: 'brand-1', code: 'luma', name: 'Harbor 🌅', defaultLanguage: 'zh', version: '7' })
+    expect(result.brand).toMatchObject({ logoText: '海', logoUrl: 'https://cdn.example/logo.png', faviconUrl: '/brand-assets/favicon.webp', })
     expect(result.brand.content).toEqual({ en: { tagline: 'Play gently', announcement: 'A note' }, zh: { tagline: '轻松参与', announcement: '' } })
     expect(result.availableLanguages).toEqual(['en', 'zh-CN'])
     expect(result.brand.languages).toEqual(['en', 'zh'])
@@ -61,8 +60,8 @@ describe('API envelope and tenant context', () => {
 
   it.each([
     { success: true, data: { brand: { ...context.brand, theme: undefined }, available_locales: context.available_locales, features: context.features } },
-    { success: true, data: { ...context, brand: { ...context.brand, theme: { ...context.brand.theme, primary_color: 'red' } } } },
-    { success: true, data: { ...context, brand: { ...context.brand, theme: { ...context.brand.theme, font_family: 'fantasy' } } } },
+    { success: true, data: { ...context, brand: { ...context.brand, theme: { ...context.brand.theme, logo_text: null } } } },
+    { success: true, data: { ...context, brand: { ...context.brand, theme: { ...context.brand.theme, content: null } } } },
     { success: true, data: { ...context, brand: { ...context.brand, theme: { ...context.brand.theme, default_locale: 'fr' } } } },
     { success: true, data: { ...context, brand: { ...context.brand, theme: { ...context.brand.theme, available_locales: ['en', 'fr'] } } } },
     { success: true, data: { ...context, brand: { ...context.brand, theme: { ...context.brand.theme, default_locale: 'zh-CN', available_locales: ['en'] } } } },

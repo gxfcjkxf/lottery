@@ -15,7 +15,7 @@ for(const locale of ['en','zh-CN'] as const)for(const view of ['presentation','w
    if(path.endsWith('/draw-sources'))return reply({items:[{id:actor,name:'Historical source',revision:1,plan}],active_source_id:actor,active_source_revision:1,version:1})
    if(path.endsWith('/automation'))return reply({plan,brand:null,allowed_origins:['https://historical.example'],attempts:[]})
    if(path.endsWith('/brand-presentation/defaults'))return reply(theme)
-   if(path.endsWith('/brand-presentation'))return reply({brand_id:gameId,version:1,status:'active',base_name:theme.display_name,config:{...Object.fromEntries(Object.keys(theme).map(key=>[key,null])),font_family:'mono',font_scale:'compact',radius:'square',shadow:'none'},effective:{...theme,font_family:'mono',font_scale:'compact',radius:'square',shadow:'none'},updated_at:at,audit_log_id:gameId})
+   if(path.endsWith('/brand-presentation'))return reply({brand_id:gameId,version:1,status:'active',base_name:theme.display_name,config:{...Object.fromEntries(Object.keys(theme).map(key=>[key,null])),},effective:{...theme,},updated_at:at,audit_log_id:gameId})
    if(path.endsWith('/filter-options'))return reply({brand_id:gameId,items:[{id:actor,name:'Trial game'}],limit:100,offset:0})
    if(path.endsWith('/games/'+actor+'/withdrawal-policy'))return reply({brand_id:gameId,game_id:actor,version:1,config:{turnover_multiple:null},effective:{turnover_multiple:'1',source:'brand',brand_version:1,game_version:1},updated_at:at})
    if(path.endsWith('/withdrawal-policy'))return reply({brand_id:gameId,version:1,points_step:'1',config:{enabled:false,min_points:'1',max_points:null,allowed_sources:['recharge','winning','gift'],review_mode:'manual',turnover_multiple:'1'},updated_at:at,audit_log_id:gameId})
@@ -54,12 +54,6 @@ for(const locale of ['en','zh-CN'] as const)for(const view of ['presentation','w
    await expect(page.locator('input[type=color]')).toHaveCount(0)
    await expect(page.locator('.advanced-settings [role=combobox]')).toHaveCount(0)
    await expect(page.locator('.preview-card')).not.toHaveAttribute('style')
-   const design=await page.locator('.preview-card').evaluate(el=>{
-    const sample=document.createElement('span');sample.style.cssText='font-family:var(--font-family);font-size:var(--body-font-size);border-radius:var(--radius);box-shadow:var(--shadow)';document.body.append(sample)
-    const actual=getComputedStyle(el),expected=getComputedStyle(sample)
-    const result={actual:[actual.fontFamily,actual.fontSize,actual.borderRadius,actual.boxShadow],expected:[expected.fontFamily,expected.fontSize,expected.borderRadius,expected.boxShadow]};sample.remove();return result
-   })
-   expect(design.actual).toEqual(design.expected)
    await page.locator('.advanced-settings summary').click()
    await page.addStyleTag({path:resolve('shared/src/themes.css')})
    for(const palette of ['jade','vermilion','ocean','obsidian'])for(const mode of ['light','dark']){

@@ -45,6 +45,6 @@ test('platform document title follows the configured platform branding', () => {
   const html = source('platform-web/index.html');
   const app = source('platform-web/src/App.vue');
   assert.doesNotMatch(html, /<title>[^<]+<\/title>/);
-  assert.match(app, /const value = platformPresentation\.value; applyBrowserBranding\(value\.display_name, value\.logo_text, value\.logo_url,/);
+  assert.match(app, /const value = platformPresentation\.value; applyBrowserBranding\(value\.display_name, value\.logo_url\)/);
   assert.match(source('shared/src/presentation.ts'), /document\.title\s*=\s*name/);
 });

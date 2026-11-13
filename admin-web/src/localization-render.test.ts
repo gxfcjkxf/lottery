@@ -7,8 +7,7 @@ import type { BrandPresentationConfig, BrandPresentationEffective } from './bran
 
 const effective: BrandPresentationEffective = {
   display_name: '中文品牌', logo_text: '品', logo_url: null, favicon_url: null,
-  primary_color: '#27634a', accent_color: '#d7b56d', success_color: '#287b59', warning_color: '#a96d20', danger_color: '#bc4b43',
-  font_family: 'system', font_scale: 'standard', radius: 'round', shadow: 'subtle', default_locale: 'zh-CN', available_locales: ['en', 'zh-CN'],
+  default_locale: 'zh-CN', available_locales: ['en', 'zh-CN'],
   content: { en: { tagline: 'Unchanged English {name}', announcement: '' }, 'zh-CN': { tagline: '角色权限', announcement: '中文运营文案' } },
 }
 const config: BrandPresentationConfig = { ...effective, content: structuredClone(effective.content) }

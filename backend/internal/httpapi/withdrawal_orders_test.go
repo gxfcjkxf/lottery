@@ -228,13 +228,33 @@ func TestWithdrawalHTTPChangedUserContextCannotReplayOrReadAnotherMember(t *test
 	f.http = withdrawalHTTP(t, f, withdrawalHTTPChecker{})
 	oldContext := withdrawalHTTPAvailability(t, f).ActorContext
 	order := withdrawalHTTPCreate(t, f, "first-member-intent")
+	// The same query must return the owner's record before applying member scope.
+	detail := f.call("GET", "/api/v1/withdrawals/"+order.ID, "", f.userToken, managedBrand, nil)
+	mustStatus(t, detail, 200)
+	var own withdrawal.OrderView
+	managedData(t, detail, &own)
+	if own.ID != order.ID || own.MemberID != f.memberID || own.AuditLogID != order.AuditLogID {
+		t.Fatal(own)
+	}
+	ownList := f.call("GET", "/api/v1/withdrawals", "", f.userToken, managedBrand, nil)
+	mustStatus(t, ownList, 200)
+	var ownPage withdrawal.OrderPage
+	managedData(t, ownList, &ownPage)
+	if ownPage.TotalCount != "1" || len(ownPage.Items) != 1 || ownPage.Items[0].ID != order.ID || ownPage.Items[0].AuditLogID != order.AuditLogID {
+		t.Fatal(ownPage)
+	}
+	mustStatus(t, f.call("GET", "/api/v1/withdrawals/"+order.ID+"/history", "", f.userToken, managedBrand, nil), 200)
+	missing := "0199a000-0000-7000-8000-000000009999"
+	mustStatus(t, f.call("GET", "/api/v1/withdrawals/"+missing, "", f.userToken, managedBrand, nil), 404)
+	mustStatus(t, f.call("GET", "/api/v1/withdrawals/"+missing+"/history", "", f.userToken, managedBrand, nil), 404)
+
 	created := f.call("POST", "/api/v1/admin/users", "second-withdrawal-member", f.token, managedBrand, map[string]string{"username": "withdrawal_other", "password": "withdrawal-other-tes-test-2026", "reason": "separate synthetic account"})
 	mustStatus(t, created, 201)
 	var member struct {
 		MemberID string `json:"member_id"`
 	}
 	managedData(t, created, &member)
-	login := f.call("POST", "/api/v1/auth/login", "second-withdrawal-login", "", managedBrand, map[string]string{"identifier": "withdrawal_other", "password": "withdrawal-other-tes-test-2026", })
+	login := f.call("POST", "/api/v1/auth/login", "second-withdrawal-login", "", managedBrand, map[string]string{"identifier": "withdrawal_other", "password": "withdrawal-other-tes-test-2026"})
 	mustStatus(t, login, 200)
 	var auth identity.Authentication
 	managedData(t, login, &auth)

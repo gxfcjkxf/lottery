@@ -1,9 +1,5 @@
 export type Language = 'en' | 'zh'
 export type LocaleCode = 'en' | 'zh-CN'
-export type BrandFontFamily = 'system' | 'serif' | 'mono'
-export type BrandFontScale = 'compact' | 'standard'
-export type BrandRadius = 'square' | 'soft' | 'round'
-export type BrandShadow = 'none' | 'subtle' | 'lifted'
 
 export interface BrandLocaleContent {
   tagline: string
@@ -15,15 +11,6 @@ export interface BrandTheme {
   logoText: string
   logoUrl?: string | null
   faviconUrl?: string | null
-  primary: string
-  accent: string
-  success: string
-  warning: string
-  danger: string
-  fontFamily: BrandFontFamily
-  fontScale: BrandFontScale
-  radius: BrandRadius
-  shadow: BrandShadow
   content?: Partial<Record<Language, BrandLocaleContent>>
   defaultLanguage: Language
   languages: Language[]
@@ -40,8 +27,6 @@ export interface PlatformContext {
 
 export const defaultBrand: BrandTheme = {
   name: 'Luma Play', logoText: 'L', logoUrl: null, faviconUrl: null,
-  primary: '#059669', accent: '#f59e0b', success: '#10b981', warning: '#f59e0b', danger: '#ef4444',
-  fontFamily: 'system', fontScale: 'standard', radius: 'round', shadow: 'subtle',
   content: {
     en: { tagline: 'Lottery platform', announcement: '' },
     zh: { tagline: '彩票平台', announcement: '' },

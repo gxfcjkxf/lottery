@@ -13,10 +13,6 @@ type Envelope<T> = { success: boolean; data: T; error?: unknown };
 type BrandPresentationConfig = Record<string, unknown> & {
   display_name: string | null;
   logo_text: string | null;
-  primary_color: string | null;
-  accent_color: string | null;
-  font_family: string | null;
-  radius: string | null;
   default_locale: "en" | "zh-CN" | null;
   available_locales: string[] | null;
   content: { en: { tagline: string | null; announcement: string | null }; "zh-CN": { tagline: string | null; announcement: string | null } } | null;
@@ -27,7 +23,7 @@ type BrandPresentationRecord = {
   status: "active" | "paused" | "disabled";
   base_name: string;
   config: BrandPresentationConfig;
-  effective: Record<string, unknown> & { display_name: string; logo_text: string; primary_color: string; accent_color: string; font_family: string; radius: string; default_locale: "en" | "zh-CN"; available_locales: string[]; content: Record<string, { tagline: string; announcement: string }> };
+  effective: Record<string, unknown> & { display_name: string; logo_text: string; default_locale: "en" | "zh-CN"; available_locales: string[]; content: Record<string, { tagline: string; announcement: string }> };
   updated_at: string;
   audit_log_id?: string;
 };
@@ -155,10 +151,6 @@ test("Harbor presentation survives a lost acknowledgment, renders safely, and re
     logo_text: "HARBOR PREVIEW",
     logo_url: null,
     favicon_url: null,
-    primary_color: "#174a7e",
-    accent_color: "#e7a93b",
-    font_family: "serif",
-    radius: "round",
     default_locale: "zh-CN",
     available_locales: ["en", "zh-CN"],
     content: {
@@ -200,10 +192,6 @@ test("Harbor presentation survives a lost acknowledgment, renders safely, and re
     const overrides: Array<[string, Locator]> = [
       ["展示名称继承默认", panel.getByLabel("展示名称", { exact: true })],
       ["标志文字继承默认", panel.getByLabel("标志文字", { exact: true })],
-      ["主色继承默认", panel.getByLabel("主色", { exact: true })],
-      ["辅助色继承默认", panel.getByLabel("辅助色", { exact: true })],
-      ["字体预设继承默认", panel.getByLabel("字体预设", { exact: true })],
-      ["圆角预设继承默认", panel.getByLabel("圆角预设", { exact: true })],
       ["默认语言继承默认", panel.getByLabel("默认语言", { exact: true })],
       ["可用语言继承默认", panel.getByLabel("启用English", { exact: true })],
       ["文案继承默认", localizedField("英文标语")], ["英文标语继承默认", localizedField("英文标语")],
@@ -222,11 +210,7 @@ test("Harbor presentation survives a lost acknowledgment, renders safely, and re
     }
     await panel.getByLabel("展示名称", { exact: true }).fill(updated.display_name!);
     await panel.getByLabel("标志文字", { exact: true }).fill(updated.logo_text!);
-    await panel.getByLabel("主色", { exact: true }).fill(updated.primary_color!);
-    await panel.getByLabel("辅助色", { exact: true }).fill(updated.accent_color!);
     await selectControl(panel.getByLabel("默认语言", { exact: true }), "zh-CN");
-    await selectControl(panel.getByLabel("字体预设", { exact: true }), "serif");
-    await selectControl(panel.getByLabel("圆角预设", { exact: true }), "round");
     await panel.getByLabel("启用English", { exact: true }).check();
     await panel.getByLabel("启用简体中文", { exact: true }).check();
     await panel.getByLabel("英文标语", { exact: true }).fill(updated.content!.en.tagline!);
@@ -249,9 +233,7 @@ test("Harbor presentation survives a lost acknowledgment, renders safely, and re
       brand_id: harbor, status: original.status, version: submittedVersion! + 1, config: updated,
       effective: {
         display_name: updated.display_name, logo_text: updated.logo_text,
-        logo_url: null, favicon_url: null,
-        primary_color: updated.primary_color, accent_color: updated.accent_color,
-        font_family: updated.font_family, radius: updated.radius, default_locale: "zh-CN",
+        logo_url: null, favicon_url: null, default_locale: "zh-CN",
         available_locales: ["en", "zh-CN"],
         content: { en: updated.content!.en, "zh-CN": updated.content!["zh-CN"] },
       },
@@ -282,7 +264,6 @@ test("Harbor presentation survives a lost acknowledgment, renders safely, and re
     expect(current.version).toBeGreaterThanOrEqual(committed.version);
     expect(current.config).toEqual(updated);
     await expect(page.locator(".sidebar .brand-lockup")).toContainText(updated.display_name!);
-    await expect.poll(() => page.locator(".app-shell").evaluate((root) => getComputedStyle(root).getPropertyValue("--primary").trim())).toBe(updated.primary_color);
     await page.screenshot({ path: info.outputPath(`s7c-brand-presentation-admin-published-${info.project.name}.png`), fullPage: true });
     const replayHistory = await data<BrandPresentationHistory>(await page.request.get(`${admin}/brand-presentation/history?limit=20&offset=0`, {
       headers: { Origin: adminOrigin, "X-Brand-ID": harbor },
@@ -367,13 +348,10 @@ test("Harbor presentation survives a lost acknowledgment, renders safely, and re
       await expect(user.locator('.mobile-primary-nav > a')).toHaveCount(4);
     }
     const rendered = await user.evaluate(() => ({
-      primary: getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(),
-      accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
-      fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--font-family").trim(),
+      styleOverrides: ["--primary", "--font-family", "--font-scale", "--radius", "--shadow"].map(token => document.documentElement.style.getPropertyValue(token)),
       brand: document.querySelector(".sidebar .brand")?.textContent ?? "",
     }));
-    expect(rendered).toMatchObject({ primary: "#174a7e", accent: "#e7a93b" });
-    expect(rendered.fontFamily).toContain("Georgia");
+    expect(rendered.styleOverrides).toEqual(["", "", "", "", ""]);
     expect(rendered.brand).toContain("Harbor Brand Preview");
     expect(await user.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await user.screenshot({ path: info.outputPath(`s7c-brand-presentation-public-${info.project.name}.png`), fullPage: true });

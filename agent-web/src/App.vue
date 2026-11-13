@@ -71,7 +71,7 @@ function viewBets(member:Member,scope:MemberScope){location.hash=`/bets?member=$
 function sessionInvalid(){if(!me.value)return;fail(new AgentError('',401,'AUTH_SESSION_REVOKED'))}
 useSessionReplacement(()=>!!me.value,refresh,clearPrivate)
 function sessionInvalidHandler(){const epoch=sessionEpoch,scope=viewScope.value;return()=>{if(epoch===sessionEpoch&&scope===viewScope.value)sessionInvalid()}}
-watch([brandContext,locale],()=>{const brand=brandContext.value?.brand;if(brand)applyBrowserBranding(t('title'),brand.logoText,safeBrandAssetUrl(brand.faviconUrl),brand.primary)})
+watch([brandContext,locale],()=>{const brand=brandContext.value?.brand;if(brand)applyBrowserBranding(t('title'),safeBrandAssetUrl(brand.faviconUrl))})
 watch(locale,value=>{document.documentElement.lang=value;document.title=t('title');writeLocaleCookie(value);setInlineValidationLocale(value)},{immediate:true})
 onMounted(async()=>{window.addEventListener('hashchange',hashChanged);try{await loadPlatformDisplaySettings();await refresh()}catch(e){fail(e);ready.value=true}})
 onBeforeUnmount(()=>{generation++;sessionEpoch++;window.removeEventListener('hashchange',hashChanged)})

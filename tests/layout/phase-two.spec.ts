@@ -1,12 +1,12 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { resolve } from 'node:path'
-import { origins, expectNoPageOverflow } from './fixture'
+import { origins, expectNoPageOverflow, gameId } from './fixture'
 const brand = '11111111-1111-4111-8111-111111111111', at = '2026-10-27T00:00:00Z'
-const effective = { display_name:'Trial',logo_text:'T',logo_url:null,favicon_url:null,primary_color:'#059669',accent_color:'#0891b2',success_color:'#059669',warning_color:'#d97706',danger_color:'#dc2626',font_family:'system',font_scale:'standard',radius:'soft',shadow:'subtle',default_locale:'en',available_locales:['en','zh-CN'],content:{en:{tagline:'',announcement:''},'zh-CN':{tagline:'',announcement:''}} }
+const effective = { display_name:'Trial',logo_text:'T',logo_url:null,favicon_url:null,default_locale:'en',available_locales:['en','zh-CN'],content:{en:{tagline:'',announcement:''},'zh-CN':{tagline:'',announcement:''}} }
 async function open(page: Page, locale: 'en'|'zh-CN', view: 'presentation'|'compliance'|'templates'|'workbench') {
  const source = await (await page.request.get(origins.brand+'/src/ReportsManagement.vue')).text()
  const vuePath = source.match(/from "([^"]*deps\/vue\.js[^"]*)"/)![1]
- await page.route('**/__phase-two', route => route.fulfill({ contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'${vuePath}';import Harness from'/@fs/${resolve('tests/layout/PhaseTwoSettingsHarness.vue')}';import'/@fs/${resolve('shared/src/styles.css')}';import'/@fs/${resolve('admin-web/src/style.css')}';import'/@fs/${resolve('shared/src/management.css')}';import'/@fs/${resolve('shared/src/controls.css')}';import'/@fs/${resolve('shared/src/refresh-button.css')}';import'/@fs/${resolve('shared/src/key-value.css')}';createApp(Harness,${JSON.stringify({locale,view})}).mount('#app')</script></html>` }))
+ await page.route('**/__phase-two', route => route.fulfill({ contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'${vuePath}';import Harness from'/@fs/${resolve(view==='presentation'?'tests/layout/PageActionsHarness.vue':'tests/layout/PhaseTwoSettingsHarness.vue')}';import'/@fs/${resolve('shared/src/styles.css')}';import'/@fs/${resolve('admin-web/src/style.css')}';import'/@fs/${resolve('shared/src/management.css')}';import'/@fs/${resolve('shared/src/controls.css')}';import'/@fs/${resolve('shared/src/refresh-button.css')}';import'/@fs/${resolve('shared/src/key-value.css')}';createApp(Harness,${JSON.stringify({locale,view})}).mount('#app')</script></html>` }))
  await page.goto(origins.brand+'/__phase-two')
 }
 async function review(page:Page,info:TestInfo,name:string) {
@@ -19,6 +19,7 @@ async function review(page:Page,info:TestInfo,name:string) {
 }
 for(const locale of ['en','zh-CN'] as const) {
  test(`phase two presentation saves directly and reloads unknown results without losing drafts (${locale})`,async({page},info)=>{
+  const brand=gameId
   let version=1, config={...effective}, writes=0
   await page.route('**/api/**',async route=>{
    const path=new URL(route.request().url()).pathname
@@ -45,7 +46,7 @@ for(const locale of ['en','zh-CN'] as const) {
   await expect(save.locator('xpath=ancestor::form[1]')).not.toHaveAttribute('data-write-locked','true')
   await input.fill('Final name');await save.click();await expect.poll(()=>writes).toBe(2)
   await expect(save).toBeEnabled();await review(page,info,`presentation-${locale}`)
-  await page.getByTestId('toggle-settings').click();await page.getByTestId('toggle-settings').click()
+  await page.reload()
   await expect(input).toHaveValue('Final name');expect(writes).toBe(2);await expect(page.getByRole('dialog')).toHaveCount(0)
  })
  test(`phase two policy preserves enabled gates without manual pseudo checks (${locale})`,async({page},info)=>{

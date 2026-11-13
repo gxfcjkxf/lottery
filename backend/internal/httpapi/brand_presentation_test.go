@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandskin"
 	"testing"
 )
@@ -24,10 +25,26 @@ func TestBrandPresentationHTTPPublishesEffectiveContextAndCheckedReplay(t *testi
 	mustStatus(t, initial, 200)
 	var before brandskin.Record
 	managedData(t, initial, &before)
-	title, color, locale := "运营显示名称", "#123456", "zh-CN"
+	raw, err := json.Marshal(before.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var configFields map[string]any
+	if err = json.Unmarshal(raw, &configFields); err != nil {
+		t.Fatal(err)
+	}
+	if len(configFields) != 7 {
+		t.Fatal("unexpected presentation fields", configFields)
+	}
+	for _, field := range []string{"primary_color", "accent_color", "success_color", "warning_color", "danger_color", "font_family", "font_scale", "radius", "shadow"} {
+		configFields[field] = nil
+		mustStatus(t, f.call("PUT", presentationPath, "retired-style-"+field, f.token, managedBrand, map[string]any{"version": before.Version, "config": configFields, "reason": ""}), 400)
+		delete(configFields, field)
+	}
+
+	title, locale := "运营显示名称", "zh-CN"
 	cfg := before.Config
 	cfg.DisplayName = &title
-	cfg.PrimaryColor = &color
 	cfg.DefaultLocale = &locale
 	body := brandskin.Input{Version: before.Version, Config: cfg, Reason: "publish exact audited presentation"}
 	first := f.call("PUT", presentationPath, "presentation-publish-01", f.token, managedBrand, body)
@@ -55,19 +72,19 @@ func TestBrandPresentationHTTPPublishesEffectiveContextAndCheckedReplay(t *testi
 			Name   string `json:"name"`
 			Locale string `json:"default_locale"`
 			Theme  struct {
-				Primary string `json:"primary_color"`
+				DisplayName string `json:"display_name"`
 			} `json:"theme"`
 		} `json:"brand"`
 		Locales []string `json:"available_locales"`
 	}
 	managedData(t, public, &contextData)
-	if contextData.Brand.Name != title || contextData.Brand.Locale != locale || contextData.Brand.Theme.Primary != color || len(contextData.Locales) != 2 {
+	if contextData.Brand.Name != title || contextData.Brand.Locale != locale || contextData.Brand.Theme.DisplayName != title || len(contextData.Locales) != 2 {
 		t.Fatal(contextData)
 	}
 	other := f.call("GET", "/api/v1/b/harbor/context", "", "", managedBrand, nil)
 	mustStatus(t, other, 200)
 	managedData(t, other, &contextData)
-	if contextData.Brand.Name != "Harbor" || contextData.Brand.Theme.Primary != "#274c75" {
+	if contextData.Brand.Name != "Harbor" || contextData.Brand.Theme.DisplayName != "Harbor" {
 		t.Fatal("other brand presentation changed", contextData)
 	}
 	mustStatus(t, f.call("GET", presentationPath, "", f.token, "0199a000-0000-7000-8000-000000000002", nil), 403)

@@ -73,7 +73,7 @@ test('agent UI has no private table, paging, filter, or creation field renderer'
     assert.equal(realpathSync(new URL('../../'+app+'/public/favicon.svg',import.meta.url)),realpathSync(new URL('../../shared/src/favicon.svg',import.meta.url)))
   }
   const agent=read('agent-web/src/App.vue')
-  assert.match(agent,/applyBrowserBranding\(t\('title'\),brand.logoText,safeBrandAssetUrl\(brand.faviconUrl\),brand.primary\)/)
+  assert.match(agent,/applyBrowserBranding\(t\('title'\),safeBrandAssetUrl\(brand.faviconUrl\)\)/)
   assert.match(agent,/watch\(\[brandContext,locale\]/)
 })
 

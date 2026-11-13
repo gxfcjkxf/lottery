@@ -51,8 +51,7 @@ const attributes = { id: gameId, year: 2026, version: 1, effective_at: '2026-01-
 const result = { regular: numbers.slice(0, 6), special: [20], digits: [] }
 export const theme = {
   display_name: 'Layout trial', logo_text: 'L', logo_url: null, favicon_url: null,
-  primary_color: '#059669', accent_color: '#f59e0b', success_color: '#10b981', warning_color: '#f59e0b', danger_color: '#ef4444',
-  font_family: 'system', font_scale: 'standard', radius: 'round', shadow: 'subtle', default_locale: 'en', available_locales: ['en', 'zh-CN'],
+  default_locale: 'en', available_locales: ['en', 'zh-CN'],
   content: { en: { tagline: 'Layout trial', announcement: '' }, 'zh-CN': { tagline: '布局验证', announcement: '' } },
 }
 

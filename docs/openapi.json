@@ -184286,120 +184286,6 @@
               }
             ]
           },
-          "primary_color": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^#[A-Fa-f0-9]{6}$"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "accent_color": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^#[A-Fa-f0-9]{6}$"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "success_color": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^#[A-Fa-f0-9]{6}$"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "warning_color": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^#[A-Fa-f0-9]{6}$"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "danger_color": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^#[A-Fa-f0-9]{6}$"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "font_family": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "system",
-                  "serif",
-                  "mono"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "font_scale": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "compact",
-                  "standard"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "radius": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "square",
-                  "soft",
-                  "round"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "shadow": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "none",
-                  "subtle",
-                  "lifted"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "default_locale": {
             "anyOf": [
               {
@@ -184449,15 +184335,6 @@
           "logo_text",
           "logo_url",
           "favicon_url",
-          "primary_color",
-          "accent_color",
-          "success_color",
-          "warning_color",
-          "danger_color",
-          "font_family",
-          "font_scale",
-          "radius",
-          "shadow",
           "default_locale",
           "available_locales",
           "content"
@@ -184492,57 +184369,6 @@
               {
                 "type": "null"
               }
-            ]
-          },
-          "primary_color": {
-            "type": "string",
-            "pattern": "^#[A-Fa-f0-9]{6}$"
-          },
-          "accent_color": {
-            "type": "string",
-            "pattern": "^#[A-Fa-f0-9]{6}$"
-          },
-          "success_color": {
-            "type": "string",
-            "pattern": "^#[A-Fa-f0-9]{6}$"
-          },
-          "warning_color": {
-            "type": "string",
-            "pattern": "^#[A-Fa-f0-9]{6}$"
-          },
-          "danger_color": {
-            "type": "string",
-            "pattern": "^#[A-Fa-f0-9]{6}$"
-          },
-          "font_family": {
-            "type": "string",
-            "enum": [
-              "system",
-              "serif",
-              "mono"
-            ]
-          },
-          "font_scale": {
-            "type": "string",
-            "enum": [
-              "compact",
-              "standard"
-            ]
-          },
-          "radius": {
-            "type": "string",
-            "enum": [
-              "square",
-              "soft",
-              "round"
-            ]
-          },
-          "shadow": {
-            "type": "string",
-            "enum": [
-              "none",
-              "subtle",
-              "lifted"
             ]
           },
           "default_locale": {
@@ -184612,15 +184438,6 @@
           "logo_text",
           "logo_url",
           "favicon_url",
-          "primary_color",
-          "accent_color",
-          "success_color",
-          "warning_color",
-          "danger_color",
-          "font_family",
-          "font_scale",
-          "radius",
-          "shadow",
           "default_locale",
           "available_locales",
           "content"

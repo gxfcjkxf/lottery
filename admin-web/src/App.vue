@@ -282,7 +282,7 @@ const resetBusy = ref(false);
 const authorizedBrands = computed(() => account.value && !account.value.super_admin
   ? adminBrands.value.filter(item => account.value!.brand_ids.includes(item.id)) : []);
 const contextBrand = computed(() => authorizedBrands.value.find(item => item.id === selectedBrandId.value) ?? null);
-watchEffect(()=>{if(!skin.value){const brand=contextBrand.value;if(brand)applyBrowserBranding(brand.name,brand.name.slice(0,1),null,defaultBrand.primary);else document.title=t('admin.ui.administration')}});
+watchEffect(()=>{if(!skin.value){const brand=contextBrand.value;if(brand)applyBrowserBranding(brand.name,null);else document.title=t('admin.ui.administration')}});
 const contextState = ref<"connected" | "unavailable">("connected");
 const brandScopeLoading = computed(() => authLoading.value || brandsLoading.value);
 watch([account, authorizedBrands], () => {

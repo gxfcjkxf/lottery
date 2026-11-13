@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build a source snapshot locally, then activate a release over SSH.
 set -Eeuo pipefail
-[[ $# == 1 || ( $# == 2 && $2 == --upgrade-data-retention ) || ( $# == 2 && $2 == --web-only ) || ( $# == 2 && $2 == --upgrade-agent-wallet ) || ( $# == 2 && $2 == --upgrade-themes ) || ( $# == 2 && $2 == --upgrade-unique-usdt ) || ( $# == 2 && $2 == --remove-announcement-timezone ) || ( $# == 2 && $2 == --remove-auth-consent ) || ( $# == 2 && $2 == --remove-dedicated-wallet ) || ( $# == 2 && $2 == --upgrade-tron-key-pool ) || ( $# == 2 && $2 == --upgrade-tron-deposits ) || ( $# == 2 && $2 == --upgrade-release-20261111 ) || ( $# == 2 && $2 == --upgrade-cash-wallet ) || ( $# == 2 && $2 == --upgrade-brand-contacts ) || ( $# == 2 && $2 == --upgrade-profile-contacts ) || ( $# == 2 && $2 == --upgrade-fixed-entries ) || ( $# == 2 && $2 == --upgrade-manual-results ) || ( $# == 3 && $2 == --initial ) ]] || {
-  echo "Usage: $0 SSH_HOST [--upgrade-data-retention|--web-only|--upgrade-agent-wallet|--upgrade-themes|--upgrade-unique-usdt|--remove-announcement-timezone|--remove-auth-consent|--remove-dedicated-wallet|--upgrade-tron-key-pool|--upgrade-tron-deposits|--upgrade-release-20261111|--upgrade-cash-wallet|--upgrade-brand-contacts|--upgrade-fixed-entries|--upgrade-manual-results|--upgrade-profile-contacts]   (first deployment: 02-deploy.sh SSH_HOST CONFIG.json)" >&2; exit 1;
+[[ $# == 1 || ( $# == 2 && $2 == --upgrade-brand-presentation ) || ( $# == 2 && $2 == --upgrade-data-retention ) || ( $# == 2 && $2 == --web-only ) || ( $# == 2 && $2 == --upgrade-agent-wallet ) || ( $# == 2 && $2 == --upgrade-themes ) || ( $# == 2 && $2 == --upgrade-unique-usdt ) || ( $# == 2 && $2 == --remove-announcement-timezone ) || ( $# == 2 && $2 == --remove-auth-consent ) || ( $# == 2 && $2 == --remove-dedicated-wallet ) || ( $# == 2 && $2 == --upgrade-tron-key-pool ) || ( $# == 2 && $2 == --upgrade-tron-deposits ) || ( $# == 2 && $2 == --upgrade-release-20261111 ) || ( $# == 2 && $2 == --upgrade-cash-wallet ) || ( $# == 2 && $2 == --upgrade-brand-contacts ) || ( $# == 2 && $2 == --upgrade-profile-contacts ) || ( $# == 2 && $2 == --upgrade-fixed-entries ) || ( $# == 2 && $2 == --upgrade-manual-results ) || ( $# == 3 && $2 == --initial ) ]] || {
+  echo "Usage: $0 SSH_HOST [--upgrade-brand-presentation|--upgrade-data-retention|--web-only|--upgrade-agent-wallet|--upgrade-themes|--upgrade-unique-usdt|--remove-announcement-timezone|--remove-auth-consent|--remove-dedicated-wallet|--upgrade-tron-key-pool|--upgrade-tron-deposits|--upgrade-release-20261111|--upgrade-cash-wallet|--upgrade-brand-contacts|--upgrade-fixed-entries|--upgrade-manual-results|--upgrade-profile-contacts]   (first deployment: 02-deploy.sh SSH_HOST CONFIG.json)" >&2; exit 1;
 }
 host=$1
 [[ $host =~ ^[a-zA-Z0-9][a-zA-Z0-9_.@-]*$ ]] || { echo 'Invalid SSH host.' >&2; exit 1; }
@@ -27,6 +27,7 @@ if [[ $# == 2 && $2 == --upgrade-tron-deposits ]]; then upgrade_script=upgrade-t
 if [[ $# == 2 && $2 == --upgrade-tron-key-pool ]]; then upgrade_script=upgrade-tron-key-pool-remote.py; fi
 if [[ $# == 2 && $2 == --upgrade-agent-wallet ]]; then upgrade_script=upgrade-agent-wallet.py; fi
 if [[ $# == 2 && $2 == --upgrade-data-retention ]]; then upgrade_script=upgrade-data-retention.py; fi
+if [[ $# == 2 && $2 == --upgrade-brand-presentation ]]; then upgrade_script=upgrade-brand-presentation.py; fi
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -115,6 +116,7 @@ cp deploy/test-host/upgrade-unique-usdt-remote.py deploy/test-host/upgrade-uniqu
 cp deploy/test-host/upgrade-release-20261111.py deploy/test-host/upgrade-release-20261111.sql "$work/release/ops/"
 cp deploy/test-host/upgrade-tron-deposits-remote.py deploy/test-host/upgrade-tron-deposits.sql "$work/release/ops/"
 cp deploy/test-host/upgrade-tron-key-pool-remote.py deploy/test-host/upgrade-tron-key-pool.sql "$work/release/ops/"
+cp deploy/test-host/upgrade-brand-presentation.py deploy/test-host/upgrade-brand-presentation.sql "$work/release/ops/"
 cp deploy/test-host/upgrade-data-retention.py deploy/test-host/upgrade-data-retention.sql "$work/release/ops/"
 cp deploy/test-host/upgrade-agent-wallet.py deploy/test-host/upgrade-agent-wallet.sql "$work/release/ops/"
 cp deploy/test-host/remove-announcement-timezone.py deploy/test-host/remove-announcement-timezone.sql "$work/release/ops/"

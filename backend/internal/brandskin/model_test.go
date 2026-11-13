@@ -6,17 +6,17 @@ import (
 )
 
 func TestResolveOverridesAndInheritance(t *testing.T) {
-	name, primary, locale := "Harbor Display", "#123456", "zh-CN"
-	c := Config{DisplayName: &name, PrimaryColor: &primary, DefaultLocale: &locale}
+	name, locale := "Harbor Display", "zh-CN"
+	c := Config{DisplayName: &name, DefaultLocale: &locale}
 	e, err := Resolve("Harbor", c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.DisplayName != name || e.PrimaryColor != primary || e.AccentColor != "#d9ef9b" || e.DefaultLocale != locale || len(e.AvailableLocales) != 2 {
+	if e.DisplayName != name || e.DefaultLocale != locale || len(e.AvailableLocales) != 2 {
 		t.Fatal(e)
 	}
 	plain, err := Resolve("Harbor", Config{})
-	if err != nil || plain.DisplayName != "Harbor" || plain.LogoText != "H" || plain.PrimaryColor != "#20594c" {
+	if err != nil || plain.DisplayName != "Harbor" || plain.LogoText != "H" {
 		t.Fatal(plain, err)
 	}
 }
@@ -44,6 +44,25 @@ func TestAssetURIRejectsExecutableAndAmbiguousInputs(t *testing.T) {
 	for _, uri := range []string{"javascript:alert(1)", "data:image/png;base64,aaa", "//evil.example/logo.png", "/api/v1/me", "/icons/../api/logo.png", "/icons/%2e%2e/logo.png", "https://localhost/logo.png", "https://127.0.0.1/logo.png", "https://user:password@example.com/logo.png", "https://example.com/logo.png?token=secret", "https://example.com/logo.svg", "/icons/logo.png#frag"} {
 		if ValidAssetURI(uri) {
 			t.Fatal("invalid URI accepted", uri)
+		}
+	}
+}
+
+func TestPresentationRejectsRetiredStyleFields(t *testing.T) {
+	raw, err := json.Marshal(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"primary_color", "accent_color", "success_color", "warning_color", "danger_color", "font_family", "font_scale", "radius", "shadow"} {
+		var fields map[string]any
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			t.Fatal(err)
+		}
+		fields[key] = nil
+		input, _ := json.Marshal(fields)
+		var config Config
+		if json.Unmarshal(input, &config) == nil {
+			t.Fatalf("accepted retired field %s", key)
 		}
 	}
 }

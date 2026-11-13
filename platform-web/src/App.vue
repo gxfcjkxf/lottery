@@ -27,7 +27,7 @@ import AccountMenu from "@lottery/shared/AccountMenu.vue";
 import LoginEntry from '@lottery/shared/LoginEntry.vue'
 import LoginCredentials from '@lottery/shared/LoginCredentials.vue'
 import { vWriteGuard } from "@lottery/shared";
-import {applyBrowserBranding,defaultBrand} from "@lottery/shared";
+import {applyBrowserBranding} from "@lottery/shared";
 import { associationContextKey } from '@lottery/shared';
 import { provide as provideAssociationContext } from 'vue';
 import { usePlatformI18n as usePublicErrorI18n } from "./i18n";
@@ -101,7 +101,7 @@ const platformPresentation = ref<PlatformPresentation | null>(null)
 const displaySettings = computed<PlatformDisplaySettings>(() => platformDisplaySettings.value!)
 watch(platformSettings, value => { if (value) { setPlatformDisplaySettings(value); platformPresentation.value = { display_name: value.display_name, logo_text: value.logo_text, logo_url: value.logo_url } } })
 watchEffect(() => {
-  if (platformPresentation.value) { const value = platformPresentation.value; applyBrowserBranding(value.display_name, value.logo_text, value.logo_url, defaultBrand.primary) }
+  if (platformPresentation.value) { const value = platformPresentation.value; applyBrowserBranding(value.display_name, value.logo_url) }
 })
 const brandOperationPanel = ref<{ openForBrand: (brandId: string) => void } | null>(null)
 const accessScope = ref<'brand' | 'platform'>('platform')

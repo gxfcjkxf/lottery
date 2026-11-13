@@ -116,7 +116,7 @@ export function registerSharedAccountMenuTests(){
    if(path.endsWith('/me'))return reply({account:{id:gameId,username:'shared_operator',super_admin:false,brand_ids:[gameId],permissions:[],platform_permissions:[],permissions_by_brand:{[gameId]:['user.view.brand']}}})
    if(path.endsWith('/brands'))return reply({items:[{id:gameId,name:'Aurora',code:'aurora',status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z'}], total_count: '1'})
    if(path.endsWith('/users'))return reply({items:[],total_count:'0',limit:100,offset:0})
-   if(path.endsWith('/brand-presentation'))return reply({brand_id:gameId,version:1,status:'active',base_name:'Aurora',config:{},effective:{display_name:'Aurora',logo_text:'A',logo_url:null,favicon_url:null,primary_color:'#059669',accent_color:'#f59e0b',success_color:'#10b981',warning_color:'#f59e0b',danger_color:'#ef4444',font_family:'system',font_scale:'standard',radius:'round',shadow:'subtle',default_locale:'en',available_locales:['en','zh-CN'],content:{en:{tagline:'',announcement:''},'zh-CN':{tagline:'',announcement:''}}}})
+   if(path.endsWith('/brand-presentation'))return reply({brand_id:gameId,version:1,status:'active',base_name:'Aurora',config:{},effective:{display_name:'Aurora',logo_text:'A',logo_url:null,favicon_url:null,default_locale:'en',available_locales:['en','zh-CN'],content:{en:{tagline:'',announcement:''},'zh-CN':{tagline:'',announcement:''}}}})
    throw Error('Unexpected shared account read '+path)
   })
   await page.route('**/api/v1/platform/**',async route=>{

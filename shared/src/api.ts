@@ -2,7 +2,7 @@ import { readApiEnvelope } from './api-response'
 
 import { notifySessionReplaced } from './session-replacement'
 import type { BrandLocaleContent, BrandTheme, Language, PlatformContext } from './brand'
-import { safeBrandAssetUrl, safeBrandColor } from './presentation'
+import { safeBrandAssetUrl } from './presentation'
 
 export class ApiError extends Error {
   constructor(message: string, readonly status?: number, readonly code?: string) {
@@ -23,15 +23,6 @@ interface BackendTheme {
   logo_text: string
   logo_url: string | null
   favicon_url: string | null
-  primary_color: string
-  accent_color: string
-  success_color: string
-  warning_color: string
-  danger_color: string
-  font_family: 'system' | 'serif' | 'mono'
-  font_scale: 'compact' | 'standard'
-  radius: 'square' | 'soft' | 'round'
-  shadow: 'none' | 'subtle' | 'lifted'
   default_locale: 'en' | 'zh-CN'
   available_locales: ('en' | 'zh-CN')[]
   content: {
@@ -81,13 +72,6 @@ function isBackendContext(value: unknown): value is BackendContext {
   if (typeof theme.display_name !== 'string' || !theme.display_name.trim() || typeof theme.logo_text !== 'string' || !theme.logo_text.trim()) return false
   if (theme.logo_url !== null && typeof theme.logo_url !== 'string') return false
   if (theme.favicon_url !== null && typeof theme.favicon_url !== 'string') return false
-  for (const color of ['primary_color', 'accent_color', 'success_color', 'warning_color', 'danger_color']) {
-    if (typeof theme[color] !== 'string' || !/^#[\da-f]{6}$/i.test(theme[color] as string)) return false
-  }
-  if (!['system', 'serif', 'mono'].includes(theme.font_family as string)) return false
-  if (!['compact', 'standard'].includes(theme.font_scale as string)) return false
-  if (!['square', 'soft', 'round'].includes(theme.radius as string)) return false
-  if (!['none', 'subtle', 'lifted'].includes(theme.shadow as string)) return false
   if (!isRecord(theme.content) || !isStringRecord(theme.content.en, ['tagline', 'announcement']) || !isStringRecord(theme.content['zh-CN'], ['tagline', 'announcement'])) return false
   if (typeof brand.id !== 'string' || typeof brand.code !== 'string' || typeof brand.name !== 'string' || typeof brand.status !== 'string' || typeof brand.timezone !== 'string' || typeof brand.config_version !== 'number') return false
   if (typeof value.features.pwa !== 'boolean' || typeof value.features.real_payments !== 'boolean') return false
@@ -115,15 +99,6 @@ function toPlatformContext(value: BackendContext): PlatformContext {
     logoText: theme.logo_text,
     logoUrl: assetUrl(theme.logo_url),
     faviconUrl: assetUrl(theme.favicon_url),
-    primary: safeBrandColor(theme.primary_color),
-    accent: safeBrandColor(theme.accent_color),
-    success: safeBrandColor(theme.success_color),
-    warning: safeBrandColor(theme.warning_color),
-    danger: safeBrandColor(theme.danger_color),
-    fontFamily: theme.font_family,
-    fontScale: theme.font_scale,
-    radius: theme.radius,
-    shadow: theme.shadow,
     content: {
       en: theme.content.en,
       zh: theme.content['zh-CN'],

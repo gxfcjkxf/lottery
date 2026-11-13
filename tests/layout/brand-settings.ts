@@ -12,8 +12,7 @@ export function registerBrandSettingsTests(reflow = false) {
       const errors: string[] = [], requests: string[] = []
       page.on('pageerror', error => errors.push(error.message))
       const effective = { display_name: 'Aurora', logo_text: 'A', logo_url: null, favicon_url: null,
-        primary_color: '#059669', accent_color: '#f59e0b', success_color: '#10b981', warning_color: '#f59e0b', danger_color: '#ef4444',
-        font_family: 'system', font_scale: 'standard', radius: 'round', shadow: 'subtle', default_locale: 'en',
+        default_locale: 'en',
         available_locales: ['en', 'zh-CN'], content: { en: { tagline: '', announcement: '' }, 'zh-CN': { tagline: '', announcement: '' } } }
       let presentation = { brand_id: gameId, version: 4, status: 'active', base_name: 'Aurora', config: Object.fromEntries(Object.keys(effective).map(key => [key, null])), effective, updated_at: at, audit_log_id: gameId }
       let policy = { brand_id: gameId, version: 4, config: { age_enabled: false, minimum_age: null, region_enabled: false, allowed_countries: [], identity_enabled: false, account_risk_enabled: false, betting_risk_enabled: false, exclusion_enabled: false, responsible_gambling_enabled: false }, updated_at: at, audit_log_id: gameId }

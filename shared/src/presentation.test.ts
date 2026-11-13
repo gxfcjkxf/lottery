@@ -1,14 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { safeBrandAssetUrl, safeBrandColor } from './presentation'
+import { safeBrandAssetUrl } from './presentation'
 import { defaultBrand } from './brand'
 
 describe('brand presentation', () => {
-  it('normalizes valid colors and rejects invalid values instead of substituting a fallback', () => {
-    expect(safeBrandColor('#ABCDEF')).toBe('#abcdef')
-    expect(() => safeBrandColor('red')).toThrow('Invalid brand color')
-    expect(() => safeBrandColor(undefined)).toThrow('Invalid brand color')
-  })
-
   it.each([
     'javascript:alert(1)', 'data:image/png;base64,aaa', 'http://cdn.example/logo.png', '//evil.example/a.png',
     'https://bad host/logo.png', 'https://user:pass@cdn.example/logo.png', 'https://cdn.example:443/logo.png',
@@ -32,20 +26,20 @@ describe('brand presentation', () => {
   })
 })
 
-it('replaces stale browser icons and uses the configured name and escaped logo text', async () => {
+it('replaces stale browser icons and uses the configured name and favicon', async () => {
   const { applyBrowserBranding, applyBrandPresentation } = await import('./presentation')
   const { vi } = await import('vitest')
   let icons: any[] = [{ remove() { icons.splice(icons.indexOf(this), 1) } }]
   const doc = { title: '', createElement() { return { dataset: {}, remove() { icons.splice(icons.indexOf(this), 1) } } }, querySelectorAll() { return [...icons] }, head: { append(link: unknown) { icons.push(link) } } }
   vi.stubGlobal('document', doc)
   try {
-    applyBrandPresentation({brand:{...defaultBrand,name:'Brand identity',fontFamily:'mono',fontScale:'compact',radius:'square',shadow:'none'},paused:false,availableLanguages:['en']})
+    applyBrandPresentation({brand:{...defaultBrand,name:'Brand identity'},paused:false,availableLanguages:['en']})
     expect(doc.title).toBe('Brand identity')
-    applyBrowserBranding('Configured platform', 'Z<&', null, '#059669')
+    applyBrowserBranding('Configured platform', null)
     expect(doc.title).toBe('Configured platform')
     expect(icons).toHaveLength(1)
-    expect(decodeURIComponent(icons[0].href)).toContain('Z&lt;&amp;')
-    applyBrowserBranding('Other brand', 'B', '/brand-assets/brand/icon.png', '#123456')
+    expect(icons[0].href).toContain('favicon.svg')
+    applyBrowserBranding('Other brand', '/brand-assets/brand/icon.png')
     expect(doc.title).toBe('Other brand')
     expect(icons).toHaveLength(1)
     expect(icons[0].href).toBe('/brand-assets/brand/icon.png')

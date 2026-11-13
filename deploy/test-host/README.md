@@ -537,3 +537,9 @@ deploy/test-host/03-update.sh lottery --upgrade-data-retention
 四端类型检查与生产构建、1116项前端单元测试、212项静态检查、115项接口契约和OpenAPI校验通过；本地DEV实际来源读取通过。线上API/worker/Nginx active，API/worker重启计数0，readiness正常；实际发布资源的总后台数据保留导航、全局策略与品牌筛选3项只读设备回归通过。没有登录共享账号或向正常品牌写入测试数据。本地证据位于 `.local/deploy-retention-20261112/`。
 
 发布后五个HTTPS入口15项公开页面检查通过，覆盖桌面、320 CSS px、安卓和iOS横屏；等待加载结束后检查页面及静态资源，无脚本异常或横向溢出，实际截图复核通过。用户根域名与www当前按既有域名绑定状态显示站点不可用；本次未修改品牌域名绑定。
+
+### 清理品牌视觉配置
+
+此版本使用 `03-update.sh SSH_HOST --upgrade-brand-presentation` 升级。脚本先备份，将备份恢复到独立副本并执行清理，再与全新基线比较结构、校验所有业务表数据。仅删除 `brands.theme` 和品牌展示／修订 JSON 中的九个样式字段；审计原文及幂等证据保持不变。验证通过后才应用并同步基线记录，不清库。公开 context 的 `brand.theme` 仅保留品牌名称、标志、素材、语言和文案，不再包含样式字段；提交旧字段明确报错。
+
+2026-11-13 已通过该入口部署版本 `20261113T133740Z-cb5e8493`：测试库从 `b1b5c380…` 升级至 `98f69547…`，完成备份恢复副本演练、与新基线结构比对及 163 张原业务表数据校验。API、worker、Nginx、全部固定 HTTPS 入口及实际来源读取检查通过；已绑定品牌 `yx.cp1608.xyz` 的公开 context 确认只含七个身份与内容字段。备份和验证证据保存在测试机 `/var/backups/lottery/fixed-entries/20261113T133740Z-cb5e8493/`，本地发布日志为 `.local/deploy-all-20261113-brand-cleanup.log`。

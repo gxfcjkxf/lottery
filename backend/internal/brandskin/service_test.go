@@ -8,6 +8,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
+	"github.com/jackc/pgx/v5/pgconn"
 	"testing"
 )
 
@@ -44,20 +45,19 @@ func TestPresentationPersistsAuditedSnapshotsWithoutFinancialChanges(t *testing.
 	if e != nil {
 		t.Fatal(e)
 	}
-	if initial.Config.PrimaryColor == nil || *initial.Config.PrimaryColor != "#274c75" || initial.Effective.PrimaryColor != "#274c75" {
+	if initial.Effective.DisplayName != "Harbor" {
 		t.Fatal(initial)
 	}
-	name, color, locale := "月湾展示", "#123456", "zh-CN"
+	name, locale := "月湾展示", "zh-CN"
 	cfg := initial.Config
 	cfg.DisplayName = &name
-	cfg.PrimaryColor = &color
 	cfg.DefaultLocale = &locale
 	next, e := change(t, s, a, Input{Version: initial.Version, Config: cfg, Reason: "publish audited brand presentation"})
 	if e != nil || next.Version != initial.Version+1 || next.AuditLogID == "" || next.Effective.DisplayName != name {
 		t.Fatal(next, e)
 	}
 	history, e := s.History(ctx, testBrand, 20, 0)
-	if e != nil || len(history) != 1 || history[0].ChangedBy != a.ID || history[0].Effective.PrimaryColor != color {
+	if e != nil || len(history) != 1 || history[0].ChangedBy != a.ID || history[0].Effective.DisplayName != name {
 		t.Fatal(history, e)
 	}
 	if _, e = change(t, s, a, Input{Version: initial.Version, Config: cfg, Reason: "stale version"}); !errors.Is(e, ErrVersion) {
@@ -72,11 +72,11 @@ func TestPresentationPersistsAuditedSnapshotsWithoutFinancialChanges(t *testing.
 		t.Fatal(current, e)
 	}
 	reset, e := change(t, s, a, Input{Version: current.Version, Config: Config{}, Reason: "restore platform inheritance"})
-	if e != nil || reset.Effective.PrimaryColor != "#20594c" || reset.Effective.DisplayName != "Harbor" {
+	if e != nil || reset.Effective.DisplayName != "Harbor" {
 		t.Fatal(reset, e)
 	}
 	old, e := s.History(ctx, testBrand, 20, 1)
-	if e != nil || len(old) != 1 || old[0].Config.PrimaryColor == nil || *old[0].Config.PrimaryColor != color {
+	if e != nil || len(old) != 1 || old[0].Config.DisplayName == nil || *old[0].Config.DisplayName != name {
 		t.Fatal(old, e)
 	}
 	for _, query := range []string{`UPDATE brand_presentation_revisions SET reason='changed'`, `DELETE FROM brand_presentation_revisions`, `DELETE FROM brand_presentations WHERE brand_id='0199a000-0000-7000-8000-000000000002'`} {
@@ -111,7 +111,7 @@ func TestPresentationRejectsForeignScopeDisabledAndAuditFailure(t *testing.T) {
 		t.Fatal("audit failure accepted")
 	}
 	unchanged, e := s.Read(ctx, testBrand)
-	if e != nil || unchanged.Version != initial.Version || unchanged.Config.PrimaryColor == nil {
+	if e != nil || unchanged.Version != initial.Version || unchanged.Effective.DisplayName != initial.Effective.DisplayName {
 		t.Fatal(unchanged, e)
 	}
 	if _, e = s.DB.Exec(ctx, `UPDATE brands SET status='disabled' WHERE id=$1`, testBrand); e != nil {
@@ -170,5 +170,26 @@ func TestPresentationSameVersionHasOneWinner(t *testing.T) {
 	}
 	if e = <-result; !errors.Is(e, ErrVersion) {
 		t.Fatal(e)
+	}
+}
+
+func TestPresentationDatabaseRejectsRetiredStyleFields(t *testing.T) {
+	s, _ := fixture(t)
+	ctx := context.Background()
+	for _, key := range []string{"primary_color", "accent_color", "success_color", "warning_color", "danger_color", "font_family", "font_scale", "radius", "shadow"} {
+		tx, err := s.DB.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE brands SET config_version=config_version+1 WHERE id=$1`, testBrand); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := json.Marshal(Config{})
+		_, err = tx.Exec(ctx, `UPDATE brand_presentations SET version=version+1,config=$2::jsonb || jsonb_build_object($3::text,NULL) WHERE brand_id=$1`, testBrand, raw, key)
+		tx.Rollback(ctx)
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "23514" || pgErr.ConstraintName != "brand_presentations_config_keys_check" {
+			t.Fatalf("field %s was not rejected by the key constraint: %v", key, err)
+		}
 	}
 }

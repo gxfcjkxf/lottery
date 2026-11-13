@@ -17,9 +17,9 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, environment string) error {
 	}
 	defer tx.Rollback(ctx)
 	statements := []string{
-		`INSERT INTO brands(id,code,name,status,theme) VALUES
-  ('0199a000-0000-7000-8000-000000000001','aurora','Aurora','active','{"primary_color":"#27634a","accent_color":"#d7b56d"}'),
-  ('0199a000-0000-7000-8000-000000000002','harbor','Harbor','active','{"primary_color":"#274c75","accent_color":"#80becc"}')
+		`INSERT INTO brands(id,code,name,status) VALUES
+  ('0199a000-0000-7000-8000-000000000001','aurora','Aurora','active'),
+  ('0199a000-0000-7000-8000-000000000002','harbor','Harbor','active')
   ON CONFLICT DO NOTHING`,
 		`INSERT INTO brand_domains(id,brand_id,domain) VALUES
    ('0199a000-0000-7000-8000-000000000101','0199a000-0000-7000-8000-000000000001','localhost'),

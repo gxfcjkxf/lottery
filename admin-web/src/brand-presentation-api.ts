@@ -5,9 +5,8 @@ import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/brand-presentation";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const CONFIG_KEYS = ["display_name", "logo_text", "logo_url", "favicon_url", "primary_color", "accent_color", "success_color", "warning_color", "danger_color", "font_family", "font_scale", "radius", "shadow", "default_locale", "available_locales", "content"] as const;
+const CONFIG_KEYS = ["display_name", "logo_text", "logo_url", "favicon_url", "default_locale", "available_locales", "content"] as const;
 const LOCALES = ["en", "zh-CN"] as const;
-const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 export type BrandPresentationLocale = (typeof LOCALES)[number];
 interface BrandPresentationLocaleContent { en: { tagline: string | null; announcement: string | null }; "zh-CN": { tagline: string | null; announcement: string | null } }
@@ -16,15 +15,6 @@ export interface BrandPresentationConfig {
   logo_text: string | null;
   logo_url: string | null;
   favicon_url: string | null;
-  primary_color: string | null;
-  accent_color: string | null;
-  success_color: string | null;
-  warning_color: string | null;
-  danger_color: string | null;
-  font_family: "system" | "serif" | "mono" | null;
-  font_scale: "compact" | "standard" | null;
-  radius: "square" | "soft" | "round" | null;
-  shadow: "none" | "subtle" | "lifted" | null;
   default_locale: BrandPresentationLocale | null;
   available_locales: BrandPresentationLocale[] | null;
   content: BrandPresentationLocaleContent | null;
@@ -34,15 +24,6 @@ export interface EffectiveBrandPresentationConfig extends Omit<BrandPresentation
   logo_text: string;
   logo_url: string | null;
   favicon_url: string | null;
-  primary_color: string;
-  accent_color: string;
-  success_color: string;
-  warning_color: string;
-  danger_color: string;
-  font_family: "system" | "serif" | "mono";
-  font_scale: "compact" | "standard";
-  radius: "square" | "soft" | "round";
-  shadow: "none" | "subtle" | "lifted";
   default_locale: BrandPresentationLocale;
   available_locales: BrandPresentationLocale[];
   content: { en: { tagline: string; announcement: string }; "zh-CN": { tagline: string; announcement: string } };
@@ -126,21 +107,12 @@ function validConfig(value: unknown, effective = false): boolean {
   if (!isRecord(value) || !exactKeys(value, CONFIG_KEYS)) return false;
   const nullableName = (x: unknown, max: number) => x === null && !effective || validText(x, max, true, true);
   const name = (x: unknown, max: number) => validText(x, max, true, true);
-  const string = (x: unknown): x is string => typeof x === "string";
-  const enumValue = (x: unknown, allowed: readonly string[]) => x === null && !effective || typeof x === "string" && allowed.includes(x);
   const locales = value.available_locales;
   const localeListValid = Array.isArray(locales) && locales.length >= 1 && locales.length <= LOCALES.length && locales.every((x) => LOCALES.includes(x as BrandPresentationLocale)) && new Set(locales).size === locales.length;
   const localeNullable = !effective && locales === null;
   const defaultLocale = value.default_locale === null ? "en" : value.default_locale;
   return (effective ? name(value.display_name, 80) : nullableName(value.display_name, 80)) &&
     (effective ? name(value.logo_text, 32) : nullableName(value.logo_text, 32)) && validAssetUri(value.logo_url) && validAssetUri(value.favicon_url) &&
-    (effective ? string(value.primary_color) && COLOR_RE.test(value.primary_color) : value.primary_color === null || typeof value.primary_color === "string" && COLOR_RE.test(value.primary_color)) &&
-    (effective ? string(value.accent_color) && COLOR_RE.test(value.accent_color) : value.accent_color === null || typeof value.accent_color === "string" && COLOR_RE.test(value.accent_color)) &&
-    (effective ? string(value.success_color) && COLOR_RE.test(value.success_color) : value.success_color === null || typeof value.success_color === "string" && COLOR_RE.test(value.success_color)) &&
-    (effective ? string(value.warning_color) && COLOR_RE.test(value.warning_color) : value.warning_color === null || typeof value.warning_color === "string" && COLOR_RE.test(value.warning_color)) &&
-    (effective ? string(value.danger_color) && COLOR_RE.test(value.danger_color) : value.danger_color === null || typeof value.danger_color === "string" && COLOR_RE.test(value.danger_color)) &&
-    enumValue(value.font_family, ["system", "serif", "mono"]) && enumValue(value.font_scale, ["compact", "standard"]) &&
-    enumValue(value.radius, ["square", "soft", "round"]) && enumValue(value.shadow, ["none", "subtle", "lifted"]) &&
     (effective ? LOCALES.includes(value.default_locale as BrandPresentationLocale) : value.default_locale === null || LOCALES.includes(value.default_locale as BrandPresentationLocale)) &&
     (localeNullable || localeListValid) && (!effective || localeListValid) &&
     (locales === null || localeListValid && locales.includes(defaultLocale)) &&
@@ -165,7 +137,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
 }
 function effectiveMatchesConfig(config: unknown, effective: unknown): boolean {
   if (!isRecord(config) || !isRecord(effective)) return false;
-  const scalarOverrides = ["display_name", "logo_text", "logo_url", "favicon_url", "primary_color", "accent_color", "success_color", "warning_color", "danger_color", "font_family", "font_scale", "radius", "shadow", "default_locale"];
+  const scalarOverrides = ["display_name", "logo_text", "logo_url", "favicon_url", "default_locale"];
   if (!scalarOverrides.every((key) => config[key] === null || config[key] === effective[key])) return false;
   if (config.available_locales !== null && !deepEqual(config.available_locales, effective.available_locales)) return false;
   if (config.content !== null) {

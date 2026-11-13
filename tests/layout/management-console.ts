@@ -56,8 +56,7 @@ export function registerManagementConsoleTests(reflow = false) {
         if (path === '/api/v1/admin/brands') return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status: 'active' }, { id: otherBrand, name: 'Harbor', code: 'harbor', status: 'active' }] })
         if (path === '/api/v1/admin/brand-presentation' || path === '/api/v1/admin/brand-presentation/defaults') {
           const effective = { display_name: 'Aurora', logo_text: 'A', logo_url: null, favicon_url: null,
-            primary_color: '#059669', accent_color: '#f59e0b', success_color: '#10b981', warning_color: '#f59e0b', danger_color: '#ef4444',
-            font_family: 'system', font_scale: 'standard', radius: 'round', shadow: 'subtle', default_locale: 'en',
+            default_locale: 'en',
             available_locales: ['en', 'zh-CN'], content: { en: { tagline: '', announcement: '' }, 'zh-CN': { tagline: '', announcement: '' } } }
           if(path.endsWith('/defaults')) return reply(effective)
           return reply({ brand_id: gameId, version: 1, status: 'active', base_name: 'Aurora',
