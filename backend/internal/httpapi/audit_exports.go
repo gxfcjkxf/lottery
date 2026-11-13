@@ -143,8 +143,8 @@ type AdminAuditRecord struct {
 	RequestID     string          `json:"request_id"`
 	CreatedAt     time.Time       `json:"created_at"`
 	IP            string          `json:"ip_address"`
-	Before        json.RawMessage `json:"before_json"`
-	After         json.RawMessage `json:"after_json"`
+	Before        json.RawMessage `json:"before_json,omitempty"`
+	After         json.RawMessage `json:"after_json,omitempty"`
 }
 
 type auditItem = AdminAuditRecord
@@ -153,10 +153,16 @@ type auditItem = AdminAuditRecord
 // before transfer so a pathological audit record cannot allocate an unbounded
 // export body. Oversized records fail the whole request, never get truncated.
 func auditItems(r *http.Request, tx pgx.Tx, brand string, q auditQuery, export bool) ([]auditItem, time.Time, error) {
-	rows, e := tx.Query(r.Context(), `WITH bounds AS (SELECT statement_timestamp() AS at)
+	summary := platformAdminEntry(r) && !export
+	snapshotFields := `CASE WHEN octet_length(coalesce(a.before_json,'null'::jsonb)::text)<=b.max_snapshot_bytes THEN coalesce(a.before_json,'null'::jsonb) ELSE NULL END,
+ CASE WHEN octet_length(coalesce(a.after_json,'null'::jsonb)::text)<=b.max_snapshot_bytes THEN coalesce(a.after_json,'null'::jsonb) ELSE NULL END`
+	if summary {
+		// The platform audit table displays metadata only. Do not read or transfer snapshots.
+		snapshotFields = `NULL::jsonb,NULL::jsonb`
+	}
+	rows, e := tx.Query(r.Context(), `WITH bounds AS (SELECT statement_timestamp() AS at,$11::int AS max_snapshot_bytes)
  SELECT b.at,a.id::text,a.brand_id::text,a.action,a.actor_type,coalesce(a.actor_id::text,''),coalesce(actor.username,member.username,agent.username,''),a.resource_type,coalesce(a.resource_id::text,''),a.reason,a.request_id,a.created_at,coalesce(a.ip_address,''),
- CASE WHEN octet_length(coalesce(a.before_json,'null'::jsonb)::text)<=$11 THEN coalesce(a.before_json,'null'::jsonb) ELSE NULL END,
- CASE WHEN octet_length(coalesce(a.after_json,'null'::jsonb)::text)<=$11 THEN coalesce(a.after_json,'null'::jsonb) ELSE NULL END
+ `+snapshotFields+`
  FROM bounds b LEFT JOIN LATERAL (
  SELECT * FROM retention_audit_logs() audit_logs WHERE ($1='' OR brand_id=NULLIF($1,'')::uuid)
  AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)
@@ -187,7 +193,7 @@ func auditItems(r *http.Request, tx pgx.Tx, brand string, q auditQuery, export b
 		if id == nil {
 			continue
 		}
-		if before == nil || after == nil {
+		if !summary && (before == nil || after == nil) {
 			return nil, snapshot, errAuditExportLarge
 		}
 		item.ID, item.Action, item.ActorType, item.ActorID, item.ActorUsername, item.ResourceType, item.ResourceID, item.Reason, item.RequestID, item.CreatedAt, item.IP, item.Before, item.After = *id, *action, *actorType, *actorID, *actorUsername, *resource, *resourceID, *reason, *requestID, created.UTC(), *ip, before, after

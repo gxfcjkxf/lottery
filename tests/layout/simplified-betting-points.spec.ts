@@ -4,7 +4,7 @@ import {configuredDemo} from '../../shared/src/configured-rules'
 import { gameId,origins,installLayoutApi,expectNoPageOverflow } from './fixture'
 const snapshot=configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/mark_six_v2.json','utf8')))
 const play=snapshot.catalog.plays[0]!, option=snapshot.catalog.domains[play.selection.domain]!.options[0]!
-const order={id:gameId,game_id:gameId,game_name:'Mark Six / 配置化六合彩',member_name:'visual_review_member',period_id:gameId,period_no:'20261028001',rule_id:gameId,sales_version:1,snapshot,
+const order={id:gameId,game_id:gameId,game_name:'Mark Six / 配置化六合彩',member_name:'visual_review_member',period_id:gameId,period_no:'20261028001',rule_id:gameId,sales_version:1,snapshot:{catalog:{funding:null,plays:[{id:play.id,label:play.label,selection:{domain:play.selection.domain}}],domains:{[play.selection.domain]:{options:[{id:option.id,label:option.label}]}}}},
  quote:{bet_points:'10',lines:[{play_id:play.id,options:[option.id],stake:'10',prices:{hit:'2.5'},plate:'A',multiplier:1,combination_count:1}]},
  result:{prize_points:'25',refund_points:'0',effective_points:'10',lines:[{outcome:'won',prize_points:'25',refund_points:'0',effective_points:'10'}]},status:'settled',placed_at:'2026-10-28T02:00:00Z',settled_at:'2026-10-28T03:00:00Z'}
 for(const surface of ['admin','platform'] as const)for(const locale of ['en','zh-CN'] as const)test(`configured order reader ${surface} (${locale})`,async({page},info)=>{
@@ -21,12 +21,15 @@ for(const surface of ['admin','platform'] as const)for(const locale of ['en','zh
  await page.goto(`${origins.brand}/configured-orders-harness`)
  await expect(page.locator('tbody tr')).toHaveCount(2)
  const pagination=page.locator('.configured-orders .table-pagination')
- await expect(pagination.locator('.table-pagination-actions')).toHaveCSS('gap','12px')
+ const compactPagination = await page.evaluate(() => matchMedia('(max-width:640px), (hover:none) and (pointer:coarse)').matches)
+ await expect(pagination.locator('.table-pagination-actions')).toHaveCSS('gap',compactPagination?'0px':'12px')
  await expect(pagination.locator('.table-pagination-arrow')).toHaveCount(2)
  for(const button of await pagination.locator('.table-pagination-arrow').all())await expect(button).toBeDisabled()
  await expect(pagination.locator('[aria-current=page]')).toHaveAttribute('aria-label', /^(?:Page 1|第 1 页)$/)
  await expect(page.getByText('25',{exact:true})).toBeVisible()
- await expect(page.getByText('—',{exact:true})).toBeVisible()
+ await expect(page.getByText('—',{exact:true})).toHaveCount(2)
+ await expect(page.getByText('—',{exact:true}).first()).toBeVisible()
+ await expect(page.getByText(`${play.label[locale]} · ${option.label[locale]}`,{exact:true})).toHaveCount(2)
  const refresh=page.getByRole('button',{name:locale==='en'?'Refresh':'刷新',exact:true})
  await expect(refresh).toHaveAttribute('data-refresh-button','true')
  await expect(refresh.locator('svg')).toBeVisible()

@@ -7,7 +7,7 @@ import { notifySessionReplaced } from '@lottery/shared'
 export interface PlatformAccount { id: string; username?: string; display_name?: string; super_admin: true; platform_permissions: string[] }
 export interface PlatformBrand { id: string; code: string; name: string; status: string; member_count: string; agent_count: string; recharge_quota_available: string | null; created_at: string }
 export interface PlatformMember { id: string; global_user_id: string; username: string; phone: string; display_name: string; notes: string; status: string; joined_at: string; brand_id: string; tags: string[]; online: boolean; display_points: string | null }
-export interface PlatformAudit { id: string; brand_id: string | null; action: string; actor_type: string; actor_id: string; actor_username: string; resource_type: string; resource_id: string; reason: string; request_id: string; created_at: string; ip_address: string; before_json: unknown; after_json: unknown }
+export interface PlatformAudit { id: string; brand_id: string | null; action: string; actor_type: string; actor_id: string; actor_username: string; resource_type: string; resource_id: string; reason: string; request_id: string; created_at: string; ip_address: string }
 export interface PlatformCommissionPolicy {
  payouts_enabled: boolean
  version: number
@@ -59,7 +59,7 @@ function isMember(v: unknown): v is PlatformMember {
   return isObj(v) && exactKeys(v, ['id', 'global_user_id', 'username', 'phone', 'display_name', 'notes', 'status', 'joined_at', 'brand_id', 'tags', 'online', 'display_points']) && text(v.id) && text(v.global_user_id) && text(v.username) && text(v.phone) && text(v.display_name) && text(v.notes) && text(v.status) && dateTime(v.joined_at) && text(v.brand_id) && stringArray(v.tags) && typeof v.online === 'boolean' && (v.display_points === null || text(v.display_points) && isPoints(v.display_points))
 }
 function isAudit(v: unknown): v is PlatformAudit {
-  return isObj(v) && exactKeys(v, ['id', 'brand_id', 'action', 'actor_type', 'actor_id', 'actor_username', 'resource_type', 'resource_id', 'reason', 'request_id', 'created_at', 'ip_address', 'before_json', 'after_json']) && text(v.id) && (v.brand_id === null || text(v.brand_id)) && text(v.action) && text(v.actor_type) && text(v.actor_id) && text(v.actor_username) && text(v.resource_type) && text(v.resource_id) && text(v.reason) && text(v.request_id) && dateTime(v.created_at) && text(v.ip_address) && 'before_json' in v && 'after_json' in v
+  return isObj(v) && exactKeys(v, ['id', 'brand_id', 'action', 'actor_type', 'actor_id', 'actor_username', 'resource_type', 'resource_id', 'reason', 'request_id', 'created_at', 'ip_address']) && text(v.id) && (v.brand_id === null || text(v.brand_id)) && text(v.action) && text(v.actor_type) && text(v.actor_id) && text(v.actor_username) && text(v.resource_type) && text(v.resource_id) && text(v.reason) && text(v.request_id) && dateTime(v.created_at) && text(v.ip_address)
 }
 function dateTime(v: unknown): v is string {
   return text(v) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(v) && Number.isFinite(Date.parse(v))

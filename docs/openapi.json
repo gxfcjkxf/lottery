@@ -19214,20 +19214,20 @@
         }
       }
     },
-    "/api/v1/admin/audit": {
+    "/api/v1/platform/audit": {
       "get": {
-        "operationId": "listAdminAudit",
-        "summary": "List audit records",
+        "operationId": "listPlatformAudit",
+        "summary": "List audit summaries",
         "tags": [
           "administration"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. actor matches a case-insensitive literal username substring; action_type groups operations as create, view, query, edit or delete. Other filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; each record includes a required nullable brand_id, which is null for platform records, and a required actor_username, empty when the administrator, member or brand-scoped agent username cannot be resolved. Clients should use actor_username for account display and actor_type text for actors without a resolved account; retain actor_id only as the technical UUID. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
+        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Independent platform entry; requires a super administrator and audit.view.platform. Returns audit metadata without before_json or after_json; stored change snapshots remain intact and the brand audit view retains its change details. Filters, pagination, ordering and committed read auditing follow the brand audit endpoint. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
           },
           {
-            "adminCookie": []
+            "platformAdminCookie": []
           }
         ],
         "parameters": [
@@ -19420,7 +19420,7 @@
                       "const": true
                     },
                     "data": {
-                      "$ref": "#/components/schemas/AdminAuditList"
+                      "$ref": "#/components/schemas/PlatformAuditList"
                     },
                     "request_id": {
                       "type": "string"
@@ -19694,26 +19694,25 @@
         },
         "x-implemented": true,
         "x-permissions": [
-          "audit.view.brand",
           "audit.view.platform"
         ],
         "x-idempotent-operation": false
       }
     },
-    "/api/v1/platform/audit": {
+    "/api/v1/admin/audit": {
       "get": {
-        "operationId": "listAdminAuditPlatform",
-        "summary": "Platform: List audit records",
+        "operationId": "listAdminAudit",
+        "summary": "List audit records",
         "tags": [
           "administration"
         ],
-        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Only platform-scoped grants are considered. Platform business reads remain permission checked. Account and role management are registered explicitly; brand member edits, approvals and financial mutations remain unregistered. Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. actor matches a case-insensitive literal username substring; action_type groups operations as create, view, query, edit or delete. Other filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; each record includes a required nullable brand_id, which is null for platform records, and a required actor_username, empty when the administrator, member or brand-scoped agent username cannot be resolved. Clients should use actor_username for account display and actor_type text for actors without a resolved account; retain actor_id only as the technical UUID. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. actor matches a case-insensitive literal username substring; action_type groups operations as create, view, query, edit or delete. Other filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; each record includes a required nullable brand_id, which is null for platform records, and a required actor_username, empty when the administrator, member or brand-scoped agent username cannot be resolved. Clients should use actor_username for account display and actor_type text for actors without a resolved account; retain actor_id only as the technical UUID. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
           },
           {
-            "platformAdminCookie": []
+            "adminCookie": []
           }
         ],
         "parameters": [
@@ -125569,7 +125568,7 @@
     "/api/v1/admin/configured-orders": {
       "get": {
         "operationId": "configuredOrderListadmin",
-        "summary": "Read brand frozen configured orders",
+        "summary": "Read brand frozen configured order summaries",
         "tags": [
           "configured-rules"
         ],
@@ -125664,7 +125663,7 @@
                         "items": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/components/schemas/ConfiguredOrder"
+                            "$ref": "#/components/schemas/ConfiguredOrderSummary"
                           }
                         }
                       },
@@ -125928,7 +125927,7 @@
     "/api/v1/platform/configured-orders": {
       "get": {
         "operationId": "configuredOrderListplatform",
-        "summary": "Read brand frozen configured orders",
+        "summary": "Read brand frozen configured order summaries",
         "tags": [
           "configured-rules"
         ],
@@ -126023,7 +126022,7 @@
                         "items": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/components/schemas/ConfiguredOrder"
+                            "$ref": "#/components/schemas/ConfiguredOrderSummary"
                           }
                         }
                       },
@@ -127315,7 +127314,7 @@
     "/api/v1/admin/platform-games/{id}/configured/orders": {
       "get": {
         "operationId": "configuredAdminOrders",
-        "summary": "Read brand configured frozen orders",
+        "summary": "Read brand configured frozen order summaries",
         "tags": [
           "configured-rules"
         ],
@@ -127404,7 +127403,7 @@
                         "items": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/components/schemas/ConfiguredOrder"
+                            "$ref": "#/components/schemas/ConfiguredOrderSummary"
                           }
                         }
                       },
@@ -131687,7 +131686,7 @@
     "/api/v1/configured/orders": {
       "get": {
         "operationId": "configuredAllOrders",
-        "summary": "Read all member frozen configured orders, including offline and deleted games",
+        "summary": "Read all member frozen configured order summaries, including offline and deleted games",
         "tags": [
           "configured-betting"
         ],
@@ -131756,7 +131755,7 @@
                         "items": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/components/schemas/ConfiguredOrder"
+                            "$ref": "#/components/schemas/ConfiguredOrderSummary"
                           }
                         }
                       },
@@ -132368,7 +132367,7 @@
     "/api/v1/b/{brandCode}/configured/orders": {
       "get": {
         "operationId": "configuredAllOrdersByBrand",
-        "summary": "Read all member frozen configured orders, including offline and deleted games",
+        "summary": "Read all member frozen configured order summaries, including offline and deleted games",
         "tags": [
           "configured-betting"
         ],
@@ -132445,7 +132444,7 @@
                         "items": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/components/schemas/ConfiguredOrder"
+                            "$ref": "#/components/schemas/ConfiguredOrderSummary"
                           }
                         }
                       },
@@ -133065,7 +133064,7 @@
     "/api/v1/configured/games/{id}/orders": {
       "get": {
         "operationId": "configuredOrders",
-        "summary": "Read current member frozen configured orders",
+        "summary": "Read current member frozen configured order summaries",
         "tags": [
           "configured-betting"
         ],
@@ -133142,7 +133141,7 @@
                         "items": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/components/schemas/ConfiguredOrder"
+                            "$ref": "#/components/schemas/ConfiguredOrderSummary"
                           }
                         }
                       },
@@ -133404,7 +133403,7 @@
     "/api/v1/b/{brandCode}/configured/games/{id}/orders": {
       "get": {
         "operationId": "configuredOrdersByBrand",
-        "summary": "Read current member frozen configured orders",
+        "summary": "Read current member frozen configured order summaries",
         "tags": [
           "configured-betting"
         ],
@@ -133489,7 +133488,7 @@
                         "items": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/components/schemas/ConfiguredOrder"
+                            "$ref": "#/components/schemas/ConfiguredOrderSummary"
                           }
                         }
                       },
@@ -145180,7 +145179,7 @@
         "tags": [
           "betting"
         ],
-        "description": "Authenticated brand member only. Configured orders participate even for unavailable games. Actual game-name options come from this member’s history. Sorted by placed_at, storage kind, and ID descending, using one repeatable-read transaction. Cursor is bound to brand, member and game filter. New orders do not shift later pages. No offset, member_id or brand_id overrides are accepted. Original ticket snapshots and exact point strings are preserved; this endpoint never writes orders or balances.",
+        "description": "Authenticated brand member only. Configured orders participate even for unavailable games. Actual game-name options come from this member’s history. Sorted by placed_at, storage kind, and ID descending, using one repeatable-read transaction. Cursor is bound to brand, member and game filter. New orders do not shift later pages. No offset, member_id or brand_id overrides are accepted. Frozen display labels and exact point strings are preserved; the single-ticket detail endpoint continues to return the full rule snapshot; this endpoint never writes orders or balances.",
         "security": [
           {
             "userBearer": []
@@ -145514,7 +145513,7 @@
         "tags": [
           "betting"
         ],
-        "description": "Authenticated brand member only. Configured orders participate even for unavailable games. Actual game-name options come from this member’s history. Sorted by placed_at, storage kind, and ID descending, using one repeatable-read transaction. Cursor is bound to brand, member and game filter. New orders do not shift later pages. No offset, member_id or brand_id overrides are accepted. Original ticket snapshots and exact point strings are preserved; this endpoint never writes orders or balances.",
+        "description": "Authenticated brand member only. Configured orders participate even for unavailable games. Actual game-name options come from this member’s history. Sorted by placed_at, storage kind, and ID descending, using one repeatable-read transaction. Cursor is bound to brand, member and game filter. New orders do not shift later pages. No offset, member_id or brand_id overrides are accepted. Frozen display labels and exact point strings are preserved; the single-ticket detail endpoint continues to return the full rule snapshot; this endpoint never writes orders or balances.",
         "security": [
           {
             "userBearer": []
@@ -184638,6 +184637,84 @@
         ],
         "additionalProperties": false
       },
+      "PlatformAuditEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UUID"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "action": {
+            "type": "string"
+          },
+          "actor_type": {
+            "type": "string"
+          },
+          "actor_id": {
+            "type": "string"
+          },
+          "actor_username": {
+            "type": "string"
+          },
+          "resource_type": {
+            "type": "string"
+          },
+          "resource_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/DateTime"
+          },
+          "ip_address": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "brand_id",
+          "action",
+          "actor_type",
+          "actor_id",
+          "actor_username",
+          "resource_type",
+          "resource_id",
+          "reason",
+          "request_id",
+          "created_at",
+          "ip_address"
+        ],
+        "additionalProperties": false
+      },
+      "PlatformAuditList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlatformAuditEntry"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
       "RechargeQuota": {
         "type": "object",
         "properties": {
@@ -202220,6 +202297,101 @@
         ],
         "additionalProperties": false
       },
+      "ConfiguredOrderDisplaySnapshot": {
+        "type": "object",
+        "properties": {
+          "catalog": {
+            "type": "object",
+            "properties": {
+              "funding": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "reserve"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "plays": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "$ref": "#/components/schemas/ConfiguredLabel"
+                    },
+                    "selection": {
+                      "type": "object",
+                      "properties": {
+                        "domain": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "domain"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label",
+                    "selection"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "domains": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "$ref": "#/components/schemas/ConfiguredLabel"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "label"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "options"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "funding",
+              "plays",
+              "domains"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "catalog"
+        ],
+        "additionalProperties": false
+      },
       "ConfiguredLiveCatalog": {
         "type": "object",
         "properties": {
@@ -202344,6 +202516,87 @@
           "snapshot_hash",
           "previous_draw",
           "period"
+        ],
+        "additionalProperties": false
+      },
+      "ConfiguredOrderSummary": {
+        "type": "object",
+        "properties": {
+          "game_name": {
+            "type": "string"
+          },
+          "member_name": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "game_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "period_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "period_no": {
+            "type": "string"
+          },
+          "rule_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "sales_version": {
+            "type": "integer"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/ConfiguredOrderDisplaySnapshot"
+          },
+          "quote": {
+            "$ref": "#/components/schemas/ConfiguredQuote"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfiguredResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "placed",
+              "settled"
+            ]
+          },
+          "placed_at": {
+            "$ref": "#/components/schemas/DateTime"
+          },
+          "settled_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DateTime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "game_name",
+          "member_name",
+          "id",
+          "game_id",
+          "period_id",
+          "period_no",
+          "rule_id",
+          "sales_version",
+          "snapshot",
+          "quote",
+          "result",
+          "status",
+          "placed_at",
+          "settled_at"
         ],
         "additionalProperties": false
       },
@@ -210292,7 +210545,7 @@
                 "const": "configured"
               },
               "order": {
-                "$ref": "#/components/schemas/ConfiguredOrder"
+                "$ref": "#/components/schemas/ConfiguredOrderSummary"
               }
             },
             "required": [

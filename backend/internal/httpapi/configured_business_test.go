@@ -323,6 +323,13 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 	if len(unifiedPage.Items) != 1 || unifiedPage.Items[0].Kind != "configured" || unifiedPage.Items[0].Order.ID != order.ID || len(unifiedPage.Games) != 1 || unifiedPage.Games[0].Name != game.Name {
 		t.Fatal("unified offline configured history", unifiedPage)
 	}
+	var summaryFields map[string]json.RawMessage
+	if err := json.Unmarshal(unifiedPage.Items[0].Order.Snapshot, &summaryFields); err != nil || len(summaryFields) != 1 || summaryFields["catalog"] == nil {
+		t.Fatal("history returned executable snapshot", err)
+	}
+	if len(ticket.Order.Snapshot) <= len(unifiedPage.Items[0].Order.Snapshot) {
+		t.Fatal("ticket detail lost its full snapshot")
+	}
 	if _, e = f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='platform_game.write.platform'`, platformRole); e != nil {
 		t.Fatal(e)
 	}

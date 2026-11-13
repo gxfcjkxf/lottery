@@ -6,6 +6,14 @@ export interface ConfiguredVersion { id:string;game_id:string;revision:number;sn
 export interface ConfiguredSales {version:number;rule_id:string;enabled:boolean;prices:ConfiguredSnapshot['prices'];min_points:string;max_points:string;max_period_points:string;max_user_period_points:string}
 export interface ConfiguredLiveInput {period_id:string;rule_id:string;sales_version:number;snapshot_hash:string;actor_context:string;requests:ConfiguredRequest[]}
 export interface ConfiguredLiveQuote extends NonNullable<ConfiguredPreviewResult['quote']>{game_id:string;period_id:string;rule_id:string;sales_version:number;definition_hash:string;snapshot_hash:string;actor_context:string}
+export interface ConfiguredOrderDisplaySnapshot {
+ catalog: {
+  funding?: 'reserve' | null
+  plays: Array<{ id: string; label: { en: string; 'zh-CN': string }; selection: { domain: string } }>
+  domains: Record<string, { options: Array<{ id: string; label: { en: string; 'zh-CN': string } }> }>
+ }
+}
+export type ConfiguredOrderSummary = Omit<ConfiguredLiveOrder, 'snapshot'> & { snapshot: ConfiguredOrderDisplaySnapshot }
 export interface ConfiguredLiveOrder {game_name:string;id:string;member_name:string;game_id:string;period_id:string;period_no:string;rule_id:string;sales_version:number;snapshot:ConfiguredSnapshot;quote:NonNullable<ConfiguredPreviewResult['quote']>;result:ConfiguredPreviewResult['result']|null;status:string;placed_at:string;settled_at:string|null}
 export interface ConfiguredLiveCatalog {game:{id:string;name:string;status:string;brand_enabled:boolean};snapshot:ConfiguredSnapshot;rule_id:string;sales:ConfiguredSales;snapshot_hash:string;previous_draw:{period_no:string;result:{regular:number[];special:number[];digits:number[]};regular_order:number[]|null;attributes:Record<string,{wave:string;zodiac:string;element:string}>}|null;period:{id:string;period_no:string;bet_start_at:string;bet_end_at:string;draw_at:string}|null}
 export function createConfiguredBusinessClient(surface:'platform'|'admin'|'user',brandId:string,brandCode?:string,fetcher:typeof fetch=fetch){
@@ -18,18 +26,18 @@ export function createConfiguredBusinessClient(surface:'platform'|'admin'|'user'
  }
  return {request,
   games:()=>request<{games:Array<{id:string;name:string}>}>('/games'),catalog:(id:string)=>request<ConfiguredLiveCatalog>(`/games/${encodeURIComponent(id)}`),
-  allOrders:(offset=0)=>request<{items:ConfiguredLiveOrder[]}>(`/orders?offset=${offset}`),
-  orders:(id:string,offset=0)=>request<{items:ConfiguredLiveOrder[]}>(`/games/${encodeURIComponent(id)}/orders?offset=${offset}`),
+  allOrders:(offset=0)=>request<{items:ConfiguredOrderSummary[]}>(`/orders?offset=${offset}`),
+  orders:(id:string,offset=0)=>request<{items:ConfiguredOrderSummary[]}>(`/games/${encodeURIComponent(id)}/orders?offset=${offset}`),
   preview:(input:ConfiguredLiveInput)=>request<ConfiguredLiveQuote>('/preview',input),place:(input:ConfiguredLiveInput,key:string)=>request<{items:ConfiguredLiveOrder[]}>('/orders',input,key),
   rules:(id:string)=>request<ConfiguredVersion|null>(`/${encodeURIComponent(id)}/configured/rules`),
   sales:(id:string)=>request<ConfiguredSales>(`/${encodeURIComponent(id)}/configured/sales`),
-  adminOrders:(id:string,offset=0)=>request<{items:ConfiguredLiveOrder[]}>(`/${encodeURIComponent(id)}/configured/orders?offset=${offset}`),
+  adminOrders:(id:string,offset=0)=>request<{items:ConfiguredOrderSummary[]}>(`/${encodeURIComponent(id)}/configured/orders?offset=${offset}`),
  }
 }
-export function configuredTicketLabel(snapshot:ConfiguredSnapshot,line:{play_id:string;options:string[]},locale:'en'|'zh-CN'){
+export function configuredTicketLabel(snapshot:ConfiguredOrderDisplaySnapshot,line:{play_id:string;options:string[]},locale:'en'|'zh-CN'){
  const play=snapshot.catalog.plays.find(p=>p.id===line.play_id)!
  return `${play.label[locale]} · ${line.options.map(id=>snapshot.catalog.domains[play.selection.domain]!.options.find(o=>o.id===id)!.label[locale]).join(' / ')}`
 }
-export function configuredTicketPrices(snapshot:ConfiguredSnapshot,line:ConfiguredQuotedLine,locale:'en'|'zh-CN'):string[]{
+export function configuredTicketPrices(snapshot:ConfiguredOrderDisplaySnapshot,line:ConfiguredQuotedLine,locale:'en'|'zh-CN'):string[]{
  return [...Object.values(line.prices),...(line.legs??[]).flatMap(leg=>configuredTicketPrices(snapshot,leg,locale).map(price=>`${configuredTicketLabel(snapshot,leg,locale)}: ${price}`))]
 }

@@ -71,3 +71,16 @@ test("Go audit contract examples serialize the required nullable brand_id", () =
   assert.ok(schema("AdminAuditEntry")({ ...values.AdminAuditRecord, brand_id: null }));
   assert.ok(!schema("AdminAuditEntry")((({ brand_id: _brandID, ...record }) => record)(values.AdminAuditRecord)));
 });
+
+
+test("platform audit summaries omit change payloads and retain the brand detail contract", () => {
+  const summary = identity.schemas.PlatformAuditEntry;
+  assert.equal(summary.additionalProperties, false);
+  assert.ok(!Object.hasOwn(summary.properties, 'before_json'));
+  assert.ok(!Object.hasOwn(summary.properties, 'after_json'));
+  assert.deepEqual(summary.required, identity.schemas.AdminAuditEntry.required.filter(key => !['before_json', 'after_json'].includes(key)));
+  const operation = identity.operations.find(operation => operation.path === '/api/v1/platform/audit');
+  assert.deepEqual(operation.permissions, ['audit.view.platform']);
+  assert.deepEqual(operation.data, { $ref: '#/components/schemas/PlatformAuditList' });
+  assert.ok(operation.successHeaders['X-Read-Source']);
+});

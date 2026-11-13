@@ -313,7 +313,28 @@ func (s Service) placeConfiguredItem(ctx context.Context, tx pgx.Tx, brand strin
 	return scanConfiguredOrder(tx.QueryRow(ctx, configuredOrderSelect+` WHERE o.id=$1`, id))
 }
 
-const configuredOrderSelect = `SELECT o.id::text,o.game_id::text,o.period_id::text,p.period_no,o.rule_id::text,o.sales_version,o.snapshot,o.quote,o.result,o.status,o.placed_at,o.settled_at,u.username,g.name FROM configured_orders o JOIN platform_game_periods p ON p.id=o.period_id JOIN global_users u ON u.id=o.user_id JOIN platform_games g ON g.id=o.game_id`
+const configuredOrderSelectPrefix = `SELECT o.id::text,o.game_id::text,o.period_id::text,p.period_no,o.rule_id::text,o.sales_version,`
+const configuredOrderSelectSuffix = `,o.quote,o.result,o.status,o.placed_at,o.settled_at,u.username,g.name FROM configured_orders o JOIN platform_game_periods p ON p.id=o.period_id JOIN global_users u ON u.id=o.user_id JOIN platform_games g ON g.id=o.game_id`
+const configuredOrderSelect = configuredOrderSelectPrefix + `o.snapshot` + configuredOrderSelectSuffix
+
+// Management lists need frozen display labels, not the executable rule snapshot.
+// Include nested combination legs, and read labels from the purchased snapshot.
+const configuredOrderSummarySelect = configuredOrderSelectPrefix + `(
+ WITH selected_plays AS (
+   SELECT play FROM jsonb_array_elements(o.snapshot->'catalog'->'plays') play
+   WHERE play->'id' IN (SELECT jsonb_path_query(o.quote,'$.lines.**.play_id'))
+ )
+ SELECT jsonb_build_object('catalog',jsonb_build_object(
+   'funding',o.snapshot->'catalog'->'funding',
+   'plays',(SELECT jsonb_agg(jsonb_build_object('id',play->'id','label',play->'label','selection',jsonb_build_object('domain',play->'selection'->'domain'))) FROM selected_plays),
+   'domains',(SELECT jsonb_object_agg(domain.key,jsonb_build_object('options',(
+     SELECT jsonb_agg(jsonb_build_object('id',option->'id','label',option->'label'))
+     FROM jsonb_array_elements(domain.value->'options') option
+     WHERE option->'id' IN (SELECT jsonb_path_query(o.quote,'$.lines.**.options[*]'))
+   ))) FROM jsonb_each(o.snapshot->'catalog'->'domains') domain
+   WHERE domain.key IN (SELECT play->'selection'->>'domain' FROM selected_plays))
+ ))
+)` + configuredOrderSelectSuffix
 
 func scanConfiguredOrder(row pgx.Row) (o ConfiguredOrder, e error) {
 	var q, r []byte
@@ -329,10 +350,18 @@ func scanConfiguredOrder(row pgx.Row) (o ConfiguredOrder, e error) {
 	return
 }
 func (s Service) ConfiguredOrders(ctx context.Context, brand, member, game string, offset int) ([]ConfiguredOrder, error) {
+	return s.configuredOrders(ctx, configuredOrderSelect, brand, member, game, offset)
+}
+
+func (s Service) ConfiguredOrderSummaries(ctx context.Context, brand, member, game string, offset int) ([]ConfiguredOrder, error) {
+	return s.configuredOrders(ctx, configuredOrderSummarySelect, brand, member, game, offset)
+}
+
+func (s Service) configuredOrders(ctx context.Context, selectSQL, brand, member, game string, offset int) ([]ConfiguredOrder, error) {
 	if !validIDs(brand) || (game != "" && !validIDs(game)) || (member != "" && !validIDs(member)) || offset < 0 || offset > 1000000 {
 		return nil, ErrInvalid
 	}
-	rows, e := s.DB.Query(ctx, configuredOrderSelect+` WHERE o.brand_id=$1 AND ($2='' OR o.member_id::text=$2) AND ($3='' OR o.game_id::text=$3) ORDER BY o.placed_at DESC,o.id DESC LIMIT 50 OFFSET $4`, brand, member, game, offset)
+	rows, e := s.DB.Query(ctx, selectSQL+` WHERE o.brand_id=$1 AND ($2='' OR o.member_id::text=$2) AND ($3='' OR o.game_id::text=$3) ORDER BY o.placed_at DESC,o.id DESC LIMIT 50 OFFSET $4`, brand, member, game, offset)
 	if e != nil {
 		return nil, e
 	}

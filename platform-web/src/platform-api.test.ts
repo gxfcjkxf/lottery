@@ -40,7 +40,7 @@ describe('platform API boundary', () => {
     }
   })
   it('uses explicit member and audit pagination and rejects cross-brand rows', async () => {
-    const audit = { id: 'a1', brand_id: 'b-1', action: 'member.view', actor_type: 'admin', actor_id: 'admin-1', actor_username: 'admin', resource_type: 'member', resource_id: 'm1', reason: '', request_id: 'request-1', created_at: '2026-10-09T01:02:03Z', ip_address: '', before_json: null, after_json: null }
+    const audit = { id: 'a1', brand_id: 'b-1', action: 'member.view', actor_type: 'admin', actor_id: 'admin-1', actor_username: 'admin', resource_type: 'member', resource_id: 'm1', reason: '', request_id: 'request-1', created_at: '2026-10-09T01:02:03Z', ip_address: '' }
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(reply({ items: [member], limit: 51, offset: 50, total_count: '101' }))
       .mockResolvedValueOnce(reply({ items: [audit]  ,total_count: '1'}))
@@ -116,7 +116,7 @@ describe('platform API boundary', () => {
   })
 
   it('requires a selected brand and sends X-Brand-ID for audit reads', async () => {
-    const audit = { id: 'a1', brand_id: 'b-1', action: 'member.view', actor_type: 'admin', actor_id: 'admin-1', actor_username: 'admin', resource_type: 'member', resource_id: 'm1', reason: '', request_id: 'request-1', created_at: '2026-10-09T01:02:03Z', ip_address: '', before_json: null, after_json: null }
+    const audit = { id: 'a1', brand_id: 'b-1', action: 'member.view', actor_type: 'admin', actor_id: 'admin-1', actor_username: 'admin', resource_type: 'member', resource_id: 'm1', reason: '', request_id: 'request-1', created_at: '2026-10-09T01:02:03Z', ip_address: '' }
     const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => reply({ items: [audit]  ,total_count: '1'}))
     await expect(createPlatformApi(fetcher).audit('b-1')).resolves.toMatchObject({items:[audit]})
     expect(fetcher.mock.calls[0][0]).toBe('/api/v1/platform/audit?limit=100&offset=0')

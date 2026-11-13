@@ -146,7 +146,7 @@ func historyPayloads(ctx context.Context, tx pgx.Tx, brand, member string, items
 	if len(ids) == 0 {
 		return nil
 	}
-	rows, err := tx.Query(ctx, configuredOrderSelect+` WHERE o.brand_id=$1 AND o.member_id=$2 AND o.id=ANY($3::uuid[])`, brand, member, ids)
+	rows, err := tx.Query(ctx, configuredOrderSummarySelect+` WHERE o.brand_id=$1 AND o.member_id=$2 AND o.id=ANY($3::uuid[])`, brand, member, ids)
 	if err != nil {
 		return err
 	}

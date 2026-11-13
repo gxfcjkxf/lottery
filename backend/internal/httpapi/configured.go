@@ -24,7 +24,7 @@ func registerConfiguredAdminRoutes(register func(string, string, http.HandlerFun
 			failure(w, r, 400, "REQUEST_INVALID", "Invalid paging")
 			return
 		}
-		rows, err := betService(d).ConfiguredOrders(r.Context(), brand, r.URL.Query().Get("member_id"), r.URL.Query().Get("game_id"), offset)
+		rows, err := betService(d).ConfiguredOrderSummaries(r.Context(), brand, r.URL.Query().Get("member_id"), r.URL.Query().Get("game_id"), offset)
 		var page map[string]any
 		if err == nil {
 			page, err = countedItems(r.Context(), d.Admins.DB, rows, `SELECT count(*)::text FROM configured_orders WHERE brand_id=$1 AND ($2='' OR member_id::text=$2) AND ($3='' OR game_id::text=$3)`, brand, r.URL.Query().Get("member_id"), r.URL.Query().Get("game_id"))
@@ -80,7 +80,7 @@ func registerConfiguredAdminRoutes(register func(string, string, http.HandlerFun
 				outputMutation(w, r, out, e)
 				return
 			}
-			orders, e := betService(d).ConfiguredOrders(r.Context(), b, "", id, offset)
+			orders, e := betService(d).ConfiguredOrderSummaries(r.Context(), b, "", id, offset)
 			var page map[string]any
 			if e == nil {
 				page, e = countedItems(r.Context(), d.Admins.DB, orders, `SELECT count(*)::text FROM configured_orders WHERE brand_id=$1 AND game_id=$2`, b, id)
@@ -222,7 +222,7 @@ func registerConfiguredBetRoutes(mux routeRegistrar, d Dependencies) {
 				failure(w, r, 400, "REQUEST_INVALID", "Invalid paging")
 				return
 			}
-			out, e := betService(d).ConfiguredOrders(r.Context(), b.ID, v.Member.ID, id, offset)
+			out, e := betService(d).ConfiguredOrderSummaries(r.Context(), b.ID, v.Member.ID, id, offset)
 			result, e := betError(map[string]any{"items": out}, e)
 			outputMutation(w, r, result, e)
 		})
@@ -257,7 +257,7 @@ func registerConfiguredBetRoutes(mux routeRegistrar, d Dependencies) {
 				failure(w, r, 400, "REQUEST_INVALID", "Invalid paging")
 				return
 			}
-			out, e := betService(d).ConfiguredOrders(r.Context(), b.ID, v.Member.ID, "", offset)
+			out, e := betService(d).ConfiguredOrderSummaries(r.Context(), b.ID, v.Member.ID, "", offset)
 			result, e := betError(map[string]any{"items": out}, e)
 			outputMutation(w, r, result, e)
 		})

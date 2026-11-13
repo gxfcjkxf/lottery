@@ -15,7 +15,7 @@ for(const locale of ['en','zh-CN'] as const)test(`platform audit reasons (${loca
   if(path.endsWith('/me'))return reply({account:{id:gameId,username:'reviewer',super_admin:true,platform_permissions:['audit.view.platform']}})
   if(path.endsWith('/platform-settings'))return reply({theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',display_name:'Layout',logo_text:'L',logo_url:'',version:1,updated_at:'2026-10-18T00:00:00Z'})
   if(path.endsWith('/brands'))return reply({items:[{id:gameId,code:'aurora',name:'Aurora',status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z'}], total_count: '1'})
-  if(path.endsWith('/audit'))return reply({items:['frozen configured rule settlement',note,''].map((reason,i)=>({id:String(i),brand_id:gameId,actor_type:'system',actor_id:'',actor_username:'',request_id:'',ip_address:'',before_json:null,after_json:null,action:'user.delete.maintenance',resource_type:'configured_order',resource_id:gameId,reason,created_at:'2026-10-27T04:00:00Z'})), total_count: '3'})
+  if(path.endsWith('/audit'))return reply({items:['frozen configured rule settlement',note,''].map((reason,i)=>({id:String(i),brand_id:gameId,actor_type:'system',actor_id:'',actor_username:'',request_id:'',ip_address:'',action:'user.delete.maintenance',resource_type:'configured_order',resource_id:gameId,reason,created_at:'2026-10-27T04:00:00Z'})), total_count: '3'})
   throw Error(`Unexpected audit request ${path}`)
  })
  await page.goto(origins.platform)
@@ -106,7 +106,7 @@ for (const locale of ['en', 'zh-CN'] as const) test(`brand audit filters (${loca
  await page.route('**/api/**', route => {
   expect(route.request().method()).toBe('GET')
   const url=new URL(route.request().url())
-  if(url.pathname==='/api/v1/admin/audit')return route.fulfill({json:{success:true,data:{items:[{id:event,brand_id:brand,action:'user.delete.maintenance',actor_type:'admin',actor_id:event,actor_username:'reviewer',resource_type:'global_user',resource_id:event,reason:'User requested removal of historical unnamed Telegram account',request_id:'review',created_at:'2026-11-12T04:00:00Z',ip_address:'127.0.0.1',before_json:null,after_json:null}],total_count:'1'}}})
+  if(url.pathname==='/api/v1/admin/audit')return route.fulfill({json:{success:true,data:{items:[{id:event,brand_id:brand,action:'user.delete.maintenance',actor_type:'admin',actor_id:event,actor_username:'reviewer',resource_type:'global_user',resource_id:event,reason:'User requested removal of historical unnamed Telegram account',request_id:'review',created_at:'2026-11-12T04:00:00Z',ip_address:'127.0.0.1'}],total_count:'1'}}})
   throw Error(`Unexpected audit request ${url.pathname}`)
  })
  await installConsoleSession(page,'brand',locale,brand,['audit.view.brand'])

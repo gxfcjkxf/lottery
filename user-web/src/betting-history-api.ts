@@ -1,10 +1,10 @@
 import { isPoints } from '@lottery/shared'
 import { readPaginationTotal } from '@lottery/shared'
 import { createApiClient } from '../../shared/src/api'
-import type { ConfiguredLiveOrder } from '@lottery/shared'
+import type { ConfiguredOrderSummary } from '@lottery/shared'
 
 interface HistoryBase { id: string; game_id: string; game_name: string; period_no: string; placed_at: string }
-export type HistoryItem = HistoryBase & { kind: 'configured'; order: ConfiguredLiveOrder }
+export type HistoryItem = HistoryBase & { kind: 'configured'; order: ConfiguredOrderSummary }
 export interface HistoryPage { total_count: string;
   brand_id: string; member_id: string; game_id: string
   games: Array<{ id: string; name: string }>; items: HistoryItem[]

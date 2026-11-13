@@ -7,7 +7,7 @@ import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { createCatalogI18n } from './localization'
 import { configuredRuleCatalog } from './configured-rule-catalog'
 import { createApiClient } from './api'
-import type { ConfiguredLiveOrder } from './configured-business'
+import type { ConfiguredOrderSummary } from './configured-business'
 import ManagementList from './ManagementList.vue'
 import TablePagination from './TablePagination.vue'
 import {withGlobalLoading} from './global-loading'
@@ -19,13 +19,13 @@ const emit=defineEmits<{failure:[cause:unknown]}>()
 const i18n=createCatalogI18n(configuredRuleCatalog,props.locale)
 watch(()=>props.locale,value=>i18n.setLocale(value))
 const t=i18n.t
-const orders=shallowRef<ConfiguredLiveOrder[]>([]),offset=ref(0),busy=ref(false),failed=ref(false),loaded=ref(false)
+const orders=shallowRef<ConfiguredOrderSummary[]>([]),offset=ref(0),busy=ref(false),failed=ref(false),loaded=ref(false)
 let request=0
 async function load(next=0){
  const id=++request,brand=props.brandId;busy.value=true;failed.value=false
  try{
   const query=new URLSearchParams({limit:String(pageSize.value),offset:String(next)});if(props.gameId)query.set('game_id',props.gameId)
-  const out=await createApiClient().request<{items:ConfiguredLiveOrder[];total_count:string}>(`/api/v1/${props.surface}/configured-orders?${query}`,{headers:{'X-Brand-ID':brand}})
+  const out=await createApiClient().request<{items:ConfiguredOrderSummary[];total_count:string}>(`/api/v1/${props.surface}/configured-orders?${query}`,{headers:{'X-Brand-ID':brand}})
   if(id===request){[orders.value,totalCount.value]=[out.items,readPaginationTotal(out)];offset.value=next;loaded.value=true}
  }catch(cause){if(id===request){failed.value=true;emit('failure',cause)}}finally{if(id===request)busy.value=false}
 }

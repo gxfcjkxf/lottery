@@ -6,10 +6,12 @@ import { installLayoutApi, installWalletLayoutApi, gameId, origins, theme, expec
 
 const at = '2026-11-03T01:00:00Z'
 const snapshot = configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/mark_six_v2.json', 'utf8')))
+const play = snapshot.catalog.plays.find(play=>play.id==='special_numbers')!
+const displayPlay = {id:play.id,label:play.label,selection:{domain:play.selection.domain}}
 // Shared member, game, play, period and timestamp must never merge distinct order IDs.
 const orders = ['10.01', '20.02', '30.03'].map((stake, index) => {
  const line = { play_id:'special_numbers', options:[String(index + 1)], plate:'A', stake, prices:{hit:'48.99'} }
- return { id:`bbbbbbbb-bbbb-4bbb-8bbb-${String(index + 1).padStart(12,'0')}`, member_name:'item_member', game_id:gameId, game_name:'Mark Six', period_id:gameId, period_no:'2026307', rule_id:gameId, sales_version:1, snapshot,
+ return { id:`bbbbbbbb-bbbb-4bbb-8bbb-${String(index + 1).padStart(12,'0')}`, member_name:'item_member', game_id:gameId, game_name:'Mark Six', period_id:gameId, period_no:'2026307', rule_id:gameId, sales_version:1, snapshot:{catalog:{funding:null,plays:[displayPlay],domains:{[displayPlay.selection.domain]:{options:[{id:line.options[0]!,label:snapshot.catalog.domains[displayPlay.selection.domain]!.options.find(option=>option.id===line.options[0])!.label}]}}}},
   quote:{definition_hash:'item-records',snapshot_hash:'item-records',requests:[{play_id:line.play_id,options:line.options,plate:'A',points:stake,multiplier:'1'}],lines:[line],bet_points:stake},
   result:index === 1 ? {bet_points:stake,prize_points:'0',refund_points:'0',effective_points:stake,rounding:[],lines:[{play_id:line.play_id,options:line.options,outcome:'lost',raw_points:'0',prize_points:'0',refund_points:'0',effective_points:stake}]} : null,
   status:index === 1 ? 'settled':'placed',placed_at:at,settled_at:index === 1 ? at:null }
@@ -77,7 +79,7 @@ async function navigateConsoleRecords(page:Page,surface:'brand'|'platform',local
   const mobile=await page.locator('.mobile-nav').isVisible()
   if(mobile)await page.locator('.mobile-nav button').last().click()
   const nav=page.locator(mobile?'.mobile-more-menu':'.side-nav')
-  const button=nav.getByRole('button',{name:zh?'注单管理':'Bet order management',exact:true})
+  const button=nav.getByRole('button',{name:zh?'注单管理':'Bet order management',exact:true,includeHidden:true})
   if(!await button.isVisible())await button.locator('xpath=ancestor::details').locator('summary').click()
   await button.click()
  }
@@ -142,7 +144,7 @@ for(const surface of ['user','agent','brand','platform'] as const)for(const loca
   const preset=page.viewportSize()!
   for(const funding of ['debit','reserve']) {
    const order=orders[1]!
-   const financialOrders=[{...order,snapshot:{...snapshot,catalog:{...snapshot.catalog,funding}},quote:{...order.quote,reserved_points:'100.25'},result:{...order.result!,prize_points:'48.99',refund_points:'0.01',consumed_points:'20.01'}}]
+   const financialOrders=[{...order,snapshot:{...order.snapshot,catalog:{...order.snapshot.catalog,funding}},quote:{...order.quote,reserved_points:'100.25'},result:{...order.result!,prize_points:'48.99',refund_points:'0.01',consumed_points:'20.01'}}]
    await replaceRecords(page,surface,locale,financialOrders)
    await expect(rows).toHaveCount(1)
    const headings=await page.locator('.history-table thead th').allTextContents()

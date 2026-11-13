@@ -170,6 +170,13 @@ func TestConfiguredTemplatesLiveFundingAndHistoricalQuery(t *testing.T) {
 			if err != nil || len(orders) != 1 || orders[0].Status != "settled" || orders[0].GameName != c.g.Name {
 				t.Fatal("historical query", orders, err)
 			}
+			summaries, err := c.f.service.ConfiguredOrderSummaries(ctx, c.f.brand, c.f.member, "", 0)
+			if err != nil || len(summaries) != len(orders) {
+				t.Fatal("historical summaries", err)
+			}
+			for i := range orders {
+				assertConfiguredSummary(t, orders[i], summaries[i])
+			}
 			foreign, err := c.f.service.ConfiguredOrders(ctx, storeTestOtherBrand, c.f.member, "", 0)
 			if err != nil || len(foreign) != 0 {
 				t.Fatal("brand isolation", err)
