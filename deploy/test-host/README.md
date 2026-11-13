@@ -549,3 +549,11 @@ deploy/test-host/03-update.sh lottery --upgrade-data-retention
 通过 `03-update.sh lottery --web-only` 发布 `20261113T143634Z-f9077f4e`。用户端登录、注册页移除独立刷新图标及文字重试按钮；失败恢复复用正常 Telegram 图标入口，重新检查 SDK 并获取授权挑战，初始化失败的脚本会移除以便再次加载。保留测试机现有后端及数据库基线，没有迁移。
 
 四端生产构建通过。发布后 API、worker、Nginx active，readiness 正常，备份 `/var/backups/lottery/20261113T143634Z-f9077f4e.dump` SHA-256 校验通过。实际发布资源配合模拟认证接口完成桌面、安卓及 iOS 共24项验证；首次一项导航超时，单独复跑通过。覆盖登录／注册、SDK下载失败、初始化失败及挑战获取失败后的恢复；未登录共享账号或写入业务数据。发布日志 `.local/deploy-telegram-20261113.log`，浏览器验证记录 `.local/telegram-deploy-review/`。
+
+### 2026-11-13 文案规范、CI 与全部本地修改发布
+
+通过普通 `03-update.sh lottery` 完整发布 `20261113T151032Z-b075f276`，业务源码提交 `19d6293`。包含全部本地修改：四端“设置／数据归档／归档设置”术语统一、平台设置以外时区展示清理、文案自动检查及独立 CI 步骤，以及 Telegram 登录恢复。四端与 Linux amd64 后端重新构建，数据库结构未变更。
+
+发布前1137项单元测试、217项静态检查、四端类型检查及16项 Telegram 浏览器回归通过；此前归档页面21项中英文、安卓/iOS横竖屏及320px重排回归通过。发布后五个HTTPS入口15项公开页面检查通过，覆盖桌面、320px、安卓及iOS横屏，静态资源正常，无页面脚本异常和横向溢出；使用独立只读会话，无共享账号登录或业务数据写入。API、worker、Nginx active，API与worker重启计数均为0，readiness及实际开奖源读取通过。
+
+备份 `/var/backups/lottery/20261113T151032Z-b075f276.dump` SHA-256校验通过。部署日志 `/tmp/lottery-deploy-all-20261113.log`，公开页面验证及截图位于 `.local/deploy-copy-ci-20261113/`。
