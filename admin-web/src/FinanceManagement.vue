@@ -26,7 +26,7 @@ const displayDate = (value: string | null | undefined) => formatDisplayDateTime(
 import { formatDisplayDateTime } from "@lottery/shared";
 const displayLocale = useAdminI18n().locale;
 import { vInlineValidation } from '@lottery/shared'
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
 import type { LocalizedMessage } from "@lottery/shared";
 import { type AdminAccount } from "./admin-api";
 import DetailModal from "@lottery/shared/DetailModal.vue";
@@ -154,6 +154,7 @@ const cancelKeyFor = createBodyKeyTracker();
 const freezeKeyFor = createBodyKeyTracker();
 const unfreezeKeyFor = createBodyKeyTracker();
 const adjustKeyFor = createBodyKeyTracker();
+let alive = true;
 let dataRequestGeneration = 0;
 let queueRequestGeneration = 0;
 const viewWallet = computed(() => canViewWallet(props.account, props.brandId));
@@ -408,21 +409,28 @@ onMounted(() => {
   else if (viewRecharges.value && props.view === 'recharges') void withGlobalLoading(loadRechargeQueue);
 });
 watch(
-  () => props.brandId,
-  () => {
+  () => [props.account.id, props.brandId, viewWallet.value, viewRecharges.value, props.view],
+  (next, previous) => {
+    const sameActor = next[0] === previous[0] && next[1] === previous[1];
+    const frozenMember = sameActor && pendingMutation.value ? loadedMemberId.value : '';
+    const frozenUsername = frozenMember ? loadedMemberUsername.value : '';
+    if (!sameActor) pendingMutation.value = null;
     dataRequestGeneration++;
     queueRequestGeneration++;
     memberId.value = "";
     clearData();
     ledgerOffset.value = 0;
     rechargeOffset.value = 0;
-    if (viewRecharges.value && props.view === 'recharges') void withGlobalLoading(loadRechargeQueue);
+    loading.value = false;
+    rechargeFilterReset.value++;
+    rechargeMemberDraft.value = rechargeMemberName.value = "";
+    if (frozenMember) { loadedMemberId.value = frozenMember; loadedMemberUsername.value = frozenUsername; void withGlobalLoading(reloadData); }
+    else if (props.initialMemberId) void withGlobalLoading(inspectInitialMember);
+    else if (viewRecharges.value && props.view === 'recharges') void withGlobalLoading(loadRechargeQueue);
   },
+  { flush: "sync" },
 );
-
-watch(() => props.view, value => {
-  if (value === 'recharges' && !loadedMemberId.value && viewRecharges.value) void withGlobalLoading(loadRechargeQueue);
-});
+onBeforeUnmount(() => { alive = false; dataRequestGeneration++; queueRequestGeneration++; });
 async function loadRechargeQueue() {
   if (!viewRecharges.value) return;
   const requestBrandId = props.brandId;
@@ -496,67 +504,82 @@ async function mutate(
   action: () => Promise<unknown>,
   successText: string | LocalizedMessage,
   clearKey: () => void,
+  permission: Parameters<typeof canWriteFinance>[2],
 ) {
-  if (mutating.value) return;
-  mutating.value = true;
-  error.value = "";
-  notice.value = "";
-  try {
-    if (props.view !== 'recharges') pendingMutation.value = () => mutate(action, successText, clearKey);
-    await action();
-    pendingMutation.value = null;
-    clearKey();
-    if (props.view !== 'recharges') {
-      adjustForm.value.delta = '';
-      adjustForm.value.remark = '';
-      unfreezeReason.value = '';
-      emit('changed');
+  const actor = props.account.id, brand = props.brandId;
+  const current = () => alive && props.account.id === actor && props.brandId === brand;
+  async function run(): Promise<void> {
+    if (!current()) return;
+    if (!canWriteFinance(props.account, brand, permission)) { error.value = publicErrorMessage(new FinanceApiError('',403,'PERMISSION_DENIED')); return; }
+    if (mutating.value) return;
+    mutating.value = true;
+    error.value = "";
+    notice.value = "";
+    try {
+      if (props.view !== 'recharges') pendingMutation.value = run;
+      await action();
+      if (!current()) return;
+      pendingMutation.value = null;
+      clearKey();
+      if (props.view !== 'recharges') {
+        adjustForm.value.delta = '';
+        adjustForm.value.remark = '';
+        unfreezeReason.value = '';
+        emit('changed');
+      }
+      notice.value = successText;
+      if (loadedMemberId.value) await reloadData();
+      else if (viewRecharges.value) await loadRechargeQueue();
+    } catch (cause) {
+      if (!current()) return;
+      if (cause instanceof FinanceApiError && cause.status >= 400 && cause.status < 500) pendingMutation.value = null;
+      handleFailure(cause);
+    } finally {
+      if (current()) mutating.value = false;
     }
-    notice.value = successText;
-    if (loadedMemberId.value) await reloadData();
-    else if (viewRecharges.value) await loadRechargeQueue();
-  } catch (cause) {
-    if (cause instanceof FinanceApiError && cause.status >= 400 && cause.status < 500) pendingMutation.value = null;
-    handleFailure(cause);
-  } finally {
-    mutating.value = false;
   }
+  await run();
 }
 async function confirmRecharge(recharge: Recharge) {
+  const brandId = props.brandId;
   const reason = rechargeReasonById.value[recharge.id]?.trim() ?? "";
   const body = { version: recharge.version, reason };
   await mutate(
     () =>
       api.confirmRecharge(
-        props.brandId,
+        brandId,
         recharge.id,
         body,
-        confirmKeyFor({ brand_id: props.brandId, id: recharge.id, ...body }),
+        confirmKeyFor({ brand_id: brandId, id: recharge.id, ...body }),
       ),
     message('admin.copy.5342718a'),
     () => confirmKeyFor.clear(),
+    'recharge.write.brand',
   );
 }
 async function cancelRecharge(recharge: Recharge) {
+  const brandId = props.brandId;
   const reason = cancelReasonById.value[recharge.id]?.trim() ?? "";
   if (recharge.state !== "pending") return;
   const body = { version: recharge.version, reason };
   await mutate(
     () =>
       api.cancelRecharge(
-        props.brandId,
+        brandId,
         recharge.id,
         body,
-        cancelKeyFor({ brand_id: props.brandId, id: recharge.id, ...body }),
+        cancelKeyFor({ brand_id: brandId, id: recharge.id, ...body }),
       ),
     message('admin.copy.2d33cb11'),
     () => cancelKeyFor.clear(),
+    'recharge.write.brand',
   );
   if (!error.value) cancelReasonById.value[recharge.id] = "";
 }
 async function freezePoints() {
+  const brandId = props.brandId, targetId = loadedMemberId.value;
   if (
-    !loadedMemberId.value ||
+    !targetId ||
     !writeFreeze.value ||
     !isPositiveAmount(adjustForm.value.delta)
   )
@@ -568,17 +591,18 @@ async function freezePoints() {
   await mutate(
     () =>
       api.freezeWallet(
-        props.brandId,
-        loadedMemberId.value,
+        brandId,
+        targetId,
         body,
         freezeKeyFor({
-          brand_id: props.brandId,
-          member_id: loadedMemberId.value,
+          brand_id: brandId,
+          member_id: targetId,
           ...body,
         }),
       ),
     message('admin.copy.6954dc9c'),
     () => freezeKeyFor.clear(),
+    'wallet.freeze.brand',
   );
   if (!error.value) {
     adjustForm.value.delta = "";
@@ -587,32 +611,35 @@ async function freezePoints() {
   }
 }
 async function unfreeze(entry: LedgerEntry) {
-  if (!loadedMemberId.value ) return;
+  const brandId = props.brandId, targetId = loadedMemberId.value;
+  if (!targetId ) return;
   const body = { entry_id: entry.id, reason: unfreezeReason.value.trim() };
   await mutate(
     () =>
       api.unfreezeWallet(
-        props.brandId,
-        loadedMemberId.value,
+        brandId,
+        targetId,
         body,
         unfreezeKeyFor({
-          brand_id: props.brandId,
-          member_id: loadedMemberId.value,
+          brand_id: brandId,
+          member_id: targetId,
           ...body,
         }),
       ),
     message('admin.copy.6d969245'),
     () => unfreezeKeyFor.clear(),
+    'wallet.freeze.brand',
   );
   if (!error.value) unfreezeReason.value = "";
 }
 async function adjustPoints() {
+  const brandId = props.brandId, targetId = loadedMemberId.value;
   if (adjustForm.value.source === "freeze") {
     await freezePoints();
     return;
   }
   if (
-    !loadedMemberId.value ||
+    !targetId ||
     !writeAdjust.value ||
     !isSignedAmount(adjustForm.value.delta)
   )
@@ -625,17 +652,18 @@ async function adjustPoints() {
   await mutate(
     () =>
       api.adjustWallet(
-        props.brandId,
-        loadedMemberId.value,
+        brandId,
+        targetId,
         body,
         adjustKeyFor({
-          brand_id: props.brandId,
-          member_id: loadedMemberId.value,
+          brand_id: brandId,
+          member_id: targetId,
           ...body,
         }),
       ),
     message('admin.copy.21b7927d'),
     () => adjustKeyFor.clear(),
+    'wallet.adjust.brand',
   );
   if (!error.value) {
     adjustForm.value.delta = "";
@@ -1038,7 +1066,7 @@ useOperationToast(() => rechargeError.value, value => display(value), 'error');
 .button-primary {
   border: 0;
   background: var(--primary);
-  color: var(--surface);
+  color: var(--on-primary);
 }
 .button-secondary {
   border: 1px solid var(--line);

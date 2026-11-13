@@ -8,7 +8,7 @@ const publicErrorMessage = publicErrorI18n.errorMessage;
 import { withGlobalLoading } from '@lottery/shared';
 import { vGlobalLoading } from "@lottery/shared";
 import { vInlineValidation } from '@lottery/shared'
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
 import type { AdminAccount } from "./admin-api";
 import {
   canViewPointPolicy,
@@ -151,7 +151,7 @@ async function savePolicy() {
 
 onMounted(() => void loadPolicy());
 watch(
-  () => [props.brandId, canView.value] as const,
+  () => [props.account.id, props.brandId, canView.value] as const,
   () => {
     requestGeneration++;
     policy.value = null;
@@ -167,7 +167,9 @@ watch(
     saving.value = false;
     void loadPolicy();
   },
+  { flush: "sync" },
 );
+onBeforeUnmount(() => { requestGeneration++; });
 
 useOperationToast(() => error.value, value => display(value), 'error');
 useOperationToast(() => notice.value, value => display(value), 'success');

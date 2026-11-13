@@ -16,6 +16,7 @@ var ErrDepositPending = errors.New("deposit already awaiting payment or verifica
 var ErrConflict = errors.New("cash version or state changed")
 var ErrUnavailable = errors.New("cash configuration unavailable")
 var ErrInsufficient = errors.New("insufficient cash balance")
+var ErrDestinationExists = errors.New("payment account already bound for this currency")
 var ErrAccount = errors.New("incomplete payment account")
 var ErrLimit = errors.New("cash limit exceeded")
 var ErrRate = errors.New("exchange rate changed")
@@ -101,6 +102,7 @@ func Convert(amount int64, rate string, toPoints bool, currency string) (int64, 
 }
 
 type Rule struct {
+	Inherit       bool   `json:"inherit"`
 	Currency      string `json:"currency"`
 	Rate          string `json:"rate"`
 	DepositMin    string `json:"deposit_min"`
@@ -113,16 +115,29 @@ type Rule struct {
 	Enabled       bool   `json:"enabled"`
 }
 type Config struct {
-	Version int64  `json:"version"`
-	Rules   []Rule `json:"rules"`
+	Version       int64  `json:"version"`
+	Rules         []Rule `json:"rules"`
+	PlatformRules []Rule `json:"platform_rules,omitempty"`
 }
 
+func emptyRule(currency string, inherit bool) Rule {
+	return Rule{Currency: currency, Inherit: inherit, Rate: "", DepositMin: "0", DepositMax: "0", WithdrawalMin: "0", WithdrawalMax: "0", Fee: "0", Mode: "count", Threshold: "1"}
+}
 func EmptyConfig() Config {
 	c := Config{Rules: []Rule{}}
 	for _, v := range Currencies {
-		c.Rules = append(c.Rules, Rule{Currency: v, Rate: "", DepositMin: "0", DepositMax: "0", WithdrawalMin: "0", WithdrawalMax: "0", Fee: "0", Mode: "count", Threshold: "1"})
+		c.Rules = append(c.Rules, emptyRule(v, false))
 	}
 	return c
+}
+
+// Inherited monetary limits track the platform; rotation stays brand-owned.
+func inheritLimits(r, platform Rule) Rule {
+	r.Rate = platform.Rate
+	r.DepositMin, r.DepositMax = platform.DepositMin, platform.DepositMax
+	r.WithdrawalMin, r.WithdrawalMax = platform.WithdrawalMin, platform.WithdrawalMax
+	r.Fee = platform.Fee
+	return r
 }
 func (c Config) Rule(currency string) (Rule, error) {
 	for _, r := range c.Rules {
@@ -142,6 +157,9 @@ func (c Config) Validate(platform bool) error {
 			return ErrInvalid
 		}
 		seen[r.Currency] = true
+		if platform && r.Inherit {
+			return ErrInvalid
+		}
 		a, e1 := Parse(r.DepositMin, r.Currency)
 		b, e2 := Parse(r.DepositMax, r.Currency)
 		d, e3 := Parse(r.WithdrawalMin, r.Currency)

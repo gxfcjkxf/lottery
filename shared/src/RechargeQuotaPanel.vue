@@ -33,7 +33,7 @@ const available=ref<string|null>(null),entries=ref<Entry[]>([]),amount=ref(''),o
 const pending=ref<{brand:string;points:string;key:string;kind:'grant'|'reclaim'}|null>(null)
 const validAmount=computed(()=>isPoints(amount.value)&&pointsMinor(amount.value)>0n)
 const exceedsAvailable=computed(()=>kind.value==='reclaim' && validAmount.value && available.value!==null && pointsMinor(amount.value)>pointsMinor(available.value))
-let generation=0
+let generation=0,alive=true
 class QuotaError extends Error { constructor(message:string,readonly status:number,readonly code:string){super(message)} }
 async function request<T>(brand:string,path:string,body?:{points:string},key?:string):Promise<T>{
  let response:Response
@@ -55,20 +55,23 @@ async function changeQuota(){
  if(busy.value||!props.canGrant||!props.brandId||!props.actorId)return
  if(!pending.value){if(!validAmount.value||exceedsAvailable.value)return;pending.value={brand:props.brandId,points:amount.value,key:crypto.randomUUID(),kind:kind.value}}
  readFailed.value=false
+ const actor=props.actorId,base=props.basePath;const current=()=>alive&&props.actorId===actor&&props.basePath===base&&props.brandId===frozen.brand
  const frozen=pending.value;pendingQuotaChanges.set(`${props.actorId}:${frozen.brand}`,frozen);busy.value=true;error.value=null;saved.value=false
  try{
   const quota=await request<{brand_id:string;available:string}>(frozen.brand,frozen.kind==='grant'?'/grants':'/reclaims',{points:frozen.points},frozen.key)
   if(quota.brand_id!==frozen.brand||!isPoints(quota.available))throw new QuotaError('Invalid quota receipt',502,'INVALID_RESPONSE')
-  if(props.brandId!==frozen.brand)return
-  pending.value=null;pendingQuotaChanges.delete(`${props.actorId}:${frozen.brand}`);amount.value='';operationOpen.value=false;saved.value=true;savedKind.value=frozen.kind;emit('updated',quota);await load()
+  pendingQuotaChanges.delete(`${actor}:${frozen.brand}`)
+  if(!current())return
+  pending.value=null;amount.value='';operationOpen.value=false;saved.value=true;savedKind.value=frozen.kind;emit('updated',quota);await load()
  }catch(cause){
-  if(props.brandId!==frozen.brand)return
-  if(cause instanceof QuotaError&&cause.status>=400&&cause.status<500){pending.value=null;pendingQuotaChanges.delete(`${props.actorId}:${frozen.brand}`)}
+  if(cause instanceof QuotaError&&cause.status>=400&&cause.status<500)pendingQuotaChanges.delete(`${actor}:${frozen.brand}`)
+  if(!current())return
+  if(cause instanceof QuotaError&&cause.status>=400&&cause.status<500)pending.value=null
   error.value=cause;readFailed.value=false;emit('failure',cause)
- }finally{if(props.brandId===frozen.brand)busy.value=false}
+ }finally{if(current())busy.value=false}
 }
-watch(()=>props.brandId,()=>{operationOpen.value=false;available.value=null;[entries.value,totalCount.value]=[[],'0'];more.value=false;offset.value=0;pending.value=pendingQuotaChanges.get(`${props.actorId}:${props.brandId}`)??null;amount.value=pending.value?.points??'';kind.value=pending.value?.kind??'grant';saved.value=false;void withGlobalLoading(load)},{immediate:true})
-onBeforeUnmount(()=>{generation++})
+watch(()=>[props.brandId,props.actorId,props.basePath],()=>{operationOpen.value=false;available.value=null;[entries.value,totalCount.value]=[[],'0'];more.value=false;offset.value=0;pending.value=pendingQuotaChanges.get(`${props.actorId}:${props.brandId}`)??null;amount.value=pending.value?.points??'';kind.value=pending.value?.kind??'grant';saved.value=false;void withGlobalLoading(load)},{immediate:true,flush:'sync'})
+onBeforeUnmount(()=>{alive=false;generation++})
 defineExpose({reload:()=>load(offset.value)})
 useOperationToast(saved, () => t(savedKind.value==='grant'?'saved':'reclaimed'), 'success');
 </script>

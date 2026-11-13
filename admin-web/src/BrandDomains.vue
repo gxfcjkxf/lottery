@@ -74,6 +74,7 @@ function sessionError(cause: unknown, guard: ReturnType<typeof createBrandDomain
   if (cause instanceof AdminApiError && cause.status === 401 && isCurrent(guard, token, accountId, brandId, epoch)) { clearAllPendingBrandDomainsWrites(); emit("session-invalid"); }
 }
 async function loadRecord(): Promise<boolean> {
+  if (!permissions.value.view) return false;
   const { accountId, brandId } = scope(), epoch = brandDomainsSessionGeneration(), token = readGuard.begin(); loading.value = true; error.value = "";
   try {
     const next = await api.get(brandId);
@@ -162,11 +163,11 @@ async function send(retry = false): Promise<void> {
     sessionError(cause, writeGuard, token, intent.accountId, intent.brandId, epoch);
   } finally { if (isCurrent(writeGuard, token, intent.accountId, intent.brandId, epoch)) busy.value = false; }
 }
-watch(() => [props.account.id, props.brandId], () => {
+watch(() => [props.account.id, props.brandId, permissions.value.view, permissions.value.write], () => {
   readGuard.invalidate(); writeGuard.invalidate(); record.value = null; readFailed.value = false;
   loading.value = false; busy.value = false; error.value = ""; notice.value = ""; restoreDraft();
   if (permissions.value.view) { void withGlobalLoading(loadRecord); }
-}, { immediate: true });
+}, { immediate: true, flush: 'sync' });
 watch([operation, domainId, domain, enabled, reason], persistDraft);
 onUnmounted(() => { readGuard.invalidate(); writeGuard.invalidate(); });
 

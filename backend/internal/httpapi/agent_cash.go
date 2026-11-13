@@ -57,9 +57,15 @@ func agentCashWrite(w http.ResponseWriter, r *http.Request, d Dependencies, entr
 	}
 	var in cash.Input
 	var dest cash.Destination
+	var deletion struct {
+		ID      string `json:"id"`
+		Version int64  `json:"version"`
+	}
 	var body any = &in
 	if path == "cash/destinations" {
 		body = &dest
+	} else if path == "cash/destinations/delete" {
+		body = &deletion
 	}
 	if !decodeBody(w, r, body) {
 		return
@@ -89,6 +95,11 @@ func agentCashWrite(w http.ResponseWriter, r *http.Request, d Dependencies, entr
 			out, err = s.Exchange(ctx, tx, initial.BrandID, initial.AccountID, in, metadata)
 		} else if path == "cash/withdrawals" {
 			out, err = s.Withdraw(ctx, tx, initial.BrandID, initial.AccountID, in, metadata)
+		} else if path == "cash/destinations/delete" {
+			if !uuidPattern.MatchString(deletion.ID) {
+				return cashResult(nil, cash.ErrInvalid)
+			}
+			out, err = cash.DeleteDestination(ctx, tx, initial.BrandID, initial.AccountID, deletion.ID, deletion.Version, metadata)
 		} else if path == "cash/destinations" {
 			if dest.ID != "" && !uuidPattern.MatchString(dest.ID) {
 				return cashResult(nil, cash.ErrInvalid)

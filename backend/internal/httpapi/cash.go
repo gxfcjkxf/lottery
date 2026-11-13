@@ -36,6 +36,8 @@ func cashResult(out any, e error) (mutation.Result, error) {
 		return mutation.OK(200, out), nil
 	case errors.Is(e, cash.ErrInvalid):
 		return mutation.Fail(400, "CASH_INPUT_INVALID", "Invalid currency amount or settings"), nil
+	case errors.Is(e, cash.ErrDestinationExists):
+		return mutation.Fail(409, "CASH_ACCOUNT_EXISTS", "A payment account is already bound for this currency"), nil
 	case errors.Is(e, cash.ErrAccount):
 		return mutation.Fail(422, "CASH_ACCOUNT_INCOMPLETE", "Complete the payment account details"), nil
 	case errors.Is(e, cash.ErrDepositPending):
@@ -139,7 +141,7 @@ func registerCashUser(mux routeRegistrar, d Dependencies) {
 					if e != nil {
 						return nil, e
 					}
-					brand, e := cash.ReadConfig(r.Context(), tx, b.ID)
+					brand, e := cash.ReadBrandConfig(r.Context(), tx, b.ID)
 					if e != nil {
 						return nil, e
 					}
@@ -148,7 +150,7 @@ func registerCashUser(mux routeRegistrar, d Dependencies) {
 				cashOutput(w, r, out, e)
 			})
 		}
-		for _, path := range []string{"/cash/deposits", "/cash/exchanges", "/cash/withdrawals", "/cash/destinations", "/cash/orders/{id}/{action}"} {
+		for _, path := range []string{"/cash/deposits", "/cash/exchanges", "/cash/withdrawals", "/cash/destinations", "/cash/destinations/delete", "/cash/orders/{id}/{action}"} {
 			mux.HandleFunc("POST "+prefix+path, func(w http.ResponseWriter, r *http.Request) {
 				if withdrawalOrdersUnavailable(w, r, d) || !withdrawalNoQuery(w, r) {
 					return
@@ -163,12 +165,25 @@ func registerCashUser(mux routeRegistrar, d Dependencies) {
 				}
 				var in cash.Input
 				var dest cash.Destination
+				var deletion struct {
+					ID      string `json:"id"`
+					Version int64  `json:"version"`
+				}
 				var body any
 				if path == "/cash/destinations" {
 					if !decodeBody(w, r, &dest) {
 						return
 					}
 					body = dest
+				} else if path == "/cash/destinations/delete" {
+					if !decodeBody(w, r, &deletion) {
+						return
+					}
+					if !uuidPattern.MatchString(deletion.ID) {
+						cashOutput(w, r, nil, cash.ErrInvalid)
+						return
+					}
+					body = deletion
 				} else {
 					if !decodeBody(w, r, &in) {
 						return
@@ -211,6 +226,8 @@ func registerCashUser(mux routeRegistrar, d Dependencies) {
 						out, err = s.Exchange(ctx, tx, b.ID, fresh.Member.ID, in, meta)
 					case "/cash/withdrawals":
 						out, err = s.Withdraw(ctx, tx, b.ID, fresh.Member.ID, in, meta)
+					case "/cash/destinations/delete":
+						out, err = cash.DeleteDestination(ctx, tx, b.ID, fresh.Member.ID, deletion.ID, deletion.Version, meta)
 					case "/cash/destinations":
 						out, err = cash.SaveDestination(ctx, tx, b.ID, fresh.Member.ID, dest, meta)
 					default:
@@ -299,8 +316,12 @@ func registerCashAdmin(handle func(string, string, http.HandlerFunc), d Dependen
 				if platform {
 					scope = "platform"
 				}
-				c, err := cash.ReadConfig(r.Context(), tx, scope)
-				e = err
+				var c cash.Config
+				if platform {
+					c, e = cash.ReadConfig(r.Context(), tx, scope)
+				} else {
+					c, e = cash.ReadBrandConfig(r.Context(), tx, scope)
+				}
 				out = c
 			case "/cash/destinations":
 				out, e = cash.Destinations(r.Context(), tx, brand, "")

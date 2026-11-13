@@ -83,7 +83,7 @@ watch(kind, () => {
   groupBy.value = 'day'; gameFilter.value = ''; agentFilter.value = ''; cycleFilter.value = ''; orderFilter.value = ''; clearReport()
   if (props.brandId) void withGlobalLoading(load, 0)
 })
-watch(() => props.brandId, () => {
+watch(() => [props.brandId, props.memberId], () => {
   clearReport(); from.value = new Date().toISOString().slice(0, 10); to.value = from.value; groupBy.value = 'day'
   memberFilter.value = ''; gameFilter.value = ''; agentFilter.value = ''; cycleFilter.value = ''; orderFilter.value = ''
   if (props.brandId) void withGlobalLoading(load, 0)
@@ -92,7 +92,7 @@ onBeforeUnmount(() => { generation++; })
 
 async function makeQuery(pageOffset: number): Promise<ReportQuery> {
   const query: ReportQuery = { ...reportDateRange(from.value, to.value, props.displaySettings.timezone), group_by: groupBy.value, limit: pageSize.value, offset: pageOffset }
-  const username = memberFilter.value.trim()
+  const username = props.memberId || memberFilter.value.trim()
   const optional: Partial<Record<'member_id' | 'game_id' | 'agent_id' | 'cycle_id' | 'order_id', string>> = {
     ...(username ? { member_id: username } : {}), game_id: gameFilter.value.trim(), agent_id: agentFilter.value.trim(), cycle_id: cycleFilter.value.trim(), order_id: orderFilter.value.trim(),
   }

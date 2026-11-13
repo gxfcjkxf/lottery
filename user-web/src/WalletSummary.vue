@@ -150,11 +150,13 @@ watch(
   () => [props.brandCode, props.view],
   () => {
     loadGeneration++;
+    loading.value = false;
     wallet.value = null;
     [entries.value,ledgerTotal.value]=[[],'0'];
     offset.value = 0;
     void load();
   },
+  { flush: "sync" },
 );
 async function changePage(direction: number) {
   await load(Math.max(0, offset.value + direction * PAGE_SIZE.value));

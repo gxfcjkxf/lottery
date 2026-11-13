@@ -104,6 +104,7 @@ function timestamp(value: string): string{ return formatDisplayDateTime(value, d
 function actorLabel(entry: AdminAuditRecord): string {
   if (entry.actor_username) return entry.actor_username;
   if (entry.actor_type === "system") return tr('admin.copy.532e2e04');
+  if (entry.actor_type === "agent") return tr('admin.copy.b863c1ed');
   if (entry.actor_type === "user") return tr('admin.copy.689b5703');
   if (entry.actor_type === "anonymous") return tr('admin.copy.3499c2d9');
   return tr('admin.copy.6155e68e');

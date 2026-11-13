@@ -16,7 +16,7 @@ const key = 'lottery.platform.selectedBrand'
 const storage = new Map<string, string>()
 const api = {
   presentation: vi.fn(async () => ({ display_name: 'Trial', logo_text: 'T', logo_url: '' })),
-  me: vi.fn(async () => ({ id: 'account-a', platform_permissions: [] })),
+  me: vi.fn(async () => ({ id: 'account-a', platform_permissions: ['user.view.platform', 'audit.view.platform'] })),
   platformSettings: vi.fn(async () => ({})),
   brands: vi.fn(async () => ['brand-a','brand-b'].map(id=>({id,code:id,name:id,status:'active',member_count:'0',agent_count:'0',recharge_quota_available:'0',created_at:'2026-10-24T00:00:00Z'}))),
   users: vi.fn(async () => ({ items: [], limit: 50, offset: 0, total_count: '0' })), audit: vi.fn(async () => []),
@@ -108,6 +108,7 @@ describe('platform brand selection during a login', () => {
     api.me.mockImplementationOnce(async () => { throw new PlatformApiError('Replaced session', 401, 'AUTH_SESSION_REPLACED') })
     window.dispatchEvent(new Event('focus'))
     await nextTick()
+    await new Promise(resolve => setTimeout(resolve,0))
     expect(state.account).toBeNull()
     expect(state.sessionReplaced).toBe(true)
   })
@@ -170,4 +171,69 @@ describe('platform brand selection during a login', () => {
     expect(state.selectedBrand).toBe('')
     expect(storage.has(key)).toBe(false)
   })
+})
+
+
+describe('workspace read permissions', () => {
+  it.each(['users', 'audit'] as const)('discards late %s reads after revocation and reloads after restoration', async resource => {
+    const state = await mount()
+    await state.chooseBrand('brand-a')
+    await state.chooseSection(resource)
+    const mock = api[resource]
+    let finish!: (value: any) => void
+    mock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }) as any)
+    const read = resource === 'users' ? state.loadMembers('brand-a') : state.loadAudit('brand-a')
+    state.account.platform_permissions = []
+    await nextTick()
+    finish({ items: [{id:'stale'}], total_count:'1', limit:50, offset:0 })
+    await read
+    expect(resource === 'users' ? state.members : state.auditRows).toEqual([])
+    const count = mock.mock.calls.length
+    state.account.platform_permissions = ['user.view.platform','audit.view.platform']
+    await nextTick()
+    await new Promise(resolve => setTimeout(resolve,0))
+    expect(mock.mock.calls.length).toBe(count+1)
+  })
+  it('ignores an obsolete member 401 after permissions change', async () => {
+    const state = await mount()
+    await state.chooseBrand('brand-a')
+    await state.chooseSection('users')
+    let fail!: (cause: unknown) => void
+    api.users.mockImplementationOnce(() => new Promise((_resolve,reject) => { fail = reject }))
+    const read = state.loadMembers('brand-a')
+    state.account.platform_permissions = []
+    fail(new PlatformApiError('Old request',401,'AUTH_SESSION_REVOKED'))
+    await read
+    expect(state.account.id).toBe('account-a')
+    expect(state.members).toEqual([])
+  })
+})
+
+
+it('does not restore a workspace from a read started before sign-out', async () => {
+  const state = await mount()
+  let finish!: (value: any) => void
+  api.platformSettings.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const read = state.loadWorkspace()
+  await nextTick()
+  await new Promise(resolve=>setTimeout(resolve,0))
+  state.clearPrivateState()
+  finish({display_name:'stale settings'})
+  await read
+  expect(state.account).toBeNull()
+  expect(state.platformSettings).toBeNull()
+  expect(state.brands).toEqual([])
+})
+
+
+it('applies refreshed permissions from the existing session check', async () => {
+  const state = await mount()
+  await state.chooseBrand('brand-a')
+  await state.chooseSection('users')
+  api.me.mockResolvedValueOnce({id:'account-a',platform_permissions:[]})
+  window.dispatchEvent(new Event('focus'))
+  await nextTick()
+  await new Promise(resolve=>setTimeout(resolve,0))
+  expect(state.account.platform_permissions).toEqual([])
+  expect(state.members).toEqual([])
 })

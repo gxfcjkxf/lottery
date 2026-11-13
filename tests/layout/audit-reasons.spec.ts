@@ -12,7 +12,7 @@ for(const locale of ['en','zh-CN'] as const)test(`platform audit reasons (${loca
   const path=new URL(route.request().url()).pathname
   const reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
   if(path.endsWith('/presentation'))return reply({display_name:'Layout',logo_text:'L',logo_url:''})
-  if(path.endsWith('/me'))return reply({account:{id:gameId,username:'reviewer',super_admin:true,platform_permissions:[]}})
+  if(path.endsWith('/me'))return reply({account:{id:gameId,username:'reviewer',super_admin:true,platform_permissions:['audit.view.platform']}})
   if(path.endsWith('/platform-settings'))return reply({theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',display_name:'Layout',logo_text:'L',logo_url:'',version:1,updated_at:'2026-10-18T00:00:00Z'})
   if(path.endsWith('/brands'))return reply({items:[{id:gameId,code:'aurora',name:'Aurora',status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z'}], total_count: '1'})
   if(path.endsWith('/audit'))return reply({items:['frozen configured rule settlement',note,''].map((reason,i)=>({id:String(i),brand_id:gameId,actor_type:'system',actor_id:'',actor_username:'',request_id:'',ip_address:'',before_json:null,after_json:null,action:'user.delete.maintenance',resource_type:'configured_order',resource_id:gameId,reason,created_at:'2026-10-27T04:00:00Z'})), total_count: '3'})
@@ -50,7 +50,7 @@ for(const locale of ['en','zh-CN'] as const)test(`platform audit reasons (${loca
  await form.getByRole('combobox',{name:locale==='zh-CN'?'类型':'Type',exact:true}).click()
  await page.getByRole('option',{name:locale==='zh-CN'?'删除':'Delete',exact:true}).click()
  for(const endpoint of ['from','to']) {
-  await form.getByRole('button',{name:locale==='zh-CN'?(endpoint==='from'?'开始日期 UTC':'结束日期 UTC'):(endpoint==='from'?'Start date UTC':'End date UTC'),exact:true}).click()
+  await form.getByRole('button',{name:locale==='zh-CN'?(endpoint==='from'?'开始日期':'结束日期'):(endpoint==='from'?'Start date':'End date'),exact:true}).click()
   await page.getByRole('button',{name:'2026-11-12',exact:true}).click()
  }
  const request=page.waitForRequest(r=>r.url().includes('/audit?')&&new URL(r.url()).searchParams.get('actor')==='reviewer')

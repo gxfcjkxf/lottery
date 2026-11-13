@@ -13,15 +13,16 @@ const i18n = createCatalogI18n(drawOverviewCatalog, props.locale)
 watch(() => props.locale, value => i18n.setLocale(value))
 const t = i18n.t
 const games = ref<PlatformGame[]>([]), gameId = ref(''), failed = ref(false), busy = ref(false)
-const api = createPlatformLotteryClient('admin', () => props.brandId)
 let generation = 0, alive = true
 async function load() {
- const ticket = ++generation
+ const ticket = ++generation, brand = props.brandId
+ const client = createPlatformLotteryClient('admin', () => brand)
  games.value = []; gameId.value = ''; failed.value = false; busy.value = true
  try {
   const rows: PlatformGame[] = []
   for (let offset = 0; ; offset += 100) {
-   const page = await api.list(offset, 100)
+   const page = await client.list(offset, 100)
+   if (!alive || ticket !== generation) return
    rows.push(...page.games.filter(game => game.connected))
    if (offset + page.games.length >= Number(page.total_count)) break
   }

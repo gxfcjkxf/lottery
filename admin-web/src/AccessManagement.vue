@@ -169,8 +169,16 @@ function handleError(cause: unknown) {
     emit("session-invalid");
   error.value = publicErrorMessage(cause);
 }
+let loadVersion = 0;
 async function load(requestedOffset = offset.value) {
+  const version = ++loadVersion;
   const requestBrandId = props.brandId;
+  const requestSection = section.value;
+  const isCurrentLoad = () => version === loadVersion;
+  roleCatalogLoaded.value = false;
+  roleCatalogMessage.value = "";
+  roles.value = [];
+  registeredPermissions.value = [];
   if (
     !requestBrandId ||
     !(
@@ -179,25 +187,27 @@ async function load(requestedOffset = offset.value) {
       writeRoles.value ||
       writeAccounts.value
     )
-  )
+  ) {
+    loading.value = false;
     return;
+  }
   loading.value = true;
   error.value = "";
-  if (section.value === "roles") {
+  if (requestSection === "roles") {
     if (canRoles.value) {
       try {
         const [listed, perms] = await Promise.all([
           api.roles(requestBrandId, pageSize.value, requestedOffset),
           api.permissions(requestBrandId),
         ]);
-        if (props.brandId !== requestBrandId) return;
+        if (!isCurrentLoad()) return;
         [roles.value, rolesTotal.value] = [listed.items, readPaginationTotal(listed)];
         offset.value = requestedOffset;
         registeredPermissions.value = perms.items;
         roleCatalogLoaded.value = true;
         roleCatalogMessage.value = "";
       } catch (cause) {
-        if (props.brandId !== requestBrandId) return;
+        if (!isCurrentLoad()) return;
         registeredPermissions.value = [];
         roleCatalogLoaded.value = false;
         roleCatalogMessage.value = message('admin.copy.afb348bc',
@@ -212,30 +222,30 @@ async function load(requestedOffset = offset.value) {
       );
     }
   }
-  if (section.value === "accounts") {
+  if (requestSection === "accounts") {
     const tasks: Promise<void>[] = [];
     if (canAccounts.value)
       tasks.push(
         api
           .accounts(requestBrandId, pageSize.value, requestedOffset)
           .then((listed) => {
-            if (props.brandId === requestBrandId) { [accounts.value, accountsTotal.value] = [listed.items, readPaginationTotal(listed)]; offset.value = requestedOffset; }
+            if (isCurrentLoad()) { [accounts.value, accountsTotal.value] = [listed.items, readPaginationTotal(listed)]; offset.value = requestedOffset; }
           })
           .catch((cause: unknown) => {
-            if (props.brandId === requestBrandId) handleError(cause);
+            if (isCurrentLoad()) handleError(cause);
           }),
       );
     if (canRoles.value) {
       tasks.push(
         loadRoleCatalog(requestBrandId)
           .then((catalog) => {
-            if (props.brandId !== requestBrandId) return;
+            if (!isCurrentLoad()) return;
             roles.value = catalog;
             roleCatalogLoaded.value = true;
             roleCatalogMessage.value = "";
           })
           .catch((cause: unknown) => {
-            if (props.brandId !== requestBrandId) return;
+            if (!isCurrentLoad()) return;
             roleCatalogLoaded.value = false;
             roleCatalogMessage.value = message('admin.copy.50575ea4',
             );
@@ -250,7 +260,7 @@ async function load(requestedOffset = offset.value) {
     }
     await Promise.all(tasks);
   }
-  loading.value = false;
+  if (isCurrentLoad()) loading.value = false;
 }
 async function loadRoleCatalog(brandId: string): Promise<RoleRecord[]> {
   const all: RoleRecord[] = [];
@@ -262,8 +272,10 @@ async function loadRoleCatalog(brandId: string): Promise<RoleRecord[]> {
 }
 onMounted(() => void withGlobalLoading(load));
 watch(
-  () => props.brandId,
+  [() => props.brandId, section, actorPermissions],
   () => {
+    roleEditorOpen.value = false;
+    accountEditorOpen.value = false;
     viewedRole.value = null;
     [roles.value,rolesTotal.value]=[[],'0'];
     [accounts.value,accountsTotal.value]=[[],'0'];
@@ -276,12 +288,6 @@ watch(
     void withGlobalLoading(load);
   },
 );
-watch(section, () => {
-  roleEditorOpen.value = false; accountEditorOpen.value = false;
-  viewedRole.value = null;
-  offset.value = 0;
-  void load();
-});
 function newRole() {
   roleEditorOpen.value = false;
   roleForm.value = {
@@ -535,9 +541,9 @@ useOperationToast(() => notice.value, value => display(value), 'success');
             :has-previous="offset > 0"
             :has-next="pageHasNext"
            :page-size="pageSize" :go-to="(target: number) => changePage(target - (Math.floor(offset / pageSize + 1)))" :change-page-size="async (size: number) => { pageSize = size; await load(0) }" /></template></ManagementList>
-        <p v-else class="callout">
+        <p v-else-if="roleCatalogMessage" class="callout">
           {{
-            display(roleCatalogMessage || message('admin.copy.4f2155ad'))
+            display(roleCatalogMessage)
           }}
         </p>
       </div>
@@ -632,11 +638,11 @@ useOperationToast(() => notice.value, value => display(value), 'success');
         </form>
         </DetailModal>
         <p
-          v-if="(canAccounts || writeAccounts) && !roleCatalogLoaded"
+          v-if="(canAccounts || writeAccounts) && roleCatalogMessage"
           class="callout"
         >
           {{
-            display(roleCatalogMessage || message('admin.copy.d6eded98'))
+            display(roleCatalogMessage)
           }}
         </p>
         <p v-if="writeAccounts && !canAccounts" class="callout">
@@ -695,8 +701,6 @@ useOperationToast(() => notice.value, value => display(value), 'success');
 <style scoped>
 
 .access-page {
-  --ink: #252a36;
-  --sub: var(--muted);
   color: var(--ink);
   width: 100%;
   min-width: 0;
@@ -717,21 +721,21 @@ useOperationToast(() => notice.value, value => display(value), 'success');
   letter-spacing: -0.5px;
 }
 .heading p {
-  color: var(--sub);
+  color: var(--muted);
   margin: 0;
 }
 .eyebrow {
   font-size: var(--body-font-size);
   letter-spacing: 1.2px;
-  color: #8991a2;
+  color: var(--muted);
   font-weight: 700;
 }
 .brand-tag,
 .pill {
   border-radius: 20px;
-  background: #f1f3f8;
+  background: var(--canvas);
   padding: 7px 11px;
-  color: #626b7c;
+  color: var(--ink-secondary);
   font-size: var(--body-font-size);
   white-space: nowrap;
 }
@@ -743,12 +747,12 @@ useOperationToast(() => notice.value, value => display(value), 'success');
   align-items: start;
 }
 .panel {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 11px;
   padding: 17px;
   min-width: 0;
-  box-shadow: 0 2px 8px #1e2a5008;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 3%, transparent);
 }
 .panel-title {
   display: flex;
@@ -773,7 +777,7 @@ useOperationToast(() => notice.value, value => display(value), 'success');
 .panel-title p,
 .muted {
   font-size: 11px;
-  color: var(--sub);
+  color: var(--muted);
   margin: 0;
   line-height: 1.6;
 }
@@ -790,7 +794,7 @@ useOperationToast(() => notice.value, value => display(value), 'success');
 .form input:not([type="checkbox"]), .form textarea {
   width: 100%;
   min-width: 0;
-  border: 1px solid #dfe3eb;
+  border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--surface);
   padding: 9px 10px;
@@ -839,14 +843,14 @@ useOperationToast(() => notice.value, value => display(value), 'success');
 .check code,
 code {
   font-size: var(--body-font-size);
-  color: #777f90;
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
 .button-primary {
   border: 0;
   border-radius: 7px;
   background: var(--primary);
-  color: white;
+  color: var(--on-primary);
   font-weight: 700;
   padding: 10px 12px;
 }
@@ -863,7 +867,7 @@ code {
 }
 .record {
   padding: 13px 0;
-  border-bottom: 1px solid #f0f1f4;
+  border-bottom: 1px solid var(--line-subtle);
   min-width: 0;
 }
 .record-top,
@@ -886,22 +890,22 @@ code {
 .permission-summary {
   font-size: var(--body-font-size);
   line-height: 1.55;
-  color: #626b7c;
+  color: var(--ink-secondary);
   overflow-wrap: anywhere;
   margin: 9px 0;
 }
 .record-bottom small {
-  color: #969dac;
+  color: var(--muted);
   font-size: var(--body-font-size);
   overflow-wrap: anywhere;
 }
 .pill.active {
-  background: #e9f6f0;
-  color: #258763;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 .pill.disabled {
-  background: #f3f3f5;
-  color: #818896;
+  background: var(--canvas);
+  color: var(--muted);
 }
 .inline-actions {
   display: flex;
@@ -923,22 +927,22 @@ code {
 }
 .error {
   background: var(--danger-bg);
-  color: #a83d36;
+  color: var(--danger-text);
 }
 .success {
-  background: #edf8f2;
-  color: #287553;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 .callout {
-  background: #f5f6fa;
-  color: #697184;
+  background: var(--canvas);
+  color: var(--muted);
 }
 .union {
   display: grid;
   gap: 6px;
   border-radius: 8px;
   padding: 11px;
-  background: #f4f6f4;
+  background: var(--canvas);
   font-size: var(--body-font-size);
   overflow-wrap: anywhere;
 }
@@ -947,7 +951,7 @@ code {
 }
 .union small,
 .readonly {
-  color: var(--sub);
+  color: var(--muted);
   line-height: 1.5;
 }
 .readonly {

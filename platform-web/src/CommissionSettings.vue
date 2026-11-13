@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import SelectControl from '@lottery/shared/SelectControl.vue'
 import { useOperationToast } from "@lottery/shared";
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { vWriteGuard, vInlineValidation, withGlobalLoading } from '@lottery/shared'
 import { createPlatformApi, PlatformApiError, type PlatformCommissionPolicy } from './platform-api'
 import { usePlatformI18n } from './i18n'
-const props = defineProps<{ timezone: string; canManage: boolean }>()
+const props = defineProps<{ timezone: string; canManage: boolean; canView: boolean }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
 const { t, message, errorMessage, displayError } = usePlatformI18n()
 const api = createPlatformApi()
@@ -21,29 +21,34 @@ const error = ref<string | import('@lottery/shared').LocalizedMessage>('')
 const notice = ref<string | import('@lottery/shared').LocalizedMessage>('')
 const conflict = ref(false)
 const pending = ref<{ body: PlatformCommissionPolicy; key: string } | null>(null)
+let readTicket = 0, alive = true
 async function load() {
+ const ticket = ++readTicket
+ if (!props.canView) { busy.value=false; current.value=null; error.value=errorMessage(new PlatformApiError('',403,'PERMISSION_DENIED')); return }
  busy.value = true; error.value = ''
  try {
-  const item = await api.commissionSettings(); current.value = item; payoutsEnabled.value = item.payouts_enabled; enabled.value = item.config.enabled; mode.value = item.config.payout_mode
+  const item = await api.commissionSettings(); if (!alive || ticket !== readTicket) return; current.value = item; payoutsEnabled.value = item.payouts_enabled; enabled.value = item.config.enabled; mode.value = item.config.payout_mode
   if(item.config.calendar) { cycle.value = item.config.calendar.cycle; weekday.value = item.config.calendar.weekday ?? 1; monthDay.value = item.config.calendar.month_day ?? 1 }
   conflict.value = false
- } catch(cause) { error.value = errorMessage(cause); emit('failure', cause) }
- finally { busy.value = false }
+ } catch(cause) { if (alive && ticket === readTicket) { error.value = errorMessage(cause); emit('failure', cause) } }
+ finally { if (alive && ticket === readTicket) busy.value = false }
 }
 async function save() {
- if(!props.canManage || busy.value || !current.value) return
+ if(!props.canManage || !props.canView || busy.value || !current.value) return
  if(!pending.value) pending.value = {key: crypto.randomUUID(),body: {version: current.value.version,payouts_enabled: payoutsEnabled.value,config: {enabled: enabled.value,payout_mode: mode.value,calendar: {timezone: props.timezone,cycle: cycle.value,boundary_time:'00:00:00',weekday: cycle.value === 'weekly' ? weekday.value : null,month_day: cycle.value === 'monthly' ? monthDay.value : null,short_month: cycle.value === 'monthly' ? 'last_day' : ''}}}}
  busy.value = true; error.value = ''; notice.value = ''
  try {
-  const item = await api.updateCommissionSettings(pending.value.body,pending.value.key); current.value = item; pending.value = null
+  const item = await api.updateCommissionSettings(pending.value.body,pending.value.key); if (!alive) return; current.value = item; pending.value = null
   notice.value = message(item.payouts_enabled ? 'commission.settings.saved' : 'commission.settings.disabled')
  } catch(cause) {
+  if (!alive) return
   if(cause instanceof PlatformApiError && cause.status >= 400 && cause.status < 500) {pending.value = null;conflict.value = cause.status === 409}
   error.value = errorMessage(cause); emit('failure',cause)
  } finally {busy.value = false}
 }
 onMounted(load)
-watch(() => props.timezone, () => { if(!pending.value) void load() })
+watch(() => [props.timezone, props.canManage, props.canView], () => { if(!pending.value) { readTicket++; busy.value=false; void load() } else { readTicket++; if(!props.canView) current.value=null; else if(!busy.value) void load() } }, { flush: 'sync' })
+onBeforeUnmount(() => { alive=false; readTicket++ })
 useOperationToast(notice, value => displayError(value), 'success');
 
 useOperationToast(error, value => displayError(value), 'error');

@@ -19221,7 +19221,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. actor matches a case-insensitive literal username substring; action_type groups operations as create, view, query, edit or delete. Other filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; each record includes a required nullable brand_id, which is null for platform records, and a required actor_username, empty when the administrator or member username cannot be resolved. Clients should use actor_username for administrator display and actor_type text for other actors; retain actor_id only as the technical UUID. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. actor matches a case-insensitive literal username substring; action_type groups operations as create, view, query, edit or delete. Other filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; each record includes a required nullable brand_id, which is null for platform records, and a required actor_username, empty when the administrator, member or brand-scoped agent username cannot be resolved. Clients should use actor_username for account display and actor_type text for actors without a resolved account; retain actor_id only as the technical UUID. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -19707,7 +19707,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Only platform-scoped grants are considered. Platform business reads remain permission checked. Account and role management are registered explicitly; brand member edits, approvals and financial mutations remain unregistered. Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. actor matches a case-insensitive literal username substring; action_type groups operations as create, view, query, edit or delete. Other filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; each record includes a required nullable brand_id, which is null for platform records, and a required actor_username, empty when the administrator or member username cannot be resolved. Clients should use actor_username for administrator display and actor_type text for other actors; retain actor_id only as the technical UUID. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
+        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Only platform-scoped grants are considered. Platform business reads remain permission checked. Account and role management are registered explicitly; brand member edits, approvals and financial mutations remain unregistered. Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. actor matches a case-insensitive literal username substring; action_type groups operations as create, view, query, edit or delete. Other filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; each record includes a required nullable brand_id, which is null for platform records, and a required actor_username, empty when the administrator, member or brand-scoped agent username cannot be resolved. Clients should use actor_username for account display and actor_type text for actors without a resolved account; retain actor_id only as the technical UUID. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -161132,6 +161132,1418 @@
         }
       }
     },
+    "/api/v1/cash/destinations/delete": {
+      "post": {
+        "operationId": "userCashDeleteDestination",
+        "summary": "Delete own withdrawal destination",
+        "tags": [
+          "finance"
+        ],
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "security": [
+          {
+            "userBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Cash-Actor-Context",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_:.-]{8,128}$"
+            },
+            "description": "Unique operation intent. Unknown result retries preserve this key and exactly the same body. Same key/different body returns409; successful cached receipts describe the original result, not live state."
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required when any Cookie is sent: must match the original request Host and accepted scheme. Bearer-only nonbrowser requests may omit it. Client must not forge forwarded Host/IP."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "request_id"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CashDestination"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    },
+                    "associations": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/AssociationDisplayName"
+                      },
+                      "description": "Display-only names for structured references already in this authorized response. Keys are entity-kind:UUID. Original business data and CSV are unchanged; do not persist this metadata or submit it in mutations."
+                    },
+                    "association_error": {
+                      "type": "boolean",
+                      "description": "Display-name projection unavailable. Does not invalidate the acknowledged business response."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [],
+        "x-idempotent-operation": true,
+        "requestBody": {
+          "required": true,
+          "description": "Exactly one JSON object, at most16KiB; unknown fields rejected where documented. JSON Schema cannot represent duplicate-member rejection; see handler contract.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CashDestinationDelete"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/b/{brandCode}/cash/destinations/delete": {
+      "post": {
+        "operationId": "userCashDeleteDestinationByBrand",
+        "summary": "Delete own withdrawal destination",
+        "tags": [
+          "finance"
+        ],
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "security": [
+          {
+            "userBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Cash-Actor-Context",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          {
+            "name": "brandCode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_:.-]{8,128}$"
+            },
+            "description": "Unique operation intent. Unknown result retries preserve this key and exactly the same body. Same key/different body returns409; successful cached receipts describe the original result, not live state."
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required when any Cookie is sent: must match the original request Host and accepted scheme. Bearer-only nonbrowser requests may omit it. Client must not forge forwarded Host/IP."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "request_id"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CashDestination"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    },
+                    "associations": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/AssociationDisplayName"
+                      },
+                      "description": "Display-only names for structured references already in this authorized response. Keys are entity-kind:UUID. Original business data and CSV are unchanged; do not persist this metadata or submit it in mutations."
+                    },
+                    "association_error": {
+                      "type": "boolean",
+                      "description": "Display-name projection unavailable. Does not invalidate the acknowledged business response."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [],
+        "x-idempotent-operation": true,
+        "requestBody": {
+          "required": true,
+          "description": "Exactly one JSON object, at most16KiB; unknown fields rejected where documented. JSON Schema cannot represent duplicate-member rejection; see handler contract.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CashDestinationDelete"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent/cash/destinations/delete": {
+      "post": {
+        "operationId": "agentCashDeleteDestination",
+        "summary": "Delete own withdrawal destination",
+        "tags": [
+          "finance"
+        ],
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "security": [
+          {
+            "agentBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Cash-Actor-Context",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_:.-]{8,128}$"
+            },
+            "description": "Unique operation intent. Unknown result retries preserve this key and exactly the same body. Same key/different body returns409; successful cached receipts describe the original result, not live state."
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required when any Cookie is sent: must match the original request Host and accepted scheme. Bearer-only nonbrowser requests may omit it. Client must not forge forwarded Host/IP."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "request_id"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CashDestination"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    },
+                    "associations": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/AssociationDisplayName"
+                      },
+                      "description": "Display-only names for structured references already in this authorized response. Keys are entity-kind:UUID. Original business data and CSV are unchanged; do not persist this metadata or submit it in mutations."
+                    },
+                    "association_error": {
+                      "type": "boolean",
+                      "description": "Display-name projection unavailable. Does not invalidate the acknowledged business response."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [],
+        "x-idempotent-operation": true,
+        "requestBody": {
+          "required": true,
+          "description": "Exactly one JSON object, at most16KiB; unknown fields rejected where documented. JSON Schema cannot represent duplicate-member rejection; see handler contract.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CashDestinationDelete"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/b/{brandCode}/agent/cash/destinations/delete": {
+      "post": {
+        "operationId": "agentCashDeleteDestinationByBrand",
+        "summary": "Delete own withdrawal destination",
+        "tags": [
+          "finance"
+        ],
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "security": [
+          {
+            "agentBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Cash-Actor-Context",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          {
+            "name": "brandCode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_:.-]{8,128}$"
+            },
+            "description": "Unique operation intent. Unknown result retries preserve this key and exactly the same body. Same key/different body returns409; successful cached receipts describe the original result, not live state."
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required when any Cookie is sent: must match the original request Host and accepted scheme. Bearer-only nonbrowser requests may omit it. Client must not forge forwarded Host/IP."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "request_id"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CashDestination"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    },
+                    "associations": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/AssociationDisplayName"
+                      },
+                      "description": "Display-only names for structured references already in this authorized response. Keys are entity-kind:UUID. Original business data and CSV are unchanged; do not persist this metadata or submit it in mutations."
+                    },
+                    "association_error": {
+                      "type": "boolean",
+                      "description": "Display-name projection unavailable. Does not invalidate the acknowledged business response."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [],
+        "x-idempotent-operation": true,
+        "requestBody": {
+          "required": true,
+          "description": "Exactly one JSON object, at most16KiB; unknown fields rejected where documented. JSON Schema cannot represent duplicate-member rejection; see handler contract.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CashDestinationDelete"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/agent/cash": {
       "get": {
         "operationId": "agentCashWallet",
@@ -161139,7 +162551,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent session only. Account and brand come from the session. Deposit, exchange and withdrawal records are available; no member or account selector is accepted. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent session only. Account and brand come from the session. Deposit, exchange and withdrawal records are available; no member or account selector is accepted. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -161449,7 +162861,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent session only. Account and brand come from the session. Deposit, exchange and withdrawal records are available; no member or account selector is accepted. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent session only. Account and brand come from the session. Deposit, exchange and withdrawal records are available; no member or account selector is accepted. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -161767,7 +163179,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent session only. Account and brand come from the session. Deposit, exchange and withdrawal records are available; no member or account selector is accepted. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent session only. Account and brand come from the session. Deposit, exchange and withdrawal records are available; no member or account selector is accepted. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -162110,7 +163522,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent session only. Account and brand come from the session. Deposit, exchange and withdrawal records are available; no member or account selector is accepted. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent session only. Account and brand come from the session. Deposit, exchange and withdrawal records are available; no member or account selector is accepted. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -162461,7 +163873,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -162810,7 +164222,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -163167,7 +164579,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -163532,7 +164944,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -163905,7 +165317,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -164254,7 +165666,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -164611,7 +166023,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -164960,7 +166372,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -165317,7 +166729,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -165666,7 +167078,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent agent account only; submit/cancel actions only. Brand operators confirm receipts into this agent's unconverted balance. Agents can exchange available points without a member betting turnover cycle, withdraw eligible currency to their own destinations and cancel reviewing withdrawals. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "agentBearer": []
@@ -166023,7 +167435,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -166333,7 +167745,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -166651,7 +168063,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -166994,7 +168406,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -167345,7 +168757,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -167694,7 +169106,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -168051,7 +169463,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -168400,7 +169812,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -168757,7 +170169,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -169106,7 +170518,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -169463,7 +170875,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -169812,7 +171224,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -170169,7 +171581,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -170534,7 +171946,7 @@
         "tags": [
           "finance"
         ],
-        "description": "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "userBearer": []
@@ -170907,7 +172319,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "adminBearer": []
@@ -171242,7 +172654,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "adminBearer": []
@@ -171577,7 +172989,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "adminBearer": []
@@ -171899,7 +173311,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "adminBearer": []
@@ -172253,7 +173665,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires the matching view permission for the requested kind. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires the matching view permission for the requested kind. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "adminBearer": []
@@ -172611,7 +174023,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "adminBearer": []
@@ -172936,7 +174348,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "adminBearer": []
@@ -173290,7 +174702,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "adminBearer": []
@@ -173603,7 +175015,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "adminBearer": []
@@ -173948,7 +175360,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Requires the matching view permission for the requested kind. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Requires the matching view permission for the requested kind. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "adminBearer": []
@@ -174306,7 +175718,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "adminBearer": []
@@ -174633,7 +176045,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires the exact recharge confirm/cancel or withdrawal approve/reject/fail/mark_paid grant. Processing withdrawals cannot be cancelled; failure requires verification that no external payment was made. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires the exact recharge confirm/cancel or withdrawal approve/reject/fail/mark_paid grant. Processing withdrawals cannot be cancelled; failure requires verification that no external payment was made. Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.",
         "security": [
           {
             "adminBearer": []
@@ -209940,6 +211352,9 @@
       "CashRule": {
         "type": "object",
         "properties": {
+          "inherit": {
+            "type": "boolean"
+          },
           "currency": {
             "type": "string",
             "enum": [
@@ -209988,6 +211403,7 @@
           }
         },
         "required": [
+          "inherit",
           "currency",
           "rate",
           "deposit_min",
@@ -210009,6 +211425,14 @@
             "minimum": 0
           },
           "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashRule"
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "platform_rules": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CashRule"
@@ -210070,6 +211494,23 @@
           "institution",
           "number",
           "enabled",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "CashDestinationDelete": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "id",
           "version"
         ],
         "additionalProperties": false

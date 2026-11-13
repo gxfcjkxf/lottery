@@ -38,3 +38,26 @@ test('player styles and imported components take colors from the theme palette',
  directory('user-web/src')
  assert.deepEqual(errors,[])
 })
+
+test('all four clients and shared components consume palette colors',()=>{
+ const errors=[]
+ const materials=new Set(['shared/src/mark-six-balls.css','shared/src/quick-stake-chips.css'])
+ function visit(directory){for(const entry of readdirSync(directory,{withFileTypes:true})){
+  const file=directory+'/'+entry.name
+  if(entry.isDirectory()){visit(file);continue}
+  if(!/\.(vue|css)$/.test(file)||file==='shared/src/themes.css')continue
+  const source=readFileSync(file,'utf8')
+  const styles=extname(file)==='.css'?[source]:parse(source).descriptor.styles.map(style=>style.content)
+  for(const css of styles)postcss.parse(css).walkDecls(({prop,value,parent})=>{
+   if(prop.startsWith('--')&&['shared/src/styles.css','shared/src/mark-six-balls.css'].includes(file))return
+   if(materials.has(file)&&['background','box-shadow','text-shadow'].includes(prop))return
+   if(file==='admin-web/src/BetDistribution.vue'&&parent.selector==='.distribution-number h3'&&['background','box-shadow'].includes(prop))return
+   if(file==='shared/src/CashAddress.vue'&&parent.selector==='.cash-qr'&&prop==='background'&&value==='white')return
+   if(/#[\da-f]{3,8}\b|\brgba?\(|(?:stroke|fill)=['"](?:white|black|%23)/i.test(value)||/^(white|black)$/.test(value))errors.push(`${file}: ${parent.selector} { ${prop}: ${value} }`)
+   if(prop==='color'&&/^var\(--(?:surface|canvas)\)$/.test(value))errors.push(`${file}: filled controls require --on-primary`)
+   if(prop==='color-scheme'&&value!=='inherit')errors.push(`${file}: native controls must inherit the theme`)
+  })
+ }}
+ for(const directory of ['user-web/src','admin-web/src','platform-web/src','agent-web/src','shared/src'])visit(directory)
+ assert.deepEqual(errors,[])
+})

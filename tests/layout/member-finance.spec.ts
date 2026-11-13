@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
 import { selectControl } from '../select-control'
+import { openBrandPage } from './real-console-session'
 import { expect, test } from '@playwright/test'
 import { expectNoPageOverflow, gameId, installLayoutApi, origins } from './fixture'
 
@@ -34,6 +35,8 @@ for (const locale of ['zh-CN', 'en'] as const) test(`member finance opens from r
       memberOffsets.push(url.searchParams.get('offset') ?? '')
       return reply({ items: [{ id: memberId, global_user_id: memberId, brand_id: gameId, username: 'member001', phone: '', display_name: '', notes: '', tags: [], status: 'normal', online: false, display_points: '0', joined_at: '2026-10-24T00:00:00Z' }], limit: Number(url.searchParams.get('limit')), offset: Number(url.searchParams.get('offset')), total_count: '101' })
     }
+    if (path.endsWith('/cash/orders')) return reply({items:[],total_count:'0'})
+    if (path.endsWith(`/cash/balances/${memberId}`)) return reply({items:[]})
     if (path.endsWith(`/wallets/${memberId}`)) return reply({ account_id: gameId, brand_id: gameId, member_id: memberId, version: 1, display_points: '0', available_points: '0', frozen_points: '0', withdrawal_points: '0', recharge_points: '0', winning_points: '0', gift_points: '0', commission_points: '0', manual_frozen_points: '0', system_frozen_points: '0', by_source: buckets })
     if (path.endsWith('/recharge-quota/entries')) {
       quotaQueries.push(url.searchParams.get('offset')!)
@@ -186,7 +189,9 @@ for (const locale of ['zh-CN', 'en'] as const) test(`member finance opens from r
         await pagination.scrollIntoViewIfNeeded()
         await expect(pagination).toBeInViewport()
         await expect(pagination.locator('.table-pagination-summary .table-pagination-desktop')).toHaveText(zh?'第 1 页 · 本页 1 条 · 共 1 条':'Page 1 · 1 record on this page · Total: 1')
-        await expect(pagination.locator('.table-pagination-actions')).toHaveCSS('gap','12px')
+        const compactPagination=await page.evaluate(()=>matchMedia('(max-width:640px), (hover:none) and (pointer:coarse)').matches)
+        await expect(pagination.locator('.table-pagination-actions')).toHaveCSS('gap',compactPagination?'0px':'12px')
+        await expect(pagination.locator('.table-pagination-pages')).toHaveCSS('gap',compactPagination?'4px':'6px')
         await pagination.screenshot({path:info.outputPath(`ledger-pagination-${locale}-${width}.png`)})
       }
     }
@@ -201,9 +206,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`member finance opens from r
     await expect(list.getByRole('button', { name: 'member001', exact: true })).toBeVisible()
     await expect(page.locator('.breadcrumbs b')).toHaveText(zh?'会员管理':'Member management')
   }
-  const more = page.locator('.mobile-nav > button').last(), mobile = await more.isVisible()
-  if (mobile) { await more.click(); await expect(more).toHaveAttribute('aria-expanded', 'true') }
-  await page.locator(mobile ? '.mobile-more-menu' : '.side-nav').getByRole('button', { name: zh ? '充值记录' : 'Recharge records', exact: true }).click()
+  await openBrandPage(page, zh ? '充值记录' : 'Recharge records')
   const records = page.locator('.console-recharges-table')
   await expect(records.locator('tbody tr')).toHaveCount(1)
   await expect(page.locator('.finance-management > .console-panel > .table-pagination')).toBeVisible()
@@ -211,11 +214,12 @@ for (const locale of ['zh-CN', 'en'] as const) test(`member finance opens from r
   await expect(page.getByTestId('recharge-quota')).toHaveCount(0)
   const area = page.locator('.finance-management'), filter = area.locator('.recharge-filters')
   await expect(area.getByRole('heading', {name:zh?'充值单':'Recharge orders',exact:true})).toHaveCount(0)
-  await filter.locator('input').fill('member001')
-  await filter.getByRole('option',{name:'member001',exact:true}).click()
+  await filter.getByRole('searchbox',{name:zh?'会员账号':'Member account',exact:true}).fill('member001')
+  await page.getByRole('option',{name:'member001',exact:true}).click()
   await filter.getByRole('button', {name:zh?'查询':'Search',exact:true}).click()
   await expect.poll(()=>rechargeQueries.at(-1)).toBe(memberId)
-  await filter.getByRole('button',{name:zh?'清空':'Clear',exact:true}).click()
+  await filter.getByRole('button',{name:zh?'清除输入':'Clear input',exact:true}).click()
+  await filter.getByRole('button',{name:zh?'查询':'Search',exact:true}).click()
   await expect.poll(()=>rechargeQueries.at(-1)).toBe('')
   for (const width of info.project.name.includes('reflow') ? [320,640,900,901,1440] : [preset.width]) {
     if (info.project.name.includes('reflow')) await page.setViewportSize({width,height:preset.height})
@@ -399,9 +403,10 @@ for (const locale of ['zh-CN','en'] as const) test(`platform quota management op
     const reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
     if(path.endsWith('/presentation')) return reply({display_name:'Layout trial',logo_text:'L',logo_url:''})
     if(path.endsWith('/me')) return reply({account:{id:gameId,username:'quota_reviewer',super_admin:true,platform_permissions:['recharge.view.platform','recharge_quota.write.platform']}})
-    if(path.endsWith('/platform-settings')) return reply({display_name:'Layout trial',logo_text:'L',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',version:1,updated_at:at})
+    if(path.endsWith('/platform-settings')) return reply({theme:'jade',display_name:'Layout trial',logo_text:'L',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',version:1,updated_at:at})
     if(path.endsWith('/brands')) return reply({items:[{id:gameId,name:'Aurora',code:'aurora',status:'active',member_count:'0',agent_count:'0',recharge_quota_available:'880',created_at:at}], total_count: '1'})
     expect(req.headers()['x-brand-id']).toBe(gameId)
+    if(path.endsWith('/cash/orders')) return reply({items:[],total_count:'0'})
     if(path.endsWith('/recharges')) return reply({items:[], total_count: '0'})
     if(path.endsWith('/recharge-quota')) return reply({brand_id:gameId,available:'880'})
     if(path.endsWith('/recharge-quota/entries')) {historyReads.push(path); return reply({items:[], total_count: '0'})}
@@ -449,6 +454,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`withdrawal query defaults t
     if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'withdrawal_reviewer', super_admin: false, brand_ids: [gameId], permissions: [], permissions_by_brand: { [gameId]: ['withdrawal.view.brand'] } } })
     if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, code: 'layout', name: 'Aurora', status: 'active', member_count: '0', agent_count: '0', recharge_quota_available: '0', created_at: '2026-10-24T00:00:00Z' }] , total_count: '1'})
     expect(req.headers()['x-brand-id']).toBe(gameId)
+    if (path.endsWith('/cash/orders')) return reply({items:[],total_count:'0'})
     if (path.endsWith('/withdrawals')) {
       queries.push(url.searchParams.get('state') ?? '')
       return reply({ brand_id: gameId, items: [], limit: Number(url.searchParams.get('limit')), offset: Number(url.searchParams.get('offset')), has_more: false , total_count: '0'})
@@ -457,13 +463,11 @@ for (const locale of ['zh-CN', 'en'] as const) test(`withdrawal query defaults t
   })
   await page.goto(origins.brand)
   await expect(page.locator('.management-console')).toBeVisible()
-  const more = page.locator('.mobile-nav > button').last(), mobile = await more.isVisible()
-  if (mobile) await more.click()
-  await page.locator(mobile ? '.mobile-more-menu' : '.side-nav').getByRole('button', { name: zh ? '提现申请' : 'Withdrawal requests', exact: true }).click()
+  await openBrandPage(page, zh ? '提现申请' : 'Withdrawal requests')
   const area = page.locator('.withdrawal-management'), form = area.locator('form.withdrawal-filters')
   await expect.poll(() => queries.length).toBeGreaterThan(0)
   expect(queries.every(state => state === 'reviewing')).toBe(true)
-  await expect(form.locator(".select-control-trigger")).toHaveAttribute('data-value', 'reviewing')
+  await expect(form.getByRole('combobox',{name:zh?'状态':'State',exact:true})).toHaveAttribute('data-value', 'reviewing')
   const input = form.getByRole('searchbox', { name: zh ? '会员账号' : 'Member account', exact: true })
   await expect(input).toBeVisible()
   await expect(form.getByRole('button', { name: zh ? '查询' : 'Search', exact: true })).toBeVisible()
@@ -478,7 +482,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`withdrawal query defaults t
     await expect(heading).toHaveCSS('clip-path', 'inset(50%)')
     await page.screenshot({ path: info.outputPath(`withdrawal-query-${locale}-${width}.png`) })
   }
-  await selectControl(form.locator(".select-control-trigger"), '')
+  await selectControl(form.getByRole('combobox',{name:zh?'状态':'State',exact:true}), '')
   await form.getByRole('button', { name: zh ? '查询' : 'Search', exact: true }).click()
   await expect.poll(() => queries.at(-1)).toBe('')
   await expect(area.locator('.empty-state')).toBeVisible()

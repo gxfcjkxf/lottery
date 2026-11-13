@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {onMounted,ref} from 'vue'
+import {onMounted,onBeforeUnmount,ref} from 'vue'
 import {vInlineValidation,vWriteGuard,vRefreshButton,withGlobalLoading,useOperationToast,formatPoints} from '@lottery/shared'
 import SummaryFacts from '@lottery/shared/SummaryFacts.vue'
 import DetailModal from '@lottery/shared/DetailModal.vue'
@@ -13,9 +13,11 @@ const {t,locale}=i18n
 const wallet=ref<Wallet|null>(null),amount=ref(''),busy=ref(false),error=ref<string | import('@lottery/shared').LocalizedMessage>(''),notice=ref('')
 const pending=ref<PendingAgentTransfer|null>(pendingAgentTransfers.get(props.ownerKey)??null)
 function fail(e:unknown){error.value=i18n.errorMessage(e);if(e instanceof AgentError&&e.status===401)emit('session-invalid')}
-async function load(){try{wallet.value=await request<Wallet>('/wallet')}catch(e){fail(e)}}
+let alive=true,readTicket=0
+async function load(){const ticket=++readTicket;try{const value=await request<Wallet>('/wallet');if(alive&&ticket===readTicket)wallet.value=value}catch(e){if(alive&&ticket===readTicket)fail(e)}}
+onBeforeUnmount(()=>{alive=false;readTicket++})
 async function transfer(){if(busy.value||!wallet.value)return;if(!pending.value)pending.value={body:{member_id:props.member.id,amount:amount.value},account:props.member.username,key:crypto.randomUUID(),sent:false};busy.value=true;error.value='';pending.value.sent=true;pendingAgentTransfers.set(props.ownerKey,pending.value)
- try{await request('/transfers',pending.value.body,pending.value.key);pending.value=null;pendingAgentTransfers.delete(props.ownerKey);amount.value='';notice.value=t('transferSuccess');emit('transferred');emit('close')}catch(e){if(e instanceof AgentError&&e.status>=400&&e.status<500){pending.value=null;pendingAgentTransfers.delete(props.ownerKey)};fail(e)}finally{busy.value=false}}
+ const frozen=pending.value,owner=props.ownerKey;try{await request('/transfers',frozen.body,frozen.key);pendingAgentTransfers.delete(owner);if(!alive||owner!==props.ownerKey)return;pending.value=null;amount.value='';notice.value=t('transferSuccess');emit('transferred');emit('close')}catch(e){if(e instanceof AgentError&&e.status>=400&&e.status<500)pendingAgentTransfers.delete(owner);if(!alive||owner!==props.ownerKey)return;if(e instanceof AgentError&&e.status>=400&&e.status<500)pending.value=null;fail(e)}finally{if(alive&&owner===props.ownerKey)busy.value=false}}
 onMounted(()=>{if(pending.value)amount.value=pending.value.body.amount;void load()})
 useOperationToast(error,v=>i18n.displayError(v),'error')
 useOperationToast(notice,v=>v,'success')

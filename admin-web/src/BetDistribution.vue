@@ -152,15 +152,15 @@ function wholePoints(value: string, signed = false) {
       </div>
       <p v-if="!sortedNumbers.length" class="empty-state" role="status">{{ t('distribution.emptyRange') }}</p>
       <div v-else class="distribution-grid">
-        <article v-for="item in sortedNumbers" :key="item.number" class="distribution-number" :class="highlights.get(item.number)">
+        <article v-for="item in sortedNumbers" :key="item.number" class="distribution-number" :class="[highlights.get(item.number), { 'distribution-three-digits': result.number_digits === 3 }]">
           <div class="distribution-identity">
             <h3 :class="result.number_digits === 3 ? 'distribution-digits' : `lottery-wave-${item.wave}`" :aria-label="`${t('distribution.number')} ${String(item.number).padStart(result.number_digits, '0')}`">{{ String(item.number).padStart(result.number_digits, '0') }}</h3>
             <span v-if="result.number_digits === 2" class="distribution-zodiac">{{ attributesI18n.t(`binding.${item.zodiac}`) }}</span>
           </div>
           <dl>
-            <div v-if="result.number_digits === 3" class="distribution-card-rate"><dt>{{ t('distribution.rate') }}</dt><dd>{{ payoutRate(item.profit) }}</dd></div>
-            <div class="distribution-card-stake"><dt :aria-label="t('distribution.stake')"><span class="distribution-label-full">{{ t('distribution.stake') }}</span><span class="distribution-label-compact" aria-hidden="true">{{ t('distribution.stakeShort') }}</span></dt><dd><span v-for="(part, index) in wholePointParts(item.stake)" :key="index" :class="{ 'distribution-amount-group': part.type === 'group' }">{{ part.value }}</span></dd></div>
-            <div class="distribution-card-profit"><dt :aria-label="t('distribution.profit')"><span class="distribution-label-full">{{ t('distribution.profit') }}</span><span class="distribution-label-compact" aria-hidden="true">{{ t('distribution.profitShort') }}</span></dt><dd :class="{ 'distribution-win': pointsMinor(item.profit) > 0n, 'distribution-loss': pointsMinor(item.profit) < 0n }"><span v-for="(part, index) in wholePointParts(item.profit, true)" :key="index" :class="{ 'distribution-amount-group': part.type === 'group' }">{{ part.value }}</span></dd></div>
+            <div v-if="result.number_digits === 3" class="distribution-card-rate"><dt>{{ t('distribution.rate') }}</dt><dd :title="t('distribution.rate')">{{ payoutRate(item.profit) }}</dd></div>
+            <div class="distribution-card-stake"><dt>{{ t('distribution.stake') }}</dt><dd :title="t('distribution.stake')"><span v-for="(part, index) in wholePointParts(item.stake)" :key="index" :class="{ 'distribution-amount-group': part.type === 'group' }">{{ part.value }}</span></dd></div>
+            <div class="distribution-card-profit"><dt>{{ t('distribution.profit') }}</dt><dd :title="t('distribution.profit')" :class="{ 'distribution-win': pointsMinor(item.profit) > 0n, 'distribution-loss': pointsMinor(item.profit) < 0n }"><span v-for="(part, index) in wholePointParts(item.profit, true)" :key="index" :class="{ 'distribution-amount-group': part.type === 'group' }">{{ part.value }}</span></dd></div>
           </dl>
         </article>
       </div>
@@ -184,21 +184,14 @@ function wholePoints(value: string, signed = false) {
 .distribution-total strong { color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .distribution-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
 .distribution-number { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow-sm); transition: border-color 150ms ease, box-shadow 150ms ease; }
-.distribution-number:hover { border-color: #cbd5e1; }
+.distribution-number:hover { border-color: var(--ink-secondary); }
 .distribution-identity { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 12px; }
 .distribution-zodiac { color: var(--ink-secondary); font-weight: 650; overflow-wrap: anywhere; }
 .distribution-number h3 { display: grid; place-items: center; width: 38px; height: 38px; margin: 0; border-radius: 999px; background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.42) 0%, transparent 45%), var(--wave-color); color: var(--lottery-ball-ink); flex-shrink: 0; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; box-shadow: inset 0 -2px 4px rgba(15, 23, 20, 0.22), 0 1px 2px rgba(15, 23, 20, 0.12); }
 .distribution-number h3.distribution-digits { width: 52px; border-radius: var(--radius-sm); background: var(--table-header-bg); color: var(--ink); box-shadow: none; }
-.distribution-label-compact { display: none; }
 .distribution-number dl { display: grid; gap: 8px; margin: 0; }
 .distribution-number dt { color: var(--muted); }
 .distribution-number dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; color: var(--ink); }
-.distribution-top-win-1 { border-color: #a7f3d0; background: #ecfdf5; }
-.distribution-top-win-2 { border-color: #bbf7d0; background: #f0fdf4; }
-.distribution-top-win-3 { border-color: #d1fae5; background: #f7fef9; }
-.distribution-top-loss-1 { border-color: #fda4af; background: #fff1f2; }
-.distribution-top-loss-2 { border-color: #fecdd3; background: #fff5f6; }
-.distribution-top-loss-3 { border-color: #ffe4e6; background: #fff8f9; }
 .distribution-win { color: var(--success-text); }
 .distribution-loss { color: var(--danger-text); }
 @media (max-width: 640px) {
@@ -213,24 +206,34 @@ function wholePoints(value: string, signed = false) {
 }
 @media (max-width: 900px) {
   .distribution-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-  .distribution-number { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: start; gap: 4px 0; padding: 4px; }
+  .distribution-number { padding: 4px; }
   .distribution-identity { margin: 0; gap: 6px; }
   .distribution-number h3.distribution-digits { width: 44px; height: 24px; }
-  .distribution-number dl { display: contents; }
-  .distribution-number dl > div { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 6px; }
-  .distribution-number dl > .distribution-card-rate { grid-column: 2; grid-row: 1; align-self: center; grid-template-columns: minmax(0, 1fr) !important; column-gap: 0 !important; }
-  .distribution-number dl > .distribution-card-stake,
-  .distribution-number dl > .distribution-card-profit { grid-row: 2; grid-template-columns: max-content max-content !important; column-gap: 0 !important; row-gap: 0 !important; justify-content: start; min-width: 0; }
-  .distribution-number dl > .distribution-card-stake { grid-column: 1; }
-  .distribution-number dl > .distribution-card-profit { grid-column: 2; justify-content: end; text-align: end; }
   .distribution-amount-group { display: none; }
-  .distribution-label-full { display: none; }
-  .distribution-label-compact { display: inline; }
   .distribution-card-stake :is(dt, dd), .distribution-card-profit :is(dt, dd) { white-space: nowrap; }
-  .distribution-number .distribution-card-stake dd { text-align: start; }
   .distribution-card-rate dd { white-space: nowrap; }
-  .distribution-card-rate dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .distribution-number dd { margin-inline-start: auto; max-width: 100%; }
   .distribution-heading { gap: 8px; margin-bottom: 8px; }
+}
+.distribution-number { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-content: start; gap: 8px 6px; }
+.distribution-number .distribution-identity { margin: 0; }
+.distribution-number:not(.distribution-three-digits) .distribution-identity { grid-column: 1 / -1; }
+.distribution-number dl { display: contents; }
+.distribution-number dl > div { grid-template-columns: minmax(0, 1fr) !important; column-gap: 0 !important; min-width: 0; }
+.distribution-number dl > .distribution-card-rate { grid-column: 2; grid-row: 1; align-self: center; text-align: right; }
+.distribution-number dl > .distribution-card-stake { grid-column: 1; grid-row: 2; }
+.distribution-number dl > .distribution-card-profit { grid-column: 2; grid-row: 2; text-align: right; }
+.distribution-number dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.distribution-number .distribution-card-rate dd { text-align: right; color: var(--warning-text); }
+.distribution-number .distribution-card-stake dd { text-align: left; color: var(--info-text); }
+.distribution-number .distribution-card-profit dd { text-align: right; color: var(--success-text); }
+.distribution-number .distribution-card-profit dd.distribution-loss { color: var(--danger-text); }
+.distribution-number[class*="distribution-top-win-"] { border-color: color-mix(in srgb, var(--success-text) 32%, var(--line)); background: color-mix(in srgb, var(--success-text) var(--distribution-highlight), var(--surface)); }
+.distribution-number[class*="distribution-top-loss-"] { border-color: color-mix(in srgb, var(--danger-text) 32%, var(--line)); background: color-mix(in srgb, var(--danger-text) var(--distribution-highlight), var(--surface)); }
+.distribution-number:is(.distribution-top-win-1, .distribution-top-loss-1) { --distribution-highlight: 12%; }
+.distribution-number:is(.distribution-top-win-2, .distribution-top-loss-2) { --distribution-highlight: 8%; }
+.distribution-number:is(.distribution-top-win-3, .distribution-top-loss-3) { --distribution-highlight: 4%; }
+@media (max-width: 900px) {
+  .distribution-number { gap: 4px 6px; }
 }
 </style>

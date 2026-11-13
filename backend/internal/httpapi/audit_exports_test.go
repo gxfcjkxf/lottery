@@ -327,3 +327,41 @@ func TestAuditActorAndOperationFilters(t *testing.T) {
 		t.Fatalf("read changed records: %d %v", count, err)
 	}
 }
+
+func TestAuditAgentActorNameAndSearch(t *testing.T) {
+	f := managedFixture(t)
+	ctx := context.Background()
+	agent := ids.New()
+	if _, err := f.pool.Exec(ctx, `INSERT INTO agent_accounts(id,brand_id,username,password_hash) VALUES($1,$2,'audit_agent_reviewer','test-unused-hash')`, agent, managedBrand); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `INSERT INTO audit_logs(id,brand_id,actor_type,actor_id,action,resource_type,reason,request_id) VALUES($1,$2,'agent',$3,'cash.deposit.create','cash','agent actor fact','audit-agent-test')`, ids.New(), managedBrand, agent); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{"?action=cash.deposit.create", "?actor=AGENT_review&action_type=create"} {
+		response := f.call("GET", "/api/v1/admin/audit"+query, "", f.token, managedBrand, nil)
+		mustStatus(t, response, 200)
+		var body struct {
+			Data struct {
+				Items []AdminAuditRecord `json:"items"`
+				Total string             `json:"total_count"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if len(body.Data.Items) != 1 || body.Data.Total != "1" || body.Data.Items[0].ActorUsername != "audit_agent_reviewer" {
+			t.Fatal(response.Body.String())
+		}
+	}
+	other := "0199a000-0000-7000-8000-000000000002"
+	if _, err := f.pool.Exec(ctx, `INSERT INTO audit_logs(id,brand_id,actor_type,actor_id,action,resource_type,reason,request_id) VALUES($1,$2,'agent',$3,'cash.deposit.create','cash','wrong brand actor fact','audit-agent-test')`, ids.New(), other, agent); err != nil {
+		t.Fatal(err)
+	}
+	var foreignName string
+	if err := f.pool.QueryRow(ctx, `SELECT `+auditActorNameSQL+` FROM audit_logs WHERE reason='wrong brand actor fact'`).Scan(&foreignName); err != nil || foreignName != "" {
+		t.Fatalf("cross-brand actor name: %q %v", foreignName, err)
+	}
+	response := f.call("GET", "/api/v1/admin/audit?actor=audit_agent_reviewer", "", f.token, other, nil)
+	mustStatus(t, response, 403)
+}

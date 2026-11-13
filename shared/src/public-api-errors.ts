@@ -29,6 +29,7 @@ export const publicApiErrorCatalog = {
     cashDepositPending: 'A deposit is still pending. Continue from your deposit records.',
     cashConfig: 'Configure the currency, limits and payment accounts first.',
     cashRate: 'The exchange rate changed. Reload and confirm again.',
+    cashAccountExists: 'A payment account is already bound for this currency.',
     cashAccount: 'Complete the payment details for the selected currency.',
     rechargeQuota: 'Insufficient brand recharge quota. Ask the platform to grant more quota.',
     points: 'Insufficient points. Check your balance before continuing.',
@@ -85,6 +86,7 @@ export const publicApiErrorCatalog = {
     cashDepositPending: '已有待处理充值单，请在充值记录中继续操作。',
     cashConfig: '请先配置币种、限额和收款账号。',
     cashRate: '兑换比例已变化，请重新读取后确认。',
+    cashAccountExists: '该币种已绑定收款账号。',
     cashAccount: '请补全所选币种的收款资料。',
     rechargeQuota: '品牌可用充值额度不足，请联系平台授权额度。',
     points: '积分不足，请核对积分余额后再操作。',
@@ -119,7 +121,7 @@ export const publicApiErrorCatalog = {
 
 type ErrorKey = keyof typeof publicApiErrorCatalog.en
 const codes: Record<string, ErrorKey> = {
- CASH_DEPOSIT_PENDING:"cashDepositPending",CASH_INPUT_INVALID:"input",CASH_ACCOUNT_INCOMPLETE:"cashAccount",CASH_STATE_CHANGED:"changed",CASH_NOT_CONFIGURED:"cashConfig",CASH_INSUFFICIENT:"cash",CASH_LIMIT_EXCEEDED:"limit",CASH_RATE_CHANGED:"cashRate",CASH_EXCHANGE_REQUIRED:"ineligible",
+ CASH_DEPOSIT_PENDING:"cashDepositPending",CASH_INPUT_INVALID:"input",CASH_ACCOUNT_INCOMPLETE:"cashAccount",CASH_ACCOUNT_EXISTS:"cashAccountExists",CASH_STATE_CHANGED:"changed",CASH_NOT_CONFIGURED:"cashConfig",CASH_INSUFFICIENT:"cash",CASH_LIMIT_EXCEEDED:"limit",CASH_RATE_CHANGED:"cashRate",CASH_EXCHANGE_REQUIRED:"ineligible",
   CUSTOM_GAMES_DISABLED: 'customGamesDisabled',
   AGENT_COMMISSION_CALENDAR_REQUIRED: 'agentCalendar', AGENT_MODE_PENDING: 'agentModePending',
   ANNOUNCEMENT_CONFLICT: 'changed',

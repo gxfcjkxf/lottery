@@ -120,7 +120,7 @@ watch(() => props.disabled, value => { if (value && expanded.value) close() })
 .platform-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; font-size: var(--body-font-size); }
 .platform-calendar-weekday { padding: 8px 0; text-align: center; color: var(--muted); font-size: var(--body-font-size); }
 .platform-calendar button:hover { background: var(--primary-light); }
-.platform-calendar button[aria-pressed="true"] { background: var(--primary); color: var(--surface); }
+.platform-calendar button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); }
 .platform-calendar .platform-calendar-today { width: 100%; margin-top: 4px; color: var(--primary); }
 @media (max-width: 640px) { .platform-date-input-display { min-height: 44px; } .platform-date-input-button { width: 44px; } .platform-calendar button { min-height: 44px; } }
 </style>

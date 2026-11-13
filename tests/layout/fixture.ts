@@ -165,7 +165,7 @@ export async function expectNoPageOverflow(page: Page) {
       // CSS dimensions stay constant while an accordion chevron rotates.
       const style = getComputedStyle(icon), width = parseFloat(style.width), height = parseFloat(style.height);
       const stroke = style.strokeWidth;
-      const size = icon.closest('.detail-modal-close') ? 16 : icon.closest('.login-entry') ? 20 : icon.closest('.management-console,.platform-login') ? 16 : 20;
+      const size = icon.closest('.detail-modal-close') ? 16 : icon.closest('.topbar,.workspace-topbar') ? 20 : icon.closest('.login-entry') ? 20 : icon.closest('.management-console,.platform-login') ? 16 : 20;
       return width !== size || height !== size || stroke !== '1.75px'
         ? [{ icon: icon.getAttribute('class'), width, height, stroke }] : [];
     }),
@@ -288,7 +288,7 @@ export const cashBalanceFixture = (): CashBalance[] => currencies.map(currency =
 // Populated wallet snapshots deliberately distinguish available, frozen and reserved points.
 export async function installWalletLayoutApi(page: Page) {
   await installOrdersLayoutApi(page);
-  const config: CashConfig = {version:1,rules:currencies.map(currency=>({currency,enabled:false,rate:'1',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'1'}))}
+  const config: CashConfig = {version:1,rules:currencies.map(currency=>({currency,inherit:false,enabled:false,rate:'1',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'1'}))}
   await page.route('**/api/v1/cash',route=>{
     expect(route.request().method()).toBe('GET')
     return route.fulfill({json:{success:true,data:{auto_usdt:false,actor_context:'a'.repeat(64),brand_id:gameId,member_id:gameId,balances:cashBalanceFixture(),destinations:[],platform:config,brand:config}}})

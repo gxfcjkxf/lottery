@@ -21,7 +21,7 @@ import { formatPlatformDateTime, type PlatformDisplaySettings } from './platform
 const pageSize = ref(50)
 
 
-const props = defineProps<{ view: 'deliveries' | 'templates'; brandId: string; accountId: string; canManage: boolean; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings }>()
+const props = defineProps<{ view: 'deliveries' | 'templates'; brandId: string; accountId: string; canManage: boolean; canViewTemplates: boolean; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
 const api = createPlatformNotificationsApi()
 const deliveries = ref<Delivery[]>([])
@@ -63,7 +63,7 @@ async function loadDeliveries(offset = 0) {
   } finally { if (request === generation) loading.value = false }
 }
 
-watch(() => [props.brandId, props.view], () => {
+watch(() => [props.brandId, props.view, props.accountId], () => {
   ++generation; clearData(); error.value = ''; loading.value = false
   if (props.view === 'deliveries') void withGlobalLoading(loadDeliveries)
 
@@ -86,6 +86,6 @@ useOperationToast(error, value => displayPublicError(value), 'error');
       <template #pagination><TablePagination class="wallet-pagination" data-testid="platform-delivery-pages" :total="deliveryTotal" :page="Math.floor(deliveryOffset / pageSize + 1)" :count="deliveries.length" :locale="locale" :page-size="pageSize" :previous-disabled="loading || deliveryOffset === 0 || !brandId" :next-disabled="loading || !deliveryMore" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => loadDeliveries((target - 1) * pageSize)" :change-page-size="async (size: number) => { pageSize = size; await loadDeliveries(0) }" :busy="loading" /></template></ManagementList>
     </template>
 
-    <NotificationTemplatesPanel v-else :key="accountId" :account-id="accountId" :can-manage="canManage" :locale="locale" :display-settings="displaySettings" @failure="emit('failure', $event)" />
+    <NotificationTemplatesPanel v-else :key="accountId" :account-id="accountId" :can-manage="canManage" :can-view="canViewTemplates" :locale="locale" :display-settings="displaySettings" @failure="emit('failure', $event)" />
   </div>
 </template>

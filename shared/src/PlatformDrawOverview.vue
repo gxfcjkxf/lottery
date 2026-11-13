@@ -43,7 +43,7 @@ async function load(nextYear = year.value, nextOffset = offset.value) {
   failed.value = false
  } catch (cause) { if (alive && g === generation) { failed.value = true; if (cause instanceof PlatformLotteryError && cause.status === 401) emit('failure', cause) } } finally { if (alive && g === generation) busy.value = false }
 }
-watch(() => props.gameId, () => { generation++; data.value = null; year.value = ''; offset.value = 0; failed.value = false; void load() }, { immediate: true })
+watch(() => [props.gameId, props.brandId, props.surface], () => { generation++; data.value = null; year.value = ''; offset.value = 0; failed.value = false; void load() }, { immediate: true, flush: 'sync' })
 defineExpose({ load })
 const poll = setInterval(() => { if (!busy.value) void load() }, 5000)
 onUnmounted(() => { alive = false; generation++; clearInterval(poll) })

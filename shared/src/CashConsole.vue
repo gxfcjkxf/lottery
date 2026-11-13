@@ -13,6 +13,7 @@ import {
   decimal,
   type Currency,
   type CashConfig,
+  type CashRule,
   type CashDestination,
   type CashOrder,
 } from "./cash";
@@ -94,10 +95,25 @@ const canWrite = computed(() =>
   allowed(props.platform ? "platform_settings" : "point_policy", "write"),
 );
 
+const visibleRules = computed(() => config.value?.rules.filter(rule => props.platform || config.value?.platform_rules?.some(p => p.currency === rule.currency && p.enabled)) ?? []);
+function toggleRule(rule: CashRule) {
+  if (rule.enabled) {
+    if (!props.platform && rule.inherit) setInheritance(rule, 'inherit');
+    return;
+  }
+  Object.assign(rule, { rate: '', deposit_min: '0', deposit_max: '0', withdrawal_min: '0', withdrawal_max: '0', fee: '0', mode: 'count', threshold: '1', inherit: !props.platform });
+}
+function setInheritance(rule: CashRule, value: string) {
+  rule.inherit = value === 'inherit';
+  if (rule.inherit) {
+    const platform = config.value!.platform_rules!.find(p => p.currency === rule.currency)!;
+    for (const field of ['deposit_min', 'deposit_max', 'withdrawal_min', 'withdrawal_max', 'fee'] as const) rule[field] = platform[field];
+  }
+}
 const accountCurrencies = computed(() => currencies.filter(value =>
-  config.value?.rules.some(rule => rule.currency === value && rule.enabled),
+  visibleRules.value.some(rule => rule.currency === value && rule.enabled),
 ));
-const showAccountList = computed(() => !props.platform && config.value?.rules.some(rule => rule.enabled));
+const showAccountList = computed(() => !props.platform && visibleRules.value.some(rule => rule.enabled));
 const visibleAccounts = computed(() => destinations.value.filter(value => accountCurrencies.value.includes(value.currency)));
 const pagedAccounts = computed(() =>
   visibleAccounts.value.slice(
@@ -120,6 +136,7 @@ const columns = computed(() => [
 ]);
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 let generation = 0;
+let readTicket = 0;
 function message(cause: unknown) {
   const keys: Record<string, CashKey> = {
     CASH_INPUT_INVALID: "cash.invalid",
@@ -134,28 +151,38 @@ function message(cause: unknown) {
     : publicApiErrorText(cause, props.locale);
 }
 async function load(target = page.value) {
-  if (!canRead.value) return;
-  const token = generation;
+  const ticket = ++readTicket;
+  if (!canRead.value) { loading.value = false; return; }
+  const token = generation, client = api.value;
   loading.value = true;
   error.value = "";
   try {
     if (props.mode === "settings") {
-      const value = await api.value.config();
+      const value = await client.config();
+      if (!props.platform && !value.platform_rules) throw new ApiError("Missing platform currency rules", 502, "INVALID_RESPONSE");
+      if (!props.platform) {
+        for (const rule of value.rules) {
+          if (!value.platform_rules!.some(p => p.currency === rule.currency && p.enabled)) {
+            rule.enabled = false;
+            toggleRule(rule);
+          }
+        }
+      }
       let ds: CashDestination[] = [];
-      if (!props.platform) ds = await api.value.destinations();
-      if (token !== generation) return;
+      if (!props.platform) ds = await client.destinations();
+      if (token !== generation || ticket !== readTicket) return;
       config.value =
         pending.value?.kind === "config"
           ? clone(pending.value.body as CashConfig)
           : value;
       destinations.value = ds;
     } else {
-      const result = await api.value.orders(
+      const result = await client.orders(
         recordKind.value,
         target,
         size.value,
       );
-      if (token !== generation) return;
+      if (token !== generation || ticket !== readTicket) return;
       if (result.items.some((o) => o.brand_id !== props.brandId))
         throw new ApiError("Scope mismatch", 502, "INVALID_RESPONSE");
       orders.value = result.items;
@@ -163,12 +190,12 @@ async function load(target = page.value) {
       page.value = target;
     }
   } catch (cause) {
-    if (token === generation) {
+    if (token === generation && ticket === readTicket) {
       error.value = message(cause);
       emit("failure", cause);
     }
   } finally {
-    if (token === generation) loading.value = false;
+    if (token === generation && ticket === readTicket) loading.value = false;
   }
 }
 function addAccount() {
@@ -220,6 +247,11 @@ function actionLabel(action: string) {
 }
 async function save(kind: "config" | "destination" | "order", action = "") {
   if (busy.value) return;
+  const actionToCheck = pending.value?.kind === 'order' ? pending.value.path.split('/').at(-1)! : action;
+  if (!canRead.value || (kind === 'order' ? !selected.value || !actions(selected.value).includes(actionToCheck) : !canWrite.value)) {
+    error.value = publicApiErrorText(new ApiError('', 403, 'PERMISSION_DENIED'), props.locale);
+    return;
+  }
   const token = generation;
   if (!pending.value) {
     let body: unknown,
@@ -341,6 +373,13 @@ watch(
   },
   { immediate: true },
 );
+watch(() => props.permissions.join('|'), () => {
+  readTicket++;
+  loading.value = false;
+  orders.value = []; total.value = '0'; destinations.value = [];
+  if (!pending.value) { config.value = null; selected.value = null; draft.value = null; }
+  void load(1);
+}, { flush: 'sync' });
 onUnmounted(() => generation++);
 useOperationToast(error, (v) => v, "error");
 useOperationToast(notice, (v) => v, "success");
@@ -363,17 +402,23 @@ useOperationToast(notice, (v) => v, "success");
           @submit.prevent="withGlobalLoading(save, 'config')"
         >
           <fieldset
-            v-for="rule in config.rules"
+            v-for="rule in visibleRules"
             :key="rule.currency"
             :disabled="locked || !canWrite"
             class="cash-rule"
           >
             <legend>{{ t(`cash.${rule.currency}`) }}</legend>
             <label class="checkbox-label"
-              ><input v-model="rule.enabled" type="checkbox" />{{
+              ><input v-model="rule.enabled" type="checkbox" @change="toggleRule(rule)" />{{
                 t("cash.enabled")
               }}</label
             >
+            <label v-if="rule.enabled && !platform" class="ui-field-row"><span>{{ t('cash.configuration') }}</span><SelectControl
+              :model-value="rule.inherit ? 'inherit' : 'custom'"
+              :label="t('cash.configuration')"
+              :options="[{ value: 'inherit', label: t('cash.inherit') }, { value: 'custom', label: t('cash.custom') }]"
+              @update:model-value="setInheritance(rule, String($event))"
+            /></label>
             <div v-if="rule.enabled" class="cash-rule-fields">
               <label v-if="platform"
                 >{{ t("cash.rate")
@@ -400,6 +445,7 @@ useOperationToast(notice, (v) => v, "success");
                   )
                 }}<input
                   v-model="rule[field]"
+                  :readonly="!platform && rule.inherit"
                   inputmode="decimal"
                   required
                   :data-validation-format="t('cash.numberFormat',{digits:rule.currency==='USDT'?6:2})"
@@ -448,7 +494,7 @@ useOperationToast(notice, (v) => v, "success");
         </form>
         <template v-if="config && !canWrite">
           <section
-            v-for="rule in config.rules"
+            v-for="rule in visibleRules"
             :key="rule.currency"
             class="cash-rule"
           >
@@ -460,7 +506,7 @@ useOperationToast(notice, (v) => v, "success");
                   {{ t(rule.enabled ? "cash.enabled" : "cash.disabled") }}
                 </dd>
               </div>
-              <template v-if="rule.enabled"><div v-if="platform">
+              <template v-if="rule.enabled"><div v-if="!platform"><dt>{{ t('cash.configuration') }}</dt><dd>{{ t(rule.inherit ? 'cash.inherit' : 'cash.custom') }}</dd></div><div v-if="platform">
                 <dt>{{ t("cash.rate") }}</dt>
                 <dd>{{ rule.rate || "—" }}</dd>
               </div>
@@ -507,6 +553,7 @@ useOperationToast(notice, (v) => v, "success");
           <p role="status">{{ t("cash.unknown") }}</p>
           <button
             class="button button-primary"
+            :disabled="!canWrite"
             @click="withGlobalLoading(save, 'config')"
           >
             {{ t("cash.retry") }}
@@ -570,11 +617,7 @@ useOperationToast(notice, (v) => v, "success");
       </ManagementList>
     </template>
     <ManagementList v-else :busy="loading">
-      <template #heading
-        ><h2>
-          {{ t(mode === "deposit" ? "cash.deposit" : "cash.withdrawal") }}
-        </h2></template
-      ><template v-if="mode === 'deposit'" #filters
+      <template v-if="mode === 'deposit'" #filters
         ><SelectControl
           :model-value="recordKind"
           :label="t('cash.kind')"
@@ -639,17 +682,15 @@ useOperationToast(notice, (v) => v, "success");
         @submit.prevent="withGlobalLoading(save, 'destination')"
       >
         <fieldset :disabled="locked">
-          <label
-            >{{ t("cash.currency")
-            }}<SelectControl
+          <div class="cash-account-field">
+            <div class="cash-account-label">{{ t("cash.currency") }}</div><div class="cash-account-control"><SelectControl
               :model-value="currency"
               :disabled="!!draft.id"
               :label="t('cash.currency')"
               :options="
                 accountCurrencies.map((v) => ({ value: v, label: t(`cash.${v}`) }))
               "
-              @change="changeCurrency($event as Currency)" /></label
-          ><CashDestinationFields v-model="draft" :t="label" />
+              @change="changeCurrency($event as Currency)" /></div></div><CashDestinationFields v-model="draft" :t="label" />
         </fieldset>
         <div class="ui-form-actions">
           <button
@@ -804,6 +845,7 @@ useOperationToast(notice, (v) => v, "success");
         <p>{{ t("cash.unknown") }}</p>
         <button
           class="button button-primary"
+          :disabled="!selected || !actions(selected).includes(operation)"
           @click="withGlobalLoading(save, 'order', operation)"
         >
           {{ t("cash.retry") }}

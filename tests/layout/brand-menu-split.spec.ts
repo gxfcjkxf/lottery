@@ -360,7 +360,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
         if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, code: 'layout', name: 'Aurora', status: 'active', member_count: '0', agent_count: '0', recharge_quota_available: '0', created_at: '2026-10-26T00:00:00Z' }] })
         expect(request.headers()['x-brand-id']).toBe(gameId)
         if (request.method() === 'GET') {
-          if (path.endsWith('/cash/config')) return reply({version:1,rules:['CNY','USD','THB','USDT'].map(currency=>({currency,rate:'7',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'2',enabled:true}))})
+          if (path.endsWith('/cash/config')) return reply({version:1,platform_rules:['CNY','USD','THB','USDT'].map(currency=>({currency,rate:'7',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'2',inherit:false,enabled:true})),rules:['CNY','USD','THB','USDT'].map(currency=>({currency,rate:'7',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'2',inherit:false,enabled:true}))})
           if (path.endsWith('/cash/destinations')) return reply([])
           if (path.endsWith('/point-policy')) return reply(points)
           if (path.endsWith('/withdrawal-policy')) return reply(withdrawal)
@@ -561,7 +561,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
    if(path.endsWith('/brands'))return reply({items:[{id:gameId,code:'layout',name:'Aurora',status:'active',member_count:'0',agent_count:'0',recharge_quota_available:'0',created_at:at}]})
    if(path.endsWith('/brand-operation'))return reply({brand_id:gameId,name:'Aurora',status:'active',version:1,updated_at:at})
    if(path.endsWith('/point-policy'))return reply({brand_id:gameId,version:1,max_balance_points:'10000',max_recharge_points:null,max_adjustment_points:null})
-   if(path.endsWith('/cash/config'))return reply({version:1,rules:['CNY','USD','THB','USDT'].map(currency=>({currency,rate:'7',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'2',enabled:true}))})
+   if(path.endsWith('/cash/config'))return reply({version:1,platform_rules:['CNY','USD','THB','USDT'].map(currency=>({currency,rate:'7',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'2',inherit:false,enabled:true})),rules:['CNY','USD','THB','USDT'].map(currency=>({currency,rate:'7',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'2',inherit:false,enabled:true}))})
    if(path.endsWith('/cash/destinations'))return reply([])
    if(path.endsWith('/agent-policy'))return reply({brand_id:gameId,version:1,config:{enabled:true,max_depth:5,loss_ratio_cap:'0.25',turnover_ratio_cap:'0.03',mode:'loss',cycle:'monthly'},updated_at:at})
    if(path.endsWith('/commission-policy'))return reply({brand_id:gameId,version:1,config:{enabled:false,calendar:null,payout_mode:'manual'},created_at:at,updated_at:at,revision_id:gameId})

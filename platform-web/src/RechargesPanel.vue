@@ -15,7 +15,7 @@ import DirectorySearch from "@lottery/shared/DirectorySearch.vue";
 import { usePlatformI18n } from "./i18n"
 const ui = usePlatformI18n().t
 import DetailModal from "@lottery/shared/DetailModal.vue"
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformRechargeApi, type Recharge } from './recharge-api'
 import FilterAssociationSearch from "@lottery/shared/FilterAssociationSearch.vue"
@@ -76,6 +76,7 @@ watch(() => [props.brandId, props.memberId], () => {
   void withGlobalLoading(load)
 }, { immediate: true, flush: 'sync' })
 
+onBeforeUnmount(() => { generation++ })
 useOperationToast(error, value => displayPublicError(value), 'error');
 </script>
 

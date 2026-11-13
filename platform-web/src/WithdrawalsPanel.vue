@@ -105,7 +105,7 @@ async function loadHistory(){
  finally{if(request===historyGeneration)historyLoading.value=false}
 }
 onBeforeUnmount(()=>{generation++;historyGeneration++})
-watch(() => props.brandId, () => {
+watch(() => [props.brandId, props.initialState], () => {
   [rows.value,totalCount.value]=[[],'0']; more.value = false;
   memberDraft.value = ''; stateDraft.value = props.initialState ?? ''; activeMember.value = ''; activeState.value = props.initialState ?? ''; offset.value = 0
   void withGlobalLoading(load)

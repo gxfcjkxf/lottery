@@ -14,6 +14,7 @@ import {
 } from "../../shared/src/cash";
 const config = (): CashConfig => ({
   version: 1,
+  platform_rules: currencies.map((currency) => ({ currency, rate: "7", deposit_min: "1", deposit_max: "10000", withdrawal_min: "1", withdrawal_max: "10000", fee: "0", mode: "count", threshold: "1", inherit: false, enabled: true })),
   rules: currencies.map((currency) => ({
     currency,
     rate: "7",
@@ -24,6 +25,7 @@ const config = (): CashConfig => ({
     fee: "0",
     mode: "count",
     threshold: "2",
+    inherit: false,
     enabled: true,
   })),
 });
@@ -87,6 +89,7 @@ async function userFixture(page: Page, locale: "en" | "zh-CN", agent = false) {
   const writes: { body: string | null; key: string | undefined }[] = [];
   let lose = false;
   if (agent) await page.route("**/api/v1/agent/me", route => route.fulfill({json:{success:true,data:{account:{agent_account_id:gameId,username:'cash_agent'},agent:{id:gameId,brand_id:gameId,depth:1,config:{can_create_children:false}},code:null,user_origin:origins.user,brand_code:''}}}));
+  if (agent) await page.route('**/api/v1/agent/wallet', route => route.fulfill({json:{success:true,data:{available_points:'70',commission_points:'0'}}}));
   const base = agent ? "/api/v1/agent" : "/api/v1";
   await page.route(`**${base}/cash**`, async (route) => {
     const req = route.request(),
@@ -129,9 +132,17 @@ async function userFixture(page: Page, locale: "en" | "zh-CN", agent = false) {
       orders.push(o);
       return reply(o);
     }
+    if (path.endsWith('/destinations/delete')) {
+      const index = state.destinations.findIndex(d => d.id === body.id);
+      if (index < 0 || state.destinations[index].version !== body.version) return route.fulfill({ status: 409, json: { success: false, error: { code: 'CASH_STATE_CHANGED', message: 'Changed' } } });
+      const [d] = state.destinations.splice(index, 1);
+      return reply({ ...d, enabled: false, version: d.version + 1 });
+    }
     if (path.endsWith("/destinations")) {
-      const d = { ...body, id: gameId, version: 1 };
-      state.destinations.push(d);
+      const previous = state.destinations.find(d => d.id === body.id);
+      if (!previous && state.destinations.some(d => d.currency === body.currency)) return route.fulfill({ status: 409, json: { success: false, error: { code: 'CASH_ACCOUNT_EXISTS', message: 'Already bound' } } });
+      const d = { ...body, id: previous?.id ?? crypto.randomUUID(), version: (previous?.version ?? 0) + 1 };
+      if (previous) Object.assign(previous, d); else state.destinations.push(d);
       return reply(d);
     }
     if (path.endsWith("/withdrawals")) {
@@ -202,16 +213,33 @@ test("wallet only shows enabled brand currencies", async ({ page }, info) => {
   await page.goto(origins.user + "/withdraw");
   const cash = page.locator(".currency-wallet");
   await expect(cash.locator(".cash-balance")).toHaveCount(0);
-  await expect(cash.getByRole("button", { name: "Add payment account", exact: true })).toBeDisabled();
+  await expect(cash.getByRole("button", { name: "Add payment account", exact: true })).toHaveCount(0);
   expect(fixture.writes).toHaveLength(0);
 });
 for (const locale of ["en", "zh-CN"] as const) {
   const zh = locale === "zh-CN";
+  test(`deposit amount hint remains when switching currencies ${locale}`, async ({ page }, info) => {
+    const fixture = await userFixture(page, locale);
+    fixture.state.auto_usdt = true;
+    await page.goto(origins.user + '/recharge');
+    await page.locator('.currency-wallet').getByRole('button', { name: zh ? '充值' : 'Deposit', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    const amount = dialog.getByLabel(zh ? '金额' : 'Amount', { exact: true });
+    for (const currency of ['THB', 'USDT', 'THB']) {
+      await dialog.getByRole('combobox', { name: zh ? '币种' : 'Currency', exact: true }).click();
+      await page.getByRole('option', { name: currency === 'THB' ? (zh ? '泰铢' : 'THB') : 'USDT', exact: true }).click();
+      const hint = dialog.locator('.muted').filter({ hasText: '100.03' });
+      await expect(hint).toBeVisible();
+      await expect(amount).toHaveAttribute('aria-describedby', await hint.getAttribute('id') as string);
+    }
+    await widths(page, info.project.name.includes('reflow'), width => page.screenshot({ path: info.outputPath(`deposit-hint-${locale}-${width}.png`), fullPage: true }));
+    expect(fixture.writes).toHaveLength(0);
+  });
   test(`dedicated USDT deposit explains automatic crediting ${locale}`,async({page},info)=>{
     const fixture=await userFixture(page,locale);fixture.state.auto_usdt=true;fixture.state.brand.rules.forEach(r=>r.enabled=r.currency==='USDT');
     await page.goto(origins.user+'/recharge');const cash=page.locator('.currency-wallet');
     await cash.getByRole('button',{name:zh?'充值':'Deposit'}).click();
-    let dialog=page.getByRole('dialog');await expect(dialog).not.toContainText('100.03');
+    let dialog=page.getByRole('dialog');await expect(dialog).toContainText('100.03');
     await dialog.getByLabel(zh?'金额':'Amount',{exact:true}).fill('10');await dialog.getByRole('button',{name:zh?'确认':'Confirm',exact:true}).click();
     dialog=page.getByRole('dialog');await expect(dialog).toContainText(zh?'链上确认后自动':'automatically after on-chain confirmation');
     await expect(dialog).toContainText(zh?'入账方式':'Crediting');
@@ -454,6 +482,7 @@ for (const locale of ["en", "zh-CN"] as const) {
         name: zh ? "添加收款账号" : "Add payment account",
       })
       .click();
+    await expect(page).toHaveURL(/\/account\/payment-accounts\?/);
     dialog = page.getByRole("dialog");
     await dialog
       .getByLabel(zh ? "收款人" : "Recipient", { exact: true })
@@ -464,13 +493,20 @@ for (const locale of ["en", "zh-CN"] as const) {
     await dialog
       .getByLabel(zh ? "收款账号" : "Payment account", { exact: true })
       .fill("123456");
-    await dialog
-      .getByRole("button", { name: zh ? "确认" : "Confirm", exact: true })
-      .click();
+    await expect(dialog.getByRole('checkbox')).toHaveCount(0);
+    await expect(dialog.getByLabel(zh ? '渠道' : 'Channel', { exact: true })).toHaveCount(0);
+    await widths(page, info.project.name.includes("reflow"), width =>
+      page.screenshot({ path: info.outputPath(`account-${locale}-${width}.png`), fullPage: true }),
+    );
+    await dialog.getByRole('button', {name: zh ? '保存' : 'Save', exact: true}).click();
+    await expect(page).toHaveURL(/\/withdraw$/);
     dialog = page.getByRole("dialog");
+    await expect(dialog.locator('.cash-withdrawal-account')).toContainText('123456');
+    await expect(dialog.getByRole('combobox', { name: zh ? '收款账号' : 'Payment accounts', exact: true })).toHaveCount(0);
     await expect(
       dialog.getByLabel(zh ? "金额" : "Amount", { exact: true }),
     ).toHaveValue("1.25");
+    for (const toast of await page.locator('.toast-close').all()) await toast.click();
     await widths(page, info.project.name.includes("reflow"), (width) =>
       page.screenshot({
         path: info.outputPath(`withdrawal-${locale}-${width}.png`),
@@ -483,7 +519,7 @@ for (const locale of ["en", "zh-CN"] as const) {
     expect(fixture.writes.map((w) => JSON.parse(w.body!))).toContainEqual({
       currency: "CNY",
       amount: "1.25",
-      destination_id: gameId,
+      destination_id: fixture.state.destinations[0].id,
       destination_version: 1,
       fee: "0",
     });
@@ -494,6 +530,7 @@ for (const locale of ["en", "zh-CN"] as const) {
     page.on('request',request=>{expect(request.postData()??'').not.toContain('abandon')});
     await installLayoutApi(page, locale);
     let cfg = config();
+    cfg.platform_rules!.find(rule => rule.currency === "USD")!.enabled = false;
     const ds = [destination("CNY"), destination()];
     const permissions = [
       "point_policy.view.brand",
@@ -574,7 +611,32 @@ for (const locale of ["en", "zh-CN"] as const) {
       .getByRole("button", { name: zh ? "资金" : "Funds", exact: true })
       .click();
     const console = page.locator(".cash-console");
-    await expect(console.locator(".cash-rule")).toHaveCount(4);
+    await expect(console.locator(".cash-rule")).toHaveCount(3);
+    const firstRule = console.locator('.cash-rule').first();
+    const enabled = firstRule.getByRole('checkbox');
+    await enabled.uncheck();
+    await console.getByRole('button', { name: zh ? '保存' : 'Save', exact: true }).click();
+    await expect.poll(() => cfg.rules[0].deposit_min).toBe('0');
+    expect(cfg.rules[0].inherit).toBe(true);
+    await enabled.check();
+    const selection = firstRule.getByRole('combobox', { name: zh ? '配置' : 'Configuration', exact: true });
+    await expect(selection).toContainText(zh ? '继承' : 'Inherit');
+    const inheritedFields = firstRule.locator('input[readonly]');
+    await expect(inheritedFields).toHaveCount(5);
+    for (const [index, value] of ['1', '10000', '1', '10000', '0'].entries()) await expect(inheritedFields.nth(index)).toHaveValue(value);
+    await selection.click();
+    await page.getByRole('option', { name: zh ? '自定义' : 'Custom', exact: true }).click();
+    const minimum = firstRule.getByLabel(zh ? '最低充值' : 'Minimum deposit', { exact: true });
+    await expect(minimum).toHaveValue('1');
+    await expect(minimum).toBeEditable();
+    await expect(firstRule.locator('input[readonly]')).toHaveCount(0);
+    await minimum.fill('2');
+    await selection.click();
+    await page.getByRole('option', { name: zh ? '继承' : 'Inherit', exact: true }).click();
+    await expect(minimum).toHaveValue('1');
+    await expect(minimum).not.toBeEditable();
+    await console.getByRole('button', { name: zh ? '保存' : 'Save', exact: true }).click();
+    await expect.poll(() => cfg.rules[0].deposit_min).toBe('1');
     await expect(console.locator('.cash-tron-mode')).toHaveCount(0);
     await expect(console.getByRole('button',{name:zh?'配置收款钱包':'Configure receiving wallet',exact:true})).toHaveCount(0);
     await widths(page, info.project.name.includes("reflow"), (width) =>
@@ -628,6 +690,7 @@ for (const locale of ["en", "zh-CN"] as const)
       if (path.endsWith("/platform-settings"))
         return reply({
           version: 1,
+          theme: "jade",
           display_name: "Trial platform",
           logo_text: "T",
           logo_url: "",
@@ -669,10 +732,14 @@ for (const locale of ["en", "zh-CN"] as const)
       })
       .first()
       .fill("8.25");
+    await panel.locator('.cash-rule').nth(1).getByRole('checkbox').uncheck();
     await panel
       .getByRole("button", { name: zh ? "保存" : "Save", exact: true })
       .click();
-    expect(writes).toHaveLength(1);
+    await expect.poll(() => writes.length).toBe(1);
+    expect(cfg.rules[1].enabled).toBe(false);
+    expect(cfg.rules[1].deposit_min).toBe('0');
+    expect(cfg.rules[1].rate).toBe('');
     await expect(panel.getByRole('button',{name:zh?'添加 API Key':'Add API key',exact:true})).toHaveCount(0);
     await widths(page, info.project.name.includes("reflow"), (width) =>
       page.screenshot({
@@ -840,4 +907,117 @@ for (const locale of ['en','zh-CN'] as const) test(`unique USDT console receipt 
    await expect(dialog.getByLabel(zh?'实际到账金额':'Actual amount received',{exact:true})).toHaveValue('100.000137');
   }
  }
+});
+
+for (const locale of ['en', 'zh-CN'] as const) for (const agent of [false, true]) test(`profile payment account CRUD ${locale} ${agent ? 'agent' : 'user'}`, async ({page}, info) => {
+  const zh = locale === 'zh-CN';
+  const fixture = await userFixture(page, locale, agent);
+  await page.goto(agent ? origins.agent + '/#/profile' : origins.user + '/account');
+  await expect(page.locator('.cash-accounts')).toHaveCount(0);
+  const entry = agent ? page.getByRole('button', {name:zh?'收款账号':'Payment accounts',exact:true}) : page.getByRole('link', {name:zh?'收款账号':'Payment accounts',exact:true});
+  await expect(entry).toHaveCount(1);
+  await entry.click();
+  await expect(page).toHaveURL(agent ? /#\/payment-accounts$/ : /\/account\/payment-accounts$/);
+  await expect(page.getByRole('heading', {name:zh?'收款账号':'Payment accounts',exact:true})).toBeVisible();
+  const manager = page.locator('.cash-accounts');
+  await expect(manager.locator('tbody tr')).toHaveCount(4);
+  const row = (index: number) => manager.locator('tbody tr').nth(index);
+  for (const [index, number] of [[0, '1234567890123456'], [3, address]] as const) {
+    await row(index).getByRole('button', {name: zh ? '添加收款账号' : 'Add payment account', exact:true}).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('combobox')).toHaveCount(0);
+    if (index === 0) {
+      await dialog.getByLabel(zh ? '收款人' : 'Recipient', {exact:true}).fill('Test recipient');
+      await dialog.getByLabel(zh ? '银行' : 'Bank', {exact:true}).fill('Test bank');
+    } else {
+      await expect(dialog).toContainText('TRON/TRC20');
+      await expect(dialog.getByLabel(zh ? '收款人' : 'Recipient', {exact:true})).toHaveCount(0);
+      await dialog.getByLabel(zh ? '收款地址' : 'Receiving address', {exact:true}).fill('invalid');
+      await dialog.getByRole('button', {name:zh?'保存':'Save', exact:true}).click();
+      expect(fixture.writes.filter(w => w.body?.includes('invalid'))).toHaveLength(0);
+    }
+    await dialog.getByLabel(index === 0 ? zh?'收款账号':'Payment account' : zh?'收款地址':'Receiving address', {exact:true}).fill(number);
+    if (index === 0) fixture.loseNext();
+    await dialog.getByRole('button', {name:zh?'保存':'Save',exact:true}).click();
+    if (index === 0) {
+      await expect(dialog.getByRole('button', {name:zh?'关闭':'Close', exact:true})).toBeDisabled();
+      await dialog.getByRole('button', {name:zh?'重试原操作':'Retry original operation', exact:true}).click();
+      expect(fixture.writes[0]).toEqual(fixture.writes[1]);
+    }
+    await expect(dialog).toHaveCount(0);
+    await expect(row(index).getByRole('button', {name:zh?'添加收款账号':'Add payment account',exact:true})).toHaveCount(0);
+    await expect(row(index)).toContainText(number.slice(-6));
+    await expect(row(index)).not.toContainText(number);
+  }
+  for (const toast of await page.locator('.toast-close').all()) await toast.click();
+  await widths(page,info.project.name.includes('reflow'),async width => {
+    if (!agent) {
+      const title = await page.locator('.workspace-page-title').evaluate(node => ({height:node.getBoundingClientRect().height,lineHeight:parseFloat(getComputedStyle(node).lineHeight)}));
+      expect(title.height).toBeLessThanOrEqual(title.lineHeight * 2 + 1);
+    }
+    await page.screenshot({path:info.outputPath(`profile-accounts-${locale}-${agent}-${width}.png`),fullPage:true});
+  });
+  await row(0).getByRole('button', {name:zh?'编辑':'Edit',exact:true}).click();
+  let dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('checkbox')).toHaveCount(0);
+  await expect(dialog.getByLabel(zh?'收款账号':'Payment account',{exact:true})).toHaveValue('1234567890123456');
+  await dialog.getByLabel(zh?'收款账号':'Payment account',{exact:true}).fill('888888999999');
+  await dialog.getByRole('button',{name:zh?'保存':'Save',exact:true}).click();
+  await expect(row(0)).toContainText('999999');
+  await row(0).getByRole('button',{name:zh?'删除收款账号':'Delete payment account',exact:true}).click();
+  dialog=page.getByRole('dialog');
+  await dialog.getByRole('button',{name:zh?'关闭':'Close',exact:true}).click();
+  expect(fixture.state.destinations).toHaveLength(2);
+  await row(0).getByRole('button',{name:zh?'删除收款账号':'Delete payment account',exact:true}).click();
+  fixture.loseNext();
+  await dialog.getByRole('button',{name:zh?'确认':'Confirm',exact:true}).click();
+  await dialog.getByRole('button',{name:zh?'重试原操作':'Retry original operation',exact:true}).click();
+  expect(fixture.writes.at(-1)).toEqual(fixture.writes.at(-2));
+  await expect(row(0)).toContainText(zh?'未绑定':'Not bound');
+  expect(fixture.state.destinations).toHaveLength(1);
+  await expect(row(3)).toContainText(address.slice(-6));
+});
+
+for (const locale of ['en', 'zh-CN'] as const) test(`agent withdrawal account returns to draft ${locale}`, async ({page}) => {
+  const zh=locale==='zh-CN';const fixture=await userFixture(page,locale,true);
+  await page.goto(origins.agent+'/#/withdrawal');
+  await page.locator('.currency-wallet').getByRole('button',{name:zh?'提现':'Withdrawal',exact:true}).click();
+  let dialog=page.getByRole('dialog');
+  await dialog.getByLabel(zh?'金额':'Amount',{exact:true}).fill('1.25');
+  await expect(dialog.getByRole('button',{name:zh?'确认':'Confirm',exact:true})).toBeDisabled();
+  await dialog.getByRole('button',{name:zh?'添加收款账号':'Add payment account',exact:true}).click();
+  await expect(page).toHaveURL(/#\/payment-accounts\?/);
+  dialog=page.getByRole('dialog');
+  await dialog.getByLabel(zh?'收款人':'Recipient',{exact:true}).fill('Agent');
+  await dialog.getByLabel(zh?'银行':'Bank',{exact:true}).fill('Bank');
+  await dialog.getByLabel(zh?'收款账号':'Payment account',{exact:true}).fill('123456');
+  await dialog.getByRole('button',{name:zh?'保存':'Save',exact:true}).click();
+  await expect(page).toHaveURL(/#\/withdrawal$/);
+  dialog=page.getByRole('dialog');
+  await expect(dialog.getByLabel(zh?'金额':'Amount',{exact:true})).toHaveValue('1.25');
+  await expect(dialog.locator('.cash-withdrawal-account')).toContainText('123456');
+  expect(fixture.writes).toHaveLength(1);
+});
+for (const locale of ['en', 'zh-CN'] as const) test(`withdrawal shows only matching currency account ${locale}`, async ({page},info) => {
+  const zh=locale==='zh-CN';const fixture=await userFixture(page,locale);
+  fixture.state.destinations.push({...destination('CNY'),id:'aaaaaaaa-aaaa-4aaa-8aaa-000000000002'},destination('USDT'));
+  await page.goto(origins.user+'/withdraw');
+  await expect(page.locator('.cash-account-list')).toHaveCount(0);
+  await page.locator('.currency-wallet').getByRole('button',{name:zh?'提现':'Withdrawal',exact:true}).click();
+  const dialog=page.getByRole('dialog');
+  await expect(dialog.locator('.cash-withdrawal-account')).toContainText('12345678901234567890');
+  for(const currency of ['USDT','THB','CNY']){
+    await dialog.getByRole('combobox',{name:zh?'币种':'Currency',exact:true}).click();
+    await page.getByRole('option',{name:currency==='THB'?zh?'泰铢':'THB':currency==='CNY'?zh?'人民币':'CNY':currency,exact:true}).click();
+    if(currency==='THB'){
+      await expect(dialog.locator('.cash-withdrawal-account')).toHaveCount(0);
+      await expect(dialog.getByRole('button',{name:zh?'确认':'Confirm',exact:true})).toBeDisabled();
+    }else{
+      await expect(dialog.locator('.cash-withdrawal-account')).toContainText(currency==='USDT'?address:'12345678901234567890');
+      await expect(dialog.getByRole('button',{name:zh?'确认':'Confirm',exact:true})).toBeEnabled();
+    }
+  }
+  if(info.project.name.includes('reflow')) await page.setViewportSize({width:320,height:800});
+  await expectNoPageOverflow(page);
+  expect(fixture.writes).toHaveLength(0);
 });

@@ -6,9 +6,14 @@
 .workspace-trailing{display:flex;align-items:center;justify-content:flex-end;gap:4px;min-width:0}.workspace-login{min-width:44px;min-height:44px;padding:6px;font-size:14px;white-space:nowrap}
 .workspace-leading{display:flex;align-items:center;gap:8px;min-width:0}.workspace-leading>.icon-button{flex-shrink:0}.workspace-page-title{margin:0;font-size:18px;line-height:1.3;overflow-wrap:anywhere}.workspace-game-heading{max-width:38vw}
 .workspace-game-heading{display:flex;align-items:center;justify-content:center;min-width:0}.workspace-game-heading #user-game-help:empty{display:none}.workspace-game-heading .bet-help{margin:0;flex-shrink:0}
-.workspace-overview-control{position:relative;height:25px}.workspace-overview-toggle{position:absolute;top:-12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;width:56px;min-height:44px;padding:0;border:0;background:transparent;color:var(--primary-dark);cursor:pointer;isolation:isolate}.workspace-overview-toggle::before{content:"";position:absolute;inset:12px 0;background:var(--primary-light);border:1px solid var(--line);border-radius:0 0 10px 10px;z-index:-1}.workspace-overview-toggle .expanded{transform:rotate(180deg)}
+.workspace-overview-toggle,.workspace-sidebar-toggle{box-sizing:border-box;padding:0;border:0;background:transparent;color:var(--primary-dark);cursor:pointer;isolation:isolate}
+.workspace-overview-toggle::before,.workspace-sidebar-toggle::before{content:"";position:absolute;box-sizing:border-box;background:var(--primary-light);border:1px solid var(--line);z-index:-1}
+.workspace-overview-toggle:hover::before,.workspace-sidebar-toggle:hover::before{background:var(--surface);border-color:var(--primary)}
+.workspace-overview-toggle:focus-visible,.workspace-sidebar-toggle:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.workspace-overview-toggle .site-icon,.workspace-sidebar-toggle .site-icon{width:20px;height:20px;flex-shrink:0}
+.workspace-overview-control{position:relative;height:24px}.workspace-overview-toggle{position:absolute;top:-12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;width:56px;height:44px}.workspace-overview-toggle::before{inset:12px 0;border-top:0;border-radius:0 0 10px 10px}.workspace-overview-toggle .expanded{transform:rotate(180deg)}
 .workspace-overview .header-points{max-width:100%;height:auto;text-align:center}.workspace-overview .header-points>strong{overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;font-size:16px}
-.workspace-menu-layer{position:fixed;inset:0;z-index:60}.workspace-menu-backdrop{position:absolute;inset:0;border:0;background:var(--overlay-bg);width:100%;height:100%}.workspace-menu{position:absolute;inset:0 auto 0 0;width:50%;box-sizing:border-box;padding:12px;background:var(--surface);box-shadow:var(--shadow-lg);overflow:auto;animation:workspace-menu-in .18s ease-out}
+.workspace-menu-layer{position:fixed;inset:0;z-index:60}.workspace-menu-backdrop{position:absolute;inset:0;border:0;background:var(--overlay-bg);width:100%;height:100%}.workspace-menu{position:absolute;inset:0 0 0 auto;width:50%;box-sizing:border-box;padding:12px;background:var(--surface);box-shadow:var(--shadow-lg);overflow:auto;animation:workspace-menu-in .18s ease-out}
 .workspace-menu-heading{position:relative;display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:8px;overflow-wrap:anywhere}.workspace-menu-heading>strong{min-width:0}.workspace-menu-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}.workspace-menu-tools{display:flex;align-items:center;gap:4px}.workspace-menu-tools .locale-picker{position:static}.workspace-menu-tools .locale-picker__list{left:0;right:0;top:calc(100% + 6px);width:auto;max-width:100%;box-sizing:border-box}
 .workspace-frame .content{box-sizing:border-box;width:100%;max-width:none;margin:0 auto;padding:12px 12px calc(88px + env(safe-area-inset-bottom));min-width:0}.workspace-frame .compact-content{padding-top:8px}
 .workspace-frame .workspace-redundant-heading{display:none}
@@ -34,7 +39,7 @@
 .workspace-frame .mobile-primary-nav a{display:grid;min-width:0;min-height:44px;place-items:center;align-content:center;gap:2px;border-radius:var(--radius-sm);color:var(--muted);font-size:var(--body-font-size);font-weight:600;line-height:1.2;text-align:center;text-decoration:none}
 .workspace-frame .mobile-primary-nav a.active{color:var(--primary-dark);background:var(--primary-light)}
 .workspace-frame .mobile-primary-nav-icon{display:grid;place-items:center;width:28px;height:28px}
-@keyframes workspace-menu-in{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+@keyframes workspace-menu-in{from{transform:translateX(100%)}to{transform:translateX(0)}}
 @media(prefers-reduced-motion:reduce){.workspace-menu{animation:none}}
 @media(max-width:620px){.workspace-menu{padding:10px}.workspace-menu-heading{flex-wrap:wrap}.workspace-menu-heading>strong{flex-basis:100%}.workspace-menu-actions{margin-left:auto}}
 @media(max-width:360px){.workspace-frame .content{padding-inline:6px}.lottery-play-layout{grid-template-columns:68px minmax(0,1fr)}.lottery-play-options{padding:6px}.workspace-frame .compact-betting .bet-option-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}}
@@ -43,9 +48,8 @@
 @media(min-width:1000px){
   .workspace-frame{--workspace-sidebar-width:220px;--configured-dock-left:var(--workspace-sidebar-width);--configured-dock-bottom:0px}
   .workspace-frame.workspace-sidebar-collapsed{--workspace-sidebar-width:0px}
-  .workspace-sidebar-toggle{position:fixed;top:50%;left:var(--workspace-sidebar-width);transform:translateY(-50%);z-index:31;display:flex;align-items:center;justify-content:center;width:24px;min-height:56px;padding:0;border:1px solid var(--line);border-left:0;border-radius:0 10px 10px 0;background:var(--primary-light);color:var(--primary-dark);cursor:pointer}
-  .workspace-sidebar-toggle:hover{background:var(--surface);border-color:var(--primary)}
-  .workspace-sidebar-toggle:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+  .workspace-sidebar-toggle{position:fixed;top:50%;left:var(--workspace-sidebar-width);transform:translateY(-50%);z-index:31;display:flex;align-items:center;justify-content:flex-start;width:44px;height:56px}
+  .workspace-sidebar-toggle::before{inset:0 auto 0 0;width:20px;border-left:0;border-radius:0 10px 10px 0}
   .workspace-sidebar-toggle .is-collapsed{transform:rotate(180deg)}
   .workspace-sidebar{display:flex;flex-direction:column;gap:20px;position:fixed;inset:0 auto 0 0;z-index:30;box-sizing:border-box;width:220px;padding:0 14px 20px;background:var(--surface);border-right:1px solid var(--line);overflow-y:auto}
   .workspace-sidebar-brand{display:flex;align-items:center;gap:10px;min-height:52px;flex-shrink:0;color:var(--ink);font-size:18px;line-height:1.3;text-decoration:none;overflow-wrap:anywhere}
@@ -55,11 +59,10 @@
   .workspace-frame .mobile-primary-nav{display:none}
   .workspace-frame .content{padding:12px 24px 24px}
   .workspace-topbar{padding-inline:24px}
-  .workspace-menu{left:auto;right:0;width:320px}
+  .workspace-menu{width:320px}
   .workspace-frame .compact-betting .bet-option-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
 
-@media(min-width:1000px) and (pointer:coarse){.workspace-sidebar-toggle{width:44px}}
 
 @media (min-width:901px) and (pointer:fine) {
   .workspace-frame :is(.workspace-login, .compact-betting .play-tabs button, .standard-play-groups button) {
@@ -121,8 +124,8 @@
 #app .workspace-frame .workspace-sidebar .side-nav :is(a,button) > span { color:inherit; }
 
 @media(max-width:480px){
- .workspace-topbar.workspace-ledger{grid-template-columns:minmax(0,1fr) auto;row-gap:4px;padding-block:4px}
- .workspace-ledger .workspace-leading{grid-column:1/-1;grid-row:1}
- .workspace-ledger .workspace-game-heading{grid-column:1;grid-row:2;max-width:100%;justify-content:flex-start}
- .workspace-ledger .workspace-trailing{grid-column:2;grid-row:2}
+ .workspace-topbar.workspace-stacked-heading{grid-template-columns:minmax(0,1fr) auto;row-gap:4px;padding-block:4px}
+ .workspace-stacked-heading .workspace-leading{grid-column:1/-1;grid-row:1}
+ .workspace-stacked-heading .workspace-game-heading{grid-column:1;grid-row:2;max-width:100%;justify-content:flex-start}
+ .workspace-stacked-heading .workspace-trailing{grid-column:2;grid-row:2}
 }

@@ -65,6 +65,7 @@ const syncPending = () => {
 };
 
 async function reloadCurrent(): Promise<boolean> {
+  if (!permissions.value.view) return false;
   const accountId = props.account.id;
   const brandId = props.brandId;
   const epoch = brandOperationSessionGeneration();
@@ -179,11 +180,12 @@ async function sendFrozenIntent(retry: boolean): Promise<void> {
   }
 }
 
-watch(() => [props.account.id, props.brandId] as const, () => {
+watch(() => [props.account.id, props.brandId, permissions.value.view, permissions.value.write] as const, () => {
   recordGuard.invalidate();
   writeGuard.invalidate();
   record.value = null;
   readFailed.value = false;
+  loading.value = false;
   error.value = "";
   notice.value = "";
   busy.value = false;
@@ -191,7 +193,7 @@ watch(() => [props.account.id, props.brandId] as const, () => {
   if (permissions.value.view) {
     void reloadCurrent();
   }
-}, { immediate: true });
+}, { immediate: true, flush: 'sync' });
 
 onUnmounted(() => {
   recordGuard.invalidate();

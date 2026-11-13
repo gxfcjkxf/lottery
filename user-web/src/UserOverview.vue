@@ -13,7 +13,7 @@ const summary=ref<MemberBettingSummary|null>(null),failed=ref(false)
 let generation=0,disposed=false
 let controller:AbortController|undefined
 async function load(){if(disposed)return;const g=++generation;controller?.abort();controller=new AbortController();try{const result=await readMemberSummary(props.brandCode,controller.signal);if(disposed||g!==generation)return;if(result.brand_id!==props.brandId||result.member_id!==props.memberId)throw new Error('Summary identity mismatch');summary.value=result;failed.value=false}catch{if(!disposed&&g===generation)failed.value=true}}
-watch(()=>[props.brandId,props.memberId],()=>{summary.value=null;failed.value=false;void withGlobalLoading(load)},{immediate:true})
+watch(()=>[props.brandId,props.memberId,props.brandCode],()=>{summary.value=null;failed.value=false;void withGlobalLoading(load)},{immediate:true,flush:'sync'})
 function background(event:Event){const value=(event as CustomEvent<Wallet>).detail;if(value.brand_id===props.brandId&&value.member_id===props.memberId)void load()}
 onMounted(()=>window.addEventListener(WALLET_SNAPSHOT_EVENT,background))
 onUnmounted(()=>{disposed=true;generation++;controller?.abort();window.removeEventListener(WALLET_SNAPSHOT_EVENT,background)})

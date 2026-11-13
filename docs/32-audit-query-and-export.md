@@ -4,7 +4,7 @@
 
 ## 权限和品牌范围
 
-GET `/api/v1/admin/audit`需要audit.view.brand或audit.view.platform。品牌权限只能查询所属品牌；平台查看权限可省略品牌头跨品牌查询。响应仍为`{items:[]}`，旧字段保留，新增brand_id为UUID或null；每条记录返回`actor_username`，管理员及会员记录返回可解析的账号名，无法解析时为空字符串。
+GET `/api/v1/admin/audit`需要audit.view.brand或audit.view.platform。品牌权限只能查询所属品牌；平台查看权限可省略品牌头跨品牌查询。响应仍为`{items:[]}`，旧字段保留，新增brand_id为UUID或null；每条记录返回`actor_username`，管理员、会员及代理记录返回可解析的账号名；代理账号按日志所属品牌关联，无法解析时为空字符串。
 
 GET `/api/v1/admin/audit/export`同时需要对应品牌的查看权和独立audit.export.brand或audit.export.platform。即使拥有平台权限也必须传明确X-Brand-ID，不提供全部品牌一键导出。超级管理员身份不替代权限；拒绝访问沿用access.denied审计。
 

@@ -2,6 +2,7 @@ import { createApiClient, ApiError } from "./api";
 export const currencies = ["CNY", "USD", "THB", "USDT"] as const;
 export type Currency = (typeof currencies)[number];
 export interface CashRule {
+  inherit: boolean;
   currency: Currency;
   rate: string;
   deposit_min: string;
@@ -16,6 +17,7 @@ export interface CashRule {
 export interface CashConfig {
   version: number;
   rules: CashRule[];
+  platform_rules?: CashRule[];
 }
 export interface CashDestination {
   id: string;
@@ -81,6 +83,7 @@ export function isCashConfig(v: unknown): v is CashConfig {
   return (
     object(v) &&
     version(v.version) &&
+    (v.platform_rules === undefined || isCashConfig({ version: 0, rules: v.platform_rules })) &&
     Array.isArray(v.rules) &&
     v.rules.length === 4 &&
     new Set(v.rules.map((r) => r.currency)).size === 4 &&
@@ -89,6 +92,7 @@ export function isCashConfig(v: unknown): v is CashConfig {
         object(r) &&
         currency(r.currency) &&
         typeof r.enabled === "boolean" &&
+        typeof r.inherit === "boolean" &&
         typeof r.rate === "string" &&
         (r.rate === "" || cashDecimal(r.rate)) &&
         [
@@ -190,6 +194,7 @@ export function isCashState(v: unknown): v is CashState {
     isCashConfig(v.brand) &&
     Array.isArray(v.destinations) &&
     v.destinations.every(isCashDestination) &&
+    new Set(v.destinations.map(d => d.currency)).size === v.destinations.length &&
     Array.isArray(v.balances) &&
     v.balances.length === 4 &&
     new Set(v.balances.map((b) => b.currency)).size === 4 &&
@@ -353,8 +358,10 @@ export function createCashApi(
       }
       return result;
     },
+    deleteDestination: (body: {id: string; version: number}, key: string) =>
+      write("/cash/destinations/delete", body, key, (v): v is CashDestination => isCashDestination(v) && v.id === body.id && v.version === body.version + 1 && !v.enabled),
     saveDestination: (body: CashDestination, key: string) =>
-      write("/cash/destinations", body, key, isCashDestination),
+      write("/cash/destinations", body, key, (v): v is CashDestination => isCashDestination(v) && v.currency === body.currency && (!body.id || v.id === body.id) && v.version === body.version + 1),
     saveConfig: (body: CashConfig, key: string) =>
       write("/cash/config", body, key, isCashConfig, "PUT"),
   };
@@ -371,3 +378,5 @@ export interface PendingCashWrite {
   detail: CashOrder | null;
 }
 export const pendingCashWrites = new Map<string, PendingCashWrite>();
+
+export const cashWithdrawalDrafts = new Map<string, { currency: Currency; amount: string }>();

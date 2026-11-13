@@ -22,7 +22,7 @@ export function registerCompactListTests(reflow = false) {
           if (path.endsWith(`/agents/${gameId}`)) return reply(agent)
           throw Error(`Unexpected compact list read: ${path}`)
         })
-        await installConsoleSession(page,'platform',locale,gameId,['agent.view.platform','notification_template.write.platform'],gameId)
+        await installConsoleSession(page,'platform',locale,gameId,['agent.view.platform','notification_template.view.platform','notification_template.write.platform'],gameId)
         await page.goto(origins.platform);await expect(page.locator('.management-console')).toBeVisible()
         if(component==='NotificationTemplatesPanel'){
           await openPlatformPage(page,locale==='en'?'Operations':'运营');await openPlatformPage(page,locale==='en'?'Notification templates':'通知模板')

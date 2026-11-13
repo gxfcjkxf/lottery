@@ -3,8 +3,8 @@ html[data-theme='jade'] { --theme-primary: #059669; --theme-accent: #d97706; --t
 html[data-theme='vermilion'] { --theme-primary: #dc2626; --theme-accent: #d97706; --theme-canvas: #faf8f5; }
 html[data-theme='ocean'] { --theme-primary: #0284c7; --theme-accent: #ea580c; --theme-canvas: #f4f7fa; }
 html[data-theme='obsidian'] { --theme-primary: #047857; --theme-accent: #b45309; --theme-canvas: #f0f3f1; }
-html[data-theme] { --on-primary: #ffffff; --theme-surface: #fff; --theme-ink: #111827; --theme-muted: #64748b; --theme-line: #dfe5e2; --theme-warning: #b45309; --theme-success: #047857; --theme-danger: #be123c; --theme-danger-bg: #fff1f2; }
-html[data-theme][data-user-theme='dark'] { --on-primary: #071510; --theme-canvas: #090d16; --theme-surface: #111923; --theme-ink: #e5ece9; --theme-muted: #a0b0b9; --theme-line: #303c46; --theme-warning: #fbbf24; --theme-success: #6ee7b7; --theme-danger: #fb7185; --theme-danger-bg: #361c29; }
+html[data-theme] { --on-primary: #ffffff; --theme-surface: #fff; --theme-ink: #111827; --theme-muted: #64748b; --theme-line: #dfe5e2; --theme-warning: #b45309; --theme-success: #047857; --theme-danger: #be123c; --theme-danger-bg: #fff1f2; --theme-overlay: rgb(15 23 42 / 45%); }
+html[data-theme][data-user-theme='dark'] { --on-primary: #071510; --theme-canvas: #090d16; --theme-surface: #111923; --theme-ink: #e5ece9; --theme-muted: #a0b0b9; --theme-line: #303c46; --theme-warning: #fbbf24; --theme-success: #6ee7b7; --theme-danger: #fb7185; --theme-danger-bg: #361c29; --theme-overlay: rgb(0 0 0 / 65%); }
 html[data-theme='jade'][data-user-theme='dark'], html[data-theme='obsidian'][data-user-theme='dark'] { --theme-primary: #34d399; --theme-accent: #fbbf24; }
 html[data-theme='vermilion'][data-user-theme='dark'] { --theme-primary: #fb7185; --theme-accent: #fbbf24; }
 html[data-theme='ocean'][data-user-theme='dark'] { --theme-primary: #38bdf8; --theme-accent: #fb923c; }
@@ -28,6 +28,9 @@ html[data-theme], html[data-theme] #app, html[data-theme] #app :is(.workspace-fr
  --accent-light: color-mix(in srgb, var(--theme-accent) 12%, var(--theme-surface)) !important;
  --canvas: var(--theme-canvas) !important;
  --surface: var(--theme-surface) !important;
+ --panel: var(--theme-surface) !important;
+ --green: var(--theme-success) !important;
+ --overlay-bg: var(--theme-overlay) !important;
  --surface-card: var(--theme-surface) !important;
  --navigation-bg: var(--theme-surface) !important;
  --ink: var(--theme-ink) !important;
@@ -67,10 +70,10 @@ html[data-theme], html[data-theme] #app, html[data-theme] #app :is(.workspace-fr
  --shadow-md: 0 10px 28px color-mix(in srgb, var(--theme-ink) 12%, transparent) !important;
  --shadow-lg: 0 16px 40px color-mix(in srgb, var(--theme-ink) 16%, transparent) !important;
  --danger: var(--theme-danger) !important;
- --success: #059669 !important; --success-text: var(--theme-success) !important;
- --success-bg: color-mix(in srgb, #059669 10%, var(--theme-surface)) !important;
+ --success: var(--theme-success) !important; --success-text: var(--theme-success) !important;
+ --success-bg: color-mix(in srgb, var(--theme-success) 10%, var(--theme-surface)) !important;
  --warning-text: var(--theme-warning) !important;
- --warning-bg: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-surface)) !important;
+ --warning-bg: color-mix(in srgb, var(--theme-warning) 10%, var(--theme-surface)) !important;
 }
 html[data-theme] body { background: var(--canvas); color: var(--ink); }
 html[data-theme] #app :is(.content,.page-content,.main-shell,.workspace-main) { background: var(--canvas); color: var(--ink); }
@@ -117,7 +120,7 @@ html[data-theme][data-user-theme='light'] { color-scheme: light; }
 html[data-theme][data-user-theme='dark'] { color-scheme: dark; }
 html[data-theme] #app { color-scheme: inherit; }
 
-html[data-theme][data-user-theme='dark'] #app { --info-text: #38bdf8 !important; }
+html[data-theme][data-user-theme='dark'] #app, html[data-theme][data-user-theme='dark'] #app :is(.workspace-frame,.management-console,.login-entry) { --info-text: #38bdf8 !important; }
 html[data-theme] #app {
  --lottery-attribute-zodiac: #2563eb;
  --lottery-element-metal: var(--warning-text);

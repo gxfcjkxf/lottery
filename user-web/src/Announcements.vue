@@ -22,24 +22,24 @@ const rows=ref<Announcement[]>([]),queue=ref<Announcement[]>([]),index=ref(0),op
 const selected=computed(()=>queue.value[index.value]),content=computed(()=>selected.value?.config.content[props.locale])
 const allowMute=computed(()=>automatic.value&&queue.value.length>0&&queue.value.every(v=>v.config.allow_mute))
 const entry=computed(()=>['/','/login','/register'].includes(props.path))
-let ticket=0,alive=true,lastTrigger=''
+let ticket=0,scopeGeneration=0,alive=true,lastTrigger=''
 const viewed=new Set<string>()
 function failed(e:unknown,key:AnnouncementKey){error.value=key;if(e instanceof ApiError&&e.status===401)emit('auth-expired')}
-async function seen(){const item=selected.value;if(!item||!automatic.value)return;const key=`${props.brandId}:${props.memberId??'guest'}:${item.id}:${item.generation}`;if(viewed.has(key))return
- await nextTick();await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));if(!open.value||!alive||selected.value?.id!==item.id||!dialog.value?.$el.open)return
- try{await api.value.receipt('view',[{id:item.id,generation:item.generation}]);viewed.add(key)}catch(e){failed(e,'receiptFailure')}
+async function seen(){const epoch=scopeGeneration,client=api.value;const item=selected.value;if(!item||!automatic.value)return;const key=`${props.brandId}:${props.memberId??'guest'}:${item.id}:${item.generation}`;if(viewed.has(key))return
+ await nextTick();await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));if(epoch!==scopeGeneration||!open.value||!alive||selected.value?.id!==item.id||!dialog.value?.$el.open)return
+ try{await client.receipt('view',[{id:item.id,generation:item.generation}]);if(alive&&epoch===scopeGeneration)viewed.add(key)}catch(e){if(alive&&epoch===scopeGeneration)failed(e,'receiptFailure')}
 }
 async function show(items:Announcement[],auto:boolean){queue.value=items;index.value=0;automatic.value=auto;mute.value=false;open.value=items.length>0;if(open.value)await seen()}
-async function load(){const current=++ticket;loading.value=true;error.value=null
- try{const feed=await api.value.list();if(current!==ticket||!alive)return;if(props.memberId&&feed.length)await api.value.receipt('sync');if(current!==ticket||!alive)return;rows.value=feed;await tryAutomatic()}catch(e){if(current===ticket)failed(e,'failure')}finally{if(current===ticket)loading.value=false}}
-async function tryAutomatic(){if(!entry.value||open.value||modalDialogs.length)return;const trigger=`${props.brandId}:${props.memberId??'guest'}:${props.path}`;if(lastTrigger===trigger)return;lastTrigger=trigger;const eligible=rows.value.filter(v=>v.eligible);if(eligible.length)await show(eligible,true)}
-async function dismiss(){if(writing.value)return;if(mute.value&&allowMute.value){writing.value=true;try{await api.value.receipt('mute',queue.value.map(v=>({id:v.id,generation:v.generation})))}catch(e){failed(e,'receiptFailure');return}finally{writing.value=false}}
- open.value=false;mute.value=false}
+async function load(){const current=++ticket,client=api.value,member=props.memberId;loading.value=true;error.value=null
+ try{const feed=await client.list();if(current!==ticket||!alive)return;if(member&&feed.length)await client.receipt('sync');if(current!==ticket||!alive)return;rows.value=feed;await tryAutomatic()}catch(e){if(alive&&current===ticket)failed(e,'failure')}finally{if(alive&&current===ticket)loading.value=false}}
+async function tryAutomatic(){if(!entry.value||open.value||modalDialogs.length)return;const trigger=`${props.brandId}:${props.memberId??'guest'}:${props.path}`;if(lastTrigger===trigger)return;const eligible=rows.value.filter(v=>v.eligible);if(!eligible.length)return;lastTrigger=trigger;await show(eligible,true)}
+async function dismiss(){if(writing.value)return;const epoch=scopeGeneration;if(mute.value&&allowMute.value){writing.value=true;try{await api.value.receipt('mute',queue.value.map(v=>({id:v.id,generation:v.generation})))}catch(e){if(alive&&epoch===scopeGeneration)failed(e,'receiptFailure');return}finally{if(alive&&epoch===scopeGeneration)writing.value=false}}
+ if(!alive||epoch!==scopeGeneration)return;open.value=false;mute.value=false}
 async function move(delta:number){index.value+=delta;await nextTick();dialog.value?.$el.querySelector('.detail-modal-content')?.scrollTo({top:0});await seen()}
-watch(()=>[props.brandId,props.memberId,props.brandCode],()=>{open.value=false;rows.value=[];lastTrigger='';void load()},{immediate:true})
-watch(()=>props.path,()=>{open.value=false;lastTrigger='';if(entry.value||props.list)void load()})
+watch(()=>[props.brandId,props.memberId,props.brandCode],()=>{scopeGeneration++;ticket++;open.value=false;rows.value=[];queue.value=[];loading.value=writing.value=false;error.value=null;lastTrigger='';void load()},{immediate:true,flush:'sync'})
+watch(()=>props.path,()=>{scopeGeneration++;ticket++;open.value=false;loading.value=writing.value=false;lastTrigger='';if(entry.value||props.list)void load()},{flush:'sync'})
 watch(()=>modalDialogs.length,n=>{if(n===0)void tryAutomatic()})
-onBeforeUnmount(()=>{alive=false;ticket++})
+onBeforeUnmount(()=>{alive=false;ticket++;scopeGeneration++})
 useOperationToast(()=>error.value,key=>key?t(key):'','error')
 </script>
 <template>

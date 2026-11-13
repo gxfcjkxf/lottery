@@ -90,7 +90,7 @@ func registerIndependentAgentRoutes(mux routeRegistrar, d Dependencies) {
 			}
 			outputMutation(w, r, result, err)
 		})
-		for _, action := range []struct{ method, path string }{{"GET", "cash"}, {"GET", "cash/orders"}, {"POST", "cash/deposits"}, {"POST", "cash/exchanges"}, {"POST", "cash/withdrawals"}, {"POST", "cash/destinations"}, {"POST", "transfers"}, {"GET", "transfers"}, {"GET", "wallet/records"}, {"POST", "cash/orders/{id}/{action}"}, {"GET", "me"}, {"GET", "children"}, {"GET", "wallet"}, {"GET", "commission"}, {"GET", "members"}, {"GET", "members/{id}/summary"}, {"GET", "members/{id}/bets"}, {"POST", "members"}, {"POST", "children"}, {"POST", "password"}, {"POST", "logout"}, {"PUT", "children/{id}/config"}} {
+		for _, action := range []struct{ method, path string }{{"GET", "cash"}, {"GET", "cash/orders"}, {"POST", "cash/deposits"}, {"POST", "cash/exchanges"}, {"POST", "cash/withdrawals"}, {"POST", "cash/destinations"}, {"POST", "cash/destinations/delete"}, {"POST", "transfers"}, {"GET", "transfers"}, {"GET", "wallet/records"}, {"POST", "cash/orders/{id}/{action}"}, {"GET", "me"}, {"GET", "children"}, {"GET", "wallet"}, {"GET", "commission"}, {"GET", "members"}, {"GET", "members/{id}/summary"}, {"GET", "members/{id}/bets"}, {"POST", "members"}, {"POST", "children"}, {"POST", "password"}, {"POST", "logout"}, {"PUT", "children/{id}/config"}} {
 			action := action
 			mux.HandleFunc(action.method+" "+prefix+"/agent/"+action.path, func(w http.ResponseWriter, r *http.Request) {
 				if d.Identity == nil || d.Admins.DB == nil || d.Mutations == nil {

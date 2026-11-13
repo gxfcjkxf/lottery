@@ -24,13 +24,13 @@ for (const locale of ['en','zh-CN'] as const) {
       if(width>=1000)await expect(page.locator('.workspace-sidebar').getByRole('button',{name,exact:true})).toBeVisible()
       await expectNoPageOverflow(page)
     }
-    await page.locator('.workspace-trailing button').click()
+    await page.locator('.workspace-menu-trigger').click()
     const menu=page.locator('.workspace-menu'), logout=menu.getByRole('button',{name,exact:true})
     await expect(logout).toBeVisible()
     expect((await logout.boundingBox())!.height).toBeGreaterThanOrEqual(info.project.name.includes('reflow')?32:44)
     await page.screenshot({path:info.outputPath(`session-menu-${locale}.png`),animations:'disabled'})
     await logout.click()
-    await expect(menu.getByRole('alert')).toBeVisible()
+    await expect(page.locator('.operation-toast-stack').getByRole('alert')).toBeVisible()
     await expect(page).toHaveURL(/\/account$/)
     expect(signedIn).toBe(true)
     fail=false

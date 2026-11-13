@@ -102,6 +102,23 @@ func TestCashHTTPScopedIdempotencyAndPermission(t *testing.T) {
 	if e = tx.Commit(ctx); e != nil {
 		t.Fatal(e)
 	}
+	binding := cash.Destination{Currency: "CNY", Channel: "bank", Holder: "Member", Institution: "Bank", Number: "123456", Enabled: true}
+	savedBinding := userCall("POST", "/api/v1/cash/destinations", "member-bind", auth.AccessToken, binding)
+	mustStatus(t, savedBinding, 200)
+	mustStatus(t, userCall("POST", "/api/v1/cash/destinations", "member-bind", auth.AccessToken, binding), 200)
+	var bound cash.Destination
+	managedData(t, savedBinding, &bound)
+	mustStatus(t, userCall("POST", "/api/v1/cash/destinations", "member-bind-duplicate", auth.AccessToken, binding), 409)
+	deletion := map[string]any{"id": bound.ID, "version": bound.Version}
+	mustStatus(t, userCall("POST", "/api/v1/cash/destinations/delete", "member-delete-bad-version", auth.AccessToken, map[string]any{"id": bound.ID, "version": 0}), 400)
+	savedActor := cashContext
+	cashContext = "wrong-actor"
+	mustStatus(t, userCall("POST", "/api/v1/cash/destinations/delete", "member-delete-wrong-actor", auth.AccessToken, deletion), 403)
+	cashContext = savedActor
+	mustStatus(t, userCall("POST", "/api/v1/cash/destinations/delete", "member-delete", auth.AccessToken, deletion), 200)
+	mustStatus(t, userCall("POST", "/api/v1/cash/destinations/delete", "member-delete", auth.AccessToken, deletion), 200)
+	mustStatus(t, userCall("POST", "/api/v1/cash/destinations/delete", "member-delete-again", auth.AccessToken, deletion), 409)
+	mustStatus(t, userCall("POST", "/api/v1/cash/destinations", "member-rebind", auth.AccessToken, binding), 200)
 	body := map[string]string{"currency": "CNY", "amount": "10"}
 	savedContext := cashContext
 	cashContext = "changed-account"
@@ -273,6 +290,21 @@ func TestCashHTTPScopedIdempotencyAndPermission(t *testing.T) {
 	mustStatus(t, userCall("POST", "/api/v1/agent/cash/withdrawals", "agent-withdraw", agentToken, payout), 200)
 	mustStatus(t, userCall("GET", "/api/v1/agent/cash/orders?kind=withdrawal", "", agentToken, nil), 200)
 	mustStatus(t, userCall("POST", "/api/v1/agent/cash/orders/"+agentWithdrawal.ID+"/cancel", "agent-withdraw-cancel", agentToken, map[string]int{"version": 1}), 200)
+	mustStatus(t, userCall("POST", "/api/v1/agent/cash/destinations", "agent-bind-duplicate", agentToken, cash.Destination{Currency: "CNY", Channel: "bank", Holder: "Agent", Institution: "Bank", Number: "different", Enabled: true}), 409)
+	deleteAgent := map[string]any{"id": dest.ID, "version": dest.Version}
+	agentContext := cashContext
+	otherState := userCall("GET", "/api/v1/agent/cash", "", otherToken, nil)
+	mustStatus(t, otherState, 200)
+	var otherCash struct {
+		Context string `json:"actor_context"`
+	}
+	managedData(t, otherState, &otherCash)
+	cashContext = otherCash.Context
+	mustStatus(t, userCall("POST", "/api/v1/agent/cash/destinations/delete", "other-agent-delete", otherToken, deleteAgent), 409)
+	cashContext = agentContext
+	mustStatus(t, userCall("POST", "/api/v1/agent/cash/destinations/delete", "agent-delete", agentToken, deleteAgent), 200)
+	mustStatus(t, userCall("POST", "/api/v1/agent/cash/destinations/delete", "agent-delete", agentToken, deleteAgent), 200)
+
 	after, e := store.Read(ctx, brand, own.MemberID)
 	if e != nil || after.AvailablePoints.String() != "29" {
 		t.Fatal(after, e)

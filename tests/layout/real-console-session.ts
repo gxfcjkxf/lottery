@@ -24,7 +24,11 @@ export async function installConsoleSession(page: Page, surface: 'brand' | 'plat
 export async function openBrandPage(page: Page, label: string) {
   const mobile = await page.locator('.mobile-nav').isVisible()
   if (mobile) await page.locator('.mobile-nav button').last().click()
-  await page.locator(mobile ? '.mobile-more-menu' : '.side-nav').getByRole('button', { name: label, exact: true }).click()
+  const navigation = page.locator(mobile ? '.mobile-more-menu' : '.side-nav')
+  const target = navigation.getByRole('button', { name: label, exact: true, includeHidden: true })
+  const group = navigation.locator('details').filter({ has: page.getByRole('button', { name: label, exact: true, includeHidden: true }) })
+  if (await group.count() && await group.getAttribute('open') === null) await group.locator('summary').click()
+  await target.click()
 }
 
 export async function openPlatformPage(page: Page, label: string, brandId?: string) {

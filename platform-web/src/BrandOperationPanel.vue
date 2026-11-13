@@ -6,7 +6,7 @@ import { vWriteGuard } from "@lottery/shared";
 import { withGlobalLoading } from '@lottery/shared';
 import { usePlatformI18n } from "./i18n"
 const ui = usePlatformI18n().t
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import PlatformTemporalInput from '@lottery/shared/PlatformTemporalInput.vue'
 import { lotteryLocalTimeToISO, vInlineValidation, formatPlatformDateTime, type PlatformDisplaySettings } from '@lottery/shared'
 import { platformErrorMessage } from './platform-error-message'
@@ -16,6 +16,7 @@ import { createPlatformBrandOperationApi, type BrandOperation, type BrandOperati
 const props = defineProps<{ locale: 'en' | 'zh-CN'; allowed: boolean; displaySettings: PlatformDisplaySettings }>()
 const emit = defineEmits<{ updated: [record: BrandOperation]; failure: [cause: unknown] }>()
 const api = createPlatformBrandOperationApi()
+let readGeneration = 0, alive = true
 const open = ref(false)
 const loading = ref(false)
 const saving = ref(false)
@@ -42,23 +43,27 @@ const isUnknown = (cause: unknown) => cause instanceof PlatformApiError && (caus
 
 async function openForBrand(brandId: string) {
   if (!props.allowed || loading.value || saving.value) return
+  const ticket = ++readGeneration
   open.value = true
   error.value = ''
   if (pending.value) return
   record.value = null
   loading.value = true
   try {
-    record.value = await api.read(brandId)
+    const result = await api.read(brandId)
+    if (ticket !== readGeneration) return
+    record.value = result
     target.value = record.value.status === 'active' ? 'paused' : 'active'
     reason.value = ''
     timed.value = false
     startsAt.value = ''
     endsAt.value = ''
   } catch (cause) {
+    if (ticket !== readGeneration) return
     error.value = platformErrorMessage(cause, props.locale)
     if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) emit('failure', cause)
   } finally {
-    loading.value = false
+    if (ticket === readGeneration) loading.value = false
   }
 }
 
@@ -90,12 +95,14 @@ async function submit() {
   error.value = ''
   try {
     const updated = await api.update(intent.brandId, intent.body, intent.key)
+    if (!alive) return
     pending.value = null
     unknownPending.value = false
     record.value = updated
     open.value = false
     emit('updated', updated)
   } catch (cause) {
+    if (!alive) return
     error.value = platformErrorMessage(cause, props.locale)
     if (isUnknown(cause)) unknownPending.value = true
     else {
@@ -108,13 +115,23 @@ async function submit() {
   }
 }
 
+function close() {
+  if (saving.value) return
+  readGeneration++; loading.value = false; open.value = false
+}
+watch(() => props.allowed, () => {
+  readGeneration++; loading.value = false
+  if (!pending.value && !saving.value) { record.value = null; open.value = false }
+}, { flush: 'sync' })
+onBeforeUnmount(() => { alive = false; readGeneration++ })
+
 defineExpose({ openForBrand })
 
 useOperationToast(error, value => value, 'error');
 </script>
 
 <template>
-  <DetailModal v-if="open" class="confirmation-dialog brand-operation-modal" :title="copy.title" :close-label="ui('platform.copy.27b2fd29')" :close-disabled="saving" @close="!saving && (open = false)">
+  <DetailModal v-if="open" class="confirmation-dialog brand-operation-modal" :title="copy.title" :close-label="ui('platform.copy.27b2fd29')" :close-disabled="saving" @close="close">
       <template v-if="record">
         <dl class="confirm-list">
           <div><dt>{{ copy.brand }}</dt><dd>{{ record.name }}</dd></div>
@@ -145,7 +162,7 @@ useOperationToast(error, value => value, 'error');
 
       <div class="form-actions ui-form-actions">
 
-        <button v-write-guard="saving" v-if="record" class="button button-primary" type="button" :disabled="saving || loading || !canSubmit" @click="withGlobalLoading(submit)">{{ saving ? copy.saving : pending ? copy.retry : copy.confirm }}</button>
+        <button v-write-guard="saving" v-if="record" class="button button-primary" type="button" :disabled="saving || loading || !allowed || !canSubmit" @click="withGlobalLoading(submit)">{{ saving ? copy.saving : pending ? copy.retry : copy.confirm }}</button>
       </div>
   </DetailModal>
 </template>

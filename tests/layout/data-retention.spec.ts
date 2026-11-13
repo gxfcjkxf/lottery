@@ -30,7 +30,7 @@ for(const locale of ['en','zh-CN'] as const)test(`monthly retention records, pol
   throw Error('Unexpected retention request '+req.method()+' '+url.pathname)
  })
  const source=await(await page.request.get('/src/DataRetentionPanel.vue')).text(),vue=source.match(/from "([^"]*deps\/vue\.js[^"]*)"/)![1]
- const props={brandId:brand,accountId:actor,canManage:true,locale,displaySettings:settings}
+ const props={brandId:brand,accountId:actor,canManage:true,canView:true,locale,displaySettings:settings}
  await page.route('**/__retention',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html lang="${locale}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp,h,provide}from'${vue}';import C from'/src/DataRetentionPanel.vue';import{createPlatformI18n,platformI18nKey}from'/src/i18n.ts';import{setPlatformDisplaySettings}from'/@fs${resolve('shared/src/display-settings.ts')}';import'/@fs${resolve('shared/src/styles.css')}';import'/src/style.css';import'/@fs${resolve('shared/src/management.css')}';import'/@fs${resolve('shared/src/controls.css')}';import'/@fs${resolve('shared/src/refresh-button.css')}';setPlatformDisplaySettings(${JSON.stringify(settings)});createApp({setup(){const i=createPlatformI18n();i.setLocale('${locale}');provide(platformI18nKey,i);return()=>h('main',{class:'management-console',style:'padding:12px;min-width:0'},[h(C,${JSON.stringify(props)})])}}).mount('#app')</script></html>`}))
  await page.goto('/__retention')
  const panel=page.getByTestId('data-retention');await expect(panel).toBeVisible();await expect(panel.locator('tbody tr')).toHaveCount(50)

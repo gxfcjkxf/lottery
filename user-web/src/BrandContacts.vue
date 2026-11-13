@@ -66,7 +66,7 @@ async function read() {
   } catch (cause) { if (token === generation) error.value = errorText(cause) }
   finally { if (token === generation) loading.value = false }
 }
-watch(() => props.brandId, () => { config.value = null; dialogOpen.value = false; void read() }, { immediate: true })
+watch(() => [props.brandId, props.brandCode], () => { config.value = null; dialogOpen.value = false; void read() }, { immediate: true, flush: 'sync' })
 watch(() => props.pageActive, () => dialogOpen.value = false)
 onUnmounted(() => generation++)
 </script>

@@ -14,13 +14,12 @@ import SelectControl from "@lottery/shared/SelectControl.vue";
 import ManagementList from "./ManagementList.vue";
 import ManagementTable from "./ManagementTable.vue";
 import TablePagination from "@lottery/shared/TablePagination.vue";
-import CashDestinationFields from "./CashDestinationFields.vue";
 import CashAddress from "./CashAddress.vue";
 import {
   createCashApi,
   pendingCashWrites,
   currencies,
-  emptyDestination,
+  cashWithdrawalDrafts,
   exchangeResult,
   minor,
   decimal,
@@ -29,7 +28,6 @@ import {
   type CashOrder,
   type AgentPointTransfer,
   type AgentWalletRecord,
-  type CashDestination,
 } from "./cash";
 import type { MessageParameters } from "./localization";
 import type { CashKey } from "./cash-catalog";
@@ -43,10 +41,9 @@ const props = defineProps<{
   member: { id: string; brand_id: string } | null;
   mode: "overview" | "deposit" | "withdrawal";
 }>();
-const emit = defineEmits<{ "auth-expired": []; "deposit": []; "withdrawal": []; "exchanged": [] }>();
+const emit = defineEmits<{ "auth-expired": []; "deposit": []; "withdrawal": []; "exchanged": []; "manage-accounts": [currency: Currency] }>();
 const t = (key: string, parameters?:MessageParameters) => props.t(key as CashKey,parameters);
 const errorText = (cause: unknown) => props.errorText(cause);
-const label = (k: CashKey) => t(k);
 const depositAmountHintId = useId();
 const exchangeBalanceHintId = useId();
 const availablePoints = ref<string | null>(null);
@@ -76,13 +73,11 @@ type WalletDialog =
   | "deposit"
   | "withdrawal"
   | "exchange"
-  | "account"
   | "detail"
   | null;
 const dialog = ref<WalletDialog>(null),
   detail = ref<CashOrder | null>(null),
   transferDetail = ref<AgentPointTransfer|null>(null),
-  destination = ref<CashDestination>(emptyDestination("CNY")),
   proof = ref(""),
   reference = ref("");
 const tutorialOpen = ref(false), tutorialVideo = ref<HTMLVideoElement | null>(null);
@@ -91,8 +86,7 @@ function closeTutorial() {
   tutorialOpen.value = false;
 }
 onBeforeUnmount(closeTutorial);
-const returnToWithdrawal = ref(false),
-  copied = ref(false);
+const copied = ref(false);
 const pending = ref<import("./cash").PendingCashWrite | null>(
   null,
 );
@@ -100,7 +94,7 @@ const pendingScope = computed(
   () => `${props.apiBase}:${props.member?.brand_id}:${props.member?.id}`,
 );
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
-let generation = 0;
+let generation = 0, readTicket = 0;
 const locked = computed(() => busy.value || !!pending.value);
 const enabledCurrencies = computed(() =>
   currencies.filter((value) =>
@@ -128,12 +122,6 @@ const enabled = computed(
     data.value?.brand.rules.some(
       (r) => r.currency === currency.value && r.enabled,
     ),
-);
-const managedAccounts = computed(
-  () =>
-    data.value?.destinations.filter(
-      (d) => d.currency === currency.value && enabledCurrencies.value.includes(d.currency),
-    ) ?? [],
 );
 const accounts = computed(
   () =>
@@ -198,38 +186,38 @@ function message(cause: unknown) {
   };
   return code && keys[code] ? t(keys[code]) : errorText(cause);
 }
-async function readState() {
+async function readState(ticket: number) {
   const token = generation;
   const [state, points] = await Promise.all([api.value.state(), props.readAvailablePoints()]);
-  if (token === generation) availablePoints.value = points;
+  if (token === generation && ticket === readTicket) availablePoints.value = points;
   return state;
 }
 async function load(target = page.value) {
-  const token = generation;
+  const token = generation, ticket = ++readTicket;
   loading.value = true;
   error.value = "";
   try {
     if(props.agent && recordKind.value==='all'){
-      const [state,list]=await Promise.all([readState(),api.value.agentRecords(target,size.value)]);
-      if(token!==generation)return;
+      const [state,list]=await Promise.all([readState(ticket),api.value.agentRecords(target,size.value)]);
+      if(token!==generation||ticket!==readTicket)return;
       if(state.brand_id!==props.member?.brand_id||state.member_id!==props.member?.id||list.items.some(item=>item.order&&(item.order.brand_id!==state.brand_id||item.order.member_id!==state.member_id)))throw new ApiError("Scope mismatch",403,"AUTH_ACTOR_CONTEXT_CHANGED");
       data.value=state;combined.value=list.items;records.value=[];transfers.value=[];total.value=list.total_count;page.value=target;
       if(detail.value&&!locked.value){const updated=cashRecords.value.find(order=>order.id===detail.value?.id);if(updated)detail.value=updated;}
       if(!pending.value&&!enabledCurrencies.value.includes(currency.value)&&enabledCurrencies.value.length)currency.value=enabledCurrencies.value[0]!;
-      return;
+      return true;
     }
     if(props.agent && recordKind.value==='transfer'){
-      const [state,list]=await Promise.all([readState(),api.value.agentTransfers(target,size.value)]);
-      if(token!==generation)return;
+      const [state,list]=await Promise.all([readState(ticket),api.value.agentTransfers(target,size.value)]);
+      if(token!==generation||ticket!==readTicket)return;
       if(state.brand_id!==props.member?.brand_id||state.member_id!==props.member?.id)throw new ApiError("Scope mismatch",403,"AUTH_ACTOR_CONTEXT_CHANGED");
       data.value=state;transfers.value=list.items;records.value=[];total.value=list.total_count;page.value=target;
-      return;
+      return true;
     }
     const [state, list] = await Promise.all([
-      readState(),
+      readState(ticket),
       api.value.orders(recordKind.value, target, size.value),
     ]);
-    if (token !== generation) return;
+    if (token !== generation || ticket !== readTicket) return;
     if (
       state.brand_id !== props.member?.brand_id ||
       state.member_id !== props.member?.id ||
@@ -239,6 +227,7 @@ async function load(target = page.value) {
     )
       throw new ApiError("Scope mismatch", 403, "AUTH_ACTOR_CONTEXT_CHANGED");
     data.value = state;
+    if (!pending.value) selectedAccount.value = accounts.value[0]?.id ?? "";
     if (!pending.value && !enabledCurrencies.value.includes(currency.value) && enabledCurrencies.value.length)
       currency.value = enabledCurrencies.value[0]!;
     records.value = list.items;
@@ -248,14 +237,15 @@ async function load(target = page.value) {
     }
     total.value = list.total_count;
     page.value = target;
+    return true;
   } catch (cause) {
-    if (token === generation) {
+    if (token === generation && ticket === readTicket) {
       error.value = message(cause);
       if (cause instanceof ApiError && cause.status === 401)
         emit("auth-expired");
     }
   } finally {
-    if (token === generation) loading.value = false;
+    if (token === generation && ticket === readTicket) loading.value = false;
   }
 }
 async function loadKind() {
@@ -271,10 +261,7 @@ function defaults() {
 }
 watch(
   currency,
-  () => {
-    defaults();
-    destination.value = emptyDestination(currency.value);
-  },
+  defaults,
   { flush: "sync" },
 );
 watch(direction, defaults, { flush: "sync" });
@@ -283,20 +270,15 @@ function open(which: typeof dialog.value) {
   transferDetail.value=null;
   error.value = "";
   notice.value = "";
-  returnToWithdrawal.value =
-    which === "account" && dialog.value === "withdrawal";
   if (which === "exchange") direction.value = exchangeDirections.value[0];
   dialog.value = which;
-  if (which !== "account") defaults();
+  defaults();
   if (which === "deposit") amount.value = "";
-  if (which === "account") destination.value = emptyDestination(currency.value);
 }
-function editAccount(d: CashDestination) {
+function manageAccounts() {
   if (locked.value) return;
-  currency.value = d.currency;
-  destination.value = clone(d);
-  returnToWithdrawal.value = false;
-  dialog.value = "account";
+  cashWithdrawalDrafts.set(pendingScope.value, { currency: currency.value, amount: dialog.value === 'withdrawal' ? amount.value : '' });
+  emit('manage-accounts', currency.value);
 }
 function showTransfer(entry:AgentPointTransfer){
   closeTutorial();detail.value=null;transferDetail.value=entry;dialog.value="detail";
@@ -309,14 +291,14 @@ function show(o: CashOrder) {
   reference.value = o.reference;
   dialog.value = "detail";
 }
-async function write(path: string, body: unknown, isDestination = false) {
+async function write(path: string, body: unknown) {
   if (busy.value) return;
   const token = generation;
   pending.value ??= {
     path,
     body: clone(body),
     key: crypto.randomUUID(),
-    destination: isDestination,
+    destination: false,
     config: false,
     dialog: dialog.value ?? "exchange",
     detail: detail.value ? clone(detail.value) : null,
@@ -327,39 +309,29 @@ async function write(path: string, body: unknown, isDestination = false) {
   error.value = "";
   notice.value = "";
   try {
-    if (frozen.destination) {
-      selectedAccount.value = (
-        await api.value.saveDestination(
-          frozen.body as CashDestination,
-          frozen.key,
-        )
-      ).id;
-    } else {
-      const order = await api.value.writeOrder(
-        frozen.path,
-        frozen.body,
-        frozen.key,
-      );
-      if (
-        order.brand_id !== props.member?.brand_id ||
-        order.member_id !== props.member?.id
-      )
-        throw new ApiError("Scope mismatch", 502, "INVALID_RESPONSE");
-      detail.value = order;
-    }
+    const order = await api.value.writeOrder(
+      frozen.path,
+      frozen.body,
+      frozen.key,
+    );
+    if (
+      order.brand_id !== props.member?.brand_id ||
+      order.member_id !== props.member?.id
+    )
+      throw new ApiError("Scope mismatch", 502, "INVALID_RESPONSE");
     if (token !== generation) return;
+    detail.value = order;
     pending.value = null;
     pendingCashWrites.delete(pendingScope.value);
     dialog.value =
-      frozen.destination && returnToWithdrawal.value
-        ? "withdrawal"
-        : detail.value?.kind === "deposit" && frozen.path === "/cash/deposits"
-          ? "detail"
-          : null;
+      detail.value?.kind === "deposit" && frozen.path === "/cash/deposits"
+        ? "detail"
+        : null;
     if (!dialog.value) notice.value = t("cash.success");
     proof.value = "";
     reference.value = "";
     await load(frozen.path === "/cash/deposits" ? 1 : page.value);
+    if (token !== generation) return;
     if (frozen.path === "/cash/exchanges")
       emit("exchanged");
   } catch (cause) {
@@ -392,8 +364,6 @@ async function write(path: string, body: unknown, isDestination = false) {
   }
 }
 async function submit() {
-  if (dialog.value === "account")
-    return write("/cash/destinations", destination.value, true);
   if (dialog.value === "exchange")
     return write("/cash/exchanges", {
       currency: currency.value,
@@ -408,10 +378,7 @@ async function submit() {
     });
   if (dialog.value === "withdrawal") {
     if (!selectedAccount.value) {
-      destination.value = emptyDestination(currency.value);
-      returnToWithdrawal.value = true;
-      dialog.value = "account";
-      error.value = t("cash.accountRequired");
+      error.value = t('cash.accountRequired');
       return;
     }
     return write("/cash/withdrawals", {
@@ -450,7 +417,9 @@ async function copyAddress() {
 watch(
   () => [props.apiBase, props.member?.id, props.member?.brand_id, props.mode],
   () => {
-    generation++;
+    const scope = ++generation;
+    readTicket++;
+    loading.value = false;
     data.value = null;
     availablePoints.value = null;
     records.value = [];
@@ -480,13 +449,20 @@ watch(
         if (typeof body.proof === "string") proof.value = body.proof;
         if (typeof body.reference === "string")
           reference.value = body.reference;
-        if (saved.destination)
-          destination.value = clone(saved.body as CashDestination);
       }
-      void load(1);
+      void load(1).then((loaded) => {
+        if (!loaded || scope !== generation || props.mode !== 'withdrawal' || pending.value || !data.value) return;
+        const draft = cashWithdrawalDrafts.get(pendingScope.value);
+        if (!draft) return;
+        cashWithdrawalDrafts.delete(pendingScope.value);
+        currency.value = draft.currency;
+        dialog.value = 'withdrawal';
+        amount.value = draft.amount;
+        selectedAccount.value = accounts.value[0]?.id ?? '';
+      });
     }
   },
-  { immediate: true },
+  { immediate: true, flush: "sync" },
 );
 const refreshTimer = setInterval(() => {
   clock.value = Date.now();
@@ -536,14 +512,6 @@ useOperationToast(notice, (v) => v, "success");
         >
           {{ t("cash.exchange") }}
         </button>
-        <button
-          v-if="mode === 'withdrawal'"
-          class="button button-secondary"
-          :disabled="!enabled || locked"
-          @click="open('account')"
-        >
-          {{ t("cash.addAccount") }}
-        </button>
       </div>
       <p v-if="!agent && mode !== 'overview'" class="cash-flow-help muted">{{ t(mode === 'deposit' ? 'cash.depositExchangeHelp' : 'cash.withdrawalExchangeHelp') }}</p>
       <div v-if="mode !== 'deposit'" class="cash-balances">
@@ -577,18 +545,6 @@ useOperationToast(notice, (v) => v, "success");
       <p v-if="!enabled" class="muted" role="status">
         {{ t("cash.unconfigured") }}
       </p>
-      <div v-if="mode === 'withdrawal'" class="cash-account-list">
-        <button
-          v-for="d in managedAccounts"
-          :key="d.id"
-          class="text-button cash-account-link"
-          :disabled="locked"
-          @click="editAccount(d)"
-        >
-          {{ d.institution || d.channel }} · {{ d.number
-          }}<span v-if="!d.enabled"> · {{ t("cash.disabled") }}</span>
-        </button>
-      </div>
       <component :is="agent ? ManagementList : 'div'" :class="{'user-record-list': !agent}" :busy="loading || locked">
         <template v-if="agent" #heading><h3>{{ t(mode === 'deposit' ? "cash.depositHistory" : "cash.records") }}</h3></template>
         <template v-if="agent && mode==='overview'" #filters><SelectControl :model-value="recordKind" :label="t('cash.kind')" :disabled="loading||locked" :options="['all','deposit','withdrawal','to_points','from_points','transfer'].map(value=>({value,label:t(`cash.${value}`)}))" @change="recordKind=String($event);withGlobalLoading(loadKind)" /></template>
@@ -700,8 +656,6 @@ useOperationToast(notice, (v) => v, "success");
         t(
           dialog === 'detail'
             ? transferDetail ? 'cash.details' : 'cash.receipt'
-            : dialog === 'account'
-              ? 'cash.accounts'
               : `cash.${dialog}`,
         )
       "
@@ -718,21 +672,13 @@ useOperationToast(notice, (v) => v, "success");
         @submit.prevent="withGlobalLoading(submit)"
       >
         <fieldset :disabled="locked">
-          <label class="ui-field-row"
-            ><span>{{ t("cash.currency") }}</span><SelectControl
+          <label class="ui-field-row"><span>{{ t("cash.currency") }}</span><SelectControl
               v-model="currency"
               :label="t('cash.currency')"
-              :disabled="dialog === 'account' && !!destination.id"
               :options="
                 enabledCurrencies.map((v) => ({ value: v, label: t(`cash.${v}`) }))
               "
           /></label>
-          <CashDestinationFields
-            v-if="dialog === 'account'"
-            v-model="destination"
-            :t="label"
-          />
-          <template v-else>
             <label v-if="dialog === 'exchange'" class="ui-field-row"
               ><span>{{ t("cash.kind") }}</span><SelectControl
                 v-model="direction"
@@ -754,7 +700,7 @@ useOperationToast(notice, (v) => v, "success");
                 )
               }}</span><input
                 v-model="amount"
-                :aria-describedby="dialog === 'exchange' ? exchangeBalanceHintId : dialog === 'deposit' && !(currency === 'USDT' && data?.auto_usdt) ? depositAmountHintId : undefined"
+                :aria-describedby="dialog === 'exchange' ? exchangeBalanceHintId : dialog === 'deposit' ? depositAmountHintId : undefined"
                 required
                 inputmode="decimal"
                 :data-validation-format="t('cash.numberFormat',{digits:dialog==='exchange'&&direction==='from_points'?2:currency==='USDT'?6:2})"
@@ -766,7 +712,7 @@ useOperationToast(notice, (v) => v, "success");
                       : '[0-9]+([.][0-9]{1,2})?'
                 "
             /></label>
-            <p v-if="dialog === 'deposit' && !(currency === 'USDT' && data?.auto_usdt)" :id="depositAmountHintId" class="muted">{{ t("cash.depositAmountHint") }}</p>
+            <p v-if="dialog === 'deposit'" :id="depositAmountHintId" class="muted">{{ t("cash.depositAmountHint") }}</p>
             <p v-if="dialog === 'exchange'" :id="exchangeBalanceHintId" class="cash-exchange-balance muted" role="status">{{ direction === 'to_points'
               ? t('cash.currentFunds', { amount: balance ? decimal(minor(balance.deposited) + minor(balance.withdrawable)) : '—', currency })
               : t('cash.currentPoints', { amount: availablePoints === null ? '—' : formatPoints(availablePoints, locale) }) }}</p>
@@ -785,19 +731,13 @@ useOperationToast(notice, (v) => v, "success");
                 </dd>
               </div>
             </dl>
-            <template v-if="dialog === 'withdrawal'"
-              ><label class="ui-field-row"
-                ><span>{{ t("cash.accounts") }}</span><SelectControl
-                  v-model="selectedAccount"
-                  :label="t('cash.accounts')"
-                  :options="[
-                    { value: '', label: t('cash.chooseAccount') },
-                    ...accounts.map((a) => ({
-                      value: a.id,
-                      label: `${a.institution || a.channel} · ${a.number}`,
-                    })),
-                  ]"
-              /></label>
+            <template v-if="dialog === 'withdrawal'">
+              <dl v-if="accounts[0]" class="cash-detail cash-withdrawal-account">
+                <div v-if="accounts[0].holder"><dt>{{ t('cash.holder') }}</dt><dd>{{ accounts[0].holder }}</dd></div>
+                <div><dt>{{ t(currency === 'USDT' ? 'cash.network' : 'cash.institution') }}</dt><dd>{{ accounts[0].institution || accounts[0].channel }}</dd></div>
+                <div><dt>{{ t(currency === 'USDT' ? 'cash.address' : 'cash.number') }}</dt><dd>{{ accounts[0].number }}</dd></div>
+              </dl>
+              <p v-else class="muted">{{ t('cash.unbound') }}</p>
               <dl class="cash-detail">
                 <div>
                   <dt>{{ t("cash.fee") }}</dt>
@@ -815,21 +755,19 @@ useOperationToast(notice, (v) => v, "success");
                 </div>
               </dl>
               <button
-                v-if="!accounts.length"
                 type="button"
                 class="text-button"
-                @click="open('account')"
+                @click="manageAccounts"
               >
-                {{ t("cash.addAccount") }}
+                {{ t(accounts.length ? "cash.manageAccounts" : "cash.addAccount") }}
               </button></template
             >
-          </template>
         </fieldset>
         <div class="ui-form-actions">
           <button
             type="submit"
             class="button button-primary"
-            :disabled="locked"
+            :disabled="locked || (dialog === 'withdrawal' && !accounts.length)"
           >
             {{ t("cash.confirm") }}
           </button>
@@ -997,7 +935,6 @@ useOperationToast(notice, (v) => v, "success");
               write,
               pending.path,
               pending.body,
-              pending.destination,
             )
           "
         >
@@ -1139,14 +1076,7 @@ useOperationToast(notice, (v) => v, "success");
   .cash-record-table--actions td:nth-last-child(-n+2):not(.empty-state) { grid-column: auto; justify-items: start; min-height: 44px; align-content: center; }
   .cash-record-table--actions td:nth-last-child(-n+2)::before { display: none; }
 }
-.cash-account-list {
-  display: grid;
-  gap: 4px;
-}
-.cash-account-link {
-  overflow-wrap: anywhere;
-  text-align: start;
-}
+
 fieldset {
   border: 0;
   min-width: 0;

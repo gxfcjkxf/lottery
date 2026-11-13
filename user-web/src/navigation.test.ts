@@ -8,7 +8,7 @@ describe('mobile back navigation', () => {
     for (const path of ['/invites', '/help', '/results', '/configured/123']) expect(showsPageBack(path)).toBe(true);
   });
   const parents = {
-    '/invites': '/account', '/help': '/account', '/notifications': '/account',
+    '/account/payment-accounts': '/account', '/invites': '/account', '/help': '/account', '/notifications': '/account',
     '/wallet/buckets': '/wallet', '/wallet/ledger': '/wallet', '/recharge': '/wallet', '/withdraw': '/wallet',
     '/privacy': '/register', '/terms': '/register',
     '/configured/123': '/', '/results': '/',

@@ -71,12 +71,12 @@ async function submit() {
     report(cause); if (phase === 'conflict') { freshConflict.value = false; await load(); }
   } finally { if (scope() === own) busy.value = false; }
 }
-watch(() => [props.account.id], () => {
-  ++generation; editorOpen.value = false; draftAuth.value = null; auth.value = null; busy.value = false; saved.value = false; readFailed.value = false;
+watch(() => [props.account.id, props.kind, canView.value, canWrite.value], () => {
+  ++generation; loading.value = false; error.value = null; editorOpen.value = false; draftAuth.value = null; auth.value = null; busy.value = false; saved.value = false; readFailed.value = false;
   pending.value = securityIntents.get(scope());
   confirmOpen.value = Boolean(pending.value);
   if (canView.value) void withGlobalLoading(load);
-}, { immediate: true });
+}, { immediate: true, flush: 'sync' });
 watch(() => Boolean(pending.value) || busy.value || editorOpen.value, value => emit('locked', value), { immediate: true });
 onBeforeUnmount(() => { ++generation; });
 useOperationToast(saved, () => t('security.saved'), 'success');

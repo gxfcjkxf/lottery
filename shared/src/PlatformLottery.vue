@@ -324,7 +324,7 @@ async function clearCatalog() { lifecycleDraft.value = 'active'; await searchCat
 .platform-lottery .row-action:hover:not(:disabled){background:var(--primary-light)}
 .platform-lottery .row-action:disabled{opacity:.45;cursor:not-allowed}
 .platform-lottery { min-width: 0; margin-bottom: 16px; }
-.platform-lottery-note { padding: 0 16px; font-size: var(--body-font-size); color: var(--text-muted, var(--muted)); }
+.platform-lottery-note { padding: 0 16px; font-size: var(--body-font-size); color: var(--muted); }
 .platform-lottery-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .platform-lottery-form fieldset { border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px 20px; width: 100%; box-sizing: border-box; min-width: 0; }
 .platform-lottery-form .period-form-fields { grid-template-columns: minmax(0, 1fr); }

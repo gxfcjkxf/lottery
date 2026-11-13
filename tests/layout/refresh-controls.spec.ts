@@ -30,11 +30,11 @@ for(const locale of ['en','zh-CN'] as const)test(`low-frequency lists expose ref
  })
  const base={brandId:gameId,locale,displaySettings}
  const cases:[string,Record<string,unknown>][]=[
-  ['AccessPanel',{...base,scope:'platform',accountId:gameId,grants:[],initialTab:'accounts'}],
-  ['AccessPanel',{...base,scope:'platform',accountId:gameId,grants:[],initialTab:'roles'}],
-  ['DataRetentionPanel',{...base,accountId:gameId,canManage:true}],['CommissionPanel',{...base,initialTab:'cycles'}],['CommissionPanel',{...base,initialTab:'payments'}],
-  ['NotificationsPanel',{...base,view:'deliveries',accountId:gameId,canManage:false}],
-  ['NotificationTemplatesPanel',{...base,accountId:gameId,canManage:false}],['RewardsPanel',{...base,brandName:'Refresh review'}],
+  ['AccessPanel',{...base,scope:'platform',accountId:gameId,grants:['admin.view.platform','role.view.platform'],initialTab:'accounts'}],
+  ['AccessPanel',{...base,scope:'platform',accountId:gameId,grants:['admin.view.platform','role.view.platform'],initialTab:'roles'}],
+  ['DataRetentionPanel',{...base,accountId:gameId,canManage:true,canView:true}],['CommissionPanel',{...base,initialTab:'cycles'}],['CommissionPanel',{...base,initialTab:'payments'}],
+  ['NotificationsPanel',{...base,view:'deliveries',accountId:gameId,canManage:false,canViewTemplates:true}],
+  ['NotificationTemplatesPanel',{...base,accountId:gameId,canManage:false,canView:true}],['RewardsPanel',{...base,brandName:'Refresh review'}],
   ['AgentCommission',{}],['AgentChildren',{}],
  ]
  const preset=page.viewportSize()!

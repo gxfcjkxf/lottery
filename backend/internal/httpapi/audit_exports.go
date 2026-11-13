@@ -37,7 +37,7 @@ const auditActionTypeSQL = `CASE
  WHEN action ~ '\.(adjust|agent_transfer_credit|agent_transfer_debit|apply|approve|approved|attributes|availability|bet|calculate|calculation_page|cancel|cancel_pending|cancel_retry|cancelled|commission|commission_adjustment|commission_correction|complete|config|confirm|connect|consume|continue|correct|correction_retry|credit|currency_exchange_credit|currency_exchange_debit|debit|denied|earnings_page|enqueue|exchange|execute_retry|fail|failed|failure|finish|freeze|grant|grant_retry|invalidate|judge_cancel|kick|lifecycle|login|logout|manifest_page|manual|manual_adjustment|manual_recharge|mark_abnormal|mark_paid|opening|page|paid|paid_external|password_change|password_reset|pause|paused|payment_pending|pending|post|prize|processing|profile_fill|publish|rate_limit|ready|recharge|reclaim|reconcile|refund|reject|rejected|release|repair|reserve|result|resume|retry|retry_plan|reversal|review|reviewing|revoke|reward_grant|reward_reversal|run|sales|save|sell|settle|settled|start|start_run|submitted|sync|target|telegram_bind|transfer|update|upload|withdrawal_paid|withdrawal_release|withdrawal_reserve|write)(\.(platform|brand|maintenance))?$' THEN 'edit'
  ELSE '' END`
 
-const auditActorNameSQL = `coalesce((SELECT username FROM admin_accounts WHERE id=actor_id), (SELECT username FROM global_users WHERE id=actor_id), '')`
+const auditActorNameSQL = `coalesce((SELECT username FROM admin_accounts WHERE id=actor_id), (SELECT username FROM global_users WHERE id=actor_id), (SELECT username FROM agent_accounts g WHERE g.id=actor_id AND g.brand_id=audit_logs.brand_id AND actor_type='agent'), '')`
 
 type auditQuery struct {
 	From         *time.Time `json:"from,omitempty"`
@@ -127,7 +127,7 @@ func parseAuditQuery(r *http.Request, export bool) (auditQuery, error) {
 }
 
 // AdminAuditRecord is the actual read projection shared with contract examples.
-// ActorUsername is the human-facing administrator label; ActorID remains the
+// ActorUsername is the human-facing account label; ActorID remains the
 // technical audit relationship and is not the primary display value.
 // The projection contains stored, already-redacted audit facts, never credentials.
 type AdminAuditRecord struct {
@@ -154,7 +154,7 @@ type auditItem = AdminAuditRecord
 // export body. Oversized records fail the whole request, never get truncated.
 func auditItems(r *http.Request, tx pgx.Tx, brand string, q auditQuery, export bool) ([]auditItem, time.Time, error) {
 	rows, e := tx.Query(r.Context(), `WITH bounds AS (SELECT statement_timestamp() AS at)
- SELECT b.at,a.id::text,a.brand_id::text,a.action,a.actor_type,coalesce(a.actor_id::text,''),coalesce(actor.username,member.username,''),a.resource_type,coalesce(a.resource_id::text,''),a.reason,a.request_id,a.created_at,coalesce(a.ip_address,''),
+ SELECT b.at,a.id::text,a.brand_id::text,a.action,a.actor_type,coalesce(a.actor_id::text,''),coalesce(actor.username,member.username,agent.username,''),a.resource_type,coalesce(a.resource_id::text,''),a.reason,a.request_id,a.created_at,coalesce(a.ip_address,''),
  CASE WHEN octet_length(coalesce(a.before_json,'null'::jsonb)::text)<=$11 THEN coalesce(a.before_json,'null'::jsonb) ELSE NULL END,
  CASE WHEN octet_length(coalesce(a.after_json,'null'::jsonb)::text)<=$11 THEN coalesce(a.after_json,'null'::jsonb) ELSE NULL END
  FROM bounds b LEFT JOIN LATERAL (
@@ -164,7 +164,7 @@ func auditItems(r *http.Request, tx pgx.Tx, brand string, q auditQuery, export b
  AND ($6='' OR resource_type=$6) AND ($7='' OR resource_id=NULLIF($7,'')::uuid) AND ($8='' OR request_id=$8)
  AND ($12='' OR strpos(lower(`+auditActorNameSQL+`),lower($12))>0) AND ($13='' OR (`+auditActionTypeSQL+`)=$13)
  ORDER BY created_at DESC,id DESC LIMIT $9 OFFSET $10
-	 ) a ON TRUE LEFT JOIN admin_accounts actor ON actor.id=a.actor_id LEFT JOIN global_users member ON member.id=a.actor_id ORDER BY a.created_at DESC,a.id DESC`, brand, q.From, q.To, q.Action, q.ActorID, q.ResourceType, q.ResourceID, q.RequestID, q.Limit, q.Offset, auditExportBytes, q.Actor, q.ActionType)
+	 ) a ON TRUE LEFT JOIN admin_accounts actor ON actor.id=a.actor_id LEFT JOIN global_users member ON member.id=a.actor_id LEFT JOIN agent_accounts agent ON agent.id=a.actor_id AND agent.brand_id=a.brand_id AND a.actor_type='agent' ORDER BY a.created_at DESC,a.id DESC`, brand, q.From, q.To, q.Action, q.ActorID, q.ResourceType, q.ResourceID, q.RequestID, q.Limit, q.Offset, auditExportBytes, q.Actor, q.ActionType)
 	if e != nil {
 		return nil, time.Time{}, e
 	}

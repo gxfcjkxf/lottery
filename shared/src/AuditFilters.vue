@@ -10,8 +10,8 @@ import { filterDateBoundary } from './filter-dates'
 const props = defineProps<{ locale: 'en' | 'zh-CN'; busy: boolean }>()
 const emit = defineEmits<{ apply: [filters: Record<string, string>] }>()
 const i18n = createCatalogI18n({
-  en: { actor: 'Operator', type: 'Type', all: 'All types', view: 'View', edit: 'Edit', create: 'Create', delete: 'Delete', queryType: 'Query', from: 'Start date UTC', to: 'End date UTC', query: 'Search', clear: 'Clear', dates: 'Select both dates within a range of 31 days.' },
-  'zh-CN': { actor: '操作人', type: '类型', all: '全部类型', view: '查看', edit: '编辑', create: '创建', delete: '删除', queryType: '查询', from: '开始日期 UTC', to: '结束日期 UTC', query: '查询', clear: '清空', dates: '请选择起止日期，范围不超过31天。' },
+  en: { actor: 'Operator', type: 'Type', all: 'All types', view: 'View', edit: 'Edit', create: 'Create', delete: 'Delete', queryType: 'Query', from: 'Start date', to: 'End date', query: 'Search', clear: 'Clear', dates: 'Select both dates within a range of 31 days.' },
+  'zh-CN': { actor: '操作人', type: '类型', all: '全部类型', view: '查看', edit: '编辑', create: '创建', delete: '删除', queryType: '查询', from: '开始日期', to: '结束日期', query: '查询', clear: '清空', dates: '请选择起止日期，范围不超过31天。' },
 }, props.locale)
 watch(() => props.locale, value => i18n.setLocale(value))
 const t = i18n.t

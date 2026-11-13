@@ -41,6 +41,7 @@ import LanguageSwitcher from '@lottery/shared/LanguageSwitcher.vue';
 import {
   computed,
   onMounted,
+  onBeforeUnmount,
   nextTick,
   ref,
 } from "vue";
@@ -56,7 +57,7 @@ import AnnouncementsManagement from "@lottery/shared/AnnouncementsManagement.vue
 import BrandContacts from "./BrandContacts.vue";
 import BrandPresentation from "./BrandPresentation.vue";
 import {watch,watchEffect} from "vue";
-import {buildBrandCssTokens,defaultBrand,safeBrandAssetUrl,applyBrandPresentation,applyBrowserBranding,nativeLocaleName,type BrandTheme} from "@lottery/shared";
+import {defaultBrand,safeBrandAssetUrl,applyBrandPresentation,applyBrowserBranding,nativeLocaleName,type BrandTheme} from "@lottery/shared";
 import {type BrandPresentationRecord} from "./brand-presentation-api";
 import PointPolicySettings from "./PointPolicySettings.vue";
 import FinanceManagement from "./FinanceManagement.vue";
@@ -248,12 +249,11 @@ function skinTheme(): BrandTheme | null {
   return presentation ? { ...defaultBrand, name: presentation.display_name, logoText: presentation.logo_text,
     logoUrl: presentation.logo_url, faviconUrl: presentation.favicon_url } : null;
 }
-const skinStyle=computed(()=>{const theme=skinTheme();return theme?{...buildBrandCssTokens(theme),fontFamily:"var(--font-family)",fontSize:"calc(14px * var(--brand-font-scale-factor, 1))"}:{}});
 const skinLogo=computed(()=>safeBrandAssetUrl(skin.value?.logo_url));
 const failedSkinLogo=ref<string|null>(null);
 watch(skinLogo,()=>{failedSkinLogo.value=null});
 function skinLogoError(event:Event){if(event.target instanceof HTMLImageElement&&event.target.getAttribute('src')===skinLogo.value)failedSkinLogo.value=skinLogo.value}
-function acceptPresentation(value:{accountId:string;record:BrandPresentationRecord}){if(account.value?.id!==value.accountId||selectedBrandId.value!==value.record.brand_id)return;if(presentationSkin.value?.accountId===value.accountId&&presentationSkin.value.record.brand_id===value.record.brand_id&&presentationSkin.value.record.version>value.record.version)return;presentationSkin.value=value;const theme=skinTheme();if(theme)applyBrandPresentation({brand:theme,paused:value.record.status==='paused',availableLanguages:value.record.effective.available_locales},document.querySelector<HTMLElement>('.app-shell')??document.documentElement)}
+function acceptPresentation(value:{accountId:string;record:BrandPresentationRecord}){if(account.value?.id!==value.accountId||selectedBrandId.value!==value.record.brand_id)return;if(presentationSkin.value?.accountId===value.accountId&&presentationSkin.value.record.brand_id===value.record.brand_id&&presentationSkin.value.record.version>value.record.version)return;presentationSkin.value=value;const theme=skinTheme();if(theme)applyBrandPresentation({brand:theme,paused:value.record.status==='paused',availableLanguages:value.record.effective.available_locales})}
 const members = ref<Member[]>([]);
 const membersTotal = ref('0');
 const memberOnlineFilter = ref<'' | 'true' | 'false'>('');
@@ -290,15 +290,16 @@ watch([account, authorizedBrands], () => {
   if (!choices.some(item => item.id === selectedBrandId.value))
     selectedBrandId.value = choices.length === 1 ? choices[0]!.id : '';
 });
-watch(selectedBrandId, id => {
+watch(() => [selectedBrandId.value, account.value?.id, JSON.stringify(account.value?.permissions_by_brand)] as const, ([id]) => {
   memberReadGeneration++;
   memberFinance.value = null;
   search.value = ''; memberQuery.value = ''; memberOnlineFilter.value = ''; memberOnlineQuery.value = ''; membersTotal.value = '0';
   memberCreateOpen.value = false;
   memberOffset.value = 0;
   members.value = [];
+  membersLoading.value = false;
   if (id && account.value && brandPermissionSet(account.value, id).has('user.view.brand')) void loadMembers();
-});
+}, { flush: 'sync' });
 async function retryBrandScope() {
   if (account.value) await loadBrands();
 }
@@ -422,7 +423,13 @@ const clearAdminData = () => {
   selectedBrandId.value = "";
   members.value = [];
 };
-const sessionReplaced = useSessionReplacement(() => !!account.value, () => api.me(), clearAdminData);
+const sessionReplaced = useSessionReplacement(() => !!account.value, async () => {
+  const actor = account.value?.id, ticket = adminBrandLoadGeneration;
+  const latest = (await api.me()).account;
+  if (!actor || ticket !== adminBrandLoadGeneration || account.value?.id !== actor) return;
+  if (latest.id !== actor || latest.super_admin) { clearAdminData(); return; }
+  if (JSON.stringify(latest) !== JSON.stringify(account.value)) account.value = latest;
+}, clearAdminData);
 const loadBrands = async () => {
   const requestedAccountId = account.value?.id;
   const generation = ++adminBrandLoadGeneration;
@@ -563,9 +570,10 @@ const submitPasswordChange = async () => {
     passwordError.value = apiErrorText(error);
   } finally { passwordBusy.value = false; }
 };
+onBeforeUnmount(() => { memberReadGeneration++; adminBrandLoadGeneration++; presentationReadGeneration++; });
 const loadMembers = async () => {
   const current = account.value, brandId = selectedBrandId.value;
-  if (!current || !brandId) return;
+  if (!current || !brandId || !brandPermissionSet(current, brandId).has('user.view.brand')) return;
   const generation = ++memberReadGeneration;
   const isCurrent = () => generation === memberReadGeneration && account.value?.id === current.id && selectedBrandId.value === brandId;
   membersLoading.value = true;
@@ -705,7 +713,7 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
           </button>
         </form>
   </LoginEntry>
-  <ManagementFrame v-else :style="skinStyle" @keydown.esc="mobileMore = false">
+  <ManagementFrame v-else @keydown.esc="mobileMore = false">
     <template #sidebar>
       <BrandLockup href="#" :name="skin?.display_name??contextBrand?.name??t('admin.ui.administration')" :logo-text="skin?.logo_text??contextBrand?.name.slice(0,1)" :logo-url="skinLogo&&failedSkinLogo!==skinLogo?skinLogo:null" @logo-error="skinLogoError" @click.prevent="go('首页')"/>
       <nav class="side-nav" :aria-label="t('admin.copy.f4627e31')">
@@ -1114,16 +1122,16 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
 <style scoped>
 .brand-operation-empty { margin: 14px 0; padding: 18px; }
 .brand-operation-empty h2 { margin: 0 0 6px; }
-.brand-operation-empty p { margin: 0; color: #718096; }
+.brand-operation-empty p { margin: 0; color: var(--muted); }
 .brand-operation-brands { min-width: 0; margin-top: 16px; padding: 18px; }
-.brand-operation-unavailable { padding: 10px 12px; border-radius: 8px; background: #f3f6fa; color: #5f6d80; line-height: 1.5; }
+.brand-operation-unavailable { padding: 10px 12px; border-radius: 8px; background: var(--canvas); color: var(--muted); line-height: 1.5; }
 .brand-operation-list { margin: 0; padding: 0; list-style: none; }
-.brand-operation-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; min-width: 0; padding: 13px 0; border-top: 1px solid #e9edf2; }
+.brand-operation-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; min-width: 0; padding: 13px 0; border-top: 1px solid var(--line); }
 .brand-operation-list__identity { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .brand-operation-list__identity > span:last-child { display: grid; gap: 4px; min-width: 0; }
 .brand-operation-list__identity strong, .brand-operation-list__identity small { overflow-wrap: anywhere; }
-.brand-operation-list__identity small { color: #718096; font-size: var(--body-font-size); }
-.brand-operation-list__mark { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border-radius: 10px; background: #ecfdf5; color: #047857; font-weight: 700; }
+.brand-operation-list__identity small { color: var(--muted); font-size: var(--body-font-size); }
+.brand-operation-list__mark { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border-radius: 10px; background: var(--primary-light); color: var(--primary-dark); font-weight: 700; }
 @media (max-width: 700px) { .brand-operation-list li { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; } .brand-operation-list li > .text-button { grid-column: 1 / -1; justify-self: start; } }
 @media (min-width: 901px) and (pointer: fine) {
   .brand-operation-list li { padding-block: 8px; }

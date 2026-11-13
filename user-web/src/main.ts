@@ -30,6 +30,7 @@ const router = createRouter({
     { path: "/login", component: Page },
     { path: "/register", component: Page },
     { path: "/account", component: Page },
+    { path: "/account/payment-accounts", component: Page },
     { path: "/terms", component: Page },
     { path: "/privacy", component: Page },
     { path: "/configured/:gameId", component: Page },

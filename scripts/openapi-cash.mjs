@@ -15,6 +15,7 @@ const currency = { type: "string", enum: ["CNY", "USD", "THB", "USDT"] };
 const version = { type: "integer", minimum: 0 };
 export const schemas = {
   CashRule: object({
+    inherit: { type: "boolean" },
     currency,
     rate: text,
     deposit_min: decimal,
@@ -29,7 +30,8 @@ export const schemas = {
   CashConfig: object({
     version,
     rules: { ...list(ref("CashRule")), minItems: 4, maxItems: 4 },
-  }),
+    platform_rules: { ...list(ref("CashRule")), minItems: 4, maxItems: 4 },
+  }, ["version", "rules"]),
   CashDestination: object({
     id: text,
     currency,
@@ -40,6 +42,7 @@ export const schemas = {
     enabled: { type: "boolean" },
     version,
   }),
+  CashDestinationDelete: object({ id: ref("UUID"), version: { type: "integer", minimum: 1 } }),
   CashBalance: object({
     currency,
     deposited: decimal,
@@ -149,8 +152,16 @@ const params = [
   { name: "action", in: "path", required: true, schema: { type: "string" } },
 ];
 const description =
-  "USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.";
+  "Member and agent withdrawal destinations allow one live binding per brand, account and currency; duplicate creation returns CASH_ACCOUNT_EXISTS. Currency is immutable, member bindings are always enabled, and deletion retains historical order snapshots. USDT deposit submission does not require a transaction hash; operator confirmation requires a valid, globally unique hash. Only one active deposit per account and currency is allowed; duplicate creation returns CASH_DEPOSIT_PENDING. Exact decimal strings. Fiat precision is 2; USDT precision is 6, TRON/TRC20 only. Deposit balances cannot be withdrawn. Point conversion checks source eligibility, freezes and final turnover, then consumes its cycle. Writes use checked session/permission authorization, immutable order snapshots, account locks, audit and scoped idempotency. Unconfirmed results must retry the original key and body.";
 export const operations = [
+  ...["user", "agent"].map(scope => ({
+    method: "POST", path: `/api/v1/${scope === "agent" ? "agent/" : ""}cash/destinations/delete`,
+    operationId: scope + "CashDeleteDestination", summary: "Delete own withdrawal destination",
+    tag: "finance", auth: scope, idempotency: true,
+    requestBody: ref("CashDestinationDelete"), data: ref("CashDestination"),
+    parameters: [{ name: "X-Cash-Actor-Context", in: "header", required: true, schema: {type:"string",pattern:"^[a-f0-9]{64}$"} }],
+    description,
+  })),
   ...["", "/orders"].map((suffix) => ({
     method:"GET", path:"/api/v1/agent/cash"+suffix,
     operationId:suffix ? "agentCashOrders" : "agentCashWallet",

@@ -12,10 +12,10 @@
   --console-nav-count: 5;
   --console-sidebar-bg: var(--surface);
   --console-sidebar-art: none;
-  --console-sidebar-ink: #4b5563;
-  --console-sidebar-icon: #6b7280;
+  --console-sidebar-ink: var(--muted);
+  --console-sidebar-icon: var(--muted);
   --console-sidebar-ink-strong: var(--ink);
-  --console-sidebar-hover: #f3f5f3;
+  --console-sidebar-hover: var(--line-subtle);
   --console-sidebar-active-bg: var(--primary-light);
   --console-sidebar-active-ink: var(--primary-dark);
   --console-sidebar-border: var(--line);
@@ -30,9 +30,9 @@
 .management-console.app-shell { min-height: 100dvh; min-width: 0; }
 .management-console .sidebar { position: fixed; inset: 0 auto 0 0; display: flex; flex-direction: column; overflow-y: auto; z-index: 20; }
 .management-console .brand-lockup { display: flex; align-items: center; color: var(--ink); text-decoration: none; overflow-wrap: anywhere; }
-.management-console .brand-mark { display: grid; place-items: center; color: var(--surface); flex-shrink: 0; }
+.management-console .brand-mark { display: grid; place-items: center; color: var(--on-primary); flex-shrink: 0; }
 .management-console .presentation-logo { width: 36px; height: 36px; object-fit: contain; flex-shrink: 0; }
-.management-console .side-nav { display: grid; gap: 4px; }
+.management-console .side-nav { display: grid; align-content: start; gap: 4px; }
 .management-console .nav-item { display: flex; align-items: center; text-decoration: none; }
 .management-console .nav-item:hover { background: var(--canvas); }
 .management-console .main-shell { min-height: 100dvh; }
@@ -563,13 +563,13 @@
 #app .management-console .sidebar :is(.nav-item, .nav-subitem):hover { background: var(--console-sidebar-hover); color: var(--console-sidebar-ink-strong); }
 #app .management-console .sidebar :is(.nav-item.active, .nav-item.selected, .nav-subitem.active, .nav-subitem.selected) { position: relative; background: var(--console-sidebar-active-bg); color: var(--console-sidebar-active-ink); box-shadow: none; font-weight: 650; }
 #app .management-console .sidebar :is(.brand-lockup, .logo-row) { border-bottom: 1px solid var(--line-subtle); margin-bottom: 8px; }
-#app .management-console .sidebar .brand-mark { background: linear-gradient(145deg, var(--primary), var(--primary-dark)); border: 0; color: var(--surface); box-shadow: 0 2px 6px var(--primary-ring); }
+#app .management-console .sidebar .brand-mark { background: linear-gradient(145deg, var(--primary), var(--primary-dark)); border: 0; color: var(--on-primary); box-shadow: 0 2px 6px var(--primary-ring); }
 #app .management-console .sidebar :is(.nav-icon, .site-icon) { color: var(--console-sidebar-icon); }
 #app .management-console .sidebar :is(.nav-item.active, .nav-item.selected) :is(.nav-icon, .site-icon) { color: var(--primary); }
 #app .management-console .sidebar :is(.nav-item.active, .nav-item.selected)::before { content: ""; display: block; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0; background: var(--primary); }
 #app .management-console .topbar { background-color: var(--console-topbar-bg); color: var(--console-topbar-ink); border-top: 2px solid var(--console-topbar-accent); border-bottom: 1px solid var(--console-topbar-border); }
-#app .management-console .management-list:not(.management-list--embedded) { border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
-#app .management-console .management-list-toolbar { background: var(--surface); border-bottom: 1px solid var(--line); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+#app .management-console .management-list:not(.management-list--embedded) { border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); overflow: hidden; }
+#app .management-console .management-list-toolbar { background: var(--surface); border-bottom: 1px solid var(--line); border-radius: 0; }
 #app .management-console .management-list-summary { padding-top: 12px; }
 #app .management-console .management-list-summary > .console-facts { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,180px),1fr)); gap: 8px; }
 #app .management-console .management-list-summary > .console-facts > div { display:flex; flex-direction:column; align-items:flex-start; gap:6px; padding:10px 12px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--canvas); }

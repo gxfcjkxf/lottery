@@ -44,7 +44,7 @@ import MemberActionsMenu from '@lottery/shared/MemberActionsMenu.vue'
 import DetailModal from '@lottery/shared/DetailModal.vue'
 import TablePagination from '@lottery/shared/TablePagination.vue'
 import { nativeLocaleName, useSessionReplacement } from '@lottery/shared'
-import { computed, onMounted, nextTick, ref, shallowRef, watch, watchEffect } from 'vue'
+import { computed, onMounted, onBeforeUnmount, nextTick, ref, shallowRef, watch, watchEffect } from 'vue'
 import { createPlatformApi, freezeBrandCreateRequest, PlatformApiError, type BrandCreateInput, type FrozenBrandCreateRequest, type PlatformAudit, type PlatformBrand, type PlatformMember, type PlatformAccount, type PlatformSettings, type PlatformPresentation } from './platform-api'
 import { useBrandGames } from './use-brand-games'
 import { platformErrorMessage } from './platform-error-message'
@@ -142,6 +142,7 @@ const memberTotal = ref('0')
 const memberSearch = ref(''), memberQuery = ref('')
 const memberOnlineFilter = ref<'' | 'true' | 'false'>(''), memberOnlineQuery = ref<'' | 'true' | 'false'>('')
 const memberDetail = ref<PlatformMember | null>(null)
+const readScope = computed(() => JSON.stringify([account.value?.id, account.value?.platform_permissions]))
 const canViewMemberPoints = computed(() => account.value?.platform_permissions.includes('user.view.platform') === true && account.value.platform_permissions.includes('wallet.view.platform'))
 const moreMembers = computed(() => BigInt(memberOffset.value) + BigInt(members.value.length) < BigInt(memberTotal.value))
 function resetMemberFilters() { memberSearch.value = ''; memberQuery.value = ''; memberOnlineFilter.value = ''; memberOnlineQuery.value = ''; memberTotal.value = '0'; memberDetail.value = null }
@@ -239,6 +240,7 @@ const accountName = computed(() => account.value?.username || account.value?.dis
 function auditActorLabel(row: PlatformAudit) {
   if (row.actor_username) return row.actor_username
   if (row.actor_type === 'system') return t('common.system')
+  if (row.actor_type === 'agent') return t('platform.copy.3705c4b4')
   if (row.actor_type === 'user') return t('common.user')
   if (row.actor_type === 'anonymous') return t('common.anonymous')
   return t('common.unknownActor')
@@ -251,6 +253,7 @@ const confirmPassword = ref('')
 const passwordBusy = ref(false)
 const passwordError = ref<string | import("@lottery/shared").LocalizedMessage>("")
 const canManageBrandOperation = computed(() => account.value?.platform_permissions.includes('brand_operation.view.platform') === true && account.value.platform_permissions.includes('brand_operation.write.platform'))
+let workspaceGeneration = 0, brandReadGeneration = 0
 let memberRequestGeneration = 0
 let auditRequestGeneration = 0
 
@@ -260,6 +263,7 @@ function updateBrandQuota(quota: {brand_id:string;available:string}) {
  error.value=''
 }
 function clearPrivateState() {
+  workspaceGeneration++; brandReadGeneration++;
   domainBrand.value = null
   clearAllPendingBrandDomainsWrites()
 
@@ -286,19 +290,30 @@ function clearPrivateState() {
   memberRequestGeneration++; auditRequestGeneration++
   memberOffset.value = 0; auditOffset.value = 0; memberTotal.value = '0'; moreAudit.value = false
 }
-const sessionReplaced = useSessionReplacement(() => !!account.value, () => api.me(), clearPrivateState)
+const sessionReplaced = useSessionReplacement(() => !!account.value, async () => {
+  const actor = account.value?.id, ticket = workspaceGeneration;
+  const latest = await api.me();
+  if (!actor || ticket !== workspaceGeneration || account.value?.id !== actor) return;
+  if (latest.id !== actor) { clearPrivateState(); return; }
+  if (JSON.stringify(latest) !== JSON.stringify(account.value)) account.value = latest;
+}, clearPrivateState)
 function handleFailure(cause: unknown) {
   if (cause instanceof Error && (('status' in cause && cause.status === 401) || ('code' in cause && cause.code === 'PLATFORM_ADMIN_REQUIRED'))) clearPrivateState()
   errorCause.value = cause; uncertainError.value = false
 }
 async function loadWorkspace() {
+  const ticket = ++workspaceGeneration
   loading.value = true; error.value = ''
   try {
     const currentAccount = await api.me()
+    if (ticket !== workspaceGeneration) return
     const currentSettings = await api.platformSettings()
+    if (ticket !== workspaceGeneration) return
+    const currentBrands = await api.brands()
+    if (ticket !== workspaceGeneration) return
     account.value = currentAccount
     platformSettings.value = currentSettings
-    brands.value = await api.brands()
+    brands.value = currentBrands
     const savedSelection = sessionStorage.getItem(brandSelectionKey)
     if (savedSelection) {
       const saved = JSON.parse(savedSelection) as { accountId: string; brandId: string }
@@ -308,7 +323,7 @@ async function loadWorkspace() {
     if (selectedBrand.value && !brands.value.some(brand => brand.id === selectedBrand.value)) { selectedBrand.value = ''; members.value = []; [auditRows.value,auditTotal.value]=[[],'0'] }
     if (selectedBrand.value && section.value === 'users') await loadMembers(selectedBrand.value)
     if (selectedBrand.value && section.value === 'audit' && auditView.value === 'audit') await loadAudit(selectedBrand.value)
-  } catch (cause) { handleFailure(cause); throw cause } finally { loading.value = false }
+  } catch (cause) { if (ticket === workspaceGeneration) { handleFailure(cause); throw cause } } finally { if (ticket === workspaceGeneration) loading.value = false }
 }
 async function login() {
   sessionReplaced.value = false
@@ -339,14 +354,14 @@ async function submitPasswordChange() {
   } finally { passwordBusy.value = false }
 }
 async function refreshBrandSummaries() {
- const actor=account.value?.id
+ const actor=account.value?.id, scope=readScope.value, ticket=++brandReadGeneration
  brandListLoading.value = true; error.value = ''
  try {
   const items=await api.brands()
-  if(account.value?.id !== actor) return false
+  if(ticket!==brandReadGeneration || account.value?.id !== actor || readScope.value!==scope) return false
   brands.value=items; return true
- } catch(cause) { if(account.value?.id===actor) handleFailure(cause); return false }
- finally { brandListLoading.value = false }
+ } catch(cause) { if(ticket===brandReadGeneration && account.value?.id===actor && readScope.value===scope) handleFailure(cause); return false }
+ finally { if(ticket===brandReadGeneration) brandListLoading.value = false }
 }
 
 async function chooseSection(next: typeof section.value, withdrawalState: '' | 'reviewing' = '') {
@@ -423,6 +438,7 @@ async function chooseAuditView(next: typeof auditView.value) {
 }
 async function loadMembers(brandId: string, offset = 0) {
   const generation = ++memberRequestGeneration
+  if (!account.value?.platform_permissions.includes('user.view.platform')) { members.value = []; memberTotal.value = '0'; loading.value = false; error.value = t('platform.error.PERMISSION_DENIED'); return }
   loading.value = true; error.value = ''
   try {
     const result = await api.users(brandId, memberPageSize.value, offset, '', { query: memberQuery.value, online: memberOnlineQuery.value })
@@ -432,8 +448,7 @@ async function loadMembers(brandId: string, offset = 0) {
       memberTotal.value = result.total_count
     }
   } catch (cause) {
-    if (cause instanceof PlatformApiError && cause.status === 401) handleFailure(cause)
-    else if (generation === memberRequestGeneration && selectedBrand.value === brandId && section.value === 'users') handleFailure(cause)
+    if (generation === memberRequestGeneration && selectedBrand.value === brandId && section.value === 'users') handleFailure(cause)
   }
   finally { if (generation === memberRequestGeneration) loading.value = false }
 }
@@ -447,6 +462,7 @@ async function refreshBatchMembers() {
 }
 async function loadAudit(brandId: string, offset = 0) {
   const generation = ++auditRequestGeneration
+  if (!account.value?.platform_permissions.includes('audit.view.platform')) { auditRows.value = []; auditTotal.value = '0'; loading.value = false; error.value = t('platform.error.PERMISSION_DENIED'); return }
   loading.value = true; error.value = ''
   try {
     const result = await api.audit(brandId, auditPageSize.value, offset, auditFilters.value)
@@ -456,8 +472,7 @@ async function loadAudit(brandId: string, offset = 0) {
       moreAudit.value = BigInt(offset + result.items.length) < BigInt(auditTotal.value)
     }
   } catch (cause) {
-    if (cause instanceof PlatformApiError && cause.status === 401) handleFailure(cause)
-    else if (generation === auditRequestGeneration && selectedBrand.value === brandId && section.value === 'audit' && auditView.value === 'audit') handleFailure(cause)
+    if (generation === auditRequestGeneration && selectedBrand.value === brandId && section.value === 'audit' && auditView.value === 'audit') handleFailure(cause)
   }
   finally { if (generation === auditRequestGeneration) loading.value = false }
 }
@@ -565,6 +580,17 @@ async function submitCreate() {
     else { handleFailure(cause); retryPayload.value = null }
   } finally { busy.value = false }
 }
+watch(readScope, () => {
+  brandReadGeneration++; brandListLoading.value = false;
+  if (!canViewRechargeQuota.value) for (const brand of brands.value) brand.recharge_quota_available = null;
+  memberRequestGeneration++; auditRequestGeneration++;
+  members.value = []; memberTotal.value = '0'; auditRows.value = []; auditTotal.value = '0';
+  memberDetail.value = null; memberFinance.value = null;
+  memberOffset.value = auditOffset.value = 0;
+  loading.value = false;
+  if (selectedBrand.value && section.value === 'users') void withGlobalLoading(loadMembers, selectedBrand.value);
+  if (selectedBrand.value && section.value === 'audit' && auditView.value === 'audit') void withGlobalLoading(loadAudit, selectedBrand.value);
+}, { flush: 'sync' });
 async function initialize() {
   authReady.value = false
   try {
@@ -579,6 +605,7 @@ async function initialize() {
     }
   } finally { authReady.value = true }
 }
+onBeforeUnmount(() => { workspaceGeneration++; brandReadGeneration++; memberRequestGeneration++; auditRequestGeneration++ })
 onMounted(() => withGlobalLoading(initialize))
 useOperationToast(notice, value => displayPublicError(value), 'success');
 useOperationToast(error, value => value, 'error');
@@ -656,7 +683,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
         </div>
       </header>
       <main class="content">
-        <OverviewPanel v-if="section === 'home' && platformSettings" :key="account.id" :can-view="account.platform_permissions.includes('overview.view.platform')" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" @brands="withGlobalLoading(chooseSection, 'brands')" @open-withdrawals="withGlobalLoading(chooseSection, 'withdrawals', 'reviewing')" />
+        <OverviewPanel v-if="section === 'home' && platformSettings" :key="readScope" :can-view="account.platform_permissions.includes('overview.view.platform')" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" @brands="withGlobalLoading(chooseSection, 'brands')" @open-withdrawals="withGlobalLoading(chooseSection, 'withdrawals', 'reviewing')" />
         <template v-else-if="section === 'brands'">
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ lang.brands }}</h1></div>
           <ManagementList class="platform-brand-list" data-testid="platform-brand-list" :busy="loading || brandListLoading">
@@ -729,9 +756,9 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
               <button class="button button-secondary" type="button" @click="withGlobalLoading(chooseAuditView, 'deliveries')">{{t('platform.copy.42e5c206')}}</button>
             </div>
           </section>
-          <DataRetentionPanel @view-change="retentionPolicyVisible=$event==='policy'" v-else-if="auditView === 'archives'" :brand-id="selectedBrand" :account-id="account.id" :can-manage="account.platform_permissions.includes('platform_settings.write.platform')" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
+          <DataRetentionPanel :can-view="account.platform_permissions.includes('platform_settings.view.platform')" @view-change="retentionPolicyVisible=$event==='policy'" v-else-if="auditView === 'archives'" :brand-id="selectedBrand" :account-id="account.id" :can-manage="account.platform_permissions.includes('platform_settings.write.platform')" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
           <AnnouncementsManagement v-else-if="auditView === 'announcements'" platform base-path="/api/v1/platform" :key="`announcements:${account.id}`" :actor-id="account.id" :locale="locale" :permissions="account.platform_permissions" @failure="handleFailure" />
-          <NotificationsPanel v-else-if="auditView === 'notifications' || (auditView === 'deliveries' && selectedBrand)" :key="account.id + ':' + auditView" :view="auditView === 'deliveries' ? 'deliveries' : 'templates'" :account-id="account.id" :can-manage="account.platform_permissions.includes('notification_template.write.platform')" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
+          <NotificationsPanel :can-view-templates="account.platform_permissions.includes('notification_template.view.platform')" v-else-if="auditView === 'notifications' || (auditView === 'deliveries' && selectedBrand)" :key="auditView === 'deliveries' ? readScope + auditView : account.id + auditView" :view="auditView === 'deliveries' ? 'deliveries' : 'templates'" :account-id="account.id" :can-manage="account.platform_permissions.includes('notification_template.write.platform')" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
           <template v-else-if="auditView === 'audit'">
           <ManagementList v-if="selectedBrand" :busy="loading">
           <template #filters><AuditFiltersForm :locale="locale" :busy="loading" @apply="applyAuditFilters" /></template>
@@ -742,21 +769,21 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
         </template>
         <template v-else-if="section === 'rewards'">
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ lang.rewards }}</h1></div>
-          <RewardsPanel v-if="selectedBrand" :brand-id="selectedBrand" :brand-name="selected?.name || ''" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
+          <RewardsPanel :key="readScope" v-if="selectedBrand" :brand-id="selectedBrand" :brand-name="selected?.name || ''" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
         </template>
         <template v-else-if="section === 'wallets'">
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ walletViewLabel }}</h1></div>
           <CashConsole v-if="selectedBrand && walletView === 'recharges'" :key="`cash:${account.id}:${selectedBrand}`" base-path="/api/v1/platform" platform mode="deposit" :actor-id="account.id" :brand-id="selectedBrand" :locale="locale" :permissions="account.platform_permissions" @failure="handleFailure" />
-          <RechargesPanel v-if="selectedBrand && walletView === 'recharges'" :brand-id="selectedBrand" member-id="" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
+          <RechargesPanel :key="readScope" v-if="selectedBrand && walletView === 'recharges'" :brand-id="selectedBrand" member-id="" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
           <RechargeQuotaPanel v-else-if="selectedBrand && walletView === 'quota' && canViewRechargeQuota" standalone
             :key="`${account.id}:${selectedBrand}`" :brand-id="selectedBrand" :actor-id="account.id" :locale="locale"
             base-path="/api/v1/platform" :can-grant="canGrantRechargeQuota" @updated="updateBrandQuota" @failure="handleFailure" />
-          <ReportsPanel v-else-if="selectedBrand && walletView === 'reports'" :brand-id="selectedBrand" member-id="" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
+          <ReportsPanel :key="readScope" v-else-if="selectedBrand && walletView === 'reports'" :brand-id="selectedBrand" member-id="" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
         </template>
         <template v-else-if="section === 'bets'">
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ betLabel }}</h1></div>
           <div v-if="selectedBrand" class="brand-picker"><label><SelectControl v-model="selectedGameId" :label="gamesLabel" :disabled="gamesLoading" :options="[{ value: '', label: (String(t('common.allGames'))).trim() }, ...((brandGames).map((game) => ({ value: game.id, label: (String(game.name)).trim() })))]" /></label></div>
-          <BetOrdersPanel v-if="selectedBrand" :brand-id="selectedBrand" :game-id="selectedGameId" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
+          <BetOrdersPanel :key="readScope" v-if="selectedBrand" :brand-id="selectedBrand" :game-id="selectedGameId" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
         </template>
         <template v-else-if="section === 'games' || section === 'draws'">
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ section === 'games' ? gamesLabel : drawsLabel }}</h1></div>
@@ -766,22 +793,22 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
         </template>
         <template v-else-if="section === 'commission'">
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ commissionPageLabel }}</h1></div>
-          <CommissionPanel v-if="selectedBrand" :brand-id="selectedBrand" :locale="locale" :initial-tab="commissionTab" :display-settings="displaySettings" @failure="handleFailure" />
+          <CommissionPanel :key="readScope" v-if="selectedBrand" :brand-id="selectedBrand" :locale="locale" :initial-tab="commissionTab" :display-settings="displaySettings" @failure="handleFailure" />
         </template>
         <template v-else-if="section === 'settings'">
-          <PlatformSettingsPanel v-if="platformSettings" v-model:tab="settingsTab" :account="account" :brand-id="selectedBrand" :brand-status="selected?.status || ''" :initial="platformSettings" :locale="locale" :can-manage="account.platform_permissions.includes('platform_settings.write.platform')" @saved="platformSettings = $event; notice = message('common.settingsSaved')" @failure="handleFailure" />
+          <PlatformSettingsPanel :key="account.id" v-if="platformSettings" v-model:tab="settingsTab" :account="account" :brand-id="selectedBrand" :brand-status="selected?.status || ''" :initial="platformSettings" :locale="locale" :can-manage="account.platform_permissions.includes('platform_settings.write.platform')" @saved="platformSettings = $event; notice = message('common.settingsSaved')" @failure="handleFailure" />
         </template>
         <template v-else>
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ withdrawalLabel }}</h1></div>
           <CashConsole v-if="selectedBrand" :key="`cash-withdraw:${account.id}:${selectedBrand}`" base-path="/api/v1/platform" platform mode="withdrawal" :actor-id="account.id" :brand-id="selectedBrand" :locale="locale" :permissions="account.platform_permissions" @failure="handleFailure" />
-          <WithdrawalsPanel v-if="selectedBrand" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" :initial-state="withdrawalInitialState || undefined" @failure="handleFailure" />
+          <WithdrawalsPanel :key="readScope" v-if="selectedBrand" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" :initial-state="withdrawalInitialState || undefined" @failure="handleFailure" />
         </template>
         <p v-if="showBrandPicker && !selectedBrand && !['games', 'draws'].includes(section) && !(section === 'settings') && !(section==='audit'&&auditView==='archives')" class="empty-state" role="status" data-testid="platform-brand-required">{{ t('common.selectBrandFirst') }}</p>
       </main>
       <BrandOperationPanel ref="brandOperationPanel" :locale="locale" :allowed="canManageBrandOperation" :display-settings="displaySettings" @updated="withGlobalLoading(refreshAfterBrandOperation, $event)" @failure="handleFailure" />
     </section>
     <WalletPanel v-if="section === 'users' && memberFinance && selectedBrand && account && canViewMemberPoints"
-      :key="`${account.id}:${selectedBrand}:${memberFinance.member.id}:${memberFinance.view}`"
+      :key="`${readScope}:${selectedBrand}:${memberFinance.member.id}:${memberFinance.view}`"
       :brand-id="selectedBrand" :member-id="memberFinance.member.id" :member-name="memberFinance.member.username || memberFinance.member.phone"
       :locale="locale" :display-settings="displaySettings" :view="memberFinance.view" @close="closeMemberFinance" @failure="handleFailure" />
     <DetailModal v-if="domainBrand && account" :title="t('platform.brand.domainsTitle', {brand:domainBrand.name})" :close-label="lang.close" @close="domainBrand = null">

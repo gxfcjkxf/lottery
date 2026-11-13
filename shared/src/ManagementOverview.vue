@@ -2,7 +2,7 @@
 import { pointsMinor } from './points'
 import SiteIcon from './SiteIcon'
 
-import { computed, onMounted, onBeforeUnmount, ref, shallowRef } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { withGlobalLoading, formatPoints, type LocalizedMessage, type MessageParameters } from './index'
 import type { OverviewSummary, OverviewDay } from './overview'
 import type { PlatformDisplaySettings } from './date-time'
@@ -21,7 +21,8 @@ const data = shallowRef<OverviewSummary | null>(null)
 const error = ref<LocalizedMessage | null>(null)
 const reading = ref(false)
 const metric = ref<'stake_points' | 'net_points' | 'new_members'>('stake_points')
-const controller = new AbortController()
+let controller = new AbortController()
+let readGeneration = 0
 let timer: ReturnType<typeof setInterval> | undefined
 const number = (value: string) => formatPoints(value, props.locale)
 const netTone = (value: string) => pointsMinor(value) === 0n ? 'overview-neutral' : pointsMinor(value) < 0n ? 'overview-loss' : 'overview-win'
@@ -66,23 +67,28 @@ const baseline = computed(() => {
 const compact = (value: string) => new Intl.NumberFormat(props.locale, { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value))
 async function load() {
   if (reading.value || !props.canView || controller.signal.aborted) return
+  const token = ++readGeneration, signal = controller.signal
   reading.value = true
   try {
-    const result = await props.read(controller.signal)
-    if (!controller.signal.aborted) { data.value = result; error.value = null }
+    const result = await props.read(signal)
+    if (token === readGeneration && !signal.aborted) { data.value = result; error.value = null }
   } catch (cause) {
-    if (!controller.signal.aborted) {
+    if (token === readGeneration && !signal.aborted) {
       data.value = null
       error.value = props.errorMessage(cause)
       emit('failure', cause)
     }
-  } finally { reading.value = false }
+  } finally { if (token === readGeneration) reading.value = false }
 }
+watch(() => props.canView, () => {
+  readGeneration++; controller.abort(); controller = new AbortController()
+  data.value = null; error.value = null; reading.value = false
+  if (props.canView) void withGlobalLoading(load)
+}, { immediate: true, flush: 'sync' })
 onMounted(() => {
-  void withGlobalLoading(load)
   timer = setInterval(() => { if (document.visibilityState === 'visible') void load() }, 60000)
 })
-onBeforeUnmount(() => { controller.abort(); clearInterval(timer) })
+onBeforeUnmount(() => { readGeneration++; controller.abort(); clearInterval(timer) })
 </script>
 
 <template>
@@ -144,7 +150,7 @@ onBeforeUnmount(() => { controller.abort(); clearInterval(timer) })
 .overview-muted { font-size: var(--body-font-size); color: var(--muted); }
 .overview-section-heading, .overview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .overview-section-heading { justify-content: space-between; margin-bottom: 12px; }
-.overview-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background-image: var(--lottery-art); background-size: cover; background-position: center; }
+.overview-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--canvas); background-size: cover; background-position: center; }
 .overview-stat { padding: 14px; min-width: 0; margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .overview-stat-label { display: flex; align-items: center; gap: 8px; }
 .overview-stat-icon { display: inline-grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--primary-dark); background: var(--primary-light); }
@@ -162,10 +168,10 @@ onBeforeUnmount(() => { controller.abort(); clearInterval(timer) })
 .overview-chart-column { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
 .overview-chart-value, .overview-chart-date { font-size: var(--body-font-size); font-variant-numeric: tabular-nums; color: var(--muted); overflow-wrap: anywhere; }
 .overview-chart-track { height: 140px; width: 100%; position: relative; }
-.overview-bar { position: absolute; background: #cbd5e1; width: 64%; max-width: 44px; left: 50%; transform: translateX(-50%); border-radius: 4px 4px 0 0; transition: background-color 150ms ease; }
-.overview-chart-column:nth-child(n+5) .overview-bar { background: color-mix(in srgb, var(--primary) 55%, #cbd5e1); }
+.overview-bar { position: absolute; background: var(--line); width: 64%; max-width: 44px; left: 50%; transform: translateX(-50%); border-radius: 4px 4px 0 0; transition: background-color 150ms ease; }
+.overview-chart-column:nth-child(n+5) .overview-bar { background: color-mix(in srgb, var(--primary) 55%, var(--line)); }
 .overview-chart-column:last-child .overview-bar { background: var(--primary); }
-.overview-bar-stake { background: color-mix(in srgb, var(--warning) 60%, #cbd5e1); }
+.overview-bar-stake { background: color-mix(in srgb, var(--warning) 60%, var(--line)); }
 .overview-chart-column:last-child .overview-bar-stake { background: var(--warning-text); }
 .overview-bar-loss { background: var(--danger); border-radius: 0 0 4px 4px; }
 .overview-baseline { position: absolute; height: 1px; left: 0; right: 0; background: var(--line); }

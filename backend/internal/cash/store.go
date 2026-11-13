@@ -35,10 +35,58 @@ func ReadConfig(ctx context.Context, tx pgx.Tx, scope string) (Config, error) {
 	e = json.Unmarshal(raw, &out.Rules)
 	return out, e
 }
-func SaveConfig(ctx context.Context, tx pgx.Tx, scope string, in Config, meta points.Metadata) (Config, error) {
-	if e := in.Validate(scope == "platform"); e != nil {
-		return in, e
+func ReadBrandConfig(ctx context.Context, tx pgx.Tx, scope string) (Config, error) {
+	b, err := ReadConfig(ctx, tx, scope)
+	if err != nil {
+		return b, err
 	}
+	p, err := ReadConfig(ctx, tx, "platform")
+	if err != nil {
+		return b, err
+	}
+	b.PlatformRules = p.Rules
+	for i, r := range b.Rules {
+		if !r.Enabled {
+			b.Rules[i].Inherit = true
+			continue
+		}
+		if r.Inherit {
+			for _, pr := range p.Rules {
+				if pr.Currency == r.Currency {
+					b.Rules[i] = inheritLimits(r, pr)
+					break
+				}
+			}
+		}
+	}
+	return b, nil
+}
+func SaveConfig(ctx context.Context, tx pgx.Tx, scope string, in Config, meta points.Metadata) (Config, error) {
+	platform := scope == "platform"
+	var p Config
+	if !platform {
+		var err error
+		p, err = ReadConfig(ctx, tx, "platform")
+		if err != nil {
+			return in, err
+		}
+	}
+	for i, r := range in.Rules {
+		if !r.Enabled {
+			in.Rules[i] = emptyRule(r.Currency, !platform)
+		} else if !platform && r.Inherit {
+			pr, err := p.Rule(r.Currency)
+			if err != nil {
+				return in, err
+			}
+			in.Rules[i] = inheritLimits(r, pr)
+		}
+	}
+	in.PlatformRules = nil
+	if err := in.Validate(platform); err != nil {
+		return in, err
+	}
+
 	if e := lock(ctx, tx, "config:"+scope); e != nil {
 		return in, e
 	}
@@ -98,7 +146,7 @@ func record(ctx context.Context, tx pgx.Tx, brand, action, id string, before, af
 	return e
 }
 func Destinations(ctx context.Context, tx pgx.Tx, brand, member string) ([]Destination, error) {
-	rows, e := tx.Query(ctx, `SELECT id::text,data,enabled,version FROM cash_destinations WHERE brand_id=$1 AND member_id IS NOT DISTINCT FROM nullif($2,'')::uuid ORDER BY id`, brand, member)
+	rows, e := tx.Query(ctx, `SELECT id::text,data,enabled,version FROM cash_destinations WHERE brand_id=$1 AND member_id IS NOT DISTINCT FROM nullif($2,'')::uuid AND data->>'deleted' IS DISTINCT FROM 'true' ORDER BY id`, brand, member)
 	if e != nil {
 		return nil, e
 	}
@@ -122,7 +170,9 @@ func Destinations(ctx context.Context, tx pgx.Tx, brand, member string) ([]Desti
 	return out, rows.Err()
 }
 func SaveDestination(ctx context.Context, tx pgx.Tx, brand, member string, in Destination, meta points.Metadata) (Destination, error) {
-
+	if in.ID == "" && in.Version != 0 || in.ID != "" && in.Version < 1 {
+		return in, ErrInvalid
+	}
 	if e := in.Validate(); e != nil {
 		return in, e
 	}
@@ -136,7 +186,20 @@ func SaveDestination(ctx context.Context, tx pgx.Tx, brand, member string, in De
 			return in, e
 		}
 	}
-	if in.ID == "" {
+	if member != "" {
+		if !in.Enabled {
+			return in, ErrInvalid
+		}
+		var exists bool
+		if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM cash_destinations WHERE brand_id=$1 AND member_id=$2 AND currency=$3 AND id IS DISTINCT FROM nullif($4,'')::uuid AND data->>'deleted' IS DISTINCT FROM 'true')`, brand, member, in.Currency, in.ID).Scan(&exists); e != nil {
+			return in, e
+		}
+		if exists {
+			return in, ErrDestinationExists
+		}
+	}
+	creating := in.ID == ""
+	if creating {
 		in.ID = ids.New()
 		in.Version = 0
 	}
@@ -145,11 +208,11 @@ func SaveDestination(ctx context.Context, tx pgx.Tx, brand, member string, in De
 	}
 	var version int64
 	var oldCurrency string
-	e := tx.QueryRow(ctx, `SELECT version,currency FROM cash_destinations WHERE id=$1 AND brand_id=$2 AND member_id IS NOT DISTINCT FROM nullif($3,'')::uuid FOR UPDATE`, in.ID, brand, member).Scan(&version, &oldCurrency)
+	e := tx.QueryRow(ctx, `SELECT version,currency FROM cash_destinations WHERE id=$1 AND brand_id=$2 AND member_id IS NOT DISTINCT FROM nullif($3,'')::uuid AND data->>'deleted' IS DISTINCT FROM 'true' FOR UPDATE`, in.ID, brand, member).Scan(&version, &oldCurrency)
 	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
 		return in, e
 	}
-	if version != in.Version || version > 0 && oldCurrency != in.Currency {
+	if !creating && version == 0 || version != in.Version || version > 0 && oldCurrency != in.Currency {
 		return in, ErrConflict
 	}
 	in.Version++
@@ -165,6 +228,41 @@ func SaveDestination(ctx context.Context, tx pgx.Tx, brand, member string, in De
 	e = record(ctx, tx, brand, "destination.save", in.ID, nil, in, meta)
 	return in, e
 }
+
+// DeleteDestination removes a member binding while retaining order references and audit history.
+func DeleteDestination(ctx context.Context, tx pgx.Tx, brand, member string, id string, version int64, meta points.Metadata) (Destination, error) {
+	var out Destination
+	if member == "" || id == "" || version < 1 {
+		return out, ErrInvalid
+	}
+	if e := memberLock(ctx, tx, brand, member); e != nil {
+		return out, e
+	}
+	destinations, e := Destinations(ctx, tx, brand, member)
+	if e != nil {
+		return out, e
+	}
+	for _, d := range destinations {
+		if d.ID != id {
+			continue
+		}
+		if d.Version != version {
+			return out, ErrConflict
+		}
+		out = d
+		out.Enabled = false
+		out.Version++
+		raw, _ := json.Marshal(out)
+		_, e = tx.Exec(ctx, `UPDATE cash_destinations SET enabled=false,version=$4,data=$5::jsonb || '{"deleted":true}'::jsonb WHERE brand_id=$1 AND member_id=$2 AND id=$3`, brand, member, id, out.Version, raw)
+		if e != nil {
+			return out, e
+		}
+		e = record(ctx, tx, brand, "destination.delete", id, d, out, meta)
+		return out, e
+	}
+	return out, ErrConflict
+}
+
 func Balances(ctx context.Context, tx pgx.Tx, brand, member string) ([]Balance, error) {
 	var exists bool
 	if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wallet_owners WHERE brand_id=$1 AND id=$2)`, brand, member).Scan(&exists); e != nil {
@@ -339,7 +437,7 @@ func rules(ctx context.Context, tx pgx.Tx, brand, currency string) (Rule, Rule, 
 	if e != nil {
 		return Rule{}, Rule{}, e
 	}
-	b, e := ReadConfig(ctx, tx, brand)
+	b, e := ReadBrandConfig(ctx, tx, brand)
 	if e != nil {
 		return Rule{}, Rule{}, e
 	}

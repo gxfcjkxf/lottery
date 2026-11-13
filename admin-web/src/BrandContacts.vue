@@ -18,17 +18,18 @@ const loading = ref(false), busy = ref(false), uploading = ref(false), needsRead
 const error = ref<ReturnType<typeof errorMessage> | ''>(''), notice = ref<ReturnType<typeof message> | ''>('')
 const pending = ref<{ body: BrandContactsBody; key: string } | null>(null)
 const locked = computed(() => !rights.value.write || record.value?.status === 'disabled' || loading.value || busy.value || uploading.value || needsRead.value || !!pending.value)
-let generation = 0
+let generation = 0, readTicket = 0
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
 async function read() {
-  const token = generation
+  const token = generation, ticket = ++readTicket
+  if (!rights.value.view) return
   loading.value = true; error.value = ''
   try {
     const next = await api.get(props.brandId)
-    if (token !== generation) return
+    if (token !== generation || ticket !== readTicket) return
     record.value = next; draft.value = clone(next.config); needsRead.value = false
-  } catch (cause) { if (token === generation) { error.value = errorMessage(cause, 'read'); needsRead.value = true; if (cause instanceof AdminApiError && cause.status === 401) emit('session-invalid') } }
-  finally { if (token === generation) loading.value = false }
+  } catch (cause) { if (token === generation && ticket === readTicket) { error.value = errorMessage(cause, 'read'); needsRead.value = true; if (cause instanceof AdminApiError && cause.status === 401) emit('session-invalid') } }
+  finally { if (token === generation && ticket === readTicket) loading.value = false }
 }
 function add() {
   if (locked.value || !draft.value) return
@@ -73,11 +74,16 @@ async function save() {
     if (cause instanceof AdminApiError && cause.status === 401) emit('session-invalid')
   } finally { if (token === generation) busy.value = false }
 }
-watch(() => [props.account.id, props.brandId, rights.value.view, rights.value.write], () => {
+watch(() => [props.account.id, props.brandId], () => {
   generation++; record.value = draft.value = null; pending.value = null
   loading.value = busy.value = uploading.value = needsRead.value = false; error.value = notice.value = ''
   if (rights.value.view) void read()
-}, { immediate: true })
+}, { immediate: true, flush: 'sync' })
+watch(() => [rights.value.view, rights.value.write], () => {
+  readTicket++; loading.value = false
+  if (!pending.value) { record.value = draft.value = null; needsRead.value = false }
+  if (rights.value.view && !pending.value) void read()
+}, { flush: 'sync' })
 onUnmounted(() => generation++)
 useOperationToast(error, value => display(value), 'error')
 useOperationToast(notice, value => display(value), 'success')
@@ -86,7 +92,7 @@ useOperationToast(notice, value => display(value), 'success')
   <section class="brand-contacts brand-settings-panel" :aria-label="t('contacts.title')">
     <p v-if="!rights.view" role="status">{{ t('admin.copy.d8a49c2f') }}</p>
     <p v-if="loading" v-global-loading role="status">{{ t('admin.copy.efd6ec13') }}</p>
-    <form v-if="draft" class="ui-form" novalidate v-inline-validation v-write-guard="busy" @submit.prevent="withGlobalLoading(save)">
+    <form v-if="draft && rights.view" class="ui-form" novalidate v-inline-validation v-write-guard="busy" @submit.prevent="withGlobalLoading(save)">
       <div class="contact-toolbar"><button v-if="rights.write" type="button" class="button button-secondary" :disabled="locked" @click="add"><SiteIcon name="plus" />{{ t('contacts.add') }}</button></div>
       <p v-if="!draft.items.length" class="empty-state">{{ t('contacts.empty') }}</p>
       <fieldset v-for="(item, index) in draft.items" :key="item.id" class="contact-editor" :disabled="locked" :aria-label="t('contacts.entry', { number: index + 1 })">

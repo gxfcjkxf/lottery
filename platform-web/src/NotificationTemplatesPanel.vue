@@ -7,7 +7,7 @@ import { createPlatformNotificationsApi, validTemplateContent, type Template, ty
 import { PlatformApiError } from './platform-api'
 import { formatPlatformDateTime, type PlatformDisplaySettings } from './platform-format'
 import { usePlatformI18n } from './i18n'
-const props = defineProps<{ accountId: string; canManage: boolean; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings }>()
+const props = defineProps<{ accountId: string; canManage: boolean; canView: boolean; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
 const { t, errorMessage, displayError, message } = usePlatformI18n()
 const api = createPlatformNotificationsApi()
@@ -17,23 +17,29 @@ const loading = ref(false), writing = ref(false), conflict = ref(false)
 const error = ref<ReturnType<typeof errorMessage> | ''>(''), notice = ref<ReturnType<typeof message> | ''>('')
 let alive = true
 let generation = 0
+let readTicket = 0
+let editorGeneration = 0
 const label = (key: Template['key']) => t(`templates.name.${key}`)
 const valid = computed(() => selected.value && draft.value && validTemplateContent(draft.value, selected.value.key))
 const clone = (content: TemplateContent): TemplateContent => ({ en: { ...content.en }, 'zh-CN': { ...content['zh-CN'] } })
 async function load() {
+ const token = generation, ticket = ++readTicket
+ if (!props.canView) { loading.value=false; templates.value=[]; error.value=errorMessage(new PlatformApiError('',403,'PERMISSION_DENIED')); return }
+ const current = () => alive && token === generation && ticket === readTicket
  loading.value = true; error.value = ''
- try { const rows = await api.templates(); if (alive) templates.value = rows }
- catch (cause) { if (alive) { error.value = errorMessage(cause); emit('failure', cause) } }
- finally { if (alive) loading.value = false }
+ try { const rows = await api.templates(); if (current()) templates.value = rows }
+ catch (cause) { if (current()) { error.value = errorMessage(cause); emit('failure', cause) } }
+ finally { if (current()) loading.value = false }
 }
 function open(item: Template) {
+ editorGeneration++
  selected.value = item
  draft.value = clone(item.content)
  conflict.value = false
 }
-function close() { if (writing.value) return; selected.value = null }
+function close() { if (writing.value) return; editorGeneration++; selected.value = null }
 async function save() {
- if (!selected.value || !draft.value || !props.canManage || writing.value || conflict.value || !valid.value) return
+ if (!selected.value || !draft.value || !props.canManage || !props.canView || writing.value || conflict.value || !valid.value) return
  const event = selected.value.key, token = generation
  const body = { version: selected.value.version, content: clone(draft.value), reason: '' }
  writing.value = true; error.value = ''; notice.value = ''
@@ -51,12 +57,13 @@ async function save() {
  } finally { if (alive && token === generation) writing.value = false }
 }
 async function reloadSelected() {
- const event = selected.value?.key
+ const event = selected.value?.key, editor = editorGeneration, token = generation
  await load()
+ if (!alive || token !== generation || editor !== editorGeneration) return
  const item = templates.value.find(row => row.key === event)
- if (item && !error.value && selected.value?.key === event) { selected.value = item; conflict.value = false }
+ if (item && !error.value && selected.value?.key === event) { selected.value = item; draft.value = clone(item.content); conflict.value = false }
 }
-watch(() => [props.accountId, props.canManage], () => { generation++; selected.value = null; draft.value = null; writing.value = conflict.value = false; error.value = notice.value = '' })
+watch(() => [props.accountId, props.canManage, props.canView], () => { generation++; templates.value = []; selected.value = null; draft.value = null; writing.value = conflict.value = false; error.value = notice.value = ''; void withGlobalLoading(load) }, { flush: 'sync' })
 onMounted(load)
 onBeforeUnmount(() => { alive = false; generation++ })
 useOperationToast(error, value => displayError(value), 'error')

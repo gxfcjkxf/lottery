@@ -9,7 +9,7 @@ export function showsPageBack(path: string): boolean {
 
 /** Explicit parent destinations for direct entries without an in-app predecessor. */
 export function parentUserPage(path: string): string {
-  if (['/invites', '/contacts', '/help', '/notifications', '/announcements'].includes(path)) return '/account';
+  if (['/account/payment-accounts', '/invites', '/contacts', '/help', '/notifications', '/announcements'].includes(path)) return '/account';
   if (['/wallet/buckets', '/wallet/ledger', '/recharge', '/withdraw'].includes(path)) return '/wallet';
   if (['/privacy', '/terms'].includes(path)) return '/register';
   if (['/results'].includes(path)

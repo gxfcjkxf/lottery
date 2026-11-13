@@ -38,8 +38,8 @@ for (const locale of ['zh-CN', 'en'] as const) {
     await expect(cards).toHaveCount(49)
     await expect(page.getByRole('group', { name: zh ? '返奖率' : 'Payout rate', exact: true })).toHaveCount(0)
     await expect(page.getByRole('heading', { name: zh ? '特码开奖盈利预测' : 'Special number draw profit forecast', exact: true })).toBeVisible()
-    await expect(cards.first().locator('dt').nth(0).locator('.distribution-label-full')).toHaveText(zh ? '投注' : 'Stake')
-    await expect(cards.first().locator('dt').nth(1).locator('.distribution-label-full')).toHaveText(zh ? '输赢' : 'Profit / loss')
+    await expect(cards.first().locator('dt').nth(0)).toHaveText(zh ? '投注' : 'Stake')
+    await expect(cards.first().locator('dt').nth(1)).toHaveText(zh ? '输赢' : 'Profit / loss')
     const thirdWinGroup = Array.from({ length: 49 }, (_, i) => i + 1).filter(n => ![1, 2, 3, 5, 13, 25, 26, 37, 49].includes(n))
     for (const [side, groups] of [['win', [[2], [3], thirdWinGroup]], ['loss', [[1, 37, 49], [13], [25]]]] as const) {
       const colors: string[] = []
@@ -92,15 +92,22 @@ for (const locale of ['zh-CN', 'en'] as const) {
       const queryBox = await actions.getByRole('button', { name: zh ? '查询' : 'Search', exact: true }).boundingBox()
       expect(Math.abs(sortBox!.y - queryBox!.y)).toBeLessThanOrEqual(1)
       if (size.width <= 900) {
-        if (zh) {
-          await expect(cards.first().locator('.distribution-card-stake .distribution-label-compact')).toHaveText('投注')
-          await expect(cards.first().locator('.distribution-card-profit .distribution-label-compact')).toHaveText('输赢')
-        }
         const first = await cards.nth(0).boundingBox(), second = await cards.nth(1).boundingBox(), third = await cards.nth(2).boundingBox()
         expect(Math.abs(first!.y - second!.y)).toBeLessThanOrEqual(1)
         expect(second!.x).toBeGreaterThan(first!.x + first!.width)
         expect(third!.y).toBeGreaterThan(first!.y + first!.height)
       }
+      const stakeAmount = await cards.first().locator('.distribution-card-stake dd').boundingBox()
+      const profitAmount = await cards.first().locator('.distribution-card-profit dd').boundingBox()
+      expect(Math.abs(stakeAmount!.y - profitAmount!.y)).toBeLessThanOrEqual(1)
+      expect(profitAmount!.x - stakeAmount!.x - stakeAmount!.width).toBeGreaterThanOrEqual(6)
+      for (const [metric, title] of [['stake', zh ? '投注' : 'Stake'], ['profit', zh ? '输赢' : 'Profit / loss']]) {
+        await expect(cards.first().locator(`.distribution-card-${metric} dd`)).toHaveAttribute('title', title!)
+        const caption = await cards.first().locator(`.distribution-card-${metric} dt`).boundingBox()
+        expect(caption!.width).toBeLessThanOrEqual(1)
+      }
+      const colors = await cards.first().locator('dd').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).color))
+      expect(new Set(colors).size).toBe(2)
       await expectNoPageOverflow(page)
       await page.screenshot({ path: info.outputPath(`distribution-${locale}-${size.width}.png`), fullPage: true })
     }
@@ -146,10 +153,6 @@ for (const locale of ['zh-CN', 'en'] as const) {
       const queryBox = await actions.getByRole('button', { name: zh ? '查询' : 'Search', exact: true }).boundingBox()
       expect(Math.abs(sortBox!.y - queryBox!.y)).toBeLessThanOrEqual(1)
       if (size.width <= 900) {
-        if (zh) {
-          await expect(cards.first().locator('.distribution-card-stake .distribution-label-compact')).toHaveText('投注')
-          await expect(cards.first().locator('.distribution-card-profit .distribution-label-compact')).toHaveText('输赢')
-        }
         const first = await cards.nth(0).boundingBox(), second = await cards.nth(1).boundingBox(), third = await cards.nth(2).boundingBox()
         expect(Math.abs(first!.y - second!.y)).toBeLessThanOrEqual(1)
         expect(second!.x).toBeGreaterThan(first!.x + first!.width)
@@ -162,17 +165,34 @@ for (const locale of ['zh-CN', 'en'] as const) {
         const profit = await cards.first().locator('.distribution-card-profit').boundingBox()
         expect(Math.abs(stake!.y - profit!.y)).toBeLessThanOrEqual(1)
         expect(profit!.x).toBeGreaterThan(stake!.x)
-        for (const metric of ['stake', 'profit']) {
-          const field = cards.first().locator(`.distribution-card-${metric}`)
-          const label = await field.locator('.distribution-label-compact').boundingBox(), value = await field.locator('dd').boundingBox()
-          expect(Math.abs(label!.y + label!.height / 2 - value!.y - value!.height / 2)).toBeLessThanOrEqual(2)
-          expect(value!.x).toBeGreaterThanOrEqual(label!.x + label!.width)
-          expect(value!.height).toBeLessThanOrEqual(24)
-        }
+        const stakeValue = await cards.first().locator('.distribution-card-stake dd').boundingBox()
+        const profitValue = await cards.first().locator('.distribution-card-profit dd').boundingBox()
+        expect(profitValue!.x - stakeValue!.x - stakeValue!.width).toBeGreaterThanOrEqual(6)
         expect(first!.height).toBeLessThanOrEqual(60)
       }
+      for (const [metric, title] of [['rate', zh ? '返奖率' : 'Payout rate'], ['stake', zh ? '投注' : 'Stake'], ['profit', zh ? '输赢' : 'Profit / loss']]) {
+        await expect(cards.first().locator(`.distribution-card-${metric} dd`)).toHaveAttribute('title', title!)
+      }
+      const numberBox = await cards.first().locator('h3').boundingBox()
+      const rateBox = await cards.first().locator('.distribution-card-rate dd').boundingBox()
+      expect(Math.abs(numberBox!.y + numberBox!.height / 2 - rateBox!.y - rateBox!.height / 2)).toBeLessThanOrEqual(1)
+      const colors = await cards.first().locator('dd').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).color))
+      expect(new Set(colors).size).toBe(3)
       await expectNoPageOverflow(page)
       await page.screenshot({ path: info.outputPath(`canada-distribution-${locale}-${size.width}.png`) })
+    }
+    if (info.project.name === 'chromium-reflow') {
+      for (const theme of ['jade', 'vermilion', 'ocean', 'obsidian']) {
+        for (const mode of ['light', 'dark']) {
+          await page.evaluate(({ theme, mode }) => {
+            document.documentElement.dataset.theme = theme
+            document.documentElement.dataset.userTheme = mode
+          }, { theme, mode })
+          const colors = await cards.first().locator('dd').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).color))
+          expect(new Set(colors).size).toBe(3)
+          await page.screenshot({ path: info.outputPath(`distribution-${theme}-${mode}.png`) })
+        }
+      }
     }
     await selectControl(rateSort, { value: 'number' })
     await rateMin.fill('150')

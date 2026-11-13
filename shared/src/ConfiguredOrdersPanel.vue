@@ -31,7 +31,7 @@ async function load(next=0){
 }
 const historyItems=computed(()=>orders.value.map(order=>({id:order.id,kind:'configured' as const,game_name:order.game_name,member_name:order.member_name,period_no:order.period_no,placed_at:order.placed_at,order})))
 const more=computed(()=>BigInt(offset.value+orders.value.length)<BigInt(totalCount.value))
-watch(()=>[props.brandId,props.gameId,props.surface],()=>{orders.value=[];totalCount.value='0';offset.value=0;loaded.value=false;void withGlobalLoading(load)},{immediate:true})
+watch(()=>[props.brandId,props.gameId,props.surface],()=>{orders.value=[];totalCount.value='0';offset.value=0;loaded.value=false;void withGlobalLoading(load)},{immediate:true,flush:'sync'})
 onBeforeUnmount(()=>{request++})
 </script>
 <template>

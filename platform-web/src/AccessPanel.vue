@@ -47,11 +47,15 @@ type AccessError = string | { cause: unknown }
 const error = ref<AccessError>('')
 const errorToast = ref<AccessError>('')
 let generation = 0
+let optionsGeneration = 0
+let contextGeneration = 0
 const ready = computed(() => props.scope === 'platform' || Boolean(props.brandId))
+const canViewAccounts = computed(() => props.grants.includes('admin.view.platform'))
+const canViewRoles = computed(() => props.grants.includes('role.view.platform'))
 const canWriteAccounts = computed(() => props.grants.includes('admin.write.platform'))
 const canDeleteAccounts = computed(() => props.grants.includes('admin.delete.platform'))
 const canWriteRoles = computed(() => props.grants.includes('role.write.platform'))
-const canDeleteRoles = computed(() => props.grants.includes('role.delete.brand') || props.grants.includes('role.delete.platform'))
+const canDeleteRoles = computed(() => props.grants.includes('role.delete.platform'))
 type FormMode = '' | 'account-create' | 'account-edit' | 'account-delete' | 'password' | 'role-create' | 'role-edit' | 'role-delete'
 const formMode = ref<FormMode>('')
 const form = ref({ username: '', password: '', status: 'active' as 'active' | 'disabled', role_ids: [] as string[], code: '', name: '', permissions: [] as string[] })
@@ -118,6 +122,12 @@ async function load(requestedOffset = offset.value) {
   selected.value = null
   error.value = ''; errorToast.value = ''
   if (!ready.value) { loading.value = false; return }
+  if (!(currentTab === 'accounts' ? canViewAccounts.value : canViewRoles.value)) {
+    accounts.value = []; roles.value = []; recordTotal.value = '0'; more.value = false
+    loading.value = false
+    showError(ui('platform.error.PERMISSION_DENIED'))
+    return
+  }
   loading.value = true
   try {
     if (currentTab === 'accounts') {
@@ -167,8 +177,23 @@ async function page(nextOffset: number) { await load(nextOffset) }
 
 function isAccount(item: AccessItem): item is AccessAccount { return 'username' in item }
 
+function canUseForm(mode: FormMode): boolean {
+  if (mode === 'account-create' || mode === 'account-edit') return canWriteAccounts.value && canViewRoles.value
+  if (mode === 'password') return canWriteAccounts.value
+  if (mode === 'account-delete') return canDeleteAccounts.value
+  if (mode === 'role-create' || mode === 'role-edit') return canWriteRoles.value && canViewRoles.value
+  if (mode === 'role-delete') return canDeleteRoles.value
+  return false
+}
+watch(formMode, () => {
+  ++optionsGeneration
+  optionsLoading.value = false
+  optionsReady.value = false
+}, { flush: 'sync' })
+
 async function beginForm(mode: FormMode, item: AccessItem | null = null) {
   errorToast.value = ''
+  if (!canUseForm(mode)) { showError(ui('platform.error.PERMISSION_DENIED')); return }
   if ((mode === 'role-edit' || mode === 'role-delete') && item && !isAccount(item) && item.is_bootstrap) { showError(ui('association.builtinReadOnly')); return }
   if (!ready.value) { showError(ui('platform.error.BRAND_REQUIRED')); return }
   if (locked.value) { showError(ui('common.uncertainRequest')); return }
@@ -177,26 +202,34 @@ async function beginForm(mode: FormMode, item: AccessItem | null = null) {
   form.value = { username: item && isAccount(item) ? item.username : '', password: '', status: item?.status ?? 'active', role_ids: item && isAccount(item) ? [...item.role_ids] : [], code: item && !isAccount(item) ? item.code : '', name: item && !isAccount(item) ? item.name : '', permissions: item && !isAccount(item) ? [...item.permissions] : [] }
   roleOptions.value = []; permissionOptions.value = []; optionsReady.value = mode === 'password' || mode === 'account-delete' || mode === 'role-delete'
   if (mode === 'password' || mode === 'account-delete' || mode === 'role-delete') return
-  const request = generation; optionsLoading.value = true
+  const request = generation, optionsRequest = ++optionsGeneration
+  const isCurrent = () => request === generation && optionsRequest === optionsGeneration
+  optionsLoading.value = true
   try {
     if (mode === 'account-create' || mode === 'account-edit') {
-      const result = await (props.scope === 'platform' ? api.platformRoles(100, 0) : api.roles(props.brandId, 100, 0))
-      if (request !== generation) return
-      roleOptions.value = result.items.filter(role => role.status === 'active' || form.value.role_ids.includes(role.id))
+      const catalog: AccessRole[] = []
+      for (let roleOffset = 0; ; roleOffset += 100) {
+        const result = await (props.scope === 'platform' ? api.platformRoles(100, roleOffset) : api.roles(props.brandId, 100, roleOffset))
+        if (!isCurrent()) return
+        catalog.push(...result.items)
+        if (BigInt(catalog.length) >= BigInt(readPaginationTotal(result))) break
+      }
+      roleOptions.value = catalog.filter(role => role.status === 'active' || form.value.role_ids.includes(role.id))
       if (!roleOptions.value.length) showError(ui('access.noAssignableRoles'))
     } else {
       const result = props.scope === 'platform' ? await api.platformPermissions() : await api.permissions(props.brandId)
-      if (request !== generation) return
+      if (!isCurrent()) return
       permissionOptions.value = result
     }
     optionsReady.value = true
-  } catch (cause) { if (request === generation) report(cause) }
-  finally { if (request === generation) optionsLoading.value = false }
+  } catch (cause) { if (isCurrent()) report(cause) }
+  finally { if (isCurrent()) optionsLoading.value = false }
 }
 
 async function saveForm() {
   if (saving.value || !formMode.value || !optionsReady.value) return
-  const request = generation
+  if (!canUseForm(formMode.value)) { showError(ui('platform.error.PERMISSION_DENIED')); return }
+  const request = contextGeneration
   if (!pending.value) {
     const key = crypto.randomUUID(), brand = props.brandId, target = formTarget.value, platform = props.scope === 'platform'
     if (formMode.value === 'account-create') {
@@ -226,7 +259,7 @@ async function saveForm() {
   saving.value = true; error.value = ''; errorToast.value = ''
   try {
     await pending.value.run()
-    if (request !== generation) return
+    if (request !== contextGeneration) return
     const target = formTarget.value
     notice.value = formMode.value === 'account-delete' && target && isAccount(target)
       ? { key: 'access.accountDeleted', name: target.username }
@@ -239,16 +272,26 @@ async function saveForm() {
     saving.value = false
     await refreshAfterBatch()
   } catch (cause) {
-    if (request !== generation) return
+    if (request !== contextGeneration) return
     const unknown = cause instanceof PlatformAccessApiError && (cause.status >= 500 || cause.code === 'NETWORK_ERROR' || cause.code === 'INVALID_RESPONSE')
     if (!unknown) pending.value = null
     report(cause)
-  } finally { if (request === generation || !pending.value) saving.value = false }
+  } finally { if (request === contextGeneration || !pending.value) saving.value = false }
 }
 
-watch(() => [props.brandId, props.scope, props.accountId, props.initialTab], () => { [accounts.value,recordTotal.value]=[[],'0']; [roles.value,recordTotal.value]=[[],'0']; more.value = false; tab.value = props.initialTab ?? 'accounts'; offset.value = 0; formMode.value = ''; form.value.password = ''; pending.value = null; notice.value = null; errorToast.value = ''; optionsLoading.value = false }, { flush: 'sync' })
-watch(() => [props.brandId, props.scope, props.accountId, tab.value], () => { void withGlobalLoading(load) }, { immediate: true, flush: 'sync' })
-onBeforeUnmount(() => { ++generation; form.value.password = ''; pending.value = null; emit('locked', false) })
+watch(() => [props.brandId, props.scope, props.accountId, props.initialTab], () => { ++generation; ++optionsGeneration; ++contextGeneration; [accounts.value,recordTotal.value]=[[],'0']; [roles.value,recordTotal.value]=[[],'0']; more.value = false; tab.value = props.initialTab ?? 'accounts'; offset.value = 0; formMode.value = ''; form.value.password = ''; pending.value = null; notice.value = null; errorToast.value = ''; optionsLoading.value = false }, { flush: 'sync' })
+watch(() => props.grants.join('\n'), () => {
+  ++generation; ++optionsGeneration
+  selected.value = null
+  optionsLoading.value = false
+  if (!locked.value) {
+    roleOptions.value = []; permissionOptions.value = []
+    optionsReady.value = false
+    formMode.value = ''
+  }
+}, { flush: 'sync' })
+watch(() => [props.brandId, props.scope, props.accountId, tab.value, props.grants.join('\n')], () => { void withGlobalLoading(load) }, { immediate: true })
+onBeforeUnmount(() => { ++generation; ++optionsGeneration; ++contextGeneration; form.value.password = ''; pending.value = null; emit('locked', false) })
 useOperationToast(errorToast, value => displayError(value), 'error');
 useOperationToast(notice, value => ui(value.key, { name: value.name }), 'success');
 
@@ -263,8 +306,8 @@ useOperationToast(error, value => displayError(value), 'error');
         <button :disabled="locked" :class="tab === 'roles' ? 'button button-primary' : 'button button-secondary'" role="tab" :aria-selected="tab === 'roles'" @click="chooseTab('roles')">{{ copy.roles }}</button>
       </div></template>
       <template v-if="error || (tab === 'accounts' ? canWriteAccounts : canWriteRoles)" #actions>
-        <button v-if="tab === 'accounts' && canWriteAccounts" class="button button-primary" :disabled="loading || locked" @click="withGlobalLoading(beginForm, 'account-create')">{{ writeCopy.create }}</button>
-        <button v-if="tab === 'roles' && canWriteRoles" class="button button-primary" :disabled="loading || locked" @click="withGlobalLoading(beginForm, 'role-create')">{{ writeCopy.createRole }}</button>
+        <button v-if="tab === 'accounts' && canWriteAccounts" class="button button-primary" :disabled="loading || locked || !canViewRoles" @click="withGlobalLoading(beginForm, 'account-create')">{{ writeCopy.create }}</button>
+        <button v-if="tab === 'roles' && canWriteRoles" class="button button-primary" :disabled="loading || locked || !canViewRoles" @click="withGlobalLoading(beginForm, 'role-create')">{{ writeCopy.createRole }}</button>
         <button v-if="error" v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading || !ready || locked" @click="withGlobalLoading(load)">{{ copy.refresh }}</button>
       </template>
       <BatchDelete :key="scope + ':' + brandId + ':' + tab" :subject="tab" :entry-label="item => isAccount(item) ? item.username : item.name" :scope-key="String(offset)" :entries="entries" :selectable="item => isAccount(item) ? item.id !== accountId : !item.is_bootstrap" :enabled="tab === 'accounts' ? canDeleteAccounts : canDeleteRoles" :locale="locale" :loading="loading" :delete-entry="deleteBatchItem" :error-text="cause => platformErrorMessage(cause, locale)" :is-unknown="cause => !(cause instanceof PlatformAccessApiError) || cause.status === 0 || cause.status >= 500 || cause.code === 'INVALID_RESPONSE'" @locked="batchOpen = $event" @deleted="batchDeleted" @finished="withGlobalLoading(refreshAfterBatch)" v-slot="{selected: checked, toggle, selectLabel, locked: batchLocked}">
@@ -324,7 +367,7 @@ useOperationToast(error, value => displayError(value), 'error');
           <div class="form-actions ui-form-actions">
             <p v-if="error" class="message error inline-validation-error" role="alert">{{ displayError(error) }}</p>
 
-            <button type="submit" :class="formMode === 'account-delete' || formMode === 'role-delete' ? 'button button-danger' : 'button button-primary'" :disabled="saving || !optionsReady || ((formMode === 'account-create' || formMode === 'account-edit') && !form.role_ids.length)">{{ saving ? copy.loading : pending ? writeCopy.retry : formMode === 'account-delete' || formMode === 'role-delete' ? writeCopy.delete : writeCopy.save }}</button>
+            <button type="submit" :class="formMode === 'account-delete' || formMode === 'role-delete' ? 'button button-danger' : 'button button-primary'" :disabled="saving || !optionsReady || !canUseForm(formMode) || ((formMode === 'account-create' || formMode === 'account-edit') && !form.role_ids.length)">{{ saving ? copy.loading : pending ? writeCopy.retry : formMode === 'account-delete' || formMode === 'role-delete' ? writeCopy.delete : writeCopy.save }}</button>
           </div>
         </form>
     </DetailModal>
@@ -342,7 +385,7 @@ fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 14px; min-width
 .modal-card { max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; }
 .access-delete-modal { width: min(480px, calc(100vw - 24px)); padding: 0; }
 .access-delete-modal > h2 { margin: 0 0 12px; }
-.access-delete-modal > p { margin: 0 0 12px; color: var(--text-muted); }
+.access-delete-modal > p { margin: 0 0 12px; color: var(--muted); }
 .access-delete-modal .brand-form { gap: 10px; }
 .access-role-modal { padding: 0; }
 .access-role-modal fieldset > label { min-width: 0; }
@@ -354,15 +397,15 @@ fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 14px; min-width
 .role-identity :is(input) { min-width:0; width:100%; min-height:44px; }
 .modal-card > .brand-form { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .modal-card > .brand-form > .access-form-fields { min-height: 0; overflow-y: auto; padding-right: 4px; }
-.modal-card > .brand-form > .form-actions { flex: 0 0 auto; margin: 0; padding-top: 10px; border-top: 1px solid var(--border-light); background: var(--bg-surface); }
+.modal-card > .brand-form > .form-actions { flex: 0 0 auto; margin: 0; padding-top: 10px; border-top: 1px solid var(--line); background: var(--surface); }
 .access-role-modal > .brand-form > .access-form-fields { overflow-y: scroll; scrollbar-gutter: stable; }
-input.readonly-field { background: var(--bg-subtle); color: var(--text-muted); cursor: not-allowed; }
+input.readonly-field { background: var(--line-subtle); color: var(--muted); cursor: not-allowed; }
 textarea { width: 100%; min-height: 56px; resize: vertical; box-sizing: border-box; }
 .access-actions { text-align: right; }
 .role-detail-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .role-permissions-field { grid-column: 1 / -1; }
 .permission-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 6px; }
-.permission-chip { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 5px 7px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-subtle); font-size: var(--body-font-size); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.permission-chip { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 5px 7px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--line-subtle); font-size: var(--body-font-size); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .permission-chip input { width: auto; min-height: 18px; margin: 0; flex: 0 0 auto; }
 .access-role-modal .access-options { max-height: none; padding: 6px; }
 @media (max-width: 720px) { .role-detail-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

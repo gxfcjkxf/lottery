@@ -128,7 +128,7 @@ useOperationToast(() => saved.value, () => t('admin.copy.bdfd5d02'), 'success');
 .provision {
   width: 100%;
   min-width: 0;
-  color: #252a36;
+  color: var(--ink);
 }
 .provision header {
   display: flex;
@@ -149,14 +149,14 @@ useOperationToast(() => saved.value, () => t('admin.copy.bdfd5d02'), 'success');
 .eyebrow {
   font-size: var(--body-font-size);
   letter-spacing: 1.2px;
-  color: #8991a2;
+  color: var(--muted);
   font-weight: 700;
 }
 .brand {
   border-radius: 20px;
-  background: #f4f6f4;
+  background: var(--canvas);
   padding: 7px 11px;
-  color: #374151;
+  color: var(--ink-secondary);
   font-size: var(--body-font-size);
   overflow-wrap: anywhere;
 }
@@ -167,12 +167,12 @@ useOperationToast(() => saved.value, () => t('admin.copy.bdfd5d02'), 'success');
   align-items: start;
 }
 .card {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 11px;
   padding: 18px;
   min-width: 0;
-  box-shadow: 0 2px 8px #1e2a5008;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 3%, transparent);
 }
 .form {
   display: grid;
@@ -189,7 +189,7 @@ useOperationToast(() => saved.value, () => t('admin.copy.bdfd5d02'), 'success');
   margin: 0;
 }
 .required {
-  color: #a45540;
+  color: var(--danger-text);
 }
 .notice,
 .feedback {
@@ -199,8 +199,8 @@ useOperationToast(() => saved.value, () => t('admin.copy.bdfd5d02'), 'success');
   overflow-wrap: anywhere;
 }
 .notice {
-  background: #f5f6fa;
-  color: #697184;
+  background: var(--canvas);
+  color: var(--muted);
 }
 .feedback {
   margin-top: 13px;
@@ -209,11 +209,11 @@ useOperationToast(() => saved.value, () => t('admin.copy.bdfd5d02'), 'success');
 }
 .error {
   background: var(--danger-bg);
-  color: #a83d36;
+  color: var(--danger-text);
 }
 .success {
-  background: #edf8f2;
-  color: #287553;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 @media (max-width: 720px) {
   .layout {

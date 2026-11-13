@@ -1,19 +1,6 @@
-import type { BrandTheme, PlatformContext } from './brand'
+import type { PlatformContext } from './brand'
 
 const HEX_COLOR = /^#[\da-f]{6}$/i
-const FONT_FAMILIES = {
-  system: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  serif: 'Georgia, "Times New Roman", serif',
-  mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-} as const
-const FONT_SCALES = { compact: '14px', standard: '16px' } as const
-const RADII = { square: '2px', soft: '8px', round: '16px' } as const
-const SHADOWS = {
-  none: 'none',
-  subtle: '0 18px 55px rgba(28, 54, 44, .08)',
-  lifted: '0 18px 55px rgba(28, 54, 44, .16)',
-} as const
-
 export function safeBrandColor(value: unknown): string {
   if (typeof value !== 'string' || !HEX_COLOR.test(value)) throw new TypeError('Invalid brand color')
   return value.toLowerCase()
@@ -50,51 +37,8 @@ export function safeBrandAssetUrl(value: unknown): string | null {
   return value
 }
 
-function darken(hex: string): string {
-  const channels = hex.slice(1).match(/.{2}/g)!.map(channel => Math.max(0, Math.round(parseInt(channel, 16) * 0.78)))
-  return `#${channels.map(channel => channel.toString(16).padStart(2, '0')).join('')}`
-}
-
-/** Build safe inline CSS variables from an already normalized public context. */
-export function buildBrandCssTokens(theme: Pick<BrandTheme, 'primary' | 'accent' | 'success' | 'warning' | 'danger' | 'fontFamily' | 'fontScale' | 'radius' | 'shadow'>): Record<string, string> {
-  const primary = safeBrandColor(theme.primary)
-  const accent = safeBrandColor(theme.accent)
-  const success = safeBrandColor(theme.success)
-  const warning = safeBrandColor(theme.warning)
-  const danger = safeBrandColor(theme.danger)
-  if (!Object.hasOwn(FONT_FAMILIES, theme.fontFamily) || !Object.hasOwn(FONT_SCALES, theme.fontScale) ||
-      !Object.hasOwn(RADII, theme.radius) || !Object.hasOwn(SHADOWS, theme.shadow)) throw new TypeError('Invalid brand presentation')
-  const family = FONT_FAMILIES[theme.fontFamily]
-  const scale = FONT_SCALES[theme.fontScale]
-  const scaleFactor = theme.fontScale === 'compact' ? '0.875' : '1'
-  const radius = RADII[theme.radius]
-  const shadow = SHADOWS[theme.shadow]
-  return {
-    '--primary': primary,
-    '--primary-dark': darken(primary),
-    '--primary-light': `color-mix(in srgb, ${primary} 8%, white)`,
-    '--primary-ring': `color-mix(in srgb, ${primary} 22%, transparent)`,
-    '--green': success,
-    '--brand-primary': primary,
-    '--accent': accent,
-    '--brand-accent': accent,
-    '--accent-light': `color-mix(in srgb, ${accent} 8%, white)`,
-    '--brand-success': success,
-    '--brand-warning': warning,
-    '--brand-danger': danger,
-    '--success': success,
-    '--warning': warning,
-    '--danger': danger,
-    '--font-family': family,
-    '--font-scale': scale,
-    '--brand-font-scale-factor': scaleFactor,
-    '--radius': radius,
-    '--shadow': shadow,
-  }
-}
-
-export function applyBrandPresentation(context: PlatformContext, root: HTMLElement = document.documentElement): void {
-  for (const [token, value] of Object.entries(buildBrandCssTokens(context.brand))) root.style.setProperty(token, value)
+/** Brand identity never overrides the shared design system. */
+export function applyBrandPresentation(context: PlatformContext): void {
   applyBrowserBranding(context.brand.name, context.brand.logoText, safeBrandAssetUrl(context.brand.faviconUrl), context.brand.primary)
 }
 

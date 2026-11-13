@@ -10,7 +10,10 @@
   #app { --control-height: 44px; }
 }
 
-/* Shared control geometry. Brand tokens remain owned by the active brand. */
+/* Native button paint must not override the platform palette on iOS. */
+#app button { -webkit-appearance: none; appearance: none; }
+
+/* Shared control geometry. Colors follow the platform theme. */
 :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), textarea) {
   min-width: 0;
   max-width: 100%;
@@ -270,3 +273,35 @@ button[data-write-locked], form[data-write-locked] button[type=submit], form[dat
 /* Keep aligned cell contents away from the table edge on all four clients. */
 #app table :is(th, td) { padding-inline: var(--table-cell-padding-inline); }
 #app [role="table"] [role="row"] > :is([role="cell"], [role="columnheader"]) { padding-inline: var(--table-cell-padding-inline); }
+
+/* Header actions share icon geometry and spacing across all four clients. */
+#app :is(.topbar, .workspace-topbar) .icon-button { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); }
+#app :is(.topbar, .workspace-topbar) { --site-icon-size: 20px; --header-action-gap: 8px; }
+#app :is(.topbar .top-actions, .workspace-topbar .workspace-trailing) { gap: var(--header-action-gap); }
+#app :is(.topbar, .workspace-topbar) :is(.icon-button, .locale-picker__trigger) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--control-height);
+  min-width: var(--control-height);
+  height: var(--control-height);
+  min-height: var(--control-height);
+  padding: 0;
+  flex-shrink: 0;
+}
+#app :is(.topbar, .workspace-topbar) .account-trigger {
+  min-height: var(--control-height);
+  gap: 8px;
+  padding: 0 8px;
+}
+@media (max-width: 900px), (pointer: coarse) {
+  #app :is(.topbar, .workspace-topbar) { --header-action-gap: 4px; }
+}
+
+/* Payment account labels share a column across currency and bank fields. */
+#app .cash-account-field { display: grid; grid-template-columns: minmax(0, min(8em, 38%)) minmax(0, 1fr); align-items: center; gap: 4px 8px; min-width: 0; }
+#app .cash-account-label { text-align: right; overflow-wrap: anywhere; }
+#app .ui-form .cash-account-label label { display: block; }
+#app .cash-account-control { min-width: 0; }
+#app .cash-account-control > :is(input, .select-control) { width: 100%; min-width: 0; }

@@ -115,6 +115,7 @@
 | 源文件 | 核查对象及处理 |
 | --- | --- |
 | `shared/src/CashConsole.vue` | 品牌收款账号与充值/提现订单：共享列表壳、权限动作、表格和分页；只有对应收款方式允许的币种才展示收款账号区域 |
+| `shared/src/CashAccounts.vue` | 用户／代理收款账号：共享列表容器、表格及编辑／删除弹窗；按 CNY、USD、THB、USDT 固定四项完整展示，未绑定币种保留对应行，不添加分页或批量动作；账号信息脱敏显示 |
 | `shared/src/CashTronPanel.vue` | 专属充值地址：共享列表壳、完整表头、空状态和分页；加载失败时居中重试；钱包通过共享弹窗配置 |
 | `shared/src/TronQueryKeysPanel.vue` | 平台查询 Key：工具栏新增、脱敏表格、编辑/测试行操作及共享分页；无批量删除能力，不提供选择框 |
 | `shared/src/CashMemberBalances.vue` | 会员币种余额固定四项完整快照，不截断或伪造分页 |

@@ -11,7 +11,8 @@ for(const locale of ['en','zh-CN'] as const)test(`finance lists and dialogs shar
   expect(route.request().method()).toBe('GET')
   const url=new URL(route.request().url()),path=url.pathname
   let data:unknown
-  if(path.endsWith('/reward-orders'))data={brand_id:brand,items:[reward],total_count:'1',limit:Number(url.searchParams.get('limit')),offset:0}
+  if(path.endsWith('/cash/orders'))data={items:[],total_count:'0'}
+  else if(path.endsWith('/reward-orders'))data={brand_id:brand,items:[reward],total_count:'1',limit:Number(url.searchParams.get('limit')),offset:0}
   else if(path.endsWith('/actions'))data={brand_id:brand,order_id:id,items:[],total_count:'0',limit:Number(url.searchParams.get('limit')),offset:0}
   else if(path.endsWith('/reward-orders/'+id))data=reward
   else if(path.endsWith('/withdrawals'))data={brand_id:brand,items:[withdrawal],has_more:false,limit:Number(url.searchParams.get('limit')),offset:0, total_count: '1'}
@@ -28,7 +29,7 @@ for(const locale of ['en','zh-CN'] as const)test(`finance lists and dialogs shar
   if(surface==='brand')await openBrandPage(page,view.endsWith('withdrawals')?(locale==='en'?'Withdrawal requests':'提现申请'):(locale==='en'?'Manual rewards':'人工奖励'))
   else await openPlatformPage(page,view.endsWith('withdrawals')?(locale==='en'?'Withdrawals':'提现'):(locale==='en'?'Rewards':'奖励'),brand)
   await expectRealEntry(page,surface)
-  const list=page.locator('.management-list').first(),row=list.locator('table tbody tr').first()
+  const list=page.locator(view==='brand-withdrawals'?'.withdrawal-management .management-list':view==='platform-withdrawals'?'[data-testid=platform-withdrawals]':'.management-list').first(),row=list.locator('table tbody tr').first()
   await expect(row).toContainText('2500')
   await expect(list.locator('.table-pagination').first()).toBeVisible()
   const preset=page.viewportSize()!

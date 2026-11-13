@@ -305,7 +305,6 @@ onBeforeUnmount(() => {
 
     <TablePagination v-if="total !== null" class="notifications-pagination" :total="total ?? '0'" :page="Math.floor(pageNumber)" :count="items.length" :locale="catalogLocale" :page-size="limit" :previous-disabled="!hasPrevious || loading || writing" :next-disabled="!hasNext || loading || writing" :previous-label="ui('user.copy.d1c7b375')" :next-label="ui('user.copy.2d3bed9a')" :go-to="(target: number) => changePage((target - 1) * limit)" :change-page-size="async (size: number) => { limit = size; await loadPage({ offset: 0 }) }" :busy="loading || writing" />
     <DetailModal v-if="selected && selectedPresentation" class="notification-dialog" :title="selectedPresentation.title" :close-label="ui('user.notifications.close')" @close="selected = null">
-      <template #heading-extra><span class="notification-read-state">{{ isRead(selected) ? ui('user.notifications.read') : ui('user.copy.25fe7670') }}</span></template>
       <div class="notification-detail">
         <div v-if="selectedAmount" class="notification-amount" :class="selectedAmount.tone"><span>{{ selectedAmount.label }}</span><strong>{{ selectedAmount.value }}</strong></div>
         <p v-if="selected.event_type === 'member.joined' || selected.template_version > 1" class="notification-body">{{ selectedPresentation.body }}</p>
@@ -411,7 +410,6 @@ onBeforeUnmount(() => {
 .notification-dialog { width:min(640px,calc(100vw - 24px)); max-width:calc(100vw - 24px); }
 .notification-dialog :deep(.detail-modal-heading) { justify-content:flex-start; }
 .notification-dialog :deep(.detail-modal-close) { margin-left:auto; }
-.notification-read-state { color:var(--muted); font-size:var(--body-font-size); white-space:nowrap; }
 .notification-amount { display:flex; align-items:baseline; justify-content:space-between; gap:16px; min-width:0; }
 .notification-amount > span { color:var(--muted); flex-shrink:0; }
 .notification-amount strong { font-size:28px; font-weight:650; line-height:1.3; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; text-align:right; }
