@@ -10,7 +10,11 @@ concurrency:
 jobs:
   mobile-layout:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,11 +28,11 @@ jobs:
       - name: Install WebKit and Linux dependencies
         timeout-minutes: 7
         run: pnpm exec playwright install --with-deps webkit
-      - run: pnpm test:layout
+      - run: pnpm test:layout --shard=${{ matrix.shard }}/16
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mobile-layout
+          name: mobile-layout-${{ matrix.shard }}
           path: test-results/layout/
   webkit-functional:
     if: github.event_name == 'workflow_dispatch'

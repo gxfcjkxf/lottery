@@ -57,16 +57,14 @@ for(const locale of ['en','zh-CN'] as const){
   let reads=0
   await page.route('**/api/**',route=>{
    expect(route.request().method()).toBe('GET');reads++
-   return route.fulfill({json:{success:true,data:{brand_id:brand,version:1,updated_at:at,config:{age_enabled:false,minimum_age:null,region_enabled:false,allowed_countries:[],identity_enabled:false,account_risk_enabled:false,betting_risk_enabled:false,exclusion_enabled:false,responsible_gambling_enabled:false}}}})
+   return route.fulfill({status:503,json:{success:false,error:{code:'SERVICE_UNAVAILABLE',message:'Synthetic read failure'}}})
   })
   const source=await(await page.request.get(origins.platform+'/src/RewardsPanel.vue')).text(),vuePath=source.match(/from "([^"]*deps\/vue\.js[^"]*)"/)![1]
   await page.route('**/__phase-three-policy',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'${vuePath}';import Harness from'/@fs/${resolve('tests/layout/PhaseThreeHarness.vue')}';import'/@fs/${resolve('shared/src/styles.css')}';import'/@fs/${resolve('shared/src/management.css')}';import'/@fs/${resolve('shared/src/controls.css')}';createApp(Harness,${JSON.stringify({locale,kind:'policy'})}).mount('#app')</script></html>`}))
   await page.goto(origins.platform+'/__phase-three-policy')
-  await page.locator('.compliance input[type=checkbox]').first().check()
-  await page.locator('.compliance button[type=submit]').click()
-  await expect(page.locator('.toast-message')).toHaveText(locale==='en'?'Review the configuration and correct any invalid settings.':'请核对配置并修正无效设置。')
+  await expect(page.locator('.toast-message')).toHaveText(locale==='en'?'This service is temporarily unavailable. Please try again later.':'服务暂时不可用，请稍后再试。')
   const before=reads;await page.getByTestId('switch-fixture-language').click()
-  await expect(page.locator('.toast-message')).toHaveText(locale==='en'?'请核对配置并修正无效设置。':'Review the configuration and correct any invalid settings.')
+  await expect(page.locator('.toast-message')).toHaveText(locale==='en'?'服务暂时不可用，请稍后再试。':'This service is temporarily unavailable. Please try again later.')
   expect(reads).toBe(before);await review(page,info,`localized-policy-${locale}`)
  })
  for(const kind of ['withdrawals','rewards'] as const)test(`phase three ${kind} loads history on demand and ignores stale reads (${locale})`,async({page},info)=>{

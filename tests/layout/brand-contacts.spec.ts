@@ -140,7 +140,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await page.route('**/api/v1/brand-assets/*', route => route.fulfill({ contentType: 'image/png', body: image }))
     await page.goto(`${origins.user}/account`)
     const tools = page.locator('.account-tools a')
-    await expect(tools).toHaveText(zh ? ['公告', '推荐码', '联系方式', '帮助中心'] : ['Announcements', 'Referral codes', 'Contact details', 'Help centre'])
+    await expect(tools).toHaveText(zh ? ['通知', '推荐码', '联系方式', '帮助中心'] : ['Notifications', 'Referral codes', 'Contact details', 'Help centre'])
     const entry = page.locator('a[href="/contacts"]:visible').first()
     if (!await entry.count()) await page.getByRole('button', { name: zh ? '菜单' : 'Menu', exact: true }).click()
     await entry.click()

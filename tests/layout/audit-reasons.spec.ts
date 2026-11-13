@@ -106,7 +106,7 @@ for (const locale of ['en', 'zh-CN'] as const) test(`brand audit filters (${loca
  await page.route('**/api/**', route => {
   expect(route.request().method()).toBe('GET')
   const url=new URL(route.request().url())
-  if(url.pathname==='/api/v1/admin/audit')return route.fulfill({json:{success:true,data:{items:[{id:event,brand_id:brand,action:'user.delete.maintenance',actor_type:'admin',actor_id:event,actor_username:'reviewer',resource_type:'global_user',resource_id:event,reason:'User requested removal of historical unnamed Telegram account',request_id:'review',created_at:'2026-11-12T04:00:00Z',ip_address:'127.0.0.1'}],total_count:'1'}}})
+  if(url.pathname==='/api/v1/admin/audit')return route.fulfill({json:{success:true,data:{items:[{id:event,brand_id:brand,action:'user.delete.maintenance',actor_type:'admin',actor_id:event,actor_username:'reviewer',resource_type:'global_user',resource_id:event,reason:'User requested removal of historical unnamed Telegram account',request_id:'review',created_at:'2026-11-12T04:00:00Z',ip_address:'127.0.0.1',before_json:null,after_json:null}],total_count:'1'}}})
   throw Error(`Unexpected audit request ${url.pathname}`)
  })
  await installConsoleSession(page,'brand',locale,brand,['audit.view.brand'])

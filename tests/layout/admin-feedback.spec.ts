@@ -94,7 +94,7 @@ for (const locale of ['en', 'zh-CN'] as const) test(`brand operations share bott
   expect(bounds!.x).toBeGreaterThanOrEqual(0); expect(bounds!.y).toBeGreaterThanOrEqual(0)
   expect(page.viewportSize()!.width - bounds!.x - bounds!.width).toBeLessThanOrEqual(21)
   expect(page.viewportSize()!.height - bounds!.y - bounds!.height).toBeLessThanOrEqual(21)
-  expect(await toast.evaluate(e => { const r = e.getBoundingClientRect(); return !!document.elementFromPoint(r.x + r.width / 2, r.y + Math.min(r.height / 2, 24))?.closest('.toast') })).toBe(true)
+  expect(await toast.locator('button').evaluate(e => { const r = e.getBoundingClientRect(); return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('button') === e })).toBe(true)
  }
  await openActions(); await page.getByRole('menuitem', { name: zh ? '充值' : 'Recharge', exact: true }).click()
  const recharge = page.getByRole('dialog', { name: zh ? '人工充值' : 'Manual recharge', exact: true })
