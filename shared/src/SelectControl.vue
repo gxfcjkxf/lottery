@@ -137,7 +137,8 @@ function cleanup() {
   window.visualViewport?.removeEventListener('scroll', position)
 }
 watch(() => props.disabled, value => { if (value) close() })
-watch(() => JSON.stringify(props.options), async () => {
+// Search footers can change while results stay empty, so they still need positioning.
+watch(() => props.search ? props.options : JSON.stringify(props.options), async () => {
   if (!props.search) { close(); return }
   active.value = -1
   await nextTick(); position()
