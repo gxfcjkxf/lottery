@@ -59,7 +59,7 @@ for(const locale of ['en','zh-CN'] as const)test(`opening schedule disables bett
  await expect(toast).toHaveCount(0)
 })
 
-for(const locale of ['en','zh-CN'] as const)test(`successful configured bet clears selection and stake ${locale}`,async({page},info)=>{
+for(const locale of ['en','zh-CN'] as const)test(`successful configured bet clears selection and retains remembered stake ${locale}`,async({page},info)=>{
  await page.clock.install({time:new Date('2026-10-27T03:00:00Z')})
  await page.clock.pauseAt(new Date('2026-10-27T03:00:01Z'))
  await installLayoutApi(page,locale);await installWalletLayoutApi(page)
@@ -81,7 +81,7 @@ for(const locale of ['en','zh-CN'] as const)test(`successful configured bet clea
  await expect(points).toHaveValue('')
  await points.fill('25')
  await page.reload()
- await expect(points).toHaveValue('')
+ await expect(points).toHaveValue('25')
  const mobile=page.viewportSize()!.width<1000
  await expect(page.locator('.period-times time').first().locator('span:visible')).toHaveText(mobile?'10-24 21:00':'2026-10-24 21:00:00')
  await expect(page.locator('.period-times time').nth(1).locator('span:visible')).toHaveText(mobile?'10-27 21:29':'2026-10-27 21:29:45')
@@ -115,10 +115,10 @@ for(const locale of ['en','zh-CN'] as const)test(`successful configured bet clea
  await dialog.getByRole('button',{name:locale==='en'?'Confirm bet':'确认投注',exact:true}).click()
  await expect(dialog).toHaveCount(0);expect(writes).toBe(1)
  await expect(selection.locator('.configured-options [aria-pressed=true]')).toHaveCount(0)
- await expect(points).toHaveValue('')
+ await expect(points).toHaveValue('10')
  await selection.locator('.configured-options button').first().click()
  await expect(points).toBeFocused()
- await expect(points).toHaveValue('')
+ await expect(points).toHaveValue('10')
  await selection.locator('.configured-clear').click()
  const toast=page.locator('.operation-toast-stack .toast-success')
  await expect(toast).toContainText(locale==='en'?'Bet placed':'投注成功')
