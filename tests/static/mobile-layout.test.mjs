@@ -29,9 +29,9 @@ test('layout acceptance covers both engines, device orientations and explicit re
   const workflow = read('.github/workflows/ci.yaml').split('  mobile-layout:\n')[1].split('  webkit-functional:\n')[0]
   assert.match(workflow, /prepare-ci-browser.mjs/)
   assert.match(workflow, /install --with-deps webkit/)
-  assert.match(workflow, /pnpm test:layout --shard=\$\{\{ matrix\.shard \}\}\/16/)
+  assert.match(workflow, /pnpm test:layout --shard=\$\{\{ matrix\.shard \}\}\/32/)
   assert.match(workflow, /fail-fast: false/)
-  assert.match(workflow, /shard: \[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16\]/)
+  assert.match(workflow, /shard: \[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32\]/)
   assert.match(workflow, /name: mobile-layout-\$\{\{ matrix\.shard \}\}/)
   assert.match(workflow, /if: always\(\)/)
   assert.doesNotMatch(workflow, /workflow_dispatch|continue-on-error/)
