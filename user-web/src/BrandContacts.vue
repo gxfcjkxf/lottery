@@ -38,10 +38,12 @@ function drag(event: PointerEvent) {
 }
 function endDrag(event: PointerEvent) {
   if (gesture?.id !== event.pointerId) return
+  const activate = event.type === 'pointerup' && !moved
   gesture = null; dragging.value = false
+  if (activate) dialogOpen.value = true
 }
 function openSupport(event: MouseEvent) {
-  if (event.detail === 0 || !moved) dialogOpen.value = true
+  if (event.detail === 0) dialogOpen.value = true
 }
 function constrainPosition() {
   if (position.value && supportButton.value) moveTo(position.value.x, position.value.y)
