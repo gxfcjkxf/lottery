@@ -161,13 +161,12 @@ for (const locale of ['en', 'zh-CN'] as const) test(`real player betting theme c
  expect(errors).toEqual([])
 })
 
-for (const locale of ['en','zh-CN'] as const) test(`real player account theme coverage ${locale}`, async({page},info)=>{
+for (const locale of ['en','zh-CN'] as const) for(const path of ['/wallet','/login']) test(`real player account theme coverage ${locale} ${path}`, async({page},info)=>{
  await installLayoutApi(page,locale);await installWalletLayoutApi(page)
  await page.route('**/api/v1/brand-contacts',route=>route.fulfill({json:{success:true,data:{items:[{id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2',kind:'telegram',value:'@brand_support',image_url:null}],default_id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2'}}}))
  const cashConfig={version:1,platform_rules:currencies.map(currency=>({currency,rate:'7',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'2',inherit:false,enabled:true})),rules:currencies.map(currency=>({currency,rate:'7',deposit_min:'1',deposit_max:'10000',withdrawal_min:'1',withdrawal_max:'10000',fee:'0',mode:'count',threshold:'2',inherit:false,enabled:true}))}
  await page.route('**/api/v1/cash**',route=>{expect(route.request().method()).toBe('GET');const path=new URL(route.request().url()).pathname;const data=path==='/api/v1/cash'?{auto_usdt:false,actor_context:'a'.repeat(64),brand_id:gameId,member_id:gameId,balances:currencies.map(currency=>({currency,deposited:'10',withdrawable:'0',reserved:'0'})),destinations:[],platform:cashConfig,brand:cashConfig}:{items:[],total_count:'0',limit:20,offset:0};return route.fulfill({json:{success:true,data}})})
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message))
- for(const path of ['/wallet','/login']){
   if(path==='/login')await page.route('**/api/v1/me',route=>route.fulfill({status:401,json:{success:false,error:{code:'UNAUTHORIZED',message:'Sign in required'}}}))
   await page.goto(origins.user+path)
   await page.addStyleTag({content:'*,*::before,*::after{transition:none!important;animation:none!important}'})
@@ -191,7 +190,6 @@ for (const locale of ['en','zh-CN'] as const) test(`real player account theme co
    await expectNoPageOverflow(page)
    await page.screenshot({path:info.outputPath(`player-${path.slice(1)}-${locale}-${theme}-${mode}.png`)})
   }
- }
  expect(errors).toEqual([])
 })
 

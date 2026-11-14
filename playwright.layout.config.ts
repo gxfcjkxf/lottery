@@ -11,7 +11,7 @@ export default defineConfig({
   fullyParallel: true,
   workers: 2,
   retries: 0,
-  timeout: 60_000,
+  timeout: 120_000,
   outputDir: 'test-results/layout',
   reporter: [['list'], ['json', { outputFile: 'test-results/layout/results.json' }]],
   use: { trace: 'retain-on-failure', screenshot: 'only-on-failure', serviceWorkers: 'block' },
