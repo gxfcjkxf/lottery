@@ -88,11 +88,10 @@ for (const locale of ['en', 'zh-CN'] as const) {
       }
     }
     await page.screenshot({ path: info.outputPath(`bet-table-${locale}.png`), fullPage: true })
-    await page.locator('.workspace-game-picker .select-control-trigger').click()
-    await page.locator('.workspace-game-picker [role="option"]').filter({ hasText: locale === 'en' ? 'All games' : '全部彩种' }).click()
+    const gamePicker=page.locator('.workspace-game-picker').getByRole('combobox')
+    await gamePicker.press('Home');await gamePicker.press('Enter')
     await expect(page.locator('.history-table td[data-label="'+(locale==='en'?'Game':'彩种')+'"]')).toHaveText('Mark Six')
-    await page.locator('.workspace-game-picker .select-control-trigger').click()
-    await page.locator('.workspace-game-picker [role="option"]').filter({ hasText: 'Mark Six' }).click()
+    await gamePicker.press('End');await gamePicker.press('Enter')
     await expect(page.locator('.history-table td[data-label="'+(locale==='en'?'Game':'彩种')+'"]')).toHaveCount(0)
     await expect(page).toHaveURL(/\/orders$/)
     for (const [path, title] of [['/help', locale === 'en' ? 'Help centre' : '帮助中心'], ['/account', locale === 'en' ? 'Me' : '个人'], ['/results', locale === 'en' ? 'Draw history' : '开奖记录']]) {
