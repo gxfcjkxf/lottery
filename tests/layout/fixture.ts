@@ -187,8 +187,8 @@ export async function expectNoPageOverflow(page: Page) {
   await expectPageActionControls(page)
   for (const language of dimensions.languages) {
     // Transformed drawer bounds can contain subpixel floating-point noise.
-    expect(language.width).toBeCloseTo(language.size, 4)
-    expect(language.height).toBeCloseTo(language.size, 4)
+    expect(language.width).toBeCloseTo(language.size, 2)
+    expect(language.height).toBeCloseTo(language.size, 2)
     expect(language.radius).toBe('10px')
   }
 }

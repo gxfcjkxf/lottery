@@ -106,7 +106,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
     await expect(rows.last()).toContainText('Operations')
     await expect(rows.last().locator('td').nth(2)).toHaveText(zh ? '停用' : 'Disabled')
     await expect(page.locator('.table-pagination button').first()).toBeDisabled()
-    await expect(page.getByRole('button',{name:zh?'尾页':'Last',exact:true})).toBeDisabled()
+    await expect(page.getByRole('button',{name:zh?'尾页':'Last',exact:true,includeHidden:true})).toBeDisabled()
     const preset = page.viewportSize()!
     for (const width of info.project.name.includes('reflow') ? [320, 640, 900, 901, 1440] : [preset.width]) {
       if (info.project.name.includes('reflow')) await page.setViewportSize({ width, height: preset.height })

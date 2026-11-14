@@ -101,7 +101,7 @@ export function registerPlatformMemberManagementTests(reflow = false) {
     const presetWallet=page.viewportSize()!
     if(reflow)await page.setViewportSize({width:320,height:720})
     await expectRealEntry(page,'platform');await expectListLayout(page)
-    await page.screenshot({path:info.outputPath(`member-wallet-${locale}.png`),fullPage:true})
+    await page.screenshot({path:info.outputPath(`member-wallet-${locale}.png`)})
     if(reflow)await page.setViewportSize(presetWallet)
     await page.keyboard.press('Escape')
     await expect(balances).toHaveCount(0)

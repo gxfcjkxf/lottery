@@ -33,7 +33,7 @@ for(const locale of ['en','zh-CN'] as const)test(`configured first rules preserv
  await expect(page.getByRole('alert')).toHaveCount(0)
  if(info.project.name.endsWith('reflow'))for(const width of [320,480,768,1280]){await page.setViewportSize({width,height:800});await expectNoPageOverflow(page)}
  await expectNoPageOverflow(page)
- await page.screenshot({path:info.outputPath(`configured-first-rules-${locale}.png`),fullPage:true})
+ await page.screenshot({path:info.outputPath(`configured-first-rules-${locale}.png`)})
 })
 
 for(const locale of ['en','zh-CN'] as const)test(`Canada28 groups retain original play and option quotes ${locale}`,async({page},info)=>{

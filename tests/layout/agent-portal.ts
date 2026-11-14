@@ -54,7 +54,7 @@ export function registerAgentPortalTests(reflow=false){
   await expect(page).toHaveTitle(zh?'代理管理':'Agent management');await expect(page.locator('.brand-lockup b')).toHaveText('Partner Brand');await expect(page.locator('.brand-lockup img')).toHaveAttribute('src','/icons/agent-brand.png');await expect.poll(()=>page.locator('.brand-lockup img').evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBeGreaterThan(0)
   await expect(page.locator('link[rel=icon]')).toHaveCount(1);await expect(page.locator('link[data-brand-favicon]')).toHaveAttribute('href','/icons/agent-brand.png')
   const preset=page.viewportSize()!
-  const navigate=async(id:string)=>{const nav=page.locator(await page.locator('.mobile-nav').isVisible()?'.mobile-nav':'.side-nav');await nav.locator(`a[href="#/${id}"]`).click();await expect(page).toHaveURL(new RegExp('#/'+id+'$'))}
+  const navigate=async(id:string)=>{const nav=page.locator(await page.locator('.mobile-nav').isVisible()?'.mobile-nav':'.side-nav');const link=nav.locator(`a[href="#/${id}"]`);const group=link.locator('xpath=ancestor::details[1]');if(await group.count()&&!await group.evaluate(node=>(node as HTMLDetailsElement).open))await group.locator('summary').click();await link.click();await expect(page).toHaveURL(new RegExp('#/'+id+'$'))}
   const mobileNavigation=await page.locator('.mobile-nav').isVisible()
   const labels=mobileNavigation?(zh?['会员','下级代理','佣金']:['Members','Subagents','Earnings']):(zh?['会员管理','下级代理','佣金']:['Member management','Subagents','Commission'])
   const visibleNav=page.locator(mobileNavigation?'.mobile-nav':'.side-nav')
@@ -87,7 +87,7 @@ export function registerAgentPortalTests(reflow=false){
   }else{
    await expect(hint).toBeHidden();const downloadReady=page.waitForEvent('download');await saveQr.click();const download=await downloadReady;expect(download.suggestedFilename()).toBe('registration-qr.png');const saved=PNG.sync.read(readFileSync((await download.path())!));expect(jsQR(new Uint8ClampedArray(saved.data),saved.width,saved.height)?.data).toBe(registrationUrl)
   }
-  for(const width of reflow?[320,359,700,701,900,1440]:[preset.width]){if(reflow)await page.setViewportSize({width,height:preset.height});await expectNoPageOverflow(page);await expectInsideViewport(profile);const box=await qrImage.boundingBox();expect(box!.width).toBeLessThanOrEqual(Math.min(240,width));expect(box!.width).toBeCloseTo(box!.height,1)}if(reflow)await page.setViewportSize(preset)
+  for(const width of reflow?[320,359,700,701,900,1440]:[preset.width]){if(reflow)await page.setViewportSize({width,height:preset.height});await expectNoPageOverflow(page);await qrImage.scrollIntoViewIfNeeded();await expectInsideViewport(qrImage);const box=await qrImage.boundingBox();expect(box!.width).toBeLessThanOrEqual(Math.min(240,width));expect(box!.width).toBeCloseTo(box!.height,1)}if(reflow)await page.setViewportSize(preset)
   await expectMobileLinkShare(page,profile,'Partner Brand',registrationUrl,zh)
   await page.screenshot({path:info.outputPath(`agent-registration-link-${locale}.png`)})
   await page.evaluate(()=>{(window as any).__copyFailure=true});await profile.getByRole('button',{name:zh?'复制链接':'Copy link',exact:true}).click();await expect(page.getByRole('alert').locator('.toast-message')).toHaveText(zh?'复制失败，请手动复制链接。':'Unable to copy. Copy the link manually.')

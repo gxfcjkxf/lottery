@@ -75,7 +75,7 @@ test('actual platform entry opens defaults without selecting a brand',async({pag
   const path=new URL(route.request().url()).pathname
   const reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
   if(path.endsWith('/presentation'))return reply({display_name:'Trial platform',logo_text:'T',logo_url:''})
-  if(path.endsWith('/me'))return reply({account:{id:gameId,username:'security_test',super_admin:true,platform_permissions:['auth_config.view.platform','auth_config.write.platform']}})
+  if(path.endsWith('/me'))return reply({account:{id:gameId,username:'security_test',super_admin:true,platform_permissions:['auth_config.view.platform','auth_config.write.platform','platform_settings.view.platform','platform_settings.write.platform']}})
   if(path.endsWith('/platform-settings'))return reply({theme:'jade',version:1,display_name:'Trial platform',logo_text:'T',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',updated_at:'2026-10-29T00:00:00Z'})
   if(path.endsWith('/brands'))return reply({items:[]})
   expect(route.request().headers()['x-brand-id']).toBeUndefined()

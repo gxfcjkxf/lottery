@@ -1391,4 +1391,6 @@ td small {
 @media (max-width: 700px) {
   /* Keep the current page visible in navigation at every viewport width. */
   .management-console .platform-topbar .breadcrumb { flex-wrap: nowrap; }
+  .management-console .platform-topbar .breadcrumb > button:first-child,
+  .management-console .platform-topbar .breadcrumb > span { display: none; }
 }

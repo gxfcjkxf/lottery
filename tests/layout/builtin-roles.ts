@@ -82,9 +82,10 @@ export function registerBuiltinRoleTests() {
      await page.setViewportSize(size)
      await expect(pagination).toBeVisible()
      await expect(pagination).toHaveCSS('display','flex')
-     await expect(actions).toHaveCSS('gap','0px')
-     await expect(actions.getByRole('button')).toHaveCount(5)
-     for(const button of await actions.getByRole('button').all()){
+     const compact=await page.evaluate(()=>matchMedia('(max-width:640px), (hover:none) and (pointer:coarse)').matches)
+     await expect(actions).toHaveCSS('gap',compact?'0px':'12px')
+     await expect(actions.locator('.table-pagination-pages').getByRole('button')).toHaveCount(compact?5:3)
+     for(const button of await actions.locator('.table-pagination-pages').getByRole('button').all()){
       await expect(button).toBeDisabled()
       await expect(button).toHaveCSS('height',size.width>900&&!await page.evaluate(()=>matchMedia('(pointer: coarse)').matches)?'32px':'44px')
      }

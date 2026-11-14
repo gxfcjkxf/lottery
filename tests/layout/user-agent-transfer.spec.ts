@@ -115,7 +115,7 @@ for(const locale of ['zh-CN','en'] as const)test(`large ledger amounts remain co
  }
 })
 
-for(const locale of ['zh-CN','en'] as const)test(`all ledger types and compact times fit one mobile line (${locale})`,async({page},info)=>{
+for(const locale of ['zh-CN','en'] as const)test(`ledger types wrap naturally while compact times stay on one line (${locale})`,async({page},info)=>{
  await installLayoutApi(page,locale);await installOrdersLayoutApi(page)
  const buckets=(available='0',frozen='0')=>Object.fromEntries(['recharge','winning','gift','commission'].map(source=>[source,{available:source==='recharge'?available:'0',manual_frozen:'0',system_frozen:source==='recharge'?frozen:'0',withdrawal:'0'}]))
  const types=Object.keys(userUiCatalog.en).filter(key=>key.startsWith('user.wallet.entry.')).map(key=>({entry_type:key.slice('user.wallet.entry.'.length),reference_type:'manual',frozen:'0'}))
@@ -130,7 +130,7 @@ for(const locale of ['zh-CN','en'] as const)test(`all ledger types and compact t
    const issues=await page.locator('.ledger-heading').evaluateAll(nodes=>nodes.flatMap(el=>{
     const label=el.querySelector('b')!,time=el.querySelector('time')!,a=label.getBoundingClientRect(),b=time.getBoundingClientRect(),box=el.getBoundingClientRect(),line=parseFloat(getComputedStyle(label).lineHeight)
     const range=document.createRange();range.selectNodeContents(label);const text=range.getBoundingClientRect()
-    return a.height>line+1||b.height>line+1||a.right>b.left||b.right>box.right+1||text.width>label.clientWidth+1||label.scrollWidth>label.clientWidth+1||getComputedStyle(label).textOverflow==='ellipsis'?[{label:label.textContent,time:time.textContent,labelHeight:a.height,lineHeight:line,labelWidth:label.clientWidth,textWidth:text.width}]:[]
+    return b.height>line+1||a.right>b.left||b.right>box.right+1||text.width>label.clientWidth+1||label.scrollWidth>label.clientWidth+1||getComputedStyle(label).textOverflow==='ellipsis'?[{label:label.textContent,time:time.textContent,labelHeight:a.height,lineHeight:line,labelWidth:label.clientWidth,textWidth:text.width}]:[]
    }))
    expect(issues,`${locale} ${width}px headings`).toEqual([])
   }

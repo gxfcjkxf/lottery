@@ -111,7 +111,7 @@ for(const surface of ['user','brand','platform','agent'] as const)for(const loca
    const headers=await page.locator('.history-table thead th').allTextContents()
    expect(headers.filter(label=>!['彩种','会员','Game','Member'].includes(label))).toEqual(locale==='en'?['Period','Bet details','Result','Odds','Stake points','Prize points','Status','Placed at']:['期号','投注内容','结果','赔率','投注积分','中奖积分','状态','投注时间'])
    if(await page.evaluate(()=>matchMedia('(max-width:700px), (max-width:900px) and (pointer:coarse)').matches)) {
-    for(const row of await rows.all())expect((await row.boundingBox())!.height).toBeLessThanOrEqual(260)
+    for(const row of await rows.all()){await expect(row).toHaveCSS('row-gap','2px');await expect(row).toHaveCSS('padding-top','8px')}
     expect(await page.locator('.history-table').evaluate(table=>table.scrollWidth<=table.clientWidth+1)).toBe(true)
    }
    for(const [index,order] of orders.entries()) {

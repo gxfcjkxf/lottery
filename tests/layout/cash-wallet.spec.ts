@@ -506,7 +506,7 @@ for (const locale of ["en", "zh-CN"] as const) {
     await expect(
       dialog.getByLabel(zh ? "金额" : "Amount", { exact: true }),
     ).toHaveValue("1.25");
-    for (const toast of await page.locator('.toast-close').all()) await toast.click();
+    await page.mouse.move(0,0);await expect(page.locator('.toast-close')).toHaveCount(0);
     await widths(page, info.project.name.includes("reflow"), (width) =>
       page.screenshot({
         path: info.outputPath(`withdrawal-${locale}-${width}.png`),
@@ -949,7 +949,7 @@ for (const locale of ['en', 'zh-CN'] as const) for (const agent of [false, true]
     await expect(row(index)).toContainText(number.slice(-6));
     await expect(row(index)).not.toContainText(number);
   }
-  for (const toast of await page.locator('.toast-close').all()) await toast.click();
+  await page.mouse.move(0,0);await expect(page.locator('.toast-close')).toHaveCount(0);
   await widths(page,info.project.name.includes('reflow'),async width => {
     if (!agent) {
       const title = await page.locator('.workspace-page-title').evaluate(node => ({height:node.getBoundingClientRect().height,lineHeight:parseFloat(getComputedStyle(node).lineHeight)}));

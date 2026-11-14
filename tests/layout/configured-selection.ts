@@ -2,7 +2,7 @@ import {tokenStyle} from './navigation-style'
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { configuredDemo } from '../../shared/src/configured-rules'
-import { origins, gameId, installLayoutApi, installOrdersLayoutApi, installWalletLayoutApi, expectNoPageOverflow } from './fixture'
+import { origins, gameId, installLayoutApi, installOrdersLayoutApi, installWalletLayoutApi, expectNoPageOverflow, expectInsideViewport } from './fixture'
 
 export function registerConfiguredSelectionTests() {
 for (const locale of ['en', 'zh-CN'] as const) {
@@ -84,9 +84,9 @@ for (const locale of ['en', 'zh-CN'] as const) {
   const chip=input.locator('..')
   const marker=()=>chip.evaluate(element=>{const s=getComputedStyle(element,'::after');return {content:s.content,width:s.width,height:s.height,animation:s.animationName,opacity:s.opacity,events:s.pointerEvents}})
   expect(await marker()).toMatchObject({content:'""',width:'2px',height:'20px',animation:'quick-stake-empty-caret',events:'none'})
-  await expect.poll(async()=>(await marker()).opacity).toBe('1')
-  await expect.poll(async()=>(await marker()).opacity).toBe('0')
-  await expect.poll(async()=>(await marker()).opacity).toBe('1')
+  await expect.poll(async()=>(await marker()).opacity,{intervals:[50,100]}).toBe('1')
+  await expect.poll(async()=>(await marker()).opacity,{intervals:[50,100]}).toBe('0')
+  await expect.poll(async()=>(await marker()).opacity,{intervals:[50,100]}).toBe('1')
   await input.screenshot({path:info.outputPath(`empty-chip-caret-${locale}.png`),animations:'disabled',caret:'initial'})
   await input.fill('50')
   expect(values).toEqual([])
@@ -404,7 +404,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await expect(betButton).toBeDisabled()
   await expect(betButton).toHaveCSS('background-color',await tokenStyle(betButton,'background-color','--line'))
   await expect(page.locator('.operation-toast-stack .toast-error')).toContainText(locale==='en'?'Insufficient available points':'可用积分不足')
-  await expect(page.locator('.operation-toast-stack .toast-error')).toBeInViewport({ratio:1})
+  await expectInsideViewport(page.locator('.operation-toast-stack .toast-error'))
   await expectNoPageOverflow(page)
   await page.screenshot({path:info.outputPath(`insufficient-${locale}.png`)})
   const clear = dock.getByRole('button', {name: locale === 'en' ? 'Clear' : '清空', exact: true})

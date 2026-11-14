@@ -23,12 +23,12 @@ test('user support dragging stays visible and separates dragging from opening', 
   await expect(support).toBeVisible()
   const initial = (await support.boundingBox())!
   const start = { x: initial.x + initial.width / 2, y: initial.y + initial.height / 2 }
+  const touchSession=browserName==='chromium'&&isMobile?await page.context().newCDPSession(page):null
   if (browserName === 'chromium' && isMobile) {
-    const session = await page.context().newCDPSession(page)
+    const session = touchSession!
     await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] })
     await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: start.x - 100, y: start.y + 60 }] })
     await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
-    await session.detach()
   } else {
     await page.mouse.move(start.x, start.y)
     await page.mouse.down()
@@ -40,7 +40,8 @@ test('user support dragging stays visible and separates dragging from opening', 
   expect(moved.x).toBeCloseTo(initial.x - 100, 0)
   expect(moved.y).toBeCloseTo(initial.y + 60, 0)
   await page.screenshot({ path: info.outputPath('support-dragged.png') })
-  if (isMobile) await support.tap()
+  if(touchSession){await touchSession.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:moved.x+moved.width/2,y:moved.y+moved.height/2}]});await touchSession.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await touchSession.detach()}
+  else if (isMobile) await support.tap()
   else await support.click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()

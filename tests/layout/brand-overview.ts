@@ -1,3 +1,4 @@
+import {openBrandPage} from './real-console-session'
 import { expect, test } from '@playwright/test'
 import { gameId, origins, installLayoutApi, expectNoPageOverflow } from './fixture'
 import { overviewFixture } from './platform-overview'
@@ -95,7 +96,7 @@ export function registerBrandOverviewTests(reflow = false) {
         hold = true; release = undefined; const before = reads
         await page.clock.fastForward(60000)
         await expect.poll(() => reads).toBeGreaterThan(before)
-        await page.locator('.sidebar').getByRole('button', { name: locale === 'en' ? 'Audit log' : '审计日志', exact: true }).click()
+        await openBrandPage(page,locale === 'en' ? 'Audit log' : '审计日志')
         hold = false; release!()
         await expect(overview).toHaveCount(0)
         await expect(page.locator('.global-loading-overlay')).toHaveCount(0)

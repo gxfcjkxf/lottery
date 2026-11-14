@@ -26,7 +26,7 @@ test('account matching stays quiet while paging and retry track explicit actions
     await input.fill('agent'); await expect.poll(() => requests).toBe(1)
     await expect(overlay).toBeHidden()
   } finally { release() }
-  await expect(page.getByRole('button', { name: 'agent_0', exact: true })).toBeVisible()
+  await expect(page.getByRole('option', { name: 'agent_0', exact: true })).toBeVisible()
   block()
   try {
     await page.getByRole('button',{name:'More results',exact:true}).click()
@@ -45,7 +45,7 @@ test('account matching stays quiet while paging and retry track explicit actions
     await expect.poll(()=>requests).toBe(4);await expect(overlay).toBeVisible()
   } finally {release()}
   await expect(overlay).toBeHidden()
-  await page.getByRole('button',{name:'agent_0',exact:true}).click()
+  await page.getByRole('option',{name:'agent_0',exact:true}).click()
   await input.press('Enter');expect(requests).toBe(4)
   await page.screenshot({path:info.outputPath('account-autocomplete.png')})
 })
@@ -214,12 +214,12 @@ test('draw overview polling stays quiet while year and pagination reads show pro
     expect(url.pathname).toBe(`/api/v1/platform/platform-games/${gameId}/draw-overview`)
     reads++
     if (blocked) await gate
-    return route.fulfill({ json: { success: true, data: { years: ['2026', '2025'], year: url.searchParams.get('year') || '2026', items: [], has_more: url.searchParams.get('offset') === '0', pending: [], pending_has_more: false , total_count: '100'} } })
+    return route.fulfill({ json: { success: true, data: { years: ['2026', '2025'], year: url.searchParams.get('year') || '2026', items: [{period_no:'2026111',draw_date:'2026-10-21',result:{regular:[],special:[],digits:[1,2,3]},source:'published',attributes:{}}], has_more: url.searchParams.get('offset') === '0', pending: [], pending_has_more: false , total_count: '100'} } })
   })
   await page.route('**/__draw-overview-progress', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app" class="management-console"></div><script type="module">import{createApp,h}from'/node_modules/.vite/deps/vue.js';import C from'/@fs${resolve('shared/src/PlatformDrawOverview.vue')}';import Loading from'/@fs${resolve('shared/src/LoadingOverlay.vue')}';import{setPlatformDisplaySettings}from'/@fs${resolve('shared/src/display-settings.ts')}';import'/@fs${resolve('shared/src/styles.css')}';import'/@fs${resolve('shared/src/management.css')}';import'/@fs${resolve('shared/src/controls.css')}';import'/@fs${resolve('shared/src/refresh-button.css')}';setPlatformDisplaySettings({timezone:'UTC',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'});createApp({render:()=>h('main',[h(C,{gameId:'${gameId}',locale:'en',canManage:false}),h(Loading,{label:'Loading…'})])}).mount('#app')</script></body></html>` }))
   await page.goto(origins.user + '/__draw-overview-progress')
   const overlay = page.locator('.global-loading-overlay'), overview = page.getByTestId('draw-overview')
-  await expect(overview.locator(".select-control-trigger")).toHaveAttribute('data-value', '2026')
+  await expect(overview.getByRole('combobox',{name:'Year',exact:true})).toHaveAttribute('data-value', '2026')
   await expect(overlay).toBeHidden()
   const refresh = overview.locator('button[data-refresh-button]')
   await expect(refresh).toHaveCount(0)
@@ -231,7 +231,7 @@ test('draw overview polling stays quiet while year and pagination reads show pro
     await expect(overlay).toBeHidden()
   } finally { blocked = false; release() }
   await expect(overview).toHaveAttribute('aria-busy', 'false')
-  for (const action of [() => selectControl(overview.locator(".select-control-trigger"), '2025'), () => overview.getByRole('button', { name: 'Next page', exact: true }).click()]) {
+  for (const action of [() => selectControl(overview.getByRole('combobox',{name:'Year',exact:true}), '2025'), () => overview.getByRole('button', { name: 'Next page', exact: true }).click()]) {
     block()
     try {
       await action()

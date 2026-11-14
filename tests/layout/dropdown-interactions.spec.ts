@@ -27,7 +27,7 @@ for(const locale of ['en','zh-CN'] as const){
    await trigger.press('Space');await expect(list).toBeVisible()
    await trigger.press('Tab');await page.keyboard.press('Enter');await expect(list).toBeHidden();await expect(trigger).toBeFocused()
    await activate(trigger);await expect(list).toBeVisible()
-   await activate(page.locator('.login-entry input').first());await expect(list).toBeHidden()
+   const outside=page.locator('.login-entry__topbar');if(info.project.use.hasTouch)await outside.tap({position:{x:2,y:2}});else await outside.click({position:{x:2,y:2}});await expect(list).toBeHidden()
    await activate(trigger);await trigger.press('Tab');await page.keyboard.press('Tab');await page.keyboard.press('Tab');await expect(list).toBeHidden()
    await activate(trigger);await activate(trigger);await expect(list).toBeHidden()
    await expect(page.locator('.global-loading-overlay')).toBeHidden()
