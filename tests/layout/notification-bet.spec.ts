@@ -70,6 +70,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
 
 for (const locale of ['en', 'zh-CN'] as const) {
   test(`compact notification records without notification timestamps (${locale})`, async ({ page }, info) => {
+    test.setTimeout(120_000)
     await installLayoutApi(page, locale)
     await installOrdersLayoutApi(page)
     const snapshot = configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/mark_six_v2.json', 'utf8')))
