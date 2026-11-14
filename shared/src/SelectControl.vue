@@ -137,7 +137,7 @@ function cleanup() {
   window.visualViewport?.removeEventListener('scroll', position)
 }
 watch(() => props.disabled, value => { if (value) close() })
-watch(() => props.options, async () => {
+watch(() => JSON.stringify(props.options), async () => {
   if (!props.search) { close(); return }
   active.value = -1
   await nextTick(); position()

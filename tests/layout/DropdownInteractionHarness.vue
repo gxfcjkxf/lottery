@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import SelectControl from '../../shared/src/SelectControl.vue'
 import LoadingOverlay from '../../shared/src/LoadingOverlay.vue'
 import { globalLoadingActive, globalLoadingMessage } from '../../shared/src/global-loading'
 const props = defineProps<{ surface:string; locale:'en'|'zh-CN' }>()
 const value = ref('a'), disabled = ref(false), loadingStarts = ref(0)
 watch([globalLoadingActive,globalLoadingMessage], ([active,message])=>{if(active||message)loadingStarts.value++},{flush:'sync'})
-const options = [{value:'a',label:'Alpha'},{value:'b',label:'Beta',disabled:true},{value:'c',label:'Charlie'},{value:'d',label:'Delta'}]
+const options = ref([{value:'a',label:'Alpha'},{value:'b',label:'Beta',disabled:true},{value:'c',label:'Charlie'},{value:'d',label:'Delta'}])
+const refresh=setInterval(()=>{options.value=options.value.map(option=>({...option}))},1000)
+onBeforeUnmount(()=>clearInterval(refresh))
 const labels = props.locale==='en'?['Custom selection','Disable','Outside','Loading']:['共享选择','禁用','外部按钮','加载']
 </script>
 <template>

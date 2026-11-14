@@ -39,6 +39,7 @@ for(const locale of ['en','zh-CN'] as const){
   expect(errors).toEqual([])
  })
  test(`shared dropdown interaction under four app styles (${locale})`,async({page},info)=>{
+  await page.clock.install()
   const source=await(await page.request.get(origins.user+'/src/ConfiguredBetting.vue')).text(),vuePath=source.match(/from "([^"]*deps\/vue\.js[^"]*)"/)![1]
   const activate=async(locator:Locator)=>info.project.use.hasTouch?locator.tap():locator.click()
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
@@ -52,6 +53,7 @@ for(const locale of ['en','zh-CN'] as const){
    await page.goto(url)
    const custom=page.getByRole('combobox',{name:locale==='en'?'Custom selection':'共享选择',exact:true}), popup=page.getByRole('listbox')
    await activate(custom);await expect(popup).toBeVisible()
+   await page.clock.fastForward(1000);await expect(popup).toBeVisible()
    await activate(popup.getByRole('option',{name:'Beta',exact:true}));await expect(popup).toBeVisible();await expect(page.getByTestId('custom-value')).toHaveText('a')
    await activate(popup.getByRole('option',{name:'Charlie',exact:true}));await expect(popup).toBeHidden();await expect(custom).toBeFocused();await expect(page.getByTestId('custom-value')).toHaveText('c')
    await custom.press('Enter');await custom.press('Home');await custom.press('ArrowDown');await custom.press('Enter');await expect(page.getByTestId('custom-value')).toHaveText('c')
