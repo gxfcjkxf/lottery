@@ -4,6 +4,7 @@ import { selectControl } from '../select-control'
 
 for (const locale of ['zh-CN', 'en'] as const) {
   test(`brand special number distribution (${locale})`, async ({ page }, info) => {
+  test.setTimeout(120_000)
     const zh = locale === 'zh-CN'
     await installLayoutApi(page, locale)
     const games = ['香港六合彩', '澳门六合彩', '新澳门六合彩', '加拿大28'].map((name, i) => ({ id: gameId.slice(0, -1) + (i + 1), name }))

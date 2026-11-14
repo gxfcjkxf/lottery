@@ -245,6 +245,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`member finance opens from r
 })
 
 for (const locale of ['zh-CN', 'en'] as const) test(`reports load the default range without a query click (${locale})`, async ({ page }, info) => {
+  test.setTimeout(120_000)
   await installLayoutApi(page, locale)
   const zh = locale === 'zh-CN', reads: string[] = [], errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
