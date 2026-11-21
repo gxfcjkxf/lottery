@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
+	"github.com/gxfcjkxf/lottery/backend/internal/dataretention"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/platformlottery"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -167,6 +170,50 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 		t.Fatal(placed)
 	}
 	order := placed.Items[0]
+	var zone string
+	if err := f.pool.QueryRow(ctx, `SELECT timezone FROM platform_settings WHERE id`).Scan(&zone); err != nil {
+		t.Fatal(err)
+	}
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	day := order.PlacedAt.In(loc).Format(time.DateOnly)
+	const frequencyPath = "/api/v1/platform/reports/bet-frequency"
+	frequencyURL := frequencyPath + "?game_id=" + game.ID + "&from=" + day + "&to=" + day
+	mustStatus(t, f.call("GET", frequencyURL, "", auth.AccessToken, "", nil), 403)
+	grantPlatformPermission(t, pf, reportBettingPlat)
+	mustStatus(t, f.call("GET", frequencyURL, "", auth.AccessToken, managedBrand, nil), 400)
+	mustStatus(t, f.call("GET", frequencyURL+"&brand_id="+managedBrand, "", auth.AccessToken, "", nil), 400)
+	mustStatus(t, f.call("GET", frequencyURL+"&game_id="+game.ID, "", auth.AccessToken, "", nil), 400)
+	mustStatus(t, f.call("GET", strings.Replace(frequencyURL, game.ID, ids.New(), 1), "", auth.AccessToken, "", nil), 404)
+	mustStatus(t, f.call("GET", strings.Replace(frequencyURL, "/platform/", "/admin/", 1), "", f.token, managedBrand, nil), 404)
+	readFrequency := func() (page struct {
+		Count     string `json:"effective_item_count"`
+		PlayCount string `json:"play_count"`
+		Items     []struct {
+			PlayID string                `json:"play_id"`
+			Count  string                `json:"effective_item_count"`
+			Label  rules.ConfiguredLabel `json:"label"`
+		} `json:"items"`
+	}) {
+		t.Helper()
+		result := f.call("GET", frequencyURL, "", auth.AccessToken, "", nil)
+		mustStatus(t, result, 200)
+		managedData(t, result, &page)
+		return page
+	}
+	if pending := readFrequency(); pending.Count != "0" || pending.PlayCount != "0" || pending.Items == nil || len(pending.Items) != 0 {
+		t.Fatal("pending order counted", pending)
+	}
+
+	pushPeriodResponse := f.call("POST", "/api/v1/platform/platform-games/"+game.ID+"/periods", "configured-frequency-push-period", auth.AccessToken, "", platformlottery.PeriodInput{
+		PeriodNo: "configured-frequency-push", BetStartAt: period.BetStartAt, BetEndAt: period.BetEndAt, DrawAt: period.DrawAt,
+	})
+	mustStatus(t, pushPeriodResponse, 201)
+	var pushPeriod platformlottery.Period
+	managedData(t, pushPeriodResponse, &pushPeriod)
+	otherBrand, otherOrders := placeFrequencyOrdersInTemporaryBrand(t, f.pool, platformID, game.ID, pushPeriod.ID, in)
 	orderPath := "/api/v1/configured/orders/" + order.ID
 	detail := f.call("GET", orderPath, "", f.userToken, managedBrand, nil)
 	mustStatus(t, detail, 200)
@@ -272,12 +319,18 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 	}
 	published := f.call("POST", "/api/v1/platform/platform-games/periods/"+period.ID+"/result", "configured-publish", auth.AccessToken, "", map[string]any{"result": cases[0].Draw})
 	mustStatus(t, published, 201)
+	pushDraw := rules.Draw{Regular: []int{1, 3, 49, 4, 5, 6}, Special: []int{2}, Digits: []int{}}
+	mustStatus(t, f.call("POST", "/api/v1/platform/platform-games/periods/"+pushPeriod.ID+"/result", "configured-frequency-push-result", auth.AccessToken, "", map[string]any{"result": pushDraw}), 201)
 	settlementService := betting.Service{DB: f.pool}
-	if n, e := settlementService.ProcessConfiguredSettlements(ctx, 10); e != nil || n != 1 {
+	if n, e := settlementService.ProcessConfiguredSettlements(ctx, 10); e != nil || n != 3 {
 		t.Fatal("configured settlement", n, e)
 	}
 	if n, e := settlementService.ProcessConfiguredSettlements(ctx, 10); e != nil || n != 0 {
 		t.Fatal("settlement replay", n, e)
+	}
+	var refunded, effective string
+	if err := f.pool.QueryRow(ctx, `SELECT result->>'refund_points',result->>'effective_points' FROM configured_orders WHERE id=$1 AND status='settled'`, otherOrders[1].ID).Scan(&refunded, &effective); err != nil || refunded != "10" || effective != "0" {
+		t.Fatal("zero-effective fixture did not settle with a refund", refunded, effective, err)
 	}
 	var moneyEntries int
 	var prize string
@@ -330,6 +383,50 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 	if len(ticket.Order.Snapshot) <= len(unifiedPage.Items[0].Order.Snapshot) {
 		t.Fatal("ticket detail lost its full snapshot")
 	}
+	// Query the now-offline game, run the real archive worker, and query the
+	// same platform dates again after the source order has physically moved.
+	directory := f.call("GET", frequencyPath+"/games", "", auth.AccessToken, "", nil)
+	mustStatus(t, directory, 200)
+	if !strings.Contains(directory.Body.String(), game.ID) {
+		t.Fatal("offline game missing from frequency directory")
+	}
+	beforeArchive := readFrequency()
+	if beforeArchive.Count != "2" || beforeArchive.PlayCount != "1" || len(beforeArchive.Items) != 1 ||
+		beforeArchive.Items[0].PlayID != "operator_new_play" || beforeArchive.Items[0].Count != "2" ||
+		beforeArchive.Items[0].Label != snap.Catalog.Plays[0].Label {
+		t.Fatal("wrong settled frequency", beforeArchive)
+	}
+	cutoff, err := time.ParseInLocation(time.DateOnly, day, loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cutoff = cutoff.AddDate(0, 0, 2)
+	archiver := dataretention.Service{DB: f.pool}
+	for _, source := range []struct{ brand, order string }{{managedBrand, order.ID}, {otherBrand, otherOrders[0].ID}} {
+		taskID := ids.New()
+		if _, err = f.pool.Exec(ctx, `INSERT INTO data_retention_tasks(id,brand_id,policy_version,timezone,execute_at,cutoff_at) VALUES($1,$2,1,$3,$4,$5)`, taskID, source.brand, zone, cutoff.AddDate(0, 2, 0), cutoff); err != nil {
+			t.Fatal(err)
+		}
+		for range 20 {
+			worked, err := archiver.Process(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !worked {
+				break
+			}
+		}
+		var liveOrders, receipts int
+		if err = f.pool.QueryRow(ctx, `SELECT
+			(SELECT count(*) FROM configured_orders WHERE id=$1),
+			(SELECT count(*) FROM data_retention_receipts WHERE family='configured_orders' AND id=$1 AND task_id=$2 AND NOT discard)`, source.order, taskID).Scan(&liveOrders, &receipts); err != nil || liveOrders != 0 || receipts != 1 {
+			t.Fatal("configured order was not archived", liveOrders, receipts, err)
+		}
+		if afterArchive := readFrequency(); !reflect.DeepEqual(beforeArchive, afterArchive) {
+			t.Fatal("frequency changed when order was archived", beforeArchive, afterArchive)
+		}
+	}
+
 	if _, e = f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='platform_game.write.platform'`, platformRole); e != nil {
 		t.Fatal(e)
 	}
@@ -340,4 +437,63 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 	mustStatus(t, f.call("POST", "/api/v1/configured/orders", "configured-http-order", f.userToken, managedBrand, in), 401)
 	mustStatus(t, f.call("GET", "/api/v1/configured/orders", "", f.userToken, managedBrand, nil), 401)
 	mustStatus(t, f.call("GET", orderPath, "", f.userToken, managedBrand, nil), 401)
+}
+
+// The calling test owns the schema and drops it, including this temporary brand.
+func placeFrequencyOrdersInTemporaryBrand(t *testing.T, pool *pgxpool.Pool, adminID, gameID, pushPeriodID string, in betting.ConfiguredInput) (string, []betting.ConfiguredOrder) {
+	t.Helper()
+	ctx := context.Background()
+	brand, user, member, account, session := ids.New(), ids.New(), ids.New(), ids.New(), ids.New()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	for _, step := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO brands(id,code,name,status) VALUES($1,$2,'Temporary frequency brand','active')`, []any{brand, "frequency_" + brand}},
+		{`INSERT INTO global_users(id,username) VALUES($1,'frequency_member')`, []any{user}},
+		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method) VALUES($1,$2,$3,'domain')`, []any{member, brand, user}},
+		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{account, brand, member}},
+		{`INSERT INTO point_buckets(brand_id,account_id,source,state)
+		  SELECT $1,$2,source,state FROM unnest(ARRAY['recharge','winning','gift','commission']) source
+		  CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) state ON CONFLICT DO NOTHING`, []any{brand, account}},
+		{`INSERT INTO sessions(id,token_hash,user_id,member_id,brand_id,expires_at) VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '1 hour')`, []any{session, ids.New(), user, member, brand}},
+		{`INSERT INTO brand_platform_games(brand_id,game_id,connected_by) VALUES($1,$2,$3)`, []any{brand, gameID, adminID}},
+		{`INSERT INTO configured_sales(brand_id,game_id,version,rule_id,enabled,prices,min_points,max_points,max_period_points,max_user_period_points)
+		  SELECT $1,game_id,version,rule_id,enabled,prices,min_points,max_points,max_period_points,max_user_period_points
+		  FROM configured_sales WHERE brand_id=$2 AND game_id=$3`, []any{brand, managedBrand, gameID}},
+	} {
+		if _, err := tx.Exec(ctx, step.sql, step.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var delta points.Balance
+	delta[0][0] = 10000
+	if _, err = (points.Store{DB: pool}).Post(ctx, tx, points.Change{
+		BrandID: brand, MemberID: member, EntryType: "adjustment", ReferenceType: "test_fund",
+		OperationKey: ids.New(), RequestID: ids.New(), ActorType: "system", Delta: delta,
+		Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 10000}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	actor := identity.Session{ID: session, View: identity.View{
+		User: identity.User{ID: user}, Member: identity.Member{ID: member, BrandID: brand},
+	}}
+	service := betting.Service{DB: pool}
+	var orders []betting.ConfiguredOrder
+	for _, id := range []string{in.PeriodID, pushPeriodID} {
+		in.PeriodID = id
+		result, err := service.PlaceConfigured(ctx, tx, brand, actor, in, points.Metadata{RequestID: ids.New()})
+		if err != nil || len(result.Items) != 1 {
+			t.Fatal("temporary brand bet", len(result.Items), err)
+		}
+		orders = append(orders, result.Items[0])
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return brand, orders
 }

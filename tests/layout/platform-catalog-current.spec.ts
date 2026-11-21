@@ -53,7 +53,7 @@ for(const locale of ['en','zh-CN'] as const)test(`platform catalogue uses curren
  await page.screenshot({path:info.outputPath('draws.png'),fullPage:true})
  await go(zh?'注单':'Bets')
  await expect.poll(()=>seen.includes('/api/v1/platform/filter-options')).toBe(true)
- await selectControl(page.locator('.brand-picker').getByRole('combobox'),gameId)
+ await selectControl(page.locator('.configured-orders .management-list-filters').getByRole('combobox'),gameId)
  await expect(page.locator('.configured-orders')).toBeVisible();await expectNoPageOverflow(page)
  await expect(page.locator('.operation-toast--error')).toHaveCount(0)
  expect(unexpected).toEqual([]);expect(errors).toEqual([])

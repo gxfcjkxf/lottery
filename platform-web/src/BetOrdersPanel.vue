@@ -5,4 +5,7 @@ const props=defineProps<{brandId:string;gameId:string;locale:'en'|'zh-CN';displa
 const emit=defineEmits<{failure:[cause:unknown]}>()
 function failed(cause:unknown){emit('failure',cause)}
 </script>
-<template><ConfiguredOrdersPanel surface="platform" :brand-id="brandId" :game-id="gameId" :locale="props.locale" @failure="failed" /></template>
+<template><ConfiguredOrdersPanel surface="platform" :brand-id="brandId" :game-id="gameId" :locale="props.locale" @failure="failed">
+  <template v-if="$slots.tabs" #tabs><slot name="tabs" /></template>
+  <template v-if="$slots.filters" #filters><slot name="filters" /></template>
+</ConfiguredOrdersPanel></template>

@@ -521,6 +521,7 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 	registerAdminManagementRoutes(handle, d)
 	if platform {
 		registerPlatformOverview(handle, d)
+		registerBetFrequencyRoutes(handle, d)
 		registerPlatformAccountRoutes(handle, d)
 		registerPlatformUserDelete(handle, d)
 		registerPlatformSettingsRoutes(handle, d)

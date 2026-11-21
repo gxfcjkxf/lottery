@@ -87,6 +87,7 @@ const auditResources: Record<string, [string, string]> = {
   'reward.order': ['奖励单', 'Reward order'],
   'notification_delivery': ['通知投递', 'Notification delivery'],
   'notification.template': ['通知模板', 'Notification templates'],
+  'report.bet_frequency': ['投注频率', 'Betting frequency'],
   'report_export': ['报表导出', 'Report export'],
   'hkjc_calendar': ['香港赛马会日历', 'HKJC calendar'],
   'platform.role': ['平台角色', 'Platform roles'],

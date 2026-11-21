@@ -32,6 +32,7 @@ modules.push(await import("./openapi-platform-settings.mjs"));
 modules.push(await import("./openapi-member-summary.mjs"));
 modules.push(await import("./openapi-betting-preferences.mjs"));
 modules.push(await import("./openapi-betting-history.mjs"));
+modules.push(await import("./openapi-bet-frequency.mjs"));
 modules.push(await import("./openapi-association-names.mjs"));
 modules.push(await import("./openapi-filter-options.mjs"));
 modules.push(await import("./openapi-agent-portal.mjs"));

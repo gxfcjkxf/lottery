@@ -16,6 +16,10 @@ export interface PlatformCommissionPolicy {
 export interface PlatformSettings { theme: ThemeId; version: number; display_name: string; logo_text: string; logo_url: string; timezone: string; date_format: 'YYYY-MM-DD' | 'DD/MM/YYYY' | 'MM/DD/YYYY'; time_format: 'HH:mm:ss' | 'hh:mm:ss A'; updated_at: string; audit_log_id?: string }
 export type PlatformPresentation = Pick<PlatformSettings, 'display_name' | 'logo_text' | 'logo_url'>
 export interface BrandCreateInput { code: string; name: string; default_locale: 'en' | 'zh-CN'; timezone: string; reason?: string }
+interface BetFrequencyGame { id: string; name: string }
+interface BetFrequencyItem { play_id: string; label: { en: string; 'zh-CN': string }; effective_item_count: string }
+interface BetFrequencyResult { effective_item_count: string; play_count: string; items: BetFrequencyItem[] }
+interface BetFrequencyQuery { game_id: string; from: string; to: string; limit: number; offset: number }
 interface BrandCreateReceipt extends Pick<PlatformBrand, 'id' | 'code' | 'name' | 'status'> { status: 'paused'; default_locale: 'en' | 'zh-CN'; timezone: string; version: 1; created_at: string; audit_log_id: string }
 export interface FrozenBrandCreateRequest { readonly body: Readonly<BrandCreateInput>; readonly key: string }
 
@@ -41,6 +45,15 @@ function apiError(message: string, status = 0, code?: string): never { throw new
 function validate<T>(value: unknown, test: (value: unknown) => value is T, label: string): T {
   if (!test(value)) apiError(`Invalid ${label} response`, 0, 'INVALID_RESPONSE')
   return value
+}
+function isBetFrequencyGame(value: unknown): value is BetFrequencyGame {
+  return isObj(value) && text(value.id) && UUID.test(value.id) && text(value.name)
+}
+function isBetFrequencyResult(value: unknown): value is BetFrequencyResult {
+  const count = (n: unknown): n is string => text(n) && /^(0|[1-9][0-9]*)$/.test(n)
+  return isObj(value) && count(value.effective_item_count) && count(value.play_count) && Array.isArray(value.items) &&
+    value.items.every(item => isObj(item) && text(item.play_id) && count(item.effective_item_count) &&
+      isObj(item.label) && text(item.label.en) && text(item.label['zh-CN']))
 }
 function isPlatformCommissionPolicy(value: unknown): value is PlatformCommissionPolicy {
  if (!isObj(value) || !exactKeys(value, ['version','config','payouts_enabled']) || !Number.isSafeInteger(value.version) || Number(value.version)<1 || typeof value.payouts_enabled !== 'boolean') return false
@@ -110,6 +123,13 @@ export function createPlatformApi(fetcher: typeof fetch = fetch) {
       if (!isObj(account) || !text(account.id) || account.super_admin !== true) apiError('This account is not a platform super administrator', 403, 'PLATFORM_ADMIN_REQUIRED')
       if (!stringArray(account.platform_permissions)) apiError('Invalid platform permissions response', 0, 'INVALID_RESPONSE')
       return account as unknown as PlatformAccount
+    },
+    async betFrequencyGames() {
+      return validate(await request<unknown>('/reports/bet-frequency/games'), isItems(isBetFrequencyGame), 'bet frequency games')
+    },
+    async betFrequency(query: BetFrequencyQuery) {
+      const params = new URLSearchParams({ game_id: query.game_id, from: query.from, to: query.to, limit: String(query.limit), offset: String(query.offset) })
+      return validate(await request<unknown>(`/reports/bet-frequency?${params}`), isBetFrequencyResult, 'bet frequency')
     },
     async commissionSettings() { return validate(await request<unknown>('/commission-settings'), isPlatformCommissionPolicy, 'commission settings') },
     async updateCommissionSettings(input: PlatformCommissionPolicy, key: string) { return validate(await request<unknown>('/commission-settings', { method: 'PUT', body: { ...input, reason: '' }, key }), isPlatformCommissionPolicy, 'commission settings') },

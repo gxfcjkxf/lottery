@@ -36,6 +36,8 @@ onBeforeUnmount(()=>{request++})
 </script>
 <template>
  <ManagementList class="configured-orders" :busy="busy">
+  <template v-if="$slots.tabs" #tabs><slot name="tabs" /></template>
+  <template v-if="$slots.filters" #filters><slot name="filters" /></template>
   <template v-if="failed || orders.some(order => order.status === 'placed')" #actions><button v-refresh-button="t('reloadOrders')" class="button button-secondary" type="button" :disabled="busy" @click="withGlobalLoading(load,offset)">{{t('reloadOrders')}}</button></template>
   <p v-if="failed" role="alert">{{t('ordersFailed')}}</p>
   <BettingHistoryTable :items="historyItems" :show-game="!gameId" show-member :locale="locale" :empty="loaded && !busy && !failed && !orders.length" />

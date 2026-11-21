@@ -1,4 +1,4 @@
-import { expectRealEntry, expectListLayout } from './real-page-review'
+import { expectRealEntry, expectListLayout, reviewRealPage } from './real-page-review'
 import { selectLanguage } from '../language-switcher'
 import { notificationCatalog } from '../../shared/src/notification-catalog'
 import { selectControl } from '../select-control'
@@ -362,3 +362,81 @@ for (const locale of ['zh-CN', 'en'] as const) test(`notification template names
   await expect(page.getByTestId('platform-template-list')).toHaveCount(0)
   expect(errors).toEqual([])
 })
+
+for (const locale of ['en', 'zh-CN'] as const) {
+  test(`platform betting frequency stays independent of the selected brand (${locale})`, async ({ page }, info) => {
+    const zh = locale === 'zh-CN'
+    const updatedAt = '2026-11-20T16:30:00Z'
+    const reads: URLSearchParams[] = []
+    const items = Array.from({ length: 21 }, (_, i) => ({
+      play_id: `play-${i}`,
+      label: { en: i === 0 ? 'Special number' : `Play ${i + 1}`, 'zh-CN': i === 0 ? '特码' : `玩法 ${i + 1}` },
+      effective_item_count: i === 0 ? '80' : '1',
+    }))
+    await installLayoutApi(page, locale)
+    await page.clock.setFixedTime(new Date(updatedAt))
+    await page.route('**/api/v1/platform/**', route => {
+      const request = route.request()
+      const { pathname, searchParams } = new URL(request.url())
+      const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
+      expect(request.method()).toBe('GET')
+      if (pathname.endsWith('/presentation')) return route.fallback()
+      if (pathname.endsWith('/me')) return reply({ account: {
+        id: gameId, username: 'layout_frequency', super_admin: true,
+        platform_permissions: ['report_betting.view.platform', 'bet.view.platform'],
+      } })
+      if (pathname.endsWith('/platform-settings')) return reply({
+        theme: 'jade', version: 1, display_name: 'Layout trial', logo_text: 'L', logo_url: '',
+        timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', updated_at: updatedAt,
+      })
+      if (pathname.endsWith('/brands')) return reply({ items: [{
+        id: gameId, name: 'Layout trial', code: 'layout', status: 'active', member_count: '0',
+        agent_count: '0', recharge_quota_available: '0', created_at: updatedAt,
+      }] })
+      if (pathname.endsWith('/configured-orders')) return reply({ items: [], total_count: '0' })
+      if (pathname.endsWith('/filter-options')) return reply({ brand_id: gameId, items: [], limit: 100, offset: 0 })
+      expect(request.headers()['x-brand-id']).toBeUndefined()
+      if (pathname.endsWith('/reports/bet-frequency/games')) return reply({ items: [{ id: gameId, name: zh ? '六合彩' : 'Mark Six' }] })
+      expect(pathname).toBe('/api/v1/platform/reports/bet-frequency')
+      reads.push(searchParams)
+      const offset = Number(searchParams.get('offset'))
+      const limit = Number(searchParams.get('limit'))
+      return reply({ effective_item_count: '100', play_count: '21', items: items.slice(offset, offset + limit) })
+    })
+
+    await page.goto(origins.platform)
+    await page.getByRole('button', { name: zh ? '注单' : 'Bets', exact: true }).click()
+    await selectControl(page.locator('.topbar-brand-picker .select-control-trigger'), gameId)
+    const frequencyTab = page.getByRole('tab', { name: zh ? '投注频率' : 'Betting frequency' })
+    await page.getByRole('tab', { name: zh ? '注单' : 'Orders', exact: true }).press('ArrowRight')
+    await expect(frequencyTab).toBeFocused()
+    await expect(page.locator('.topbar-brand-picker')).toHaveCount(0)
+    const panel = page.getByTestId('platform-bet-frequency')
+    const search = panel.getByRole('button', { name: zh ? '查询' : 'Search', exact: true })
+    await expect(search).toBeDisabled()
+    await selectControl(panel.getByRole('combobox', { name: zh ? '彩种' : 'Game' }), gameId)
+    await search.click()
+    await expect(panel.locator('tbody tr')).toHaveCount(20)
+    await expect(panel.locator('tbody tr').first()).toContainText(zh ? '特码' : 'Special number')
+    await expect(panel.locator('tbody tr').first()).toContainText('80.00%')
+    await expect(panel.locator('.report-summary-tags')).toContainText('100')
+    expect(Object.fromEntries(reads[0]!)).toEqual({ game_id: gameId, from: '2026-11-15', to: '2026-11-21', limit: '20', offset: '0' })
+    await expect(page).toHaveURL(origins.platform + '/')
+    await reviewRealPage(page, info, `bet-frequency-${locale}`)
+
+    await panel.getByRole('button', { name: zh ? '下一页' : 'Next page' }).click()
+    await expect(panel.locator('tbody tr')).toHaveCount(1)
+    await expect(panel.locator('tbody tr').first()).toContainText('1.00%')
+    await expect(panel.locator('.report-summary-tags')).toContainText('100')
+    expect(reads[1]!.get('offset')).toBe('20')
+    await panel.getByRole('checkbox', { name: zh ? '显示明细' : 'Show details' }).uncheck()
+    await expect(panel.locator('table, .table-pagination')).toHaveCount(0)
+    await panel.getByRole('checkbox', { name: zh ? '显示汇总' : 'Show summary' }).uncheck()
+    await expect(panel.locator('.report-summary-tags')).toHaveCount(0)
+    expect(reads).toHaveLength(2)
+    await panel.getByRole('button', { name: zh ? '清空' : 'Clear', exact: true }).click()
+    await expect(search).toBeDisabled()
+    await page.getByRole('tab', { name: zh ? '注单' : 'Orders', exact: true }).click()
+    await expect(page.locator('.topbar-brand-picker .select-control-trigger')).toContainText('Layout trial')
+  })
+}

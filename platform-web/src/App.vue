@@ -54,6 +54,7 @@ import WalletPanel from './WalletPanel.vue'
 import RechargesPanel from './RechargesPanel.vue'
 import ReportsPanel from './ReportsPanel.vue'
 import BetOrdersPanel from './BetOrdersPanel.vue'
+import BetFrequencyPanel from './BetFrequencyPanel.vue'
 import DrawsPanel from './DrawsPanel.vue'
 import PlatformLottery from '@lottery/shared/PlatformLottery.vue'
 import OfficialDrawCalendar from './OfficialDrawCalendar.vue'
@@ -166,8 +167,18 @@ const section = ref<'home' | 'brands' | 'users' | 'audit' | 'rewards' | 'wallets
 const withdrawalInitialState = ref<'' | 'reviewing'>('')
 const settingsTab = ref<'general' | 'auth' | 'commission' | 'currency'>('general')
 const retentionPolicyVisible=ref(false)
-const showBrandPicker = computed(() => section.value === 'settings' ? settingsTab.value === 'auth' : section.value === 'audit' && (auditView.value==='archives'&&retentionPolicyVisible.value || ['notifications', 'announcements', 'maintenance'].includes(auditView.value)) ? false : section.value === 'access' ? accessScope.value === 'brand' : !['home', 'brands', 'settings', 'games', 'draws'].includes(section.value))
-const { games: brandGames, selectedGameId, loading: gamesLoading } = useBrandGames(selectedBrand, () => section.value === 'bets' ? section.value : '', handleFailure)
+const betTab = ref<'orders' | 'frequency'>('orders')
+const betTabs = ref<HTMLElement | null>(null)
+async function selectBetTab(tab: typeof betTab.value) {
+  if (tab === betTab.value) return
+  betTab.value = tab
+  await nextTick()
+  betTabs.value?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus()
+}
+const canViewBetFrequency = computed(() => account.value?.platform_permissions.includes('report_betting.view.platform') === true)
+const betFrequencyVisible = computed(() => canViewBetFrequency.value && betTab.value === 'frequency')
+const showBrandPicker = computed(() => section.value === 'bets' && betFrequencyVisible.value ? false : section.value === 'settings' ? settingsTab.value === 'auth' : section.value === 'audit' && (auditView.value==='archives'&&retentionPolicyVisible.value || ['notifications', 'announcements', 'maintenance'].includes(auditView.value)) ? false : section.value === 'access' ? accessScope.value === 'brand' : !['home', 'brands', 'settings', 'games', 'draws'].includes(section.value))
+const { games: brandGames, selectedGameId, loading: gamesLoading } = useBrandGames(selectedBrand, () => section.value === 'bets' && !betFrequencyVisible.value ? section.value : '', handleFailure)
 const auditView = ref<'audit' | 'archives' | 'notifications' | 'announcements' | 'deliveries' | 'maintenance'>('audit')
 const expandedNavigation = ref<'brands' | 'operations' | 'wallets' | 'commission' | null>(null)
 function navigationExpanded(group: NonNullable<typeof expandedNavigation.value>) {
@@ -208,7 +219,7 @@ const operationLabel = computed(() => auditView.value === 'announcements' ? t('a
 const walletViewLabel = computed(() => walletView.value === 'quota' ? t('platform.quota.management') : walletView.value === 'recharges' ? t('platform.copy.20be6d4c') : t('platform.copy.67516591'))
 const accountsLabel = computed(() => t('common.platformAccounts'))
 const accessLabel = computed(() => accessScope.value === 'brand' ? lang.value.brandAccounts : accountsLabel.value)
-const sectionLabel = computed(() => section.value === 'home' ? t('overview.home') : section.value === 'access' ? accessLabel.value : section.value === 'audit' ? operationLabel.value : section.value === 'commission' ? commissionPageLabel.value : section.value === 'wallets' ? walletViewLabel.value : section.value === 'bets' ? betLabel.value : section.value === 'games' ? gamesLabel.value : section.value === 'draws' ? drawsLabel.value : section.value === 'withdrawals' ? withdrawalLabel.value : lang.value[section.value])
+const sectionLabel = computed(() => section.value === 'home' ? t('overview.home') : section.value === 'access' ? accessLabel.value : section.value === 'audit' ? operationLabel.value : section.value === 'commission' ? commissionPageLabel.value : section.value === 'wallets' ? walletViewLabel.value : section.value === 'bets' ? t('betFrequency.management') : section.value === 'games' ? gamesLabel.value : section.value === 'draws' ? drawsLabel.value : section.value === 'withdrawals' ? withdrawalLabel.value : lang.value[section.value])
 const busy = ref(false)
 const loading = ref(false)
 const errorCause = shallowRef<unknown>('')
@@ -278,6 +289,7 @@ function clearPrivateState() {
   auditView.value = 'audit'
   operationsExpanded.value = false
   walletView.value = 'recharges'
+  betTab.value = 'orders'
   walletsExpanded.value = false
   memberFinance.value = null
   resetMemberFilters()
@@ -781,9 +793,28 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
           <ReportsPanel :key="readScope" v-else-if="selectedBrand && walletView === 'reports'" :brand-id="selectedBrand" member-id="" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
         </template>
         <template v-else-if="section === 'bets'">
-          <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ betLabel }}</h1></div>
-          <div v-if="selectedBrand" class="brand-picker"><label><SelectControl v-model="selectedGameId" :label="gamesLabel" :disabled="gamesLoading" :options="[{ value: '', label: (String(t('common.allGames'))).trim() }, ...((brandGames).map((game) => ({ value: game.id, label: (String(game.name)).trim() })))]" /></label></div>
-          <BetOrdersPanel :key="readScope" v-if="selectedBrand" :brand-id="selectedBrand" :game-id="selectedGameId" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
+          <component
+            :is="betFrequencyVisible ? BetFrequencyPanel : selectedBrand ? BetOrdersPanel : ManagementList"
+            :key="betFrequencyVisible ? account.id + ':frequency' : readScope"
+            v-bind="betFrequencyVisible ? { locale, displaySettings } : selectedBrand ? { brandId: selectedBrand, gameId: selectedGameId, locale, displaySettings } : {}"
+            @failure="handleFailure"
+          >
+            <template v-if="canViewBetFrequency" #tabs>
+              <div ref="betTabs" class="console-tabs" role="tablist" :aria-label="t('betFrequency.management')"
+                @keydown.left.prevent="selectBetTab(betFrequencyVisible ? 'orders' : 'frequency')"
+                @keydown.right.prevent="selectBetTab(betFrequencyVisible ? 'orders' : 'frequency')"
+              >
+                <button type="button" role="tab" :aria-selected="!betFrequencyVisible" :tabindex="betFrequencyVisible ? -1 : 0" :class="{ selected: !betFrequencyVisible }" @click="selectBetTab('orders')">{{ t('betFrequency.orders') }}</button>
+                <button type="button" role="tab" :aria-selected="betFrequencyVisible" :tabindex="betFrequencyVisible ? 0 : -1" :class="{ selected: betFrequencyVisible }" @click="selectBetTab('frequency')">{{ t('betFrequency.title') }}</button>
+              </div>
+            </template>
+            <template v-if="!betFrequencyVisible && selectedBrand" #filters>
+              <form class="ui-filter-bar" @submit.prevent>
+                <SelectControl v-model="selectedGameId" :label="gamesLabel" :disabled="gamesLoading" :options="[{ value: '', label: t('common.allGames') }, ...brandGames.map(game => ({ value: game.id, label: game.name }))]" />
+              </form>
+            </template>
+            <p v-if="!betFrequencyVisible && !selectedBrand" class="empty-state" role="status" data-testid="platform-brand-required">{{ t('common.selectBrandFirst') }}</p>
+          </component>
         </template>
         <template v-else-if="section === 'games' || section === 'draws'">
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ section === 'games' ? gamesLabel : drawsLabel }}</h1></div>
@@ -803,7 +834,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
           <CashConsole v-if="selectedBrand" :key="`cash-withdraw:${account.id}:${selectedBrand}`" base-path="/api/v1/platform" platform mode="withdrawal" :actor-id="account.id" :brand-id="selectedBrand" :locale="locale" :permissions="account.platform_permissions" @failure="handleFailure" />
           <WithdrawalsPanel :key="readScope" v-if="selectedBrand" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" :initial-state="withdrawalInitialState || undefined" @failure="handleFailure" />
         </template>
-        <p v-if="showBrandPicker && !selectedBrand && !['games', 'draws'].includes(section) && !(section === 'settings') && !(section==='audit'&&auditView==='archives')" class="empty-state" role="status" data-testid="platform-brand-required">{{ t('common.selectBrandFirst') }}</p>
+        <p v-if="showBrandPicker && !selectedBrand && !['bets', 'games', 'draws'].includes(section) && !(section === 'settings') && !(section==='audit'&&auditView==='archives')" class="empty-state" role="status" data-testid="platform-brand-required">{{ t('common.selectBrandFirst') }}</p>
       </main>
       <BrandOperationPanel ref="brandOperationPanel" :locale="locale" :allowed="canManageBrandOperation" :display-settings="displaySettings" @updated="withGlobalLoading(refreshAfterBrandOperation, $event)" @failure="handleFailure" />
     </section>

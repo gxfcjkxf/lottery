@@ -326,6 +326,10 @@ func TestBrandPlatformGameMutationRoutesOnlyExposeConnectionAndSales(t *testing.
 		if route.Method == "GET" || !strings.HasPrefix(route.Path, "/api/v1/admin/platform-games") {
 			continue
 		}
+		// Item availability is a brand sales mutation, scoped to connected games.
+		if route.Method == "POST" && route.Path == "/api/v1/admin/platform-games/{id}/configured/availability" {
+			continue
+		}
 		if route.Method != "POST" || !allowed[route.Path] {
 			t.Fatalf("brand can mutate platform game configuration: %+v", route)
 		}
