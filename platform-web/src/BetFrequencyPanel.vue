@@ -143,7 +143,7 @@ onBeforeUnmount(() => { mounted = false })
       </form>
     </template>
     <template v-if="result && showSummary" #summary>
-      <dl class="report-summary-tags">
+      <dl class="report-summary-tags bet-frequency-summary">
         <div><dt>{{ t('betFrequency.items') }}</dt><dd>{{ integerFormat.format(BigInt(result.effective_item_count)) }}</dd></div>
         <div><dt>{{ t('betFrequency.activePlays') }}</dt><dd>{{ integerFormat.format(BigInt(result.play_count)) }}</dd></div>
       </dl>
@@ -171,6 +171,10 @@ onBeforeUnmount(() => { mounted = false })
 </template>
 
 <style scoped>
+.bet-frequency-summary > div {
+  grid-template-columns: max-content max-content !important;
+  column-gap: 8px !important;
+}
 :deep(.frequency-number) { font-variant-numeric: tabular-nums; }
 @media (max-width: 1080px) {
   .management-list :deep(.frequency-table td.frequency-number) { grid-column: auto; }

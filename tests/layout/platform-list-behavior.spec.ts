@@ -419,7 +419,26 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await expect(panel.locator('tbody tr')).toHaveCount(20)
     await expect(panel.locator('tbody tr').first()).toContainText(zh ? '特码' : 'Special number')
     await expect(panel.locator('tbody tr').first()).toContainText('80.00%')
-    await expect(panel.locator('.report-summary-tags')).toContainText('100')
+    const summary = panel.locator('.report-summary-tags')
+    await expect(summary.locator('dt')).toHaveText(zh ? ['有效投注项', '有投注玩法'] : ['Eligible bet items', 'Plays with bets'])
+    await expect(summary.locator('dd')).toHaveText(['100', '21'])
+    const viewport = page.viewportSize()!
+    if (info.project.name.endsWith('reflow')) await page.setViewportSize({ ...viewport, width: 320 })
+    const metrics = await summary.locator('div').evaluateAll(tags => tags.map(tag => {
+      const label = tag.querySelector('dt')!
+      const value = tag.querySelector('dd')!
+      const text = document.createRange()
+      text.selectNodeContents(label)
+      return {
+        top: tag.getBoundingClientRect().top,
+        lines: text.getClientRects().length,
+        aligned: Math.abs(label.getBoundingClientRect().top - value.getBoundingClientRect().top) < 1,
+        fits: tag.scrollWidth <= tag.clientWidth + 1,
+      }
+    }))
+    expect(metrics.map(({ lines, aligned, fits }) => ({ lines, aligned, fits }))).toEqual(Array(2).fill({ lines: 1, aligned: true, fits: true }))
+    if (zh) expect(metrics[0]!.top).toBe(metrics[1]!.top)
+    if (info.project.name.endsWith('reflow')) await page.setViewportSize(viewport)
     expect(Object.fromEntries(reads[0]!)).toEqual({ game_id: gameId, from: '2026-11-15', to: '2026-11-21', limit: '20', offset: '0' })
     await expect(page).toHaveURL(origins.platform + '/')
     await reviewRealPage(page, info, `bet-frequency-${locale}`)

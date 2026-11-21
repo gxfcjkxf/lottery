@@ -996,7 +996,7 @@ export const platformExtraCatalog = {
     "betFrequency.empty": "所选期间暂无有效投注。",
     "betFrequency.noGames": "暂无彩种。",
     "betFrequency.play": "玩法",
-    "betFrequency.activePlays": "有投注的玩法",
+    "betFrequency.activePlays": "有投注玩法",
     "betFrequency.items": "有效投注项",
     "betFrequency.share": "占比",
     "betFrequency.invalid": "请选择有效的日期范围，最多 93 天。",
