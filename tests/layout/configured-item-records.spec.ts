@@ -1,15 +1,15 @@
 import { test, expect, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { configuredDemo } from '../../shared/src/configured-rules'
-import { configuredTicketLabel } from '../../shared/src/configured-business'
+import { type ConfiguredOrderSummary, configuredTicketLabel } from '../../shared/src/configured-business'
 import { installLayoutApi, installWalletLayoutApi, gameId, origins, theme, expectNoPageOverflow } from './fixture'
 
 const at = '2026-11-03T01:00:00Z'
 const snapshot = configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/mark_six_v2.json', 'utf8')))
 const play = snapshot.catalog.plays.find(play=>play.id==='special_numbers')!
-const displayPlay = {id:play.id,label:play.label,selection:{domain:play.selection.domain}}
+const displayPlay = {id:play.id,group:play.group,stake_mode:play.stake_mode,label:play.label,selection:play.selection}
 // Shared member, game, play, period and timestamp must never merge distinct order IDs.
-const orders = ['10.01', '20.02', '30.03'].map((stake, index) => {
+const orders:ConfiguredOrderSummary[] = ['10.01', '20.02', '30.03'].map((stake, index) => {
  const line = { play_id:'special_numbers', options:[String(index + 1)], plate:'A', stake, prices:{hit:'48.99'} }
  return { id:`bbbbbbbb-bbbb-4bbb-8bbb-${String(index + 1).padStart(12,'0')}`, member_name:'item_member', game_id:gameId, game_name:'Mark Six', period_id:gameId, period_no:'2026307', rule_id:gameId, sales_version:1, snapshot:{catalog:{funding:null,plays:[displayPlay],domains:{[displayPlay.selection.domain]:{options:[{id:line.options[0]!,label:snapshot.catalog.domains[displayPlay.selection.domain]!.options.find(option=>option.id===line.options[0])!.label}]}}}},
   quote:{definition_hash:'item-records',snapshot_hash:'item-records',requests:[{play_id:line.play_id,options:line.options,plate:'A',points:stake,multiplier:'1'}],lines:[line],bet_points:stake},
@@ -193,3 +193,21 @@ for(const surface of ['user','agent','brand','platform'] as const)for(const loca
   await page.screenshot({path:info.outputPath(`outcomes-${surface}-${locale}.png`),fullPage:true})
  })
 }
+
+for(const locale of ['en','zh-CN'] as const)for(const surface of ['user','brand','platform','agent'] as const)test(`Canada current categories ${surface} ${locale}`,async({page},info)=>{
+ await openRecords(page,surface,locale)
+ const canada=configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/canada_28.json','utf8')))
+ const codes=['sum_24','big','triple','tail_big']
+ const records=codes.map((code,index)=>({...orders[index%orders.length]!,id:`canada-${index}`,snapshot:canada,quote:{...orders[0]!.quote,lines:[{play_id:code,options:[code],plate:'A',stake:'10.01',prices:{hit:'2'}}]},result:null,status:'placed'}))
+ await replaceRecords(page,surface,locale,records)
+ const rows=page.locator(surface==='user'||surface==='agent'?'.history-table tbody tr':'.configured-orders tbody tr')
+ const labels=locale==='zh-CN'?['总和 · 24','两面 · 大','组合 · 豹子','尾数 · 大']:['Sum · 24','Sides · Big','Combinations · Triple','Tails · Big']
+ for(const [index,label] of labels.entries())await expect(rows.nth(index)).toContainText(label)
+ await expectNoPageOverflow(page)
+ await page.screenshot({path:info.outputPath(`canada-${surface}-${locale}.png`),fullPage:true})
+ if(info.project.name.endsWith('reflow')){
+  await page.setViewportSize({width:320,height:740})
+  await expectNoPageOverflow(page)
+  for(const [index,label] of labels.entries())await expect(rows.nth(index)).toContainText(label)
+ }
+})

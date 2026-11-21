@@ -1,66 +1,112 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useId, watch } from 'vue'
 import SelectControl from './SelectControl.vue'
+import { configuredSelectionOptionLabel } from './configured-selection-groups'
 import { createCatalogI18n } from './localization'
 import { configuredRuleCatalog } from './configured-rule-catalog'
+import { configuredAvailabilityDisabled, configuredGroupsForScope, configuredOptionsForScope, type ConfiguredAvailability } from './configured-business'
 import { configuredOptionPriceKeys, type ConfiguredSnapshot } from './configured-rules'
-const props = defineProps<{ snapshot: ConfiguredSnapshot; modelValue: ConfiguredSnapshot['prices']; locale: 'en' | 'zh-CN'; disabled: boolean; locked: boolean }>()
-const emit = defineEmits<{ 'update:modelValue': [value: ConfiguredSnapshot['prices']] }>()
+
+const props = defineProps<{
+  snapshot: ConfiguredSnapshot
+  availability: ConfiguredAvailability
+  modelValue: ConfiguredSnapshot['prices']
+  locale: 'en' | 'zh-CN'
+  canWrite: boolean
+  locked: boolean
+}>()
+type Item = { play: string; option: string }
+const emit = defineEmits<{ 'update:modelValue': [value: ConfiguredSnapshot['prices']]; 'set-items': [items: Item[], enabled: boolean] }>()
+const groupId = defineModel<string>('groupId', { required: true })
+const editorId = useId()
 const i18n = createCatalogI18n(configuredRuleCatalog, props.locale)
 watch(() => props.locale, value => i18n.setLocale(value))
 const t = i18n.t
-const draft = ref<ConfiguredSnapshot['prices']>(JSON.parse(JSON.stringify(props.modelValue)))
 const batchOdds = ref('')
 const plate = ref(props.snapshot.catalog.plates[0]!)
-const playId = ref(props.snapshot.catalog.plays[0]!.id)
+const groups = computed(() => configuredGroupsForScope(props.snapshot, props.availability))
 const rows = computed(() => {
-  const play = props.snapshot.catalog.plays.find(item => item.id === playId.value)!
-  const options = props.snapshot.catalog.domains[play.selection.domain]!.options
-  const labels = new Map<string, string[]>()
-  for (const option of options) for (const key of configuredOptionPriceKeys(props.snapshot, play, option)) {
-    const names = labels.get(key) ?? []
-    names.push(option.label[props.locale])
-    labels.set(key, names)
-  }
-  const entries = [...labels].map(([key, names]) => ({ key, name: names.length === options.length && options.length > 1 ? play.label[props.locale] : [...new Set(names)].join(' / ') }))
-  return entries.map((entry, index) => ({ key: entry.key, label: entries.filter(item => item.name === entry.name).length > 1 ? t('oddsNumber', { name: entry.name, index: entries.slice(0, index + 1).filter(item => item.name === entry.name).length }) : entry.name }))
+  const group = groups.value.find(item => item.id === groupId.value)
+  if (!group) return []
+  return group.plays.flatMap(play => configuredOptionsForScope(props.snapshot, play, props.availability).map(option => ({
+    id: JSON.stringify([play.id, option.id]),
+    play: play.id,
+    option: option.id,
+    label: configuredSelectionOptionLabel(play, option)[props.locale],
+    disabled: configuredAvailabilityDisabled(props.availability, play.id, option.id),
+    priceKeys: configuredOptionPriceKeys(props.snapshot, play, option),
+  })))
 })
-function edit(key: string, value: string) {
-  draft.value.plates[plate.value] = { ...draft.value.plates[plate.value], [key]: value }
-  emit('update:modelValue', JSON.parse(JSON.stringify(draft.value)))
+const editableKeys = computed(() => [...new Set(rows.value.filter(row => !row.disabled).flatMap(row => row.priceKeys))])
+const editDisabled = computed(() => !props.canWrite || props.locked)
+
+function edit(keys: readonly string[], value: string) {
+  if (editDisabled.value) return
+  const prices = Object.fromEntries(keys.map(key => [key, value]))
+  emit('update:modelValue', {
+    ...props.modelValue,
+    plates: { ...props.modelValue.plates, [plate.value]: { ...props.modelValue.plates[plate.value], ...prices } },
+  })
 }
-function applyBatch() {
-  for (const row of rows.value) edit(row.key, batchOdds.value)
+function setItems(items: Item[], enabled: boolean) {
+  if (editDisabled.value) return
+  emit('set-items', items, enabled)
 }
-watch([plate, playId], () => { batchOdds.value = '' })
+watch([plate, groupId], () => { batchOdds.value = '' })
 </script>
+
 <template>
   <fieldset class="configured-odds-editor" :disabled="locked">
-    <div class="configured-odds-filters">
-      <label>{{ t('plate') }}<SelectControl v-model="plate" :label="t('plate')" :options="snapshot.catalog.plates.map(value => ({ value, label: value }))" /></label>
-      <label>{{ t('play') }}<SelectControl v-model="playId" :label="t('play')" :options="snapshot.catalog.plays.map(play => ({ value: play.id, label: play.label[locale] }))" /></label>
-      <div v-if="!disabled" class="configured-odds-batch">
-        <input v-model="batchOdds" inputmode="decimal" :aria-label="t('batchOdds')" />
-        <button type="button" class="button button-secondary" :disabled="!batchOdds.trim()" @click="applyBatch">{{ t('batchModify') }}</button>
+    <p v-if="!groups.length" class="empty-state">{{ t('noAvailableOptions') }}</p>
+    <template v-else>
+      <div class="configured-odds-filters">
+        <label>{{ t('plate') }}<SelectControl v-model="plate" :label="t('plate')" :options="snapshot.catalog.plates.map(value => ({ value, label: value }))" /></label>
+        <label>{{ t('play') }}<SelectControl v-model="groupId" :label="t('play')" :options="groups.map(group => ({ value: group.id, label: group.label[locale] }))" /></label>
+        <div v-if="canWrite" class="configured-odds-batch">
+          <input v-model="batchOdds" inputmode="decimal" :aria-label="t('batchOdds')" :disabled="!editableKeys.length" />
+          <button type="button" class="button button-secondary" :disabled="!batchOdds.trim() || !editableKeys.length" @click="edit(editableKeys, batchOdds)">{{ t('batchModify') }}</button>
+        </div>
+        <div v-if="canWrite" class="configured-odds-batch">
+          <button type="button" class="button button-secondary" :disabled="!rows.some(row => row.disabled)" @click="setItems(rows, true)">{{ t('enablePlayItems') }}</button>
+          <button type="button" class="button button-secondary" :disabled="!rows.some(row => !row.disabled)" @click="setItems(rows, false)">{{ t('disablePlayItems') }}</button>
+        </div>
       </div>
-    </div>
-    <fieldset :disabled="disabled" class="configured-odds-fields">
-      <label v-for="row in rows" :key="row.key"><span>{{ row.label }}</span><input inputmode="decimal" :value="draft.plates[plate]?.[row.key]" @input="edit(row.key, ($event.target as HTMLInputElement).value)" /></label>
-    </fieldset>
+      <div class="configured-odds-fields">
+        <div v-for="(row, index) in rows" :key="row.id" class="configured-odds-item" :class="{ 'configured-odds-item-disabled': row.disabled, 'configured-odds-item-multiple': !row.disabled && row.priceKeys.length > 1 }">
+          <span class="configured-odds-label" :id="`${editorId}-item-${index}`">{{ row.label }}</span>
+          <div class="configured-odds-item-controls">
+            <input v-if="row.disabled" inputmode="decimal" :aria-labelledby="`${editorId}-item-${index}`" :value="t('oddsUnavailable')" disabled />
+            <template v-else>
+              <input v-for="(key, priceIndex) in row.priceKeys" :key="key" inputmode="decimal"
+                :aria-label="row.priceKeys.length === 1 ? row.label : t('oddsNumber', { name: row.label, index: priceIndex + 1 })"
+                :disabled="editDisabled" :value="modelValue.plates[plate]?.[key]"
+                @input="edit([key], ($event.target as HTMLInputElement).value)" />
+            </template>
+            <button v-if="canWrite" type="button" class="button button-secondary configured-odds-item-toggle"
+              :aria-label="t(row.disabled ? 'enableOddsOption' : 'disableOddsOption', { name: row.label })"
+              @click="setItems([row], row.disabled)">{{ t(row.disabled ? 'enableOddsShort' : 'disableOddsShort') }}</button>
+          </div>
+        </div>
+      </div>
+    </template>
   </fieldset>
 </template>
+
 <style scoped>
 .configured-odds-editor{border:0;padding:0;margin:0;min-width:0}
-:global(#app .configured-odds-editor input[inputmode="decimal"]){--input-width:88px}
-.configured-odds-filters{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:16px}
+:global(#app .configured-odds-editor input[inputmode="decimal"]){--input-width:calc(5ch + 14px);width:var(--input-width);box-sizing:border-box;padding-inline:6px}
+.configured-odds-filters,.configured-odds-batch{display:flex;flex-wrap:wrap;align-items:center;gap:8px;max-width:100%}
+.configured-odds-filters{gap:8px 12px;margin-bottom:12px}
 .configured-odds-filters label{display:flex;flex-direction:row;align-items:center;gap:8px;max-width:100%}
 .configured-odds-filters :deep(.select-control){min-width:0;max-width:100%}
-.configured-odds-batch{display:flex;flex-direction:row;align-items:center;gap:8px;max-width:100%}
-.configured-odds-batch input{width:88px;min-width:0;box-sizing:border-box}
-.configured-odds-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;border:0;padding:0;margin:0;min-width:0}
-.configured-odds-editor label{min-width:0;font-size:var(--body-font-size);overflow-wrap:anywhere}
-.configured-odds-fields label{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px}
-.configured-odds-fields input{width:88px;max-width:55%;min-width:0;box-sizing:border-box;flex-shrink:0}
-@media(max-width:620px){.configured-odds-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:380px){.configured-odds-fields{grid-template-columns:minmax(0,1fr)}}
+.configured-odds-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(196px,100%),1fr));gap:8px;min-width:0}
+.configured-odds-fields .configured-odds-item{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px;min-width:0;padding:6px 8px;border:1px solid color-mix(in srgb,var(--primary) 55%,var(--line));border-inline-start:3px solid var(--primary);border-radius:var(--radius-sm);background:color-mix(in srgb,var(--primary) 22%,var(--surface));color:var(--ink)}
+.configured-odds-fields .configured-odds-item-disabled{border-color:var(--line);border-inline-start-color:var(--muted);background:var(--canvas);color:var(--muted)}
+:global(#app .configured-odds-editor .configured-odds-item-disabled input){--input-width:calc(5ch + 22px);padding-inline:4px;font-size:12px!important;opacity:1;color:var(--muted)}
+.configured-odds-fields .configured-odds-item-multiple{grid-template-columns:minmax(0,1fr)}
+.configured-odds-label{font-weight:650;overflow-wrap:anywhere}
+.configured-odds-item-controls{display:flex;justify-content:flex-end;align-items:center;flex-wrap:wrap;gap:4px;max-width:100%;min-width:0}
+.configured-odds-item-controls>input{min-width:0}
+.configured-odds-item-controls .configured-odds-item-toggle{--button-width:var(--control-height);min-width:var(--control-height);padding-inline:6px}
+.configured-odds-fields .configured-odds-item:focus-within{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-ring)}
 </style>

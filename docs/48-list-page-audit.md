@@ -8,8 +8,9 @@
 | --- | --- |
 | `admin-web/src/App.vue` | 会员目录：共享查询、批量删除、行菜单、空表和分页；新建在列表工具栏 |
 | `admin-web/src/AccessManagement.vue` | 管理账号、角色：共享表格、行菜单、分页；权限详情不铺开在目录；保留现有编辑/改密权限 |
+| `admin-web/src/AgentTreeBranch.vue` | 代理树分支：沿用外层列表面板，以 embedded 容器承载直属下级和共享分页；保留多层展开状态，空状态与读取重试沿用共享规范 |
 | `admin-web/src/AgentManagement.vue` | 全层级目录、上下级视图：共享容器、筛选和分页；层级上下文保留；代理配置修订是详情时间线 |
-| `admin-web/src/FinanceManagement.vue` | 充值记录、会员积分流水：会员查询；额度管理由独立菜单进入；流水在详情中使用嵌入式列表和分页；来源余额及余额对账为有限维度快照 |
+| `admin-web/src/FinanceManagement.vue` | 充值记录通过共享类型选择切换资金充值、人工积分充值及双向兑换，每次一个列表，默认资金充值；人工积分充值、会员积分流水提供会员查询；额度管理由独立菜单进入；流水在详情中使用嵌入式列表和分页；来源余额及余额对账为有限维度快照 |
 | `admin-web/src/WithdrawalManagement.vue` | 提现申请：筛选、空表、分页；确认与原请求重试留在详情 |
 | `admin-web/src/RewardsManagement.vue` | 奖励记录、不可变操作历史：新建/刷新进入工具栏；空结果保留表头；详情历史使用嵌入式列表 |
 | `admin-web/src/AuditManagement.vue` | 审计：导出与查询分区；保留空表和分页；翻页不卸载原记录 |
@@ -34,7 +35,7 @@
 | `platform-web/src/App.vue` | 品牌、品牌会员、审计：共享列表插槽；完整品牌快照分页；授权批量删除；空表与分页一致 |
 | `platform-web/src/AccessPanel.vue` | 平台账号/角色、品牌账号/角色四个视图：页签/动作分离；保护当前账号与内置角色；批量处理及分页使用同一权限范围 |
 | `platform-web/src/CommissionPanel.vue` | 代理目录、核算周期、派发记录及收益明细：目录查询、单页/空页分页、详情内嵌入式列表 |
-| `platform-web/src/RechargesPanel.vue` | 充值记录：会员查询；额度管理由独立菜单进入；表头、空状态及分页保持可见结构 |
+| `platform-web/src/RechargesPanel.vue` | 充值记录通过共享类型选择切换资金充值、人工积分充值及双向兑换，每次一个列表，默认资金充值；人工积分充值提供会员查询；额度管理由独立菜单进入；表头、空状态及分页保持可见结构 |
 | `platform-web/src/WithdrawalsPanel.vue` | 提现记录、详情来源分配及历史：业务记录分页；来源分配是订单快照内有限明细 |
 | `platform-web/src/RewardsPanel.vue` | 奖励记录及操作历史：刷新进入工具栏；历史属于详情内独立列表 |
 | `platform-web/src/WalletPanel.vue` | 会员流水：详情内统一列表、刷新和分页；四来源×余额状态是固定维度表，不添加分页 |

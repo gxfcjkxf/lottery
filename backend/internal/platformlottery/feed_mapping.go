@@ -267,31 +267,44 @@ func parseFeed(m FeedMapping, body []byte, responses map[string]json.RawMessage)
 				return nil, ErrInvalid
 			}
 		}
+		values := []any{value}
 		for _, part := range strings.Split(f.Path[1:], "/") {
 			part = strings.ReplaceAll(strings.ReplaceAll(part, "~1", "/"), "~0", "~")
-			switch x := value.(type) {
-			case map[string]any:
-				var ok bool
-				value, ok = x[part]
-				if !ok {
+			next := []any{}
+			for _, value := range values {
+				switch x := value.(type) {
+				case map[string]any:
+					v, ok := x[part]
+					if !ok {
+						return nil, ErrInvalid
+					}
+					next = append(next, v)
+				case []any:
+					if part == "*" {
+						next = append(next, x...)
+						continue
+					}
+					i, e := strconv.Atoi(part)
+					if e != nil || i < 0 || i >= len(x) {
+						return nil, ErrInvalid
+					}
+					next = append(next, x[i])
+				default:
 					return nil, ErrInvalid
 				}
-			case []any:
-				i, e := strconv.Atoi(part)
-				if e != nil || i < 0 || i >= len(x) {
-					return nil, ErrInvalid
-				}
-				value = x[i]
-			default:
-				return nil, ErrInvalid
+			}
+			values = next
+		}
+		scalars := []any{}
+		for _, v := range values {
+			if array, ok := v.([]any); ok {
+				scalars = append(scalars, array...)
+			} else {
+				scalars = append(scalars, v)
 			}
 		}
-		values, ok := value.([]any)
-		if !ok {
-			values = []any{value}
-		}
 		out := []string{}
-		for _, v := range values {
+		for _, v := range scalars {
 			s, e := mappedScalar(v)
 			if e != nil {
 				return nil, e

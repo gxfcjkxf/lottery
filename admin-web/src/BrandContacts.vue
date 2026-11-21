@@ -9,7 +9,7 @@ import { createBrandContactsApi, type BrandContactsBody, type BrandContactsRecor
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from './admin-api'
 import { useAdminI18n } from './i18n'
 const props = defineProps<{ account: AdminAccount; brandId: string }>()
-const emit = defineEmits<{ 'session-invalid': [] }>()
+const emit = defineEmits<{ 'session-invalid': []; saved: [] }>()
 const { t, errorMessage, display, message } = useAdminI18n()
 const api = createBrandContactsApi()
 const rights = computed(() => brandPresentationPermissions(props.account, props.brandId))
@@ -66,7 +66,7 @@ async function save() {
   try {
     const next = await api.put(props.brandId, frozen.body, frozen.key)
     if (token !== generation) return
-    record.value = next; draft.value = clone(next.config); pending.value = null; notice.value = message('admin.settings.saved')
+    record.value = next; draft.value = clone(next.config); pending.value = null; notice.value = message('admin.settings.saved'); emit('saved')
   } catch (cause) {
     if (token !== generation) return
     error.value = errorMessage(cause)

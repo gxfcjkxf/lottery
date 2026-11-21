@@ -44,7 +44,7 @@ async function save(){
    <p>{{t('periodNo')}}: {{period.period_no}}</p><p>{{t('openingHelp')}}</p>
    <label>{{t('start')}}<PlatformTemporalInput v-model="opening" type="datetime-local" :locale="locale" required :disabled="busy||!!pending" /></label>
    <p v-if="pending&&!busy">{{t('awaiting')}}</p>
-   <div class="form-actions ui-form-actions"><button type="submit" class="button button-primary" :disabled="busy">{{t(pending?'retry':'save')}}</button></div>
+   <div class="form-actions ui-form-actions"><button type="submit" class="button button-primary" :disabled="busy">{{t(pending&&!busy?'retry':'save')}}</button></div>
   </form>
  </DetailModal>
 </template>

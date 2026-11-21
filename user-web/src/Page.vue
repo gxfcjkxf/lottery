@@ -38,6 +38,7 @@ import UserOverview from './UserOverview.vue';
 import { loadUserGames, gamePath, rememberGame, recalledGame, type UserGame } from './user-games';
 
 import ConfiguredBetting from './ConfiguredBetting.vue';
+import { playRulesCatalog } from './play-rules-catalog';
 import BettingHistory from './BettingHistory.vue';
 import DrawArchive from './DrawArchive.vue';
 import Announcements from "./Announcements.vue";
@@ -51,7 +52,6 @@ import {
   createAuthClient,
   type AuthChallenge,
   type AuthFeatures,
-  type TelegramChallenge,
 } from "../../shared/src/auth";
 import {
   ApiError,
@@ -59,6 +59,7 @@ import {
   isTelegramClientIdConfigured,
   loadTelegramLoginSdk,
   normalizeIdentifier,
+  openTelegramLoginWindow,
   passwordCharacterLength,
   requestTelegramIdToken,
   type AuthProfile,
@@ -154,10 +155,7 @@ const captchaChallenge = ref<AuthChallenge | null>(null);
 const captchaAnswer = ref("");
 const captchaLoading = ref(false);
 const captchaNow = useCaptchaRefresh(() => captchaChallenge.value, refreshCaptcha, () => captchaLoading.value || authBusy.value);
-const telegramChallenge = ref<TelegramChallenge | null>(null);
-const telegramSdkReady = ref(false);
 const telegramError = ref<string | import("@lottery/shared").LocalizedMessage>("");
-const tick = ref(0);
 const captchaExpired = computed(() => {
   return (
     !captchaChallenge.value ||
@@ -172,26 +170,13 @@ const captchaReady = computed(
         !captchaExpired.value &&
         captchaAnswer.value.trim().length > 0)),
 );
-const telegramReady = computed(() => {
-  tick.value;
-  return (
-    authConfigurationLoaded.value &&
-    authConfiguration.value.telegram_enabled &&
-    isTelegramClientIdConfigured(authConfiguration.value.telegram_client_id) &&
-    telegramSdkReady.value &&
-    Boolean(telegramChallenge.value?.id && telegramChallenge.value.nonce) &&
-    Date.parse(telegramChallenge.value?.expires_at ?? "") > Date.now()
-  );
-});
 let workspaceSyncTimer: ReturnType<typeof setInterval> | undefined;
-let tickTimer: ReturnType<typeof setInterval> | undefined;
 let pageGeneration = 0;
 onUnmounted(() => {
   notificationCountGeneration++;
   authGeneration++; gamesReadGeneration++; profileReadGeneration++;
   pageGeneration++;
   joinLinkGeneration++;
-  if (tickTimer) clearInterval(tickTimer);
   if (workspaceSyncTimer) clearInterval(workspaceSyncTimer);
 });
 
@@ -318,6 +303,13 @@ function choosePickerGame(id: string) {
 const gamesError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const gamesReady = ref(false);
 const menuOpen = ref(false);
+const workspaceMenuTrigger = ref<HTMLButtonElement>();
+const configuredBetting = ref<InstanceType<typeof ConfiguredBetting>>();
+function openPlayRules() {
+  menuOpen.value = false;
+  workspaceMenuTrigger.value?.focus({ preventScroll: true });
+  configuredBetting.value?.openRules();
+}
 const sidebarCollapsed = ref(false);
 const overviewOpen = ref(false);
 const showOverview = computed(() => route.path === "/" || route.path === "/games" || route.path.startsWith("/games/") || route.path.startsWith("/configured/") || route.path === "/bet/confirm");
@@ -414,51 +406,10 @@ async function loadAuthFeatures() {
     authError.value = "";
     if (authConfiguration.value.captcha_enabled && isAuth.value)
       await refreshCaptcha();
-    if (
-      authConfiguration.value.telegram_enabled &&
-      isTelegramClientIdConfigured(authConfiguration.value.telegram_client_id)
-    ) {
-      await prepareTelegramLogin();
-    } else {
-      telegramSdkReady.value = false;
-      telegramChallenge.value = null;
-      telegramError.value = "";
-    }
   } catch (error) {
     authError.value = publicErrorMessage(error);
   } finally {
     authConfigurationLoading.value = false;
-  }
-}
-const telegramLoading = ref(false);
-async function prepareTelegramLogin() {
-  if (telegramLoading.value) return;
-  telegramLoading.value = true;
-  telegramSdkReady.value = false;
-  telegramChallenge.value = null;
-  telegramError.value = "";
-  try {
-    await loadTelegramLoginSdk();
-    telegramSdkReady.value = true;
-    await refreshTelegramChallenge();
-  } catch (error) {
-    telegramError.value = publicErrorMessage(error);
-  } finally {
-    telegramLoading.value = false;
-  }
-}
-async function refreshTelegramChallenge() {
-  if (
-    !authConfiguration.value.telegram_enabled ||
-    !isTelegramClientIdConfigured(authConfiguration.value.telegram_client_id)
-  )
-    return;
-  telegramChallenge.value = null;
-  try {
-    telegramChallenge.value = await authApi.getTelegramChallenge();
-    telegramError.value = "";
-  } catch (error) {
-    telegramError.value = publicErrorMessage(error);
   }
 }
 function captchaInput() {
@@ -574,36 +525,55 @@ async function authSubmit() {
   }
 }
 async function startTelegramAuth() {
+  const clientId = authConfiguration.value.telegram_client_id;
+  if (!authConfigurationLoaded.value || !authConfiguration.value.telegram_enabled ||
+    !isTelegramClientIdConfigured(clientId) || authBusy.value ||
+    joinLinkChecking.value || joinLinkFailed.value || joinLinkUnavailable.value) return;
+
   const epoch = authGeneration;
+  const path = route.path;
   sessionReplaced.value = false;
-  if (authBusy.value || telegramLoading.value || joinLinkChecking.value || joinLinkFailed.value || joinLinkUnavailable.value) return;
-  if (!telegramReady.value) {
-    await prepareTelegramLogin();
-    return;
-  }
   authBusy.value = true;
   authError.value = "";
   telegramError.value = "";
+  let popup: Window | null = null;
   try {
-    const choice = route.path === '/register' ? captureJoinChoice() : { source: 'none' as const, fields: {} };
-    const challenge = telegramChallenge.value!;
-    const idToken = await requestTelegramIdToken(
-      authConfiguration.value.telegram_client_id!,
-      challenge.nonce,
-    );
+    const choice = path === '/register' ? captureJoinChoice() : { source: 'none' as const, fields: {} };
+    // Telegram's in-app browser handles authorization through its own bridge.
+    if (!window.TelegramWebviewProxy) {
+      popup = openTelegramLoginWindow();
+      if (!popup) {
+        telegramError.value = ui('common.telegramPopupBlocked');
+        return;
+      }
+    }
+    await loadTelegramLoginSdk();
+    if (epoch !== authGeneration || route.path !== path || popup?.closed) return;
+    const challenge = await authApi.getTelegramChallenge();
+    if (epoch !== authGeneration || route.path !== path || popup?.closed) return;
+    if (!challenge.id || !challenge.nonce || !(Date.parse(challenge.expires_at) > Date.now())) {
+      telegramError.value = ui('common.telegramUnavailable');
+      return;
+    }
+    const idToken = await requestTelegramIdToken(clientId, challenge.nonce);
+    if (epoch !== authGeneration || route.path !== path) return;
+    popup?.close();
+    popup = null;
     const session = await authApi.telegram({
       id_token: idToken,
       challenge_id: challenge.id,
       nonce: challenge.nonce,
       ...choice.fields,
     });
-    if(epoch !== authGeneration) return;
+    if (epoch !== authGeneration) return;
     await finishAuth(session);
   } catch (error) {
-    if(epoch !== authGeneration) return;
-    telegramError.value = publicErrorMessage(error);
-    await refreshTelegramChallenge();
+    if (epoch !== authGeneration || route.path !== path) return;
+    telegramError.value = error instanceof ApiError
+      ? publicErrorMessage(error)
+      : ui('common.telegramUnavailable');
   } finally {
+    popup?.close();
     authBusy.value = false;
   }
 }
@@ -791,7 +761,6 @@ onMounted(() => withGlobalLoading(async () => {
     connectionMessage.value = publicErrorI18n.errorText(error);
   }
   void loadProfile();
-  tickTimer = setInterval(() => tick.value++, 1000);
   workspaceSyncTimer = setInterval(() => { if (authProfile.value && !isAuth.value && document.visibilityState === 'visible') { void loadWorkspaceGames(); void loadNotificationUnreadCount(); } }, 5000);
 }));
 watch(locale, () => {
@@ -810,6 +779,7 @@ watch(
   (path) => {
     if (siteEntryState.value !== "ready") return;
     bettingGameTitle.value = '';
+    telegramError.value = "";
     if (path !== '/login' && path !== '/register') void loadProfile();
     if (path === "/login" || path === "/register") {
       if (authConfigurationLoaded.value) void refreshCaptcha();
@@ -900,7 +870,7 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
                 :aria-label="ui('common.continueTelegram')"
                 class="button button-secondary telegram-login-button"
                 type="button"
-                :disabled="authBusy || telegramLoading || joinLinkChecking || joinLinkFailed || joinLinkUnavailable"
+                :disabled="authBusy || joinLinkChecking || joinLinkFailed || joinLinkUnavailable"
                 v-write-guard="authBusy" @click="withGlobalLoading(startTelegramAuth)"
               >
                 <img src="/icons/telegram.svg" width="44" height="44" alt="" aria-hidden="true" />
@@ -932,7 +902,7 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
         <div v-if="!isUpdatesPage" class="workspace-game-heading"><SelectControl class="workspace-game-picker" :model-value="pickerGame?.id" :label="ui('workspace.games')" :placeholder="pickerGame?.name ?? ui('workspace.games')" :disabled="!pickerGames.length" :options="pickerGames.map(game => ({ value: game.id, label: game.name }))" @change="choosePickerGame($event!)" /><div id="user-game-help"></div></div>
         <div class="workspace-trailing"><RouterLink v-if="!profileLoading && !authProfile" to="/login" class="button button-quiet workspace-login">{{ t.login }}</RouterLink>
         <ThemeSwitcher :locale="locale === 'en' ? 'en' : 'zh-CN'" />
-        <button type="button" class="icon-button workspace-menu-trigger" :aria-label="notificationUnreadCount !== null && notificationUnreadCount !== '0' ? `${ui('workspace.menu')}, ${ui('common.unreadNotifications', { count: notificationUnreadCount })}` : ui('workspace.menu')" :aria-expanded="menuOpen" @click="menuOpen = true"><SiteIcon name="menu" /><span v-if="notificationUnreadCount !== null && notificationUnreadCount !== '0'" class="workspace-menu-unread-dot" aria-hidden="true"></span></button></div>
+        <button ref="workspaceMenuTrigger" type="button" class="icon-button workspace-menu-trigger" :aria-label="notificationUnreadCount !== null && notificationUnreadCount !== '0' ? `${ui('workspace.menu')}, ${ui('common.unreadNotifications', { count: notificationUnreadCount })}` : ui('workspace.menu')" :aria-expanded="menuOpen" @click="menuOpen = true"><SiteIcon name="menu" /><span v-if="notificationUnreadCount !== null && notificationUnreadCount !== '0'" class="workspace-menu-unread-dot" aria-hidden="true"></span></button></div>
       </header>
 
       <template v-if="!isAuth">
@@ -949,6 +919,7 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
           <aside class="workspace-menu" :aria-label="ui('workspace.menu')"><div class="workspace-menu-heading"><strong>{{ brandName }}</strong><div class="workspace-menu-actions"><div class="workspace-menu-tools"><LanguageSwitcher v-if="contextLoaded && availableLanguages.length > 1" :model-value="locale" :label="ui('common.language')" :options="availableLanguages.map(code => ({code,label:languageLabel(code)}))" @update:model-value="setLocale" /><div id="user-page-refresh" class="user-page-refresh"></div></div><button type="button" class="icon-button workspace-menu-close" :aria-label="ui('draw.close')" @click="menuOpen = false"><SiteIcon name="close" /></button></div></div>
             <nav class="side-nav" :aria-label="ui('user.nav.primary')">
               <RouterLink v-if="currentGame" :to="{path:'/results',query:{platform_game_id:currentGame.id}}" :class="{ active: isNavItemActive('/results', false) }" :aria-current="isNavItemActive('/results', false) ? 'page' : undefined"><span class="nav-icon" aria-hidden="true"><SiteIcon name="calendar" /></span><span>{{ ui('draw.results') }}</span></RouterLink>
+              <button v-if="configuredBetting?.rulesAvailable" type="button" class="workspace-menu-action" aria-haspopup="dialog" @click="openPlayRules"><span class="nav-icon" aria-hidden="true"><SiteIcon name="rules" /></span><span>{{ playRulesCatalog[localeCode].title }}</span></button>
               <RouterLink to="/announcements" :class="{ active: isUpdatesPage }" :aria-current="isUpdatesPage ? 'page' : undefined"><span class="nav-icon" aria-hidden="true"><SiteIcon name="bell" /></span><span>{{ ui('user.updates.title') }}</span><UnreadBadge :count="notificationUnreadCount" /></RouterLink>
               <RouterLink to="/contacts" @click="menuOpen = false" :class="{ active: isNavItemActive('/contacts', false) }" :aria-current="isNavItemActive('/contacts', false) ? 'page' : undefined"><span class="nav-icon" aria-hidden="true"><SiteIcon name="support" /></span><span>{{ ui('user.contacts.title') }}</span></RouterLink>
               <RouterLink to="/help" :class="{ active: isNavItemActive('/help', false) }" :aria-current="isNavItemActive('/help', false) ? 'page' : undefined"><span class="nav-icon" aria-hidden="true"><SiteIcon name="help" /></span><span>{{ t.help }}</span></RouterLink>
@@ -982,9 +953,9 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
         <template v-if="route.path === '/'">
           <div v-if="gamesError" class="message error" role="alert"><span>{{ displayPublicError(gamesError) }}</span> <button type="button" class="button button-secondary" @click="withGlobalLoading(loadWorkspaceGames)">{{ ui('betting.retry') }}</button></div>
           <p v-else-if="gamesReady && !currentGame" class="empty-state">{{ ui('betting.noGames') }}</p>
-          <ConfiguredBetting v-if="currentGame" :key="currentGame.id" :game-id="currentGame.id" :brand-code="walletBrandCode" :locale="locale" :auth="authProfile" @game-title="bettingGameTitle = $event" :onAuthExpired="authExpiryHandler()" />
+          <ConfiguredBetting ref="configuredBetting" v-if="currentGame" :key="currentGame.id" :game-id="currentGame.id" :brand-code="walletBrandCode" :locale="locale" :auth="authProfile" @game-title="bettingGameTitle = $event" :onAuthExpired="authExpiryHandler()" />
         </template>
-        <ConfiguredBetting v-else-if="route.path.startsWith('/configured/')" :game-id="String(route.params.gameId)" :brand-code="walletBrandCode" :locale="locale" :auth="authProfile" @game-title="bettingGameTitle=$event" :onAuthExpired="authExpiryHandler()" />
+        <ConfiguredBetting ref="configuredBetting" v-else-if="route.path.startsWith('/configured/')" :game-id="String(route.params.gameId)" :brand-code="walletBrandCode" :locale="locale" :auth="authProfile" @game-title="bettingGameTitle=$event" :onAuthExpired="authExpiryHandler()" />
         <BettingHistory v-else-if="route.path === '/orders'" :game-id="ordersGameId" :brand-code="walletBrandCode" :locale="locale" :auth="authProfile" @games="historyGames = $event" :onAuthExpired="authExpiryHandler()" />
         <JoinCodesPanel
           v-else-if="route.path === '/invites'"
@@ -1034,8 +1005,8 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
             </div>
             <DetailModal v-if="profileEditorOpen" class="ui-form-dialog" :title="ui('user.account.completeProfile')" :close-label="ui('user.notifications.close')" :close-disabled="profileSaving" @close="profileEditorOpen = false">
               <form novalidate v-inline-validation v-write-guard="profileSaving" class="ui-form" @submit.prevent="withGlobalLoading(saveProfile)">
-                <label v-if="!authProfile.user.username">{{ ui('user.auth.accountLabel') }}<input v-model="profileUsername" autocomplete="username" :disabled="profileSaving" :placeholder="ui('common.addUsername')" /></label>
-                <label v-if="!authProfile.user.phone">{{ ui('common.phone') }}<input v-model="profilePhone" autocomplete="tel" :disabled="profileSaving" :placeholder="ui('common.addPhone')" /></label>
+                <label v-if="!authProfile.user.username">{{ ui('user.auth.accountLabel') }}<input v-model="profileUsername" autocomplete="username" :disabled="profileSaving" /></label>
+                <label v-if="!authProfile.user.phone">{{ ui('common.phone') }}<input v-model="profilePhone" autocomplete="tel" :disabled="profileSaving" /></label>
                 <template v-for="key in contactKeys" :key="key"><label v-if="!authProfile.user[key]">{{ ui(`common.${key}`) }}<input v-model="profileContacts[key]" maxlength="120" :disabled="profileSaving" /></label></template>
                 <div class="ui-form-actions"><button v-write-guard="profileSaving" type="submit" class="button button-primary" :disabled="profileSaving">{{ profileSaving ? ui('common.saving') : ui('common.saveProfile') }}</button></div>
               </form>

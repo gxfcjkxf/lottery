@@ -1,3 +1,4 @@
+import { expectDialogFieldColumns } from './dialog-form-columns'
 import { selectControl } from '../select-control'
 import { expect, test } from '@playwright/test'
 import {installConsoleSession,openPlatformPage} from './real-console-session'
@@ -47,6 +48,7 @@ export function registerPlatformSettingsEditorTests(reflow = false) {
    const preset = page.viewportSize()!
    for (const width of reflow ? [320, 640, 900, 1440] : [preset.width]) {
     if (reflow) await page.setViewportSize({width, height: preset.height})
+    await expectDialogFieldColumns(dialog)
     await expectInsideViewport(dialog)
     await expectListLayout(page)
    }
@@ -105,11 +107,12 @@ export function registerTemplateEditorTests(reflow = false) {
   for(const width of reflow?[320,640,900,1440]:[preset.width]){
    if(reflow)await page.setViewportSize({width,height:preset.height})
    await submit.scrollIntoViewIfNeeded();await expect(submit).toBeInViewport()
+   for(const group of await dialog.locator('.template-language').all())await expectDialogFieldColumns(group)
    await expectInsideViewport(dialog);await expectListLayout(page)
    await page.screenshot({path:info.outputPath(`template-actions-${locale}-${width}.png`)})
   }
   await dialog.locator('input').last().fill('Updated welcome')
   await submit.click();await expect.poll(()=>writes).toBe(1)
-  await expect(submit).toBeEnabled();expect(errors).toEqual([])
+  await expect(dialog).toHaveCount(0);expect(errors).toEqual([])
  })
 }

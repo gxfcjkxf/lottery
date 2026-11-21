@@ -19,7 +19,7 @@ import { usePlatformI18n } from './i18n'
 import { createPlatformApi, type PlatformSettings, type PlatformAccount } from './platform-api'
 
 const props = defineProps<{ initial: PlatformSettings; locale: 'en' | 'zh-CN'; canManage: boolean; account: PlatformAccount; brandId: string; brandStatus: string }>()
-const emit = defineEmits<{ saved: [settings: PlatformSettings]; failure: [cause: unknown] }>()
+const emit = defineEmits<{ saved: [settings: PlatformSettings]; failure: [cause: unknown]; completed: [] }>()
 const tab = defineModel<'general' | 'auth' | 'commission' | 'currency'>('tab', { default: 'general' })
 const canViewGeneral = computed(() => props.account.platform_permissions.includes('platform_settings.view.platform'))
 const securityVisited = ref(false)
@@ -92,9 +92,9 @@ useOperationToast(error, value => displayPublicError(value), 'error');
       </dl>
       <div class="ui-form-actions"><button type="button" class="button button-secondary" :disabled="!canManage" @click="startEdit">{{ t('common.editSettings') }}</button></div>
     </section>
-    <CashConsole v-if="tab === 'currency'" base-path="/api/v1/platform" platform mode="settings" :actor-id="account.id" :locale="locale" :permissions="account.platform_permissions" @failure="emit('failure',$event)" />
+    <CashConsole v-if="tab === 'currency'" base-path="/api/v1/platform" platform mode="settings" :actor-id="account.id" :locale="locale" :permissions="account.platform_permissions" @saved="emit('completed')" @failure="emit('failure',$event)" />
     <SecuritySettingsPanel v-if="securityVisited" v-show="tab === 'auth'" :account="account" @locked="securityLocked = $event" @failure="emit('failure', $event)" />
-    <CommissionSettings :can-view="account.platform_permissions.includes('platform_settings.view.platform')" v-if="commissionVisited" v-show="tab === 'commission'" :timezone="current.timezone" :can-manage="canManage" @failure="emit('failure', $event)" />
+    <CommissionSettings :can-view="account.platform_permissions.includes('platform_settings.view.platform')" v-if="commissionVisited" v-show="tab === 'commission'" :timezone="current.timezone" :can-manage="canManage" @saved="emit('completed')" @failure="emit('failure', $event)" />
     <DetailModal v-if="editorOpen && canViewGeneral" :title="copy.title" :close-label="t('platform.copy.27b2fd29')" :close-disabled="busy" @close="!busy && (editorOpen = false)">
     <form v-write-guard="busy" novalidate v-inline-validation class="brand-form platform-settings-form ui-form" @submit.prevent="withGlobalLoading(save)">
       <div class="form-row"><label>{{ copy.displayName }}<input v-model.trim="form.display_name" maxlength="120" required /></label><label>{{ copy.logoText }}<input v-model.trim="form.logo_text" maxlength="8" required /></label></div>

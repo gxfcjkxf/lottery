@@ -78,22 +78,23 @@ for(const locale of ['en','zh-CN'] as const)test(`successful configured bet clea
  await page.clock.resume()
  const selection=page.getByTestId('configured-selection')
  const points=selection.locator('.configured-points-control input')
+ const first=selection.locator('.configured-options button').first()
+ await first.click()
  await expect(points).toHaveValue('')
  await points.fill('25')
  await page.reload()
- await expect(points).toHaveValue('25')
  const mobile=page.viewportSize()!.width<1000
  await expect(page.locator('.period-times time').first().locator('span:visible')).toHaveText(mobile?'10-24 21:00':'2026-10-24 21:00:00')
  await expect(page.locator('.period-times time').nth(1).locator('span:visible')).toHaveText(mobile?'10-27 21:29':'2026-10-27 21:29:45')
  const summary=selection.locator('.configured-selected'),dock=selection.locator('.configured-stakes--dock')
- if(mobile)await expect(summary).toBeHidden()
- const dockHeight=(await dock.boundingBox())!.height
- await selection.locator('.configured-options button').first().click()
+ await expect(dock).toHaveCount(0)
+ await first.click()
  await expect(points).toBeFocused()
+ await expect(points).toHaveValue('25')
  await expect(summary).toBeVisible()
  if(mobile){
   const shownDock=(await dock.boundingBox())!,shownSummary=(await summary.boundingBox())!
-  expect(shownDock.height).toBe(dockHeight)
+  expect(Math.abs(shownDock.y+shownDock.height-page.viewportSize()!.height)).toBeLessThanOrEqual(1)
   expect(Math.abs(shownSummary.y+shownSummary.height-shownDock.y)).toBeLessThanOrEqual(1)
  }
  if(info.project.name.endsWith('reflow')){
@@ -107,7 +108,7 @@ for(const locale of ['en','zh-CN'] as const)test(`successful configured bet clea
  }
  await page.screenshot({path:info.outputPath(`bet-selected-${locale}.png`)})
  await selection.locator('.configured-clear').click()
- if(mobile)await expect(summary).toBeHidden()
+ await expect(dock).toHaveCount(0)
  await selection.locator('.configured-options button').first().click()
  await selection.locator('.configured-stakes input[type=number]').fill('10')
  await selection.getByRole('button',{name:locale==='en'?'Bet':'投注',exact:true}).click()
@@ -117,8 +118,8 @@ for(const locale of ['en','zh-CN'] as const)test(`successful configured bet clea
  const toast=page.locator('.operation-toast-stack .toast-success')
  await expect(toast).toContainText(locale==='en'?'Bet placed':'投注成功')
  await expect(selection.locator('.configured-options [aria-pressed=true]')).toHaveCount(0)
- await expect(points).toHaveValue('10')
- await selection.locator('.configured-options button').first().click()
+ await expect(dock).toHaveCount(0)
+ await first.click()
  await expect(points).toBeFocused()
  await expect(points).toHaveValue('10')
  await selection.locator('.configured-clear').click()

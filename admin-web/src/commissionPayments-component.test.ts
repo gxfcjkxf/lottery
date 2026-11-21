@@ -32,8 +32,8 @@ const baseAccount: AdminAccount = {
 };
 const PaymentComponent = compileComponent();
 
-type HostNode = { tag: string; props: Record<string, unknown>; children: HostNode[]; text: string; parent?: HostNode; value?: string; checked?: boolean; addEventListener: (...args: unknown[]) => void; removeEventListener: (...args: unknown[]) => void; getRootNode: () => HostNode; options: HostNode[] };
-function element(tag: string): HostNode { return { tag, props: {}, children: [], text: "", value: "", checked: false, addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((child) => child.tag === "option"); } }; }
+type HostNode = { tag: string; style: {display:string}; props: Record<string, unknown>; children: HostNode[]; text: string; parent?: HostNode; value?: string; checked?: boolean; addEventListener: (...args: unknown[]) => void; removeEventListener: (...args: unknown[]) => void; getRootNode: () => HostNode; options: HostNode[] };
+function element(tag: string): HostNode { return { tag, style: {display:""}, props: {}, children: [], text: "", value: "", checked: false, addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((child) => child.tag === "option"); } }; }
 const renderer = createRenderer<HostNode, HostNode>({
   createElement: element, createText: (text) => ({ ...element("#text"), text }), createComment: (text) => ({ ...element("#comment"), text }),
   setText: (node, text) => { node.text = text; }, setElementText: (node, text) => { node.text = text; node.children = []; },
@@ -271,12 +271,12 @@ describe("CommissionPaymentsManagement", () => {
     server.current = payment({ state: "paid", version: 4, paid_count: "2", paid_points: "10", last_error_code: null });
     mounted = mount(baseAccount, brand, "active", cycleScope); await flush();
     expect(textOf(mounted.container) + operationToastText()).toContain("待确认请求");
-    click(button(mounted.container, "使用原请求重试")); await flush();
+    click(button(mounted.container, "重试")); await flush();
 
     expect(byTestId(mounted.container, "commission-payment-review-key")).toBeNull();
     click(button(byTestId(mounted.container, "commission-payment-review")!, "关闭")); await flush();
-    expect(button(mounted.container, "使用原请求重试")?.props.disabled).toBe(false);
-    click(button(mounted.container, "使用原请求重试")); await flush();
+    expect(findNode(mounted.container, node => node.tag === "button" && textOf(node) === "重试")?.props.disabled).toBe(false);
+    click(button(mounted.container, "重试")); await flush();
     expect(byTestId(mounted.container, "commission-payment-review-key")).toBeNull();
     setModel(byTestId(mounted.container, "commission-payment-review-confirmed"), true); await flush();
     click(byTestId(mounted.container, "commission-payment-confirm-submit")); await flush();
@@ -300,10 +300,10 @@ describe("CommissionPaymentsManagement", () => {
     expect(textOf(mounted.container) + operationToastText()).toContain("暂未确认操作结果");
     mounted.scope.value = { ...mounted.scope.value, account: { ...baseAccount, permissions_by_brand: { [brand]: ["commission.view.brand"] } } };
     await flush();
-    expect(button(mounted.container, "使用原请求重试")?.props.disabled).toBe(true);
+    expect(findNode(mounted.container, node => node.tag === "button" && textOf(node) === "重试")?.props.disabled).toBe(true);
     mounted.scope.value = { ...mounted.scope.value, account: baseAccount };
     await flush();
-    expect(button(mounted.container, "使用原请求重试")?.props.disabled).toBe(false);
+    expect(findNode(mounted.container, node => node.tag === "button" && textOf(node) === "重试")?.props.disabled).toBe(false);
     expect(server.calls.filter((call) => call.url.endsWith(`/commission-payments/${paymentId}/retry`))).toHaveLength(1);
     mounted.app.unmount();
   });

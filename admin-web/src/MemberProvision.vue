@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useOperationToast } from "@lottery/shared";
-import { formValidationText } from '@lottery/shared'
 import AccountCreateFields from "@lottery/shared/AccountCreateFields.vue"
 import MemberDetailsFields from "@lottery/shared/MemberDetailsFields.vue"
 import WriteFormActions from "@lottery/shared/WriteFormActions.vue"
@@ -54,18 +53,18 @@ async function submit() {
   if (
     busy.value ||
     !allowed.value ||
+    !username.value.trim() ||
     passwordCharacters.value < 6 ||
     passwordCharacters.value > 30
   )
     return;
   const body: {
-    username?: string;
+    username: string;
     phone?: string;
     password: string;
     notes?: string;
     reason: string;
-  } = { password: password.value, reason: reason.value.trim() };
-  if (username.value.trim()) body.username = username.value.trim();
+  } = { username: username.value.trim(), password: password.value, reason: reason.value.trim() };
   if (phone.value.trim()) body.phone = phone.value.trim();
   if (notes.value.trim()) body.notes = notes.value.trim();
   busy.value = true;
@@ -106,15 +105,14 @@ useOperationToast(() => saved.value, () => t('admin.copy.bdfd5d02'), 'success');
       <div class="layout">
         <form v-write-guard="busy" novalidate v-inline-validation class="form am-form ui-form" @submit.prevent="withGlobalLoading(submit)">
 
-          <AccountCreateFields v-model:account="username" v-model:password="password" :account-label="t('admin.copy.0db32fa9')" :password-label="t('admin.copy.87c404b9')" :account-required="false" :password-characters="true" />
-          <p class="hint">{{formValidationText('identityRequired')}}</p>
+          <AccountCreateFields v-model:account="username" v-model:password="password" :account-label="t('admin.copy.0db32fa9')" :password-label="t('admin.copy.87c404b9')" :account-required="true" :password-characters="true" />
           <MemberDetailsFields v-model:phone="phone" :phone-label="t('admin.copy.009f2b26')" :phone-maxlength="32" />
-          <label>{{ t('admin.copy.0fafad85') }}<textarea v-model.trim="notes" rows="3" maxlength="1000" /></label>
+          <label>{{ t('admin.copy.fd2d2c8b') }}<textarea v-model.trim="notes" rows="3" maxlength="1000" /></label>
 
           <WriteFormActions
             :submit-label="busy ? t('admin.copy.764449bc') : t('admin.copy.67b6db56')"
             :busy="busy"
-            :invalid="passwordCharacters < 6 || passwordCharacters > 30"
+            :invalid="!username.trim() || passwordCharacters < 6 || passwordCharacters > 30"
           />
         </form>
 

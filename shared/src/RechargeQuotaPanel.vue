@@ -79,8 +79,7 @@ useOperationToast(saved, () => t(savedKind.value==='grant'?'saved':'reclaimed'),
  <component :is="summaryOnly ? 'section' : ManagementList" :busy="busy" :class="summaryOnly ? 'recharge-quota-summary' : 'panel console-panel console-stack recharge-quota'" data-testid="recharge-quota">
   <span v-if="summaryOnly && available!==null" class="muted">{{t('availablePoints')}}{{formatPoints(available,locale)}}</span>
   <template v-if="!summaryOnly" #heading>
-   <h2 v-if="!standalone">{{t('title')}}</h2>
-   <div v-if="available!==null" class="console-facts"><span>{{t('available')}}</span><strong>{{formatPoints(available,locale)}}</strong></div>
+   <div v-if="available!==null" class="console-facts"><span>{{t(standalone?'available':'brandQuota')}}</span><strong>{{formatPoints(available,locale)}}</strong></div>
   </template>
 
   <p v-if="error&&!externalFeedback" class="message error" role="alert">{{readFailed ? i18n.displayError(i18n.errorMessage(error,'read')) : publicApiErrorText(error,locale)}}</p>
@@ -89,13 +88,14 @@ useOperationToast(saved, () => t(savedKind.value==='grant'?'saved':'reclaimed'),
    <button type="button" class="button button-primary" :disabled="busy" @click="($event.currentTarget as HTMLButtonElement).focus();operationOpen=true">{{t('operation')}}</button>
   </template>
   <DetailModal v-if="operationOpen&&canGrant" class="ui-form-dialog" :title="t('operation')" :close-label="t('close')" :close-disabled="busy" @close="operationOpen=false">
-   <div v-if="available!==null" class="console-facts"><span>{{t('available')}}</span><strong>{{formatPoints(available,locale)}}</strong></div>
   <form v-write-guard="busy" novalidate v-inline-validation class="quota-form ui-form" @submit.prevent="withGlobalLoading(changeQuota)">
-   <label>{{t('operation')}}<SelectControl v-model="kind" :label="t('operation')" :disabled="busy||!!pending" :options="[{ value: 'grant', label: (String(t('grant'))).trim() }, { value: 'reclaim', label: (String(t('reclaim'))).trim() }]" /></label>
-   <label>{{t(kind==='grant'?'amount':'reclaimAmount')}}<input v-model.trim="amount" inputmode="decimal" required :disabled="busy||!!pending" pattern="(0|[1-9][0-9]*)([.][0-9]{1,2})?" :data-validation-format="formValidationText('positivePoints')" /></label>
-   <p v-if="amount&&!validAmount&&!pending" class="form-error" role="alert">{{t('invalidAmount')}}</p>
-  <p v-if="exceedsAvailable && !pending" class="form-error" role="alert">{{t('reclaimExceeded')}}</p>
-   <button type="submit" class="button button-primary" :disabled="busy||(!pending&&(!validAmount||exceedsAvailable))">{{t(pending?'retry':kind==='grant'?'grant':'reclaim')}}</button>
+   <div v-if="available!==null" class="ui-form-field"><span class="ui-form-field-label">{{t('available')}}</span><strong class="ui-form-field-value">{{formatPoints(available,locale)}}</strong></div>
+   <label class="ui-field-row"><span>{{t('operation')}}</span><SelectControl v-model="kind" :label="t('operation')" :disabled="busy||!!pending" :options="[{ value: 'grant', label: (String(t('grant'))).trim() }, { value: 'reclaim', label: (String(t('reclaim'))).trim() }]" /></label>
+   <label class="ui-field-row"><span>{{t(kind==='grant'?'amount':'reclaimAmount')}}</span><input v-model.trim="amount" inputmode="decimal" required :disabled="busy||!!pending" pattern="(0|[1-9][0-9]*)([.][0-9]{1,2})?" :data-validation-format="formValidationText('positivePoints')" />
+   <p v-if="amount&&!validAmount&&!pending" class="field-error" role="alert">{{t('invalidAmount')}}</p>
+  <p v-if="exceedsAvailable && !pending" class="field-error" role="alert">{{t('reclaimExceeded')}}</p>
+   </label>
+   <div class="ui-form-actions"><button type="submit" class="button button-primary" :disabled="busy||(!pending&&(!validAmount||exceedsAvailable))">{{t(pending&&!busy?'retry':kind==='grant'?'grant':'reclaim')}}</button></div>
   </form>
   </DetailModal>
 
@@ -108,12 +108,12 @@ useOperationToast(saved, () => t(savedKind.value==='grant'?'saved':'reclaimed'),
 </template>
 <style scoped>
 .recharge-quota-summary {min-width:0;max-width:100%;font-size:var(--body-font-size);line-height:var(--control-height);overflow-wrap:anywhere;}
-.recharge-quota h2 {margin:0;font-size:16px;}
-.recharge-quota .console-facts {display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;}
+.recharge-quota div.console-facts {display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;}
 .recharge-quota strong {font-size:24px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
 .recharge-quota p {margin:0;font-size:var(--body-font-size);color:var(--muted);}
 .quota-form {display:grid;gap:12px;}
-.recharge-quota p.form-error {color:var(--danger-text);}
+.quota-form .field-error {color:var(--danger-text);}
+.quota-form strong {font-size:var(--body-font-size);}
 .quota-form label {display:grid;gap:6px;min-width:0;max-width:100%;font-size:var(--body-font-size);}
 .quota-form input {width:100%;max-width:100%;box-sizing:border-box;}
 .recharge-quota details {min-width:0;}

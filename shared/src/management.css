@@ -505,6 +505,10 @@
 @media(max-width:1080px) { .management-console .management-list > .table-wrap { padding: 0 12px 12px; } }
 @media(max-width:640px) { .management-console .management-list-toolbar { align-items: flex-start; } .management-console .management-list-tabs { flex: 1 1 100%; } }
 
+.management-console .management-list--tab-actions > .management-list-toolbar { align-items: center; }
+.management-console .management-list--tab-actions > .management-list-toolbar > .management-list-tabs { flex: 1 1 auto; }
+.management-console .management-list--tab-actions > .management-list-toolbar > .management-list-filters { order: 1; flex-basis: 100%; }
+
 .management-console .management-list > :is(.reward-detail, .recharge-list) { margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
 
 .management-console .management-list.management-list--embedded { border: 0; border-radius: 0; box-shadow: none; background: transparent; margin: 0; padding: 0; display: block; }
@@ -537,7 +541,7 @@
   #app .management-console :is(.console-stack, .console-grid, .console-facts, .am-form) { row-gap: 8px; }
   #app .management-console :is(.page-heading, .page-head, .withdrawal-heading, .console-page-heading, .am-head, .nt-heading, .nd-heading) { row-gap: 4px; margin-bottom: 8px; }
   #app .management-console .console-stack > .console-page-heading { margin-bottom: 0; }
-  #app .management-console :is(.console-panel, .brand-settings-panel, .console-facts--cards > div, .am-card, .jc-card) { padding-block: 8px; row-gap: 8px; }
+  #app .management-console :is(.console-panel:not(.management-list), .brand-settings-panel, .console-facts--cards > div, .am-card, .jc-card) { padding-block: 8px; row-gap: 8px; }
   #app .management-console :is(.console-tabs, .console-disclosure, .console-create-panel, .directory-toolbar) { margin-bottom: 8px; }
   #app .management-console :is(.console-disclosure > summary, .am-node, .jc-row, .access-page .record) { padding-block: 4px; }
   #app .management-console .management-list > .management-list-toolbar { padding-block: 8px; row-gap: 4px; }
@@ -581,7 +585,7 @@
 /* Agent profile and transfer dialog reuse the console layout. */
 .agent-profile{max-width:680px;min-width:0}.agent-profile>.button{justify-self:start}.agent-profile .console-facts{grid-template-columns:minmax(0,1fr)}
 
-.agent-transfer .console-facts{grid-template-columns:minmax(0,1fr)}
+.ui-facts-dialog .console-facts{grid-template-columns:minmax(0,1fr)}
 .agent-transfer fieldset{border:0;padding:0;margin:0;display:grid;gap:8px;min-width:0}
 .management-console .mobile-nav>button{border:0;background:transparent;font:inherit}
 

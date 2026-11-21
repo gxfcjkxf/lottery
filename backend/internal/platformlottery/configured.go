@@ -32,9 +32,10 @@ type ConfiguredVersion struct {
 	Validation json.RawMessage  `json:"validation"`
 }
 type ConfiguredRulesInput struct {
-	ID       string          `json:"id"`
-	Revision int64           `json:"revision"`
-	Snapshot json.RawMessage `json:"snapshot"`
+	ID           string                       `json:"id"`
+	Revision     int64                        `json:"revision"`
+	Snapshot     json.RawMessage              `json:"snapshot"`
+	Availability *ConfiguredAvailabilityScope `json:"availability,omitempty"`
 }
 
 type ConfiguredSales struct {
@@ -46,6 +47,11 @@ type ConfiguredSales struct {
 	MaxPoints           points.Amount          `json:"max_points"`
 	MaxPeriodPoints     points.Amount          `json:"max_period_points"`
 	MaxUserPeriodPoints points.Amount          `json:"max_user_period_points"`
+}
+
+type ConfiguredSalesInput struct {
+	ConfiguredSales
+	Availability *ConfiguredAvailabilityScope `json:"availability,omitempty"`
 }
 
 const configuredVersionFields = `id::text,game_id::text,revision,snapshot,snapshot_hash,cases,status,validation`
@@ -120,6 +126,11 @@ func (s Service) SaveConfiguredRules(ctx context.Context, tx pgx.Tx, a access.Ac
 	saved, err := scanConfiguredVersion(tx.QueryRow(ctx, `SELECT `+configuredVersionFields+` FROM configured_rule_versions WHERE id=$1`, id))
 	if err == nil {
 		err = record(ctx, tx, a, "", "configured_rule.save", id, "", meta, before, saved)
+	}
+	if err == nil && in.Availability != nil {
+		_, err = s.WriteConfiguredAvailability(ctx, tx, a, "", game, ConfiguredAvailabilityInput{
+			RuleID: saved.ID, Version: in.Availability.Version, Items: in.Availability.Items,
+		}, meta)
 	}
 	return saved, err
 }

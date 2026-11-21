@@ -334,10 +334,11 @@ func TestConfiguredLatestImportedDrawUsesSavedRuleAttributes(t *testing.T) {
 	draw := rules.Draw{Regular: []int{1, 2, 3, 4, 5, 6}, Special: []int{7}}
 	c := configuredFixtureFrom(t, engine.Snapshot(), []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{request}, Draw: draw, Bet: 1000}})
 	ctx := context.Background()
+	drawAt := time.Now().Add(-24 * time.Hour).Truncate(time.Minute).Add(37 * time.Second)
 	// The draw predates setup; the actual import/publication happens after saving
 	// rules. No removed rule-approval audit event is created.
 	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
-		p, err := c.s.CreatePeriod(ctx, tx, c.a, c.g.ID, platformlottery.PeriodInput{PeriodNo: "2026300", BetStartAt: time.Now().Add(-48 * time.Hour), BetEndAt: time.Now().Add(-25 * time.Hour), DrawAt: time.Now().Add(-24 * time.Hour)}, points.Metadata{})
+		p, err := c.s.CreatePeriod(ctx, tx, c.a, c.g.ID, platformlottery.PeriodInput{PeriodNo: "2026300", BetStartAt: time.Now().Add(-48 * time.Hour), BetEndAt: time.Now().Add(-25 * time.Hour), DrawAt: drawAt}, points.Metadata{})
 		if err != nil {
 			return err
 		}
@@ -347,6 +348,9 @@ func TestConfiguredLatestImportedDrawUsesSavedRuleAttributes(t *testing.T) {
 	latest, err := c.f.service.LatestConfiguredDraw(ctx, c.f.brand, c.g.ID)
 	if err != nil || latest == nil {
 		t.Fatal(latest, err)
+	}
+	if latest.DrawAt == nil || !latest.DrawAt.Equal(drawAt) || latest.DrawnAt == nil || latest.DrawAt.Equal(*latest.DrawnAt) {
+		t.Fatalf("draw time must retain seconds and differ from publication: %#v", latest)
 	}
 	for _, number := range []string{"01", "07"} {
 		a := latest.Attributes[number]
@@ -382,8 +386,141 @@ func TestConfiguredLatestImportedDrawUsesSavedRuleAttributes(t *testing.T) {
 		_, err := c.s.SaveConfiguredRules(ctx, tx, c.a, c.g.ID, platformlottery.ConfiguredRulesInput{ID: c.v.ID, Revision: c.v.Revision, Snapshot: nextRaw}, points.Metadata{})
 		return err
 	})
-	archive, err := c.f.service.DrawArchive(ctx, c.f.brand, c.g.ID, "configured", time.Now().Format("2006"), 50, 0)
+	archive, err := c.f.service.DrawArchive(ctx, c.f.brand, c.g.ID, "configured", time.Now().Format("2006"), 50, 0, 0)
 	if err != nil || len(archive.Items) != 1 || archive.Items[0].Attributes["01"] != latest.Attributes["01"] {
 		t.Fatal("latest and archive disagree", archive, err)
+	}
+}
+
+func TestCanada28DailyDrawHistoryAcrossSurfaces(t *testing.T) {
+	engine, request := templateEngine(t, "canada_28", "sum_14")
+	c := configuredFixtureFrom(t, engine.Snapshot(), []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{request}, Draw: rules.Draw{Digits: []int{5, 4, 5}}, Bet: 1000, Prize: 2500}})
+	ctx := context.Background()
+	if _, err := c.f.db.Exec(ctx, `UPDATE platform_settings SET timezone='Asia/Singapore' WHERE id=true`); err != nil {
+		t.Fatal(err)
+	}
+	zone, _ := time.LoadLocation("Asia/Singapore")
+	now := time.Now().In(zone)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, zone)
+	for i, at := range []time.Time{today.Add(-23 * time.Second), today, today.Add(time.Second)} {
+		if _, err := c.f.db.Exec(ctx, `INSERT INTO platform_game_periods(id,game_id,period_no,bet_start_at,bet_end_at,draw_at,result,published_at,published_by) VALUES($1,$2,$3,$4,$5,$6,'{"regular":[],"special":[],"digits":[5,4,5]}',clock_timestamp(),$7)`, ids.New(), c.g.ID, fmt.Sprint(800000+i), at.Add(-time.Hour), at.Add(-time.Minute), at, c.a.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, choice := range []struct {
+		date  string
+		count string
+	}{{today.Format("2006-01-02"), "2"}, {today.AddDate(0, 0, -1).Format("2006-01-02"), "1"}, {today.AddDate(0, 0, -2).Format("2006-01-02"), "0"}} {
+		user, err := c.f.service.DrawArchive(ctx, c.f.brand, c.g.ID, "configured", choice.date, 1, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		management, err := c.s.DrawOverview(ctx, c.g.ID, "", choice.date, 1, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !user.Daily || !management.Daily || user.Selected != management.Date || user.Today != management.Today || user.Yesterday != management.Yesterday || user.TotalCount != choice.count || management.TotalCount != choice.count || user.HasMore != management.HasMore {
+			t.Fatalf("date selection differs: user=%+v management=%+v", user, management)
+		}
+		if len(user.Items) > 0 && (user.Items[0].PeriodNo != management.Items[0].PeriodNo || !user.Items[0].DrawAt.Equal(*management.Items[0].DrawAt)) {
+			t.Fatal("results differ")
+		}
+	}
+	for _, date := range []string{"2026", "2026-02-30", today.AddDate(0, 0, 1).Format("2006-01-02")} {
+		if _, err := c.f.service.DrawArchive(ctx, c.f.brand, c.g.ID, "configured", date, 50, 0, 0); err != ErrInvalid {
+			t.Fatalf("user invalid date %s: %v", date, err)
+		}
+		if _, err := c.s.DrawOverview(ctx, c.g.ID, "", date, 50, 0, 0); err != platformlottery.ErrInvalid {
+			t.Fatalf("management invalid date %s: %v", date, err)
+		}
+	}
+	if _, err := c.s.DrawOverview(ctx, c.g.ID, "2026", "", 50, 0, 0); err != platformlottery.ErrInvalid {
+		t.Fatal("Canada28 must reject annual selection", err)
+	}
+	page, err := c.f.service.DrawArchive(ctx, c.f.brand, c.g.ID, "configured", today.Format("2006-01-02"), 1, 1, 0)
+	if err != nil || len(page.Items) != 1 || page.Items[0].PeriodNo != "800001" || page.HasMore {
+		t.Fatalf("daily pagination %+v %v", page, err)
+	}
+}
+
+func TestCanada28RecentDrawHistoryAcrossDays(t *testing.T) {
+	engine, request := templateEngine(t, "canada_28", "sum_14")
+	c := configuredFixtureFrom(t, engine.Snapshot(), []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{request}, Draw: rules.Draw{Digits: []int{5, 4, 5}}, Bet: 1000, Prize: 2500}})
+	ctx := context.Background()
+	zone, _ := time.LoadLocation("Asia/Singapore")
+	now := time.Now().In(zone)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, zone)
+	if _, err := c.f.db.Exec(ctx, `UPDATE platform_settings SET timezone='Asia/Singapore' WHERE id=true`); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 105; i++ {
+		at := today.Add(time.Duration(i-104) * 210 * time.Second)
+		if _, err := c.f.db.Exec(ctx, `INSERT INTO platform_game_periods(id,game_id,period_no,bet_start_at,bet_end_at,draw_at,result,published_at,published_by) VALUES($1,$2,$3,$4,$5,$6,'{"regular":[],"special":[],"digits":[5,4,5]}',clock_timestamp(),$7)`, ids.New(), c.g.ID, fmt.Sprint(900000+i), at.Add(-time.Hour), at.Add(-time.Minute), at, c.a.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at := today.Add(-210 * time.Second)
+	if _, err := c.f.db.Exec(ctx, `INSERT INTO platform_draw_history(game_id,period_no,draw_year,draw_date,result,source) VALUES($1,'900103',$2,$3,'{"regular":[],"special":[],"digits":[4,4,4]}','hkjc')`, c.g.ID, at.Year(), at.Format("2006-01-02")); err != nil {
+		t.Fatal(err)
+	}
+	defaultUser, err := c.f.service.DrawArchive(ctx, c.f.brand, c.g.ID, "configured", "", 50, 0, 0)
+	if err != nil || defaultUser.Recent != 50 || len(defaultUser.Items) != 50 || defaultUser.Selected != "" {
+		t.Fatalf("user default must be latest 50: %+v %v", defaultUser, err)
+	}
+	defaultManagement, err := c.s.DrawOverview(ctx, c.g.ID, "", "", 50, 0, 0)
+	if err != nil || defaultManagement.Recent != 50 || len(defaultManagement.Items) != 50 || defaultManagement.Date != "" {
+		t.Fatalf("management default must be latest 50: %+v %v", defaultManagement, err)
+	}
+
+	for _, recent := range []int{50, 100} {
+		for _, offset := range []int{0, 50, 100} {
+			user, err := c.f.service.DrawArchive(ctx, c.f.brand, c.g.ID, "configured", "", 50, offset, recent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			management, err := c.s.DrawOverview(ctx, c.g.ID, "", "", 50, offset, recent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected := recent - offset
+			if expected > 50 {
+				expected = 50
+			}
+			if expected < 0 {
+				expected = 0
+			}
+			if user.TotalCount != fmt.Sprint(recent) || management.TotalCount != user.TotalCount || user.Recent != recent || management.Recent != recent || len(user.Items) != expected || len(management.Items) != expected || user.HasMore != (offset+50 < recent) || management.HasMore != user.HasMore {
+				t.Fatalf("recent=%d offset=%d user=%+v management=%+v", recent, offset, user, management)
+			}
+			for i, item := range user.Items {
+				if item.PeriodNo != fmt.Sprint(900104-offset-i) || item.PeriodNo != management.Items[i].PeriodNo {
+					t.Fatal("recent ordering or range", item, management.Items[i])
+				}
+			}
+			if offset == 0 && user.Items[1].Result.Digits[0] != 4 {
+				t.Fatal("duplicate imported evidence was not preferred")
+			}
+		}
+	}
+	if _, err := c.f.service.DrawArchive(ctx, c.f.brand, c.g.ID, "configured", today.Format("2006-01-02"), 50, 0, 50); err != ErrInvalid {
+		t.Fatal("mixed date/recent accepted", err)
+	}
+	if _, err := c.s.DrawOverview(ctx, c.g.ID, "", today.Format("2006-01-02"), 50, 0, 50); err != platformlottery.ErrInvalid {
+		t.Fatal("mixed management date/recent accepted", err)
+	}
+	for _, recent := range []int{-1, 25, 200} {
+		if _, err := c.f.service.DrawArchive(ctx, c.f.brand, c.g.ID, "configured", "", 50, 0, recent); err != ErrInvalid {
+			t.Fatal("invalid recent accepted", recent, err)
+		}
+		if _, err := c.s.DrawOverview(ctx, c.g.ID, "", "", 50, 0, recent); err != platformlottery.ErrInvalid {
+			t.Fatal("invalid management recent accepted", recent, err)
+		}
+	}
+	if _, err := c.f.db.Exec(ctx, `INSERT INTO platform_game_periods(id,game_id,period_no,bet_start_at,bet_end_at,draw_at,result,published_at,published_by) VALUES($1,$2,'900105',$3,$4,$5,'{"regular":[],"special":[],"digits":[1,2,3]}',clock_timestamp(),$6)`, ids.New(), c.g.ID, now.Add(-time.Hour), now.Add(-time.Minute), now.Add(-time.Second), c.a.ID); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := c.f.service.DrawArchive(ctx, c.f.brand, c.g.ID, "configured", "", 100, 0, 50)
+	if err != nil || len(updated.Items) != 50 || updated.Items[0].PeriodNo != "900105" || updated.Items[49].PeriodNo != "900056" {
+		t.Fatalf("recent window did not advance %+v %v", updated, err)
 	}
 }

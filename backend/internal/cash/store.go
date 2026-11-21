@@ -122,10 +122,12 @@ func SaveConfig(ctx context.Context, tx pgx.Tx, scope string, in Config, meta po
 			if e = within(r.WithdrawalMax, pr.WithdrawalMin, pr.WithdrawalMax, r.Currency); e != nil {
 				return in, e
 			}
-			fee, _ := Parse(r.Fee, r.Currency)
-			maximum, _ := Parse(pr.Fee, r.Currency)
-			if fee > maximum {
-				return in, ErrLimit
+			for _, amount := range []string{r.WithdrawalMin, r.WithdrawalMax} {
+				fee, _ := WithdrawalFee(r.Fee, amount, r.Currency)
+				maximum, _ := WithdrawalFee(pr.Fee, amount, r.Currency)
+				if fee > maximum {
+					return in, ErrLimit
+				}
 			}
 		}
 	}
@@ -375,11 +377,17 @@ func scan(row pgx.Row) (Order, error) {
 func ReadOrder(ctx context.Context, tx pgx.Tx, brand, member, id string) (Order, error) {
 	return scan(tx.QueryRow(ctx, `SELECT `+columns+` FROM cash_orders WHERE brand_id=$1 AND id=$2 AND ($3='' OR member_id=nullif($3,'')::uuid) FOR UPDATE`, brand, id, member))
 }
-func List(ctx context.Context, tx pgx.Tx, brand, member, kind string, limit, offset int) (map[string]any, error) {
+func List(ctx context.Context, tx pgx.Tx, brand, member, kind string, limit, offset int, state string) (map[string]any, error) {
 	if limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
 		return nil, ErrInvalid
 	}
-	rows, e := tx.Query(ctx, `SELECT `+columns+` FROM cash_orders WHERE brand_id=$1 AND ($2='' OR member_id=nullif($2,'')::uuid) AND ($3='' OR kind=$3) ORDER BY cash_orders.created_at DESC,cash_orders.id DESC LIMIT $4 OFFSET $5`, brand, member, kind, limit, offset)
+	if state != "" {
+		valid := kind == "deposit" && (state == "pending" || state == "submitted" || state == "confirmed" || state == "cancelled" || state == "expired") || (kind == "to_points" || kind == "from_points") && state == "completed"
+		if !valid {
+			return nil, ErrInvalid
+		}
+	}
+	rows, e := tx.Query(ctx, `SELECT `+columns+` FROM cash_orders WHERE brand_id=$1 AND ($2='' OR member_id=nullif($2,'')::uuid) AND ($3='' OR kind=$3) AND ($6='' OR state=$6) ORDER BY cash_orders.created_at DESC,cash_orders.id DESC LIMIT $4 OFFSET $5`, brand, member, kind, limit, offset, state)
 	if e != nil {
 		return nil, e
 	}
@@ -398,7 +406,7 @@ func List(ctx context.Context, tx pgx.Tx, brand, member, kind string, limit, off
 		return nil, e
 	}
 	var count string
-	e = tx.QueryRow(ctx, `SELECT count(*)::text FROM cash_orders WHERE brand_id=$1 AND ($2='' OR member_id=nullif($2,'')::uuid) AND ($3='' OR kind=$3)`, brand, member, kind).Scan(&count)
+	e = tx.QueryRow(ctx, `SELECT count(*)::text FROM cash_orders WHERE brand_id=$1 AND ($2='' OR member_id=nullif($2,'')::uuid) AND ($3='' OR kind=$3) AND ($4='' OR state=$4)`, brand, member, kind, state).Scan(&count)
 	return map[string]any{"items": out, "total_count": count}, e
 }
 func insert(ctx context.Context, tx pgx.Tx, o Order, expires bool) error {

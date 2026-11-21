@@ -18,7 +18,7 @@ func agentCashContext(d Dependencies, v identity.AgentSession) string {
 	return d.Mutations.Fingerprint("agent-cash-v1:" + v.BrandID + ":" + v.AccountID)
 }
 func agentCashRead(r *http.Request, d Dependencies, tx pgx.Tx, v identity.AgentSession, path string) (any, error) {
-	if !cashReadParameters(r, path == "cash/orders") {
+	if !cashReadParameters(r, path == "cash/orders", false) {
 		return nil, cash.ErrInvalid
 	}
 	if path == "cash/orders" {
@@ -26,7 +26,7 @@ func agentCashRead(r *http.Request, d Dependencies, tx pgx.Tx, v identity.AgentS
 			return nil, cash.ErrInvalid
 		}
 		limit, offset, _ := pageParams(r)
-		return cash.List(r.Context(), tx, v.BrandID, v.AccountID, r.URL.Query().Get("kind"), limit, offset)
+		return cash.List(r.Context(), tx, v.BrandID, v.AccountID, r.URL.Query().Get("kind"), limit, offset, "")
 	}
 	balances, e := cash.Balances(r.Context(), tx, v.BrandID, v.AccountID)
 	if e != nil {

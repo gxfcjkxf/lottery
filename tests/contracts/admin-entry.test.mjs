@@ -34,6 +34,12 @@ test('platform admin entry documents only registered independent routes and its 
     expectedPlatformRoutes.push({ method, path: `/api/v1/platform${path}` });
   }
   for (const path of ['/data-retention-policy','/data-retention-tasks']) expectedPlatformRoutes.push({method:'GET',path:`/api/v1/platform${path}`});
+  for (const path of ['/reports/bet-frequency', '/reports/bet-frequency/games']) {
+    expectedPlatformRoutes.push({ method: 'GET', path: `/api/v1/platform${path}` });
+    const report = doc.paths[`/api/v1/platform${path}`].get;
+    assert.deepEqual(report['x-permissions'], ['report_betting.view.platform']);
+    assert.ok(!report.parameters.some(parameter => parameter.name === 'X-Brand-ID'));
+  }
   const platformExtraWrites = [
     'PUT /api/v1/platform/commission-settings',
     'POST /api/v1/platform/brand-domains',
@@ -62,6 +68,7 @@ test('platform admin entry documents only registered independent routes and its 
     'POST /api/v1/platform/platform-games',
     'POST /api/v1/platform/platform-games/rule-preview',
     'POST /api/v1/platform/platform-games/{id}/configured/rules',
+    'POST /api/v1/platform/platform-games/{id}/configured/availability',
     'POST /api/v1/platform/platform-games/periods/{id}/result',
     'POST /api/v1/platform/platform-games/{id}/results',
     'POST /api/v1/platform/platform-games/{id}/draw-source-preview',

@@ -4,7 +4,6 @@ import { createCatalogI18n, type TranslationCatalog, translateMessage } from './
 
 export const formValidationCatalog = {
   en: {
-    identityRequired: 'Enter at least an account or a phone number.',
     countryFormat: 'Enter two-letter country codes separated by commas, for example SG, MY.',
     accountFormat: 'Account must be 3–32 characters, start with a lowercase letter, and contain only lowercase letters, digits or underscores.',
     codeFormat: 'Code must be {min}–{max} characters, start with a lowercase letter, and contain only lowercase letters, digits or underscores.',
@@ -34,7 +33,6 @@ export const formValidationCatalog = {
     invalid: 'Check {field} and try again.',
   },
   'zh-CN': {
-    identityRequired: '账号或手机号至少填写一项。',
     countryFormat: '请输入两位英文字母的国家代码，以英文逗号分隔，例如 SG, MY。',
     accountFormat: '账号须为 3–32 位，以小写英文字母开头，仅可包含小写英文字母、数字或下划线。',
     codeFormat: '代码须为 {min}–{max} 位，以小写英文字母开头，仅可包含小写英文字母、数字或下划线。',

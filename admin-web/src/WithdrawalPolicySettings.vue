@@ -4,8 +4,6 @@ import { isPoints, pointsMinor } from '@lottery/shared'
 import SelectControl from '@lottery/shared/SelectControl.vue'
 import { vRefreshButton } from "@lottery/shared";
 import { dismissOperationToast, useOperationToast } from "@lottery/shared";
-import DetailModal from '@lottery/shared/DetailModal.vue';
-import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
 import { vWriteGuard } from "@lottery/shared";
 import { useAdminI18n as useAssociationI18n } from "./i18n";
 const associationLocale = useAssociationI18n().locale;
@@ -43,7 +41,6 @@ import {
   findPendingPolicyWrite,
   freezePolicyBody,
   getPendingPolicyWrite,
-  policyBodyFingerprint,
   clearPendingPolicyWrite,
   setPendingPolicyWrite,
 } from "./withdrawal-policy-state";
@@ -58,7 +55,6 @@ type FrozenMutation = {
   gameId: string;
   body: Readonly<BrandBody | GameBody>;
   key: string;
-  fingerprint: string;
 };
 type BrandDraft = Omit<BrandWithdrawalConfig, "max_points"> & {
   points_step: string;
@@ -82,7 +78,7 @@ const DEFAULT_BRAND_WITHDRAWAL_CONFIG: BrandWithdrawalConfig = {
 };
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
-const emit = defineEmits<{ (event: "session-invalid"): void }>();
+const emit = defineEmits<{ (event: "session-invalid"): void; (event: "saved"): void }>();
 const api = createWithdrawalPolicyApi();
 const { t, message } = useAdminI18n();
 const rights = computed(() =>
@@ -102,22 +98,6 @@ const saving = ref<Lane | "">("");
 const reconciling = ref(false);
 const error = ref<string | LocalizedMessage>("");
 const notice = ref<string | LocalizedMessage>("");
-const confirmation = ref<FrozenMutation | null>(null);
-const confirmationDetails = computed(() => {
-  const current = confirmation.value;
-  if (!current) return null;
-  if (current.lane === 'game') return current.body.config;
-  const body = current.body as BrandBody;
-  return {
-    enabled: body.config.enabled,
-    min_points: body.config.min_points,
-    max_points: body.config.max_points,
-    points_step: body.points_step,
-    allowed_sources: body.config.allowed_sources,
-    review_mode: body.config.review_mode,
-    turnover_multiple: body.config.turnover_multiple,
-  };
-});
 const uncertain = ref<FrozenMutation | null>(null);
 let generation = 0;
 let brandRead = 0;
@@ -206,7 +186,6 @@ function clearVisibleData() {
   gameId.value = "";
   brandDraft.value = emptyBrandDraft();
   gameDraft.value = emptyGameDraft();
-  confirmation.value = null;
   uncertain.value = null;
   loadingBrand.value = false;
   loadingGame.value = false;
@@ -273,7 +252,6 @@ const brandCanSave = computed(
     reasonValid(brandDraft.value.reason) &&
     !saving.value &&
     !uncertain.value &&
-    !confirmation.value &&
     !reconciling.value &&
     !loadingBrand.value,
 );
@@ -285,7 +263,6 @@ const gameCanSave = computed(
     reasonValid(gameDraft.value.reason) &&
     !saving.value &&
     !uncertain.value &&
-    !confirmation.value &&
     !reconciling.value &&
     !loadingGame.value,
 );
@@ -427,7 +404,6 @@ async function loadGames() {
   }
 }
 async function changeSelectedGame(id: string) {
-  confirmation.value = null;
   gameRead++;
   gamePolicy.value = null;
   gameDraft.value = emptyGameDraft();
@@ -442,7 +418,7 @@ async function changeSelectedGame(id: string) {
   }
 }
 
-function requestBrandConfirmation() {
+async function saveBrandPolicy() {
   if (!brandCanSave.value || !brandPolicy.value) return;
   const body = freezePolicyBody({
     version: brandPolicy.value.version,
@@ -450,9 +426,9 @@ function requestBrandConfirmation() {
     config: buildBrandConfig(),
     reason: brandDraft.value.reason.trim(),
   }) as Readonly<BrandBody>;
-  createConfirmation("brand", "", body);
+  await submitPolicy("brand", "", body);
 }
-function requestGameConfirmation() {
+async function saveGamePolicy() {
   if (!gameCanSave.value || !gamePolicy.value) return;
   const body = freezePolicyBody({
     version: gamePolicy.value.version,
@@ -464,44 +440,11 @@ function requestGameConfirmation() {
     },
     reason: gameDraft.value.reason.trim(),
   }) as Readonly<GameBody>;
-  createConfirmation("game", gameId.value, body);
+  await submitPolicy("game", gameId.value, body);
 }
-function createConfirmation(
-  lane: Lane,
-  selectedGame: string,
-  body: Readonly<BrandBody | GameBody>,
-) {
-  const fingerprint = policyBodyFingerprint(body);
+async function submitPolicy(lane: Lane, selectedGame: string, body: Readonly<BrandBody | GameBody>) {
   dismissOperationToast();
-  confirmation.value = {
-    actorId: props.account.id,
-    lane,
-    brandId: props.brandId,
-    gameId: selectedGame,
-    body,
-    key: createIdempotencyKey(),
-    fingerprint,
-  };
-}
-function cancelConfirmation() {
-  confirmation.value = null;
-}
-async function confirmAndSubmit() {
-  const mutation = confirmation.value;
-  if (
-    !mutation ||
-    saving.value ||
-    mutation.actorId !== props.account.id ||
-    mutation.brandId !== props.brandId
-  )
-    return;
-  if (policyBodyFingerprint(mutation.body) !== mutation.fingerprint) {
-    confirmation.value = null;
-    error.value = message('admin.copy.a858f2bf');
-    return;
-  }
-  confirmation.value = null;
-  await submitMutation(mutation);
+  await submitMutation({ actorId: props.account.id, lane, brandId: props.brandId, gameId: selectedGame, body, key: createIdempotencyKey() });
 }
 async function retryUncertain() {
   const mutation = uncertain.value;
@@ -563,7 +506,9 @@ async function submitMutation(mutation: FrozenMutation) {
       applyGameDraft(item as GameWithdrawalPolicy);
       await loadGame(mutation.gameId);
     }
+    if (!current(ticket, mutation.brandId, mutation.actorId) || error.value) return;
     notice.value = message('admin.copy.a0a25fb6');
+    emit('saved');
   } catch (cause) {
     const status = cause instanceof AdminApiError ? cause.status : 0;
     const outcome = classifyPolicyWriteFailure(status);
@@ -721,7 +666,7 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
 
     <template v-if="rights.view">
 
-      <div v-if="pendingInContext" class="message warning" role="alert">
+      <div v-if="pendingInContext" v-show="!saving" class="message warning" role="alert">
         <span
           >{{ t('admin.copy.cca19357') }}</span
         >
@@ -786,7 +731,7 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
               <dd>{{ brandPolicy.config.turnover_multiple }}</dd>
             </div>
           </dl>
-          <form v-if="canWrite" novalidate v-inline-validation class="editor-grid ui-form" @submit.prevent="withGlobalLoading(requestBrandConfirmation)">
+          <form v-if="canWrite" v-write-guard="Boolean(saving)" novalidate v-inline-validation class="editor-grid ui-form" @submit.prevent="withGlobalLoading(saveBrandPolicy)">
             <label class="withdrawal-toggle wide" for="withdraw-brand-enabled"
               >{{ t('admin.copy.b79e77f2') }}<input
                 id="withdraw-brand-enabled"
@@ -795,11 +740,10 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
                 :disabled="
                   !canWrite ||
                   !!pendingInContext ||
-                  !!confirmation ||
                   reconciling
                 "
             /></label>
-            <label for="withdraw-brand-step">{{ t('admin.withdrawal.pointsStep') }}<input id="withdraw-brand-step" :aria-label="t('admin.withdrawal.pointsStep')" aria-describedby="withdraw-brand-step-hint" v-model.trim="brandDraft.points_step" inputmode="decimal" autocomplete="off" :disabled="!canWrite || !!pendingInContext || !!confirmation || reconciling" /><small id="withdraw-brand-step-hint">{{ t('admin.withdrawal.pointsStepHint') }}</small></label>
+            <label for="withdraw-brand-step">{{ t('admin.withdrawal.pointsStep') }}<input id="withdraw-brand-step" :aria-label="t('admin.withdrawal.pointsStep')" aria-describedby="withdraw-brand-step-hint" v-model.trim="brandDraft.points_step" inputmode="decimal" autocomplete="off" :disabled="!canWrite || !!pendingInContext ||  reconciling" /><small id="withdraw-brand-step-hint">{{ t('admin.withdrawal.pointsStepHint') }}</small></label>
             <label for="withdraw-brand-min"
               >{{ t('admin.copy.f3a168b4') }}<input
                 id="withdraw-brand-min"
@@ -809,7 +753,6 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
                 :disabled="
                   !canWrite ||
                   !!pendingInContext ||
-                  !!confirmation ||
                   reconciling
                 "
             /></label>
@@ -823,7 +766,6 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
                 :disabled="
                   !canWrite ||
                   !!pendingInContext ||
-                  !!confirmation ||
                   reconciling
                 "
             /></label>
@@ -838,7 +780,7 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
                   :disabled="
                     !canWrite ||
                     !!pendingInContext ||
-                    !!confirmation ||
+
                     reconciling
                   "
                 />{{ t('admin.copy.6ffe1179') }}</label
@@ -852,7 +794,7 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
                   :disabled="
                     !canWrite ||
                     !!pendingInContext ||
-                    !!confirmation ||
+
                     reconciling
                   "
                 />{{ t('admin.copy.99c31497') }}</label
@@ -866,7 +808,7 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
                   :disabled="
                     !canWrite ||
                     !!pendingInContext ||
-                    !!confirmation ||
+
                     reconciling
                   "
                 />{{ t('admin.copy.2b8ae17c') }}</label
@@ -877,7 +819,7 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
                   v-model="brandDraft.allowed_sources"
                   type="checkbox"
                   value="commission"
-                  :disabled="!canWrite || !!pendingInContext || !!confirmation || reconciling"
+                  :disabled="!canWrite || !!pendingInContext ||  reconciling"
                 />{{ t('admin.copy.101e2e66') }}</label
               >
             </fieldset>
@@ -885,7 +827,6 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
               >{{ t('admin.copy.0af1bc63') }}<SelectControl id="withdraw-brand-review" v-model="brandDraft.review_mode" :disabled="
                   !canWrite ||
                   !!pendingInContext ||
-                  !!confirmation ||
                   reconciling
                 " :label="String(t('admin.copy.0af1bc63'))" :options="[{ value: 'manual', label: (String(t('admin.copy.f1e1066f'))).trim() }, { value: 'automatic', label: (String(t('admin.copy.19cf2be7'))).trim() }]" /></label
             >
@@ -899,7 +840,6 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
                 :disabled="
                   !canWrite ||
                   !!pendingInContext ||
-                  !!confirmation ||
                   reconciling
                 "
             /></label>
@@ -933,7 +873,7 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
         <div class="game-picker">
           <label v-if="rights.view" for="withdraw-game-select"
             >{{ t('admin.copy.68ccd146') }}<SelectControl id="withdraw-game-select" :label="t('admin.copy.260664bf')" :model-value="gameId" :disabled="
-                loadingGames || !!saving || !!pendingInContext || !!confirmation
+                loadingGames || !!saving || !!pendingInContext
               " @change="withGlobalLoading(changeSelectedGame, $event)" :options="[{ value: '', label: (String(t('admin.copy.3aba80cd'))).trim() }, ...((gamePolicy &&
         gameId &&
         !games.some((game) => game.id === gameId)) ? [{ value: gameId, label: (String(t('admin.copy.c8c2e3f4'))).trim() }] : []), ...((games).map((game) => ({ value: game.id, label: (String(game.name)).trim() })))]" /></label
@@ -986,7 +926,7 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
             </div>
 
           </dl>
-          <form v-if="canWrite" novalidate v-inline-validation class="editor-grid ui-form" @submit.prevent="withGlobalLoading(requestGameConfirmation)">
+          <form v-if="canWrite" v-write-guard="Boolean(saving)" novalidate v-inline-validation class="editor-grid ui-form" @submit.prevent="withGlobalLoading(saveGamePolicy)">
             <label class="wide" for="withdraw-game-multiple"
               >{{ t('admin.copy.72ddec59') }}<input
                 id="withdraw-game-multiple"
@@ -997,7 +937,6 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
                 :disabled="
                   !canWrite ||
                   !!pendingInContext ||
-                  !!confirmation ||
                   reconciling
                 "
             /></label>
@@ -1017,26 +956,7 @@ useOperationToast(() => error.value, value => displayMessage(value), 'error');
 
     </template>
 
-    <DetailModal v-if="confirmation" class="brand-settings-dialog" :title="t('admin.copy.bfe5b2ed')" :close-label="t('admin.copy.1377553a')" :close-disabled="!!saving" @close="cancelConfirmation">
-      <p>
-        {{ t('admin.copy.1cf64566') }}
-        <AssociationName v-if="confirmation.lane === 'brand'" :record="brandPolicy" kind="brand" :id="confirmation.brandId" :locale="associationLocale" />
-        <AssociationName v-else :record="gamePolicy" kind="game" :id="confirmation.gameId" :locale="associationLocale" />
-      </p>
-      <p v-if="confirmation.body.reason">{{ t('admin.copy.2809a1e6') }}{{ confirmation.body.reason }}</p>
-      <BusinessDetails :value="confirmationDetails" :locale="associationLocale" />
-      <template #footer>
-        <button
-          v-write-guard="Boolean(saving)"
-          class="button button-primary"
-          type="button"
-          :disabled="!!saving"
-          @click="withGlobalLoading(confirmAndSubmit)"
-        >
-          {{ saving ? t('admin.copy.46511dc0') : t('admin.finance.savePolicy') }}
-        </button>
-      </template>
-    </DetailModal>
+
   </section>
 </template>
 

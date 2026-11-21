@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RechargeStateSelect from "@lottery/shared/RechargeStateSelect.vue"
 import CashMemberBalances from "../../shared/src/CashMemberBalances.vue"
 import { pointsMinor } from '@lottery/shared'
 
@@ -260,6 +261,8 @@ function clearData() {
   walletError.value = "";
   rechargeError.value = "";
 }
+const rechargeState = ref("");
+async function filterRechargeState() { rechargeOffset.value = 0; if (loadedMemberId.value) await reloadData(); else await loadRechargeQueue(); }
 const rechargeMemberDraft = ref("");
 const rechargeMemberName = ref("");
 const rechargeSearchPending = ref(false);
@@ -368,7 +371,7 @@ async function reloadData() {
   if (props.view === 'recharges' && viewRecharges.value) {
     jobs.push(
       api
-        .recharges(requestBrandId, targetId, rechargePageSize.value, rechargeOffset.value)
+        .recharges(requestBrandId, targetId, rechargePageSize.value, rechargeOffset.value, rechargeState.value)
         .then((result) => {
           if (!isCurrent()) return;
           if (
@@ -422,6 +425,7 @@ watch(
     ledgerOffset.value = 0;
     rechargeOffset.value = 0;
     loading.value = false;
+    rechargeState.value = "";
     rechargeFilterReset.value++;
     rechargeMemberDraft.value = rechargeMemberName.value = "";
     if (frozenMember) { loadedMemberId.value = frozenMember; loadedMemberUsername.value = frozenUsername; void withGlobalLoading(reloadData); }
@@ -447,6 +451,7 @@ async function loadRechargeQueue() {
       undefined,
       rechargePageSize.value,
       rechargeOffset.value,
+      rechargeState.value,
     );
     if (
       isCurrent() &&
@@ -845,15 +850,15 @@ useOperationToast(() => rechargeError.value, value => display(value), 'error');
         </div>
         <label>{{ t('admin.finance.adjustmentType') }}<SelectControl :disabled="!!pendingMutation" v-model="adjustForm.source" :label="String(t('admin.finance.adjustmentType'))" :options="[...((writeAdjust) ? (sources).map((source) => ({ value: source, label: (String(sourceName(source))).trim() })) : []), ...((writeFreeze) ? [{ value: 'freeze', label: (String(t('admin.finance.freezeOption'))).trim() }] : [])]" /></label>
         <div class="adjustment-amount-row">
-        <label>{{ t('admin.copy.10025d7b') }}<input
+        <label class="ui-field-row">{{ t('admin.copy.10025d7b') }}<input
           :disabled="!!pendingMutation" v-model.trim="adjustForm.delta"
-          style="--input-width: 140px"
+          class="ui-number-input"
           :inputmode="adjustForm.source === 'freeze' ? 'decimal' : 'text'"
           required
           :placeholder="adjustForm.source === 'freeze' ? undefined : t('admin.copy.9a348780')" /></label>
         <RechargeQuotaPanel v-if="writeAdjust && viewRecharges" external-feedback summary-only ref="adjustmentQuotaPanel" :brand-id="brandId" :locale="associationLocale" base-path="/api/v1/admin" @failure="cause => { error = publicErrorMessage(cause, 'read') }" />
         </div>
-        <label>{{ t('admin.finance.adjustmentRemark') }}<input :disabled="!!pendingMutation" v-model.trim="adjustForm.remark" :placeholder="t('admin.finance.adjustmentRemarkPlaceholder')" maxlength="500" /></label>
+        <label>{{ t('admin.finance.adjustmentRemark') }}<input :disabled="!!pendingMutation" v-model.trim="adjustForm.remark" maxlength="500" /></label>
         <button
           class="button button-primary"
           :disabled="mutating || !!pendingMutation || (adjustForm.source === 'freeze' ? !isPositiveAmount(adjustForm.delta) : !isSignedAmount(adjustForm.delta))"
@@ -896,15 +901,16 @@ useOperationToast(() => rechargeError.value, value => display(value), 'error');
 
     <ManagementList v-show="view === 'recharges'" v-if="viewRecharges">
     <template #filters><DirectorySearch :locale="associationLocale" class="recharge-filters" v-model="memberId" :label="t('admin.copy.b41d30df')" :query-label="t('admin.members.query')" :busy="loading" :query-pending="rechargeSearchPending" :search="inspectRecharge">
-      <template #input><FilterAssociationSearch :reset-key="rechargeFilterReset" v-model="rechargeMemberDraft" v-model:pending="rechargeSearchPending" :brand-id="brandId" surface="admin" resource="recharge" :label="t('filter.member')" :locale="associationLocale" :scope-key="JSON.stringify(account)" :enabled="viewRecharges" @select="rechargeMemberName = $event.name" /></template>
+      <template #input><slot name="record-type" :disabled="loading || mutating || !!pendingMutation" /><RechargeStateSelect v-model="rechargeState" kind="manual" :locale="associationLocale" :disabled="loading || mutating || !!pendingMutation" @change="withGlobalLoading(filterRechargeState)" /><FilterAssociationSearch :reset-key="rechargeFilterReset" v-model="rechargeMemberDraft" v-model:pending="rechargeSearchPending" :brand-id="brandId" surface="admin" resource="recharge" :label="t('filter.member')" :locale="associationLocale" :scope-key="JSON.stringify(account)" :enabled="viewRecharges" @select="rechargeMemberName = $event.name" /></template>
       <template #actions>
       </template>
     </DirectorySearch></template>
 
       <div class="table-wrap"><table class="console-table console-recharges-table console-responsive-table"><thead><tr>
-        <th>{{ t('admin.recharge.method') }}</th><th>{{ t('admin.copy.92c59de3') }}</th><th>{{ t('admin.console.points') }}</th><th>{{ t('admin.console.state') }}</th><th>{{ t('admin.console.created') }}</th><th>{{ t('admin.console.actions') }}</th>
+        <th>{{ t('admin.copy.92c59de3') }}</th><th>{{ t('admin.recharge.method') }}</th><th>{{ t('admin.console.points') }}</th><th>{{ t('admin.console.state') }}</th><th>{{ t('admin.console.created') }}</th><th>{{ t('admin.console.actions') }}</th>
       </tr></thead><tbody><template v-for="recharge in recharges" :key="recharge.id"><tr>
-        <td :data-label="t('admin.recharge.method')">{{ t(recharge.method === "manual" ? "admin.recharge.manual" : "admin.recharge.automatic") }}</td><td :data-label="t('admin.copy.92c59de3')"><AssociationName :record="recharge" kind="member" :id="recharge.member_id" :locale="associationLocale" /></td>
+        <td :data-label="t('admin.copy.92c59de3')"><AssociationName :record="recharge" kind="member" :id="recharge.member_id" :locale="associationLocale" /></td>
+        <td :data-label="t('admin.recharge.method')">{{ t(recharge.method === "manual" ? "admin.recharge.manual" : "admin.recharge.automatic") }}</td>
         <td :data-label="t('admin.console.points')">{{ formatIntegerAmount(recharge.points) }}</td><td :data-label="t('admin.console.state')"><span class="status" :class="recharge.state">{{ recharge.state === 'pending' ? t('admin.copy.7746bbe1') : recharge.state === 'confirmed' ? t('admin.copy.5f313d26') : t('admin.copy.a454aa98') }}</span></td>
         <td :data-label="t('admin.console.created')">{{ displayDate(recharge.created_at) }}</td><td :data-label="t('admin.console.actions')"><button type="button" class="text-button" :aria-expanded="expandedRechargeId === recharge.id" @click="expandedRechargeId = expandedRechargeId === recharge.id ? '' : recharge.id">{{ t('admin.copy.01db40da') }}</button></td>
       </tr>

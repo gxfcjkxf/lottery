@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RechargeStateSelect from "./RechargeStateSelect.vue";
 import { computed, onUnmounted, ref, watch } from "vue";
 import { ApiError } from "./api";
 import { createCatalogI18n } from "./localization";
@@ -40,8 +41,9 @@ const props = defineProps<{
   platform?: boolean;
   mode: "settings" | "deposit" | "withdrawal";
   permissions: string[];
+  recordType?: "deposit" | "to_points" | "from_points";
 }>();
-const emit = defineEmits<{ failure: [cause: unknown] }>();
+const emit = defineEmits<{ failure: [cause: unknown]; saved: [] }>();
 const i18n = createCatalogI18n(cashCatalog, props.locale),
   t = i18n.t;
 const label = (key: CashKey) => t(key);
@@ -49,7 +51,8 @@ watch(
   () => props.locale,
   (v) => i18n.setLocale(v),
 );
-const recordKind = ref<string>(props.mode);
+const recordKind = ref<string>(props.recordType ?? props.mode);
+const orderState = ref("");
 const api = computed(() =>
   createCashApi(
     props.basePath,
@@ -181,6 +184,7 @@ async function load(target = page.value) {
         recordKind.value,
         target,
         size.value,
+        orderState.value,
       );
       if (token !== generation || ticket !== readTicket) return;
       if (result.items.some((o) => o.brand_id !== props.brandId))
@@ -301,6 +305,7 @@ async function save(kind: "config" | "destination" | "order", action = "") {
     operation.value = "";
     notice.value = t("cash.saved");
     await load();
+    if (token === generation && !error.value && frozen.kind === "config") emit("saved");
   } catch (cause) {
     if (token !== generation) return;
     error.value = message(cause);
@@ -330,7 +335,7 @@ const net = computed(() => {
   }
 });
 watch(
-  () => [props.brandId, props.actorId, props.mode],
+  () => [props.brandId, props.actorId, props.mode, props.recordType],
   () => {
     generation++;
 
@@ -342,7 +347,8 @@ watch(
     pending.value = null;
     busy.value = false;
     accountPage.value = page.value = 1;
-    recordKind.value = props.mode;
+    recordKind.value = props.recordType ?? props.mode;
+    orderState.value = "";
     const saved = pendingCashWrites.get(
       `${props.basePath}:${props.brandId}:${props.actorId}:${props.mode}`,
     );
@@ -437,22 +443,21 @@ useOperationToast(notice, (v) => v, "success");
                   'fee',
                 ] as const"
                 :key="field"
-                >{{
+                ><span>{{
                   t(
-                    platform && field === "fee"
-                      ? "cash.feeMax"
-                      : `cash.${field}`,
+                    field === "fee" ? "cash.withdrawalFee" : `cash.${field}`,
                   )
-                }}<input
+                }}<button v-if="field === 'fee'" type="button" class="cash-fee-help" :aria-label="t('cash.withdrawalFeeHelp')" :title="t('cash.withdrawalFeeHelp')" @click.prevent>?</button></span><input
                   v-model="rule[field]"
+                  :aria-label="field === 'fee' ? t('cash.withdrawalFee') : undefined"
                   :readonly="!platform && rule.inherit"
-                  inputmode="decimal"
+                  :inputmode="field === 'fee' ? 'text' : 'decimal'"
                   required
-                  :data-validation-format="t('cash.numberFormat',{digits:rule.currency==='USDT'?6:2})"
+                  :data-validation-format="field === 'fee' ? t('cash.withdrawalFeeHelp') : t('cash.numberFormat',{digits:rule.currency==='USDT'?6:2})"
                   :pattern="
-                    rule.currency === 'USDT'
-                      ? '[0-9]+([.][0-9]{1,6})?'
-                      : '[0-9]+([.][0-9]{1,2})?'
+                    field === 'fee'
+                      ? (rule.currency === 'USDT' ? '[0-9]+([.][0-9]{1,6})?%?' : '([0-9]+([.][0-9]{1,2})?|[0-9]+([.][0-9]{1,6})?%)')
+                      : rule.currency === 'USDT' ? '[0-9]+([.][0-9]{1,6})?' : '[0-9]+([.][0-9]{1,2})?'
                   "
               /></label>
               <template v-if="!platform"
@@ -523,9 +528,7 @@ useOperationToast(notice, (v) => v, "success");
                 <dt>
                   {{
                     t(
-                      platform && field === "fee"
-                        ? "cash.feeMax"
-                        : `cash.${field}`,
+                      field === "fee" ? "cash.withdrawalFee" : `cash.${field}`,
                     )
                   }}
                 </dt>
@@ -618,7 +621,7 @@ useOperationToast(notice, (v) => v, "success");
     </template>
     <ManagementList v-else :busy="loading">
       <template v-if="mode === 'deposit'" #filters
-        ><SelectControl
+        ><form class="ui-filter-bar" novalidate v-inline-validation @submit.prevent><slot name="record-type" :disabled="loading || locked"><SelectControl
           :model-value="recordKind"
           :label="t('cash.kind')"
           :disabled="loading || locked"
@@ -630,8 +633,10 @@ useOperationToast(notice, (v) => v, "success");
           "
           @change="
             recordKind = String($event);
+            orderState = '';
             withGlobalLoading(load, 1);
-          " /></template
+          " /></slot>
+        <RechargeStateSelect v-model="orderState" :kind="recordKind as 'deposit' | 'to_points' | 'from_points'" :locale="locale" :disabled="loading || locked" @change="withGlobalLoading(load, 1)" /></form></template
       >
       <ManagementTable
         :entries="orders"
@@ -753,7 +758,7 @@ useOperationToast(notice, (v) => v, "success");
         </div>
         <template v-if="selected.kind === 'withdrawal'"
           ><div>
-            <dt>{{ t("cash.fee") }}</dt>
+            <dt>{{ t("cash.withdrawalFee") }}</dt>
             <dd>{{ selected.fee }} {{ selected.currency }}</dd>
           </div>
           <div>
@@ -800,13 +805,12 @@ useOperationToast(notice, (v) => v, "success");
         novalidate
         v-inline-validation
         v-write-guard="locked"
-        class="ui-form"
+        class="ui-form ui-facts-form"
         @submit.prevent="withGlobalLoading(save, 'order', operation)"
       >
         <fieldset :disabled="locked">
-          <label v-if="operation === 'confirm'"
-            >{{ t("cash.actual")
-            }}<input
+          <label v-if="operation === 'confirm'" class="ui-field-row"
+            ><span>{{ t("cash.actual") }}</span><input
               v-model="actual"
               required
               inputmode="decimal"
@@ -816,16 +820,15 @@ useOperationToast(notice, (v) => v, "success");
                   ? '[0-9]+([.][0-9]{1,6})?'
                   : '[0-9]+([.][0-9]{1,2})?'
               " /></label
-          ><label v-if="['confirm', 'paid'].includes(operation)"
-            >{{
+          ><label v-if="['confirm', 'paid'].includes(operation)" class="ui-field-row"
+            ><span>{{
               t(selected.currency === "USDT" ? "cash.txid" : "cash.reference")
-            }}<input
+            }}</span><input
               v-model.trim="reference"
               required
               :maxlength="selected.currency === 'USDT' ? 64 : 200" /></label
-          ><label v-if="operation === 'fail'"
-            >{{ t("cash.paymentFailure")
-            }}<textarea v-model.trim="proof" required maxlength="500" />
+          ><label v-if="operation === 'fail'" class="ui-field-row"
+            ><span>{{ t("cash.paymentFailure") }}</span><textarea v-model.trim="proof" required maxlength="500" />
           </label>
         </fieldset>
         <div class="ui-form-actions">
@@ -855,6 +858,9 @@ useOperationToast(notice, (v) => v, "success");
   </div>
 </template>
 <style scoped>
+.cash-fee-help { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-inline-start: 4px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--ink-secondary); font: inherit; cursor: help; }
+@media (pointer: coarse) { .cash-fee-help { min-width: 44px; min-height: 44px; } }
+
 .cash-tron-settings{display:grid;gap:12px;min-width:0}
 @media(max-width:900px),(pointer:coarse){.cash-tron-settings{gap:8px}}
 .cash-rule {

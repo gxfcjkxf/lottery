@@ -157,7 +157,7 @@ func TestPlatformLotteryHTTPPermissionsReplayAndSharedRead(t *testing.T) {
 	invalidNumbers.PeriodNo = "bad-numbers"
 	invalidNumbers.Result.Digits = []int{1, 1, 11}
 	mustStatus(t, f.call("POST", manualPath, "manual-numbers", auth.AccessToken, "", invalidNumbers), 400)
-	historyRead := f.call("GET", overviewPath+"?year=1999", "", auth.AccessToken, "", nil)
+	historyRead := f.call("GET", overviewPath+"?date=1999-01-02", "", auth.AccessToken, "", nil)
 	mustStatus(t, historyRead, 200)
 	var historyOverview platformlottery.DrawOverview
 	managedData(t, historyRead, &historyOverview)
@@ -165,12 +165,20 @@ func TestPlatformLotteryHTTPPermissionsReplayAndSharedRead(t *testing.T) {
 		t.Fatal("manual history missing")
 	}
 
-	brandHistory := f.call("GET", brandOverviewPath+"?year=1999", "", f.token, managedBrand, nil)
+	brandHistory := f.call("GET", brandOverviewPath+"?date=1999-01-02", "", f.token, managedBrand, nil)
 	mustStatus(t, brandHistory, 200)
 	var brandDraws platformlottery.DrawOverview
 	managedData(t, brandHistory, &brandDraws)
-	if len(brandDraws.Items) != 1 || brandDraws.Items[0].PeriodNo != historical.PeriodNo || len(brandDraws.Pending) != 0 || brandDraws.PendingHasMore {
+	if !brandDraws.Daily || brandDraws.Date != "1999-01-02" || len(brandDraws.Items) != 1 || brandDraws.Items[0].PeriodNo != historical.PeriodNo || len(brandDraws.Pending) != 0 || brandDraws.PendingHasMore {
 		t.Fatal("brand history differs from canonical history or exposes pending operations")
+	}
+
+	for _, endpoint := range []struct{ path, token, brand string }{{overviewPath, auth.AccessToken, ""}, {brandOverviewPath, f.token, managedBrand}} {
+		mustStatus(t, f.call("GET", endpoint.path+"?recent=50", "", endpoint.token, endpoint.brand, nil), 200)
+		mustStatus(t, f.call("GET", endpoint.path+"?recent=100", "", endpoint.token, endpoint.brand, nil), 200)
+		for _, query := range []string{"?recent=25", "?recent=50&recent=100", "?recent=50&date=1999-01-02"} {
+			mustStatus(t, f.call("GET", endpoint.path+query, "", endpoint.token, endpoint.brand, nil), 400)
+		}
 	}
 
 	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='platform_game.view.brand'`, brandRole); err != nil {
@@ -286,7 +294,7 @@ func TestPlatformGameRenamePermissionsVersionAndReplay(t *testing.T) {
 	mustStatus(t, f.call("GET", overviewPath, "", auth.AccessToken, "", nil), 200)
 	mustStatus(t, f.call("GET", overviewPath+"?year=bad", "", auth.AccessToken, "", nil), 400)
 	mustStatus(t, f.call("GET", overviewPath, "", f.token, "", nil), 403)
-	mustStatus(t, f.call("GET", strings.Replace(overviewPath, "/platform/", "/admin/", 1), "", f.token, managedBrand, nil), 404)
+	mustStatus(t, f.call("GET", strings.Replace(overviewPath, "/platform/", "/admin/", 1), "", f.token, managedBrand, nil), 403)
 
 	path := "/api/v1/platform/platform-games/" + game.ID + "/name"
 	in := platformlottery.NameInput{Name: "Renamed", ExpectedVersion: 1}

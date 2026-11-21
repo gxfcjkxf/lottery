@@ -1,3 +1,5 @@
+import {configuredTicketLabel} from './configured-business'
+import {configuredIndependentPlay} from './configured-selection-groups'
 import type { ConfiguredCatalog, ConfiguredSnapshot } from './configured-rules'
 import { configuredOptionPriceKeys } from './configured-rules'
 
@@ -49,7 +51,7 @@ export function configuredPriceRows(snapshot: ConfiguredSnapshot, locale: 'en' |
       names.set(key, [...(names.get(key) ?? []), option.label[locale]])
     }
     for (const [key, labels] of names) {
-      const label = labels.length === options.length ? play.label[locale] : `${play.label[locale]} · ${[...new Set(labels)].join(' / ')}`
+      const label = configuredIndependentPlay(snapshot,play) ? configuredTicketLabel(snapshot,{play_id:play.id,options:[options[0]!.id]},locale) : labels.length === options.length ? play.label[locale] : `${play.label[locale]} · ${[...new Set(labels)].join(' / ')}`
       if (!references.has(key)) references.set(key, new Set())
       references.get(key)!.add(label)
     }

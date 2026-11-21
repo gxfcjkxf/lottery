@@ -182,6 +182,21 @@ describe("agents admin API", () => {
     }
   });
 
+  it("loads every node in a tree level across API pages", async () => {
+    const nodes = Array.from({ length: 101 }, (_, index) => {
+      const id = `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, '0')}`;
+      return agentNode({ id, path: [id] });
+    });
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(ok({ brand_id: brand, parent_id: null, items: nodes.slice(0, 100), limit: 100, offset: 0, total_count: '101' }))
+      .mockResolvedValueOnce(ok({ brand_id: brand, parent_id: null, items: nodes.slice(100), limit: 100, offset: 100, total_count: '101' }));
+    await expect(createAgentsApi(fetcher).treeLevel(brand)).resolves.toMatchObject({ items: nodes });
+    expect(fetcher.mock.calls.map(call => call[0])).toEqual([
+      '/api/v1/admin/agents/tree?limit=100&offset=0',
+      '/api/v1/admin/agents/tree?limit=100&offset=100',
+    ]);
+  });
+
   it("reads a node/history only when backend identity and page envelope match", async () => {
     const revision: Revision = {
       brand_id: brand, agent_id: root, version: 3, config: nodeConfig,

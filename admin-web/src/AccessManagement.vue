@@ -501,14 +501,14 @@ useOperationToast(() => notice.value, value => display(value), 'success');
 
         <form id="brand-role-editor" v-write-guard="busy" novalidate v-inline-validation class="form role-form ui-form" @submit.prevent="withGlobalLoading(saveRole)">
           <div class="role-identity">
-            <label>{{ t('admin.copy.6404dc43') }}
+            <label class="ui-field-row">{{ t('admin.copy.6404dc43') }}
               <input v-model.trim="roleForm.name" required />
               <small>{{ roleNameCharacters }} / 120 {{ t('admin.copy.b2ca2f37') }}</small>
             </label>
-            <label v-if="!roleForm.id">{{ t('admin.copy.8c47c503') }}
+            <label class="ui-field-row" v-if="!roleForm.id">{{ t('admin.copy.8c47c503') }}
               <input v-model.trim="roleForm.code" required maxlength="48" autocomplete="off" />
             </label>
-            <label v-if="roleForm.id">{{ t('admin.copy.a765b3ca') }}
+            <label class="ui-field-row" v-if="roleForm.id">{{ t('admin.copy.a765b3ca') }}
               <SelectControl v-model="roleForm.status" :label="String(t('admin.copy.a765b3ca'))" :options="[{ value: 'active', label: (String(t('admin.copy.98d24810'))).trim() }, { value: 'disabled', label: (String(t('admin.copy.5e3326db'))).trim() }]" />
             </label>
           </div>

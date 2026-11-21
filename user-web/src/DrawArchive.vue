@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useDrawHistoryRefresh } from '../../shared/src/draw-history-refresh'
+import DrawHistoryDateFilter from '../../shared/src/DrawHistoryDateFilter.vue'
 import TablePagination from "@lottery/shared/TablePagination.vue"
 import { readPaginationTotal } from "@lottery/shared"
 import SelectControl from '@lottery/shared/SelectControl.vue'
@@ -14,9 +16,10 @@ import '../../shared/src/mark-six-balls.css'
 import { archiveNumbers, displayedArchiveNumbers, specialFacts, totalFacts, zodiacFamily, shortArchivePeriod, type ArchiveAttribute, type ArchiveSort } from './draw-archive-presentation'
 const pageSize = ref(50)
 
-interface Archive { total_count: string; mark_six: boolean; game_id: string; game_name: string; timezone: string; daily: boolean; choices: string[]; selected: string; items: Array<{ period_no: string; result: { regular: number[]; special: number[]; digits: number[] }; drawn_at: string | null; draw_date: string | null; regular_order: number[] | null; attributes: Record<string,ArchiveAttribute> }>; has_more: boolean }
+interface Archive { total_count: string; mark_six: boolean; game_id: string; game_name: string; timezone: string; daily: boolean; recent: number; recent_supported: boolean; today: string; yesterday: string; choices: string[]; selected: string; items: Array<{ period_no: string; result: { regular: number[]; special: number[]; digits: number[] }; draw_at: string | null; drawn_at: string | null; draw_date: string | null; regular_order: number[] | null; attributes: Record<string,ArchiveAttribute> }>; has_more: boolean }
 const props = defineProps<{ gameId: string; kind: 'configured'; brandCode?: string; locale: 'en' | 'zh'; compact?: boolean }>()
 const i18n = useUserI18n(), t = i18n.t
+const displayLocale = computed(() => props.locale === 'zh' ? 'zh-CN' : 'en')
 const archive = ref<Archive | null>(null), selected = ref(''), offset = ref(0), loading = ref(false)
 const listElement = ref<HTMLElement | null>(null)
 const attributeKeys = ['zodiac','element','animal'] as const
@@ -71,6 +74,7 @@ const summaryValue=(key:SummaryKey,period:Archive['items'][number])=>{
 const summaryColor=(key:SummaryKey,period:Archive['items'][number])=>key==='totalWave'?`wave-${totalFacts(period.result,period.attributes).wave??'missing'}`:key
 const dateText=(period:Archive['items'][number])=>{
  if(period.draw_date!==null)return period.draw_date
+ if(!archive.value!.mark_six)return formatDisplayDateTime(period.draw_at,props.locale)
  if(period.drawn_at===null)return '—'
  if(archive.value?.daily){const formatted=formatDisplayDateTime(period.drawn_at,props.locale);return formatted.slice(formatted.indexOf(' ')+1)}
  const parts=new Intl.DateTimeFormat('en',{timeZone:archive.value!.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(period.drawn_at))
@@ -86,31 +90,40 @@ const currentDate = computed(() => {
 })
 const error = ref<ReturnType<typeof i18n.errorMessage> | null>(null)
 let generation = 0
-async function load(page = 0, requestedSelection = selected.value) {
+const reading = ref(false)
+async function load(page = 0, requestedSelection = selected.value, background = false, nextPageSize = pageSize.value) {
   const token = ++generation
-  loading.value = true; error.value = null
+  reading.value = true
+  if (!background) { loading.value = true; error.value = null }
   try {
     if (!isUuid(props.gameId)) throw { code: 'REQUEST_INVALID', status: 400 }
-    const query = new URLSearchParams({ game_id: props.gameId, kind: props.kind, offset: String(page), limit: String(pageSize.value) })
-    if (requestedSelection) query.set('selected', requestedSelection)
+    const query = new URLSearchParams({ game_id: props.gameId, kind: props.kind, offset: String(page), limit: String(nextPageSize) })
+    if (requestedSelection.startsWith('recent-')) query.set('recent', requestedSelection.slice(7))
+    else if (requestedSelection) query.set('selected', requestedSelection)
     const response = await fetch(`${bettingBasePath(props.brandCode)}/draw-archive?${query}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
     const envelope = await readApiEnvelope<Archive>(response, (message, status, code) => Object.assign(new Error(message), { status, code }))
     if (token !== generation) return
     if (envelope.data.game_id !== props.gameId) throw { code: 'INVALID_RESPONSE', status: 502 }
-    readPaginationTotal(envelope.data); offset.value = page; archive.value = envelope.data; selected.value = envelope.data.selected
-  } catch (cause) { if (token === generation) { if (archive.value) selected.value = archive.value.selected; error.value = i18n.errorMessage(cause, 'read') } }
-  finally { if (token === generation) loading.value = false }
+    readPaginationTotal(envelope.data); pageSize.value = nextPageSize; offset.value = page; archive.value = envelope.data; selected.value = envelope.data.recent ? `recent-${envelope.data.recent}` : envelope.data.selected; error.value = null
+  } catch (cause) { if (token === generation) { if (archive.value) selected.value = archive.value.recent ? `recent-${archive.value.recent}` : archive.value.selected; if (!background || !error.value) error.value = i18n.errorMessage(cause, 'read') } }
+  finally { if (token === generation) { loading.value = false; reading.value = false } }
 }
 watch(() => [props.gameId, props.kind, props.brandCode], () => { selected.value = ''; archive.value = null; offset.value = 0; void load() }, { immediate: true })
+async function selectHistory(value: string) {
+ const size = value.startsWith('recent-') ? Number(value.slice(7)) : pageSize.value
+ await load(0, value, false, size)
+}
+useDrawHistoryRefresh(() => !!archive.value?.daily && (archive.value.recent > 0 || archive.value.selected === archive.value.today), () => reading.value, () => load(offset.value, selected.value, true))
 onUnmounted(() => { generation++ })
 
 useOperationToast(error, value => i18n.displayError(value), 'error');
 </script>
 <template>
   <section class="draw-results draw-archive user-record-list" :class="{'is-daily':archive?.daily,'is-english':locale==='en'}" data-testid="draw-archive">
-    <Teleport defer to="#user-page-refresh" :disabled="compact"><button v-if="error || (archive?.daily && archive.selected === currentDate)" v-refresh-button="t('draw.refresh')" type="button" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load, offset)">{{ t('draw.refresh') }}</button></Teleport>
+    <Teleport defer to="#user-page-refresh" :disabled="compact"><button v-if="error || (archive?.daily && (archive.recent > 0 || archive.selected === currentDate))" v-refresh-button="t('draw.refresh')" type="button" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load, offset)">{{ t('draw.refresh') }}</button></Teleport>
     <div v-if="archive" class="archive-toolbar ui-filter-bar" tabindex="0" :aria-label="t('draw.optionsLabel')">
-    <div class="archive-filter ui-filter-field-inline"><span>{{ t(archive.daily ? 'draw.historyDate' : 'draw.historyYear') }}</span><SelectControl v-model="selected" :disabled="loading" @change="withGlobalLoading(load)" :label="String(t(archive.daily ? 'draw.historyDate' : 'draw.historyYear'))" :options="(archive.choices).map((choice) => ({ value: choice, label: (String(choice)).trim() }))" /></div>
+    <DrawHistoryDateFilter v-if="archive.daily" class="archive-date-filter" :model-value="selected" :recent-supported="archive.recent_supported" :today="archive.today" :yesterday="archive.yesterday" :locale="displayLocale" :disabled="loading" @select="withGlobalLoading(selectHistory, $event)" />
+    <div v-else class="archive-filter ui-filter-field-inline"><span>{{ t('draw.historyYear') }}</span><SelectControl v-model="selected" :disabled="loading" @change="withGlobalLoading(load)" :label="String(t('draw.historyYear'))" :options="archive.choices.map(choice => ({ value: choice, label: choice }))" /></div>
     <div v-if="archive.mark_six" class="archive-controls">
       <div class="archive-attributes" role="radiogroup" :aria-label="t('draw.attributeLabel')"><span class="archive-control-label">{{ t('draw.attributeLabel') }}</span><div class="archive-option-items"><label v-for="key in attributeKeys" :key="key" class="archive-attribute-option"><input v-model="attribute" type="radio" name="archive-attribute" :value="key" /><span>{{ t(`draw.attribute.${key}`) }}</span></label></div></div>
       <div class="archive-sorting" role="group" :aria-label="t('draw.sortLabel')"><span class="archive-control-label">{{ t('draw.sortLabel') }}</span><div class="archive-option-items"><label><input v-model="sort" type="radio" name="archive-sort" value="drawn" /><span>{{ t('draw.sort.drawn') }}</span></label><label><input v-model="sort" type="radio" name="archive-sort" value="size" /><span>{{ t('draw.sort.size') }}</span></label></div></div>
@@ -127,7 +140,7 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
       <table v-if="archive?.items.length" class="archive-table" :class="{'is-mark-six':archive.mark_six}" :aria-label="t('draw.results')">
         <thead>
           <tr class="archive-head">
-            <th class="archive-meta-cell" :rowspan="archive.mark_six&&visibleColumns.length?2:1" scope="col">{{ t('draw.column.datePeriod') }}</th>
+            <th class="archive-meta-cell" :rowspan="archive.mark_six&&visibleColumns.length?2:1" scope="col">{{ t(archive.mark_six?'draw.column.datePeriod':'draw.column.timePeriod') }}</th>
             <th class="archive-regular-cell" :rowspan="archive.mark_six&&visibleColumns.length?2:1" scope="col">{{ t(archive.mark_six?'draw.column.regular':'draw.column.numbers') }}</th>
             <th v-if="archive.mark_six" class="archive-separator-cell" :rowspan="visibleColumns.length?2:1" aria-hidden="true"></th>
             <th v-if="archive.mark_six" class="archive-special-cell" :rowspan="visibleColumns.length?2:1" scope="col">{{ t('draw.column.special') }}</th>
@@ -140,7 +153,7 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
         </thead>
         <tbody>
           <tr v-for="period in archive.items" :key="period.period_no" class="archive-row">
-            <td class="archive-meta-cell"><div class="archive-meta"><time class="archive-time" :datetime="period.draw_date??period.drawn_at??undefined">{{ dateText(period) }}</time><strong class="archive-period" :title="period.period_no">{{ periodText(period) }}</strong></div></td>
+            <td class="archive-meta-cell"><div class="archive-meta"><time class="archive-time" :datetime="period.draw_date??period.draw_at??undefined">{{ dateText(period) }}</time><strong class="archive-period" :title="period.period_no">{{ periodText(period) }}</strong></div></td>
             <td class="archive-regular-cell">
               <p v-if="numbersFor(period)===null" class="archive-missing archive-order-missing">{{ t('draw.orderMissing') }}</p>
               <div v-else class="archive-numbers" :class="{'has-digit-sum':period.result.digits.length===3}">
@@ -159,7 +172,7 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
       </table>
       <p v-if="archive&&!archive.items.length" class="empty-state">{{ t('draw.noResults') }}</p>
     </div>
-    <TablePagination v-if="archive" class="page-actions" :total="archive?.total_count ?? '0'" :page="Math.floor(offset / pageSize + 1)" :count="archive?.items.length ?? 0" :locale="locale === 'en' ? 'en' : 'zh-CN'" :page-size="pageSize" :previous-disabled="loading || offset === 0" :next-disabled="loading || !archive?.has_more" :previous-label="t('draw.previous')" :next-label="t('draw.next')" :go-to="(target: number) => load((target - 1) * pageSize)" :change-page-size="async (size: number) => { pageSize = size; await load(0) }" :busy="loading" />
+    <TablePagination v-if="archive" class="page-actions" :total="archive?.total_count ?? '0'" :page="Math.floor(offset / pageSize + 1)" :count="archive?.items.length ?? 0" :locale="locale === 'en' ? 'en' : 'zh-CN'" :page-size="pageSize" :previous-disabled="loading || offset === 0" :next-disabled="loading || !archive?.has_more" :previous-label="t('draw.previous')" :next-label="t('draw.next')" :go-to="(target: number) => load((target - 1) * pageSize)" :change-page-size="async (size: number) => { await load(0, selected, false, size) }" :busy="loading" />
   </section>
 </template>
 <style scoped>
@@ -168,6 +181,7 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
 :global(#app .draw-archive.user-record-list>.archive-toolbar){padding-block:8px 4px;margin-block:0;row-gap:4px}
 .archive-controls label,.archive-control-label,.archive-attributes,.archive-sorting,.archive-condition-options,.archive-summary-options,.archive-summary-group{margin-block:0;padding-block:0}
 .archive-filter{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin:0;font-size:var(--body-font-size)}
+.archive-date-filter{grid-column:1/-1;max-width:100%}
 .archive-controls{display:contents}
 .archive-option-items{display:flex;align-items:center;flex-wrap:wrap;gap:0 12px;min-width:0}.archive-attributes .archive-option-items{gap:0 6px}
 .archive-attributes,.archive-sorting,.archive-summary-options,.archive-summary-group,.archive-condition-options{display:flex;align-items:center;flex-wrap:wrap;gap:0 12px;min-width:0;font-size:var(--body-font-size)}

@@ -158,7 +158,12 @@ func registerPlatformLotteryRoutes(register func(string, string, http.HandlerFun
 				return
 			}
 		}
-		out, e := s.DrawOverview(r.Context(), id, r.URL.Query().Get("year"), limit, offset)
+		recent, valid := drawRecentParam(r)
+		if !valid {
+			failure(w, r, 400, "REQUEST_INVALID", "Invalid recent draw count")
+			return
+		}
+		out, e := s.DrawOverview(r.Context(), id, r.URL.Query().Get("year"), r.URL.Query().Get("date"), limit, offset, recent)
 		if !platform {
 			out.Pending = []platformlottery.PendingDraw{}
 			out.PendingHasMore = false

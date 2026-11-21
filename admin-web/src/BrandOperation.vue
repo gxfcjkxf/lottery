@@ -237,7 +237,7 @@ useOperationToast(() => notice.value, value => display(value), 'success');
       <template #footer>
 
         <button v-write-guard="busy" v-if="reviewing" class="button button-primary" type="button" :disabled="busy || !permissions.write || readonlyBrand" @click="withGlobalLoading(sendFrozenIntent, false)">{{ t('admin.copy.a1a8013d') }}</button>
-        <button v-write-guard="busy" v-if="unknownWrite" class="button button-primary" type="button" :disabled="busy || !permissions.write || readonlyBrand" @click="withGlobalLoading(sendFrozenIntent, true)">{{ t('brandOperation.retry') }}</button>
+        <button v-write-guard="busy" v-if="unknownWrite" v-show="!busy" class="button button-primary" type="button" :disabled="busy || !permissions.write || readonlyBrand" @click="withGlobalLoading(sendFrozenIntent, true)">{{ t('brandOperation.retry') }}</button>
         <template v-if="conflictedWrite">
           <button v-if="!conflictReloaded" class="button button-secondary" type="button" :disabled="loading || busy" @click="withGlobalLoading(reloadCurrent)">{{ t('brandOperation.readLatest') }}</button>
           <button v-else class="button button-secondary" type="button" :disabled="busy" @click="cancelReview">{{ t('brandOperation.startAgain') }}</button>

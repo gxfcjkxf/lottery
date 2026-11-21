@@ -56,13 +56,14 @@ function isRecharge(v: unknown): v is Recharge {
 
 export function createPlatformRechargeApi(fetcher: typeof fetch = fetch) {
   return {
-    async list(brandId: string, memberId = '', limit = 51, offset = 0): Promise<{items: Recharge[]; total_count: string}> {
+    async list(brandId: string, memberId = '', limit = 51, offset = 0, state = ''): Promise<{items: Recharge[]; total_count: string}> {
       if (!brandId) throw new PlatformApiError('A brand must be selected before loading recharges', 400, 'BRAND_REQUIRED')
       if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) {
         throw new PlatformApiError('Invalid recharge pagination', 400, 'REQUEST_INVALID')
       }
       const query = new URLSearchParams({ limit: String(limit), offset: String(offset) })
       if (memberId) query.set('member_id', memberId)
+      if (state) query.set('state', state)
       let response: Response
       try {
         response = await fetcher(`${BASE}?${query}`, { method: 'GET', credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Brand-ID': brandId } })

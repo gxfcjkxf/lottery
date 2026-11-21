@@ -93,7 +93,7 @@ export function registerBrandOperationLayoutTests(reflow = false) {
       await expectInsideViewport(dialog)
       await page.screenshot({ path: info.outputPath(`brand-operation-${locale}.png`) })
       await confirm.click()
-      const retry = dialog.getByRole('button', { name: locale === 'en' ? 'Retry the same request' : '使用原请求重试', exact: true })
+      const retry = dialog.getByRole('button', { name: locale === 'en' ? 'Retry' : '重试', exact: true })
       await expect(retry).toBeVisible()
       expect(JSON.parse(attempts[0].body!).reason).toBe('')
       await expect(dialog.locator('form')).toHaveCount(0)

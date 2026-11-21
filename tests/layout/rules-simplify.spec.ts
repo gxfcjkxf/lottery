@@ -76,9 +76,9 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','ad
   if(surface==='platform'){
    failSave=true
    await page.getByRole('button',{name:zh?'保存':'Save',exact:true}).click()
-   await expect(page.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true})).toBeVisible()
+   await expect(page.getByRole('button',{name:zh?'重试':'Retry',exact:true})).toBeVisible()
    failSave=false
-   await page.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true}).click()
+   await page.getByRole('button',{name:zh?'重试':'Retry',exact:true}).click()
    await expect.poll(()=>writes.length).toBe(2)
    expect(writes[0]).toEqual(writes[1])
    await expect(editor.getByText(zh?'有未保存的修改':'Unsaved changes',{exact:true})).toHaveCount(0)

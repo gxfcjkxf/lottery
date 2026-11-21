@@ -234,6 +234,86 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 			t.Fatal("order detail leaked across brand/member", err)
 		}
 	}
+	// Availability changes are independent of the current rule and sales versions.
+	platformAvailability := "/api/v1/platform/platform-games/" + game.ID + "/configured/availability"
+	brandAvailability := "/api/v1/admin/platform-games/" + game.ID + "/configured/availability"
+	platformInput := platformlottery.ConfiguredAvailabilityInput{
+		RuleID: version.ID,
+		Items:  platformlottery.ConfiguredOptionStates{"operator_new_play": {"lucky": false}},
+	}
+	postAvailability := func(path, key, token, brand string, input platformlottery.ConfiguredAvailabilityInput, status int) {
+		t.Helper()
+		mustStatus(t, f.call("POST", path, key, token, brand, input), status)
+	}
+	brandInput := platformlottery.ConfiguredAvailabilityInput{
+		RuleID: version.ID,
+		Items:  platformlottery.ConfiguredOptionStates{"operator_new_play": {"lucky": true}},
+	}
+	postAvailability(brandAvailability, "availability-brand-enable", f.token, managedBrand, brandInput, 200)
+	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='platform_game.sell.brand'`, role); err != nil {
+		t.Fatal(err)
+	}
+	postAvailability(brandAvailability, "availability-brand-without-sell", f.token, managedBrand, brandInput, 403)
+	postAvailability(brandAvailability, "availability-brand-enable", f.token, managedBrand, brandInput, 403)
+	if _, err := f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) VALUES($1,'platform_game.sell.brand')`, role); err != nil {
+		t.Fatal(err)
+	}
+	postAvailability(platformAvailability, "availability-platform", auth.AccessToken, "", platformInput, 200)
+	postAvailability(platformAvailability, "availability-platform", auth.AccessToken, "", platformInput, 200)
+	postAvailability(platformAvailability, "availability-stale", auth.AccessToken, "", platformInput, 409)
+	postAvailability(brandAvailability, "availability-cross-brand", f.token, pointsBrandB, platformInput, 403)
+	postAvailability(platformAvailability, "availability-brand-platform", f.token, "", platformInput, 403)
+	postAvailability(brandAvailability, "availability-invalid-option", f.token, managedBrand,
+		platformlottery.ConfiguredAvailabilityInput{RuleID: version.ID, Version: 1, Items: platformlottery.ConfiguredOptionStates{"operator_new_play": {"unknown": true}}}, 400)
+
+	mustStatus(t, f.call("POST", brandAvailability, "availability-null-option", f.token, managedBrand,
+		map[string]any{"rule_id": version.ID, "version": 0, "items": map[string]any{"operator_new_play": map[string]any{"lucky": nil}}}), 400)
+
+	catalogPath := "/api/v1/configured/games/" + game.ID
+	expectDisabled := func(want bool) {
+		t.Helper()
+		result := f.call("GET", catalogPath, "", f.userToken, managedBrand, nil)
+		mustStatus(t, result, 200)
+		var catalog struct {
+			Disabled map[string][]string `json:"disabled_options"`
+			RuleID   string              `json:"rule_id"`
+			Sales    platformlottery.ConfiguredSales
+		}
+		managedData(t, result, &catalog)
+		options := catalog.Disabled["operator_new_play"]
+		if (len(options) == 1 && options[0] == "lucky") != want || catalog.RuleID != version.ID || catalog.Sales.Version != 1 {
+			t.Fatal("wrong effective option availability", catalog)
+		}
+	}
+	expectDisabled(true)
+	mustStatus(t, f.call("POST", "/api/v1/configured/preview", "", f.userToken, managedBrand, in), 409)
+	blocked := f.call("POST", "/api/v1/configured/orders", "availability-rejected-order", f.userToken, managedBrand, in)
+	mustStatus(t, blocked, 409)
+	if !strings.Contains(blocked.Body.String(), "BET_OPTION_DISABLED") {
+		t.Fatal(blocked.Body.String())
+	}
+	brandInput.Version++
+	brandInput.Items = platformlottery.ConfiguredOptionStates{}
+	postAvailability(brandAvailability, "availability-brand-inherit-while-disabled", f.token, managedBrand, brandInput, 409)
+	brandInput.Items = platformlottery.ConfiguredOptionStates{"operator_new_play": {"lucky": false}}
+	postAvailability(brandAvailability, "availability-brand-write-while-disabled", f.token, managedBrand, brandInput, 409)
+	expectDisabled(true)
+	read := f.call("GET", brandAvailability, "", f.token, managedBrand, nil)
+	mustStatus(t, read, 200)
+	var availability platformlottery.ConfiguredAvailability
+	managedData(t, read, &availability)
+	if availability.Platform.Version != 1 || availability.Platform.Items["operator_new_play"]["lucky"] ||
+		availability.Brand.Version != 1 || !availability.Brand.Items["operator_new_play"]["lucky"] {
+		t.Fatal("platform disable did not preserve the stored brand setting", availability)
+	}
+	platformInput.Version++
+	platformInput.Items = platformlottery.ConfiguredOptionStates{}
+	postAvailability(platformAvailability, "availability-platform-enable", auth.AccessToken, "", platformInput, 200)
+	expectDisabled(false)
+	mustStatus(t, f.call("POST", "/api/v1/configured/preview", "", f.userToken, managedBrand, in), 200)
+	postAvailability(brandAvailability, "availability-brand-disable", f.token, managedBrand, brandInput, 200)
+	expectDisabled(true)
+
 	replay := f.call("POST", "/api/v1/configured/orders", "configured-http-order", f.userToken, managedBrand, in)
 	mustStatus(t, replay, 201)
 	var same betting.ConfiguredOrdersReceipt
@@ -285,12 +365,23 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 	editedRaw, _ := json.Marshal(appliedSale.Prices)
 	json.Unmarshal(editedRaw, &editedSale.Prices)
 	editedSale.Prices.Plates["A"]["lucky_price"] = "2"
-	edited := f.call("POST", salesPath, "configured-sales-edit", f.token, managedBrand, editedSale)
+	brandChange := platformlottery.ConfiguredSalesInput{ConfiguredSales: editedSale, Availability: &platformlottery.ConfiguredAvailabilityScope{
+		Version: 1, Items: platformlottery.ConfiguredOptionStates{},
+	}}
+	mustStatus(t, f.call("POST", salesPath, "configured-odds-stale-brand", f.token, managedBrand, brandChange), 409)
+	expectDisabled(true) // The sales version also remains unchanged after the availability conflict.
+	brandChange.Availability.Version++
+	edited := f.call("POST", salesPath, "configured-sales-edit", f.token, managedBrand, brandChange)
 	mustStatus(t, edited, 200)
 	var nextSale platformlottery.ConfiguredSales
 	managedData(t, edited, &nextSale)
 	if nextSale.Version != 2 {
 		t.Fatal(nextSale)
+	}
+	mustStatus(t, f.call("POST", salesPath, "configured-sales-edit", f.token, managedBrand, brandChange), 200)
+	brandState, err := platformlottery.ReadConfiguredAvailability(ctx, f.pool, managedBrand, game.ID, version.ID)
+	if err != nil || brandState.Brand.Version != 3 || brandState.OptionDisabled("operator_new_play", "lucky") {
+		t.Fatal("brand odds and availability did not apply together exactly once", brandState, err)
 	}
 	mustStatus(t, f.call("POST", "/api/v1/configured/preview", "", f.userToken, managedBrand, in), 409)
 	mustStatus(t, f.call("POST", "/api/v1/configured/orders", "configured-http-order", f.userToken, managedBrand, in), 201)
@@ -299,13 +390,27 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nextInput := platformlottery.ConfiguredRulesInput{ID: version.ID, Revision: version.Revision, Snapshot: nextSnapshot}
+	nextInput := platformlottery.ConfiguredRulesInput{ID: version.ID, Revision: version.Revision, Snapshot: nextSnapshot,
+		Availability: &platformlottery.ConfiguredAvailabilityScope{Version: 1, Items: platformlottery.ConfiguredOptionStates{"operator_new_play": {"lucky": true}}},
+	}
+	mustStatus(t, f.call("POST", path, "configured-odds-stale-platform", auth.AccessToken, "", nextInput), 409)
+	var retainedPublication platformlottery.ConfiguredVersion
+	managedData(t, f.call("GET", path, "", auth.AccessToken, "", nil), &retainedPublication)
+	if retainedPublication.ID != version.ID {
+		t.Fatal("platform odds changed despite the availability conflict", retainedPublication)
+	}
+	nextInput.Availability.Version++
 	updated := f.call("POST", path, "configured-replace", auth.AccessToken, "", nextInput)
 	mustStatus(t, updated, 200)
 	var nextVersion platformlottery.ConfiguredVersion
 	managedData(t, updated, &nextVersion)
 	if nextVersion.ID == version.ID || nextVersion.Status != "published" {
 		t.Fatal("rules were not replaced", nextVersion)
+	}
+	mustStatus(t, f.call("POST", path, "configured-replace", auth.AccessToken, "", nextInput), 200)
+	platformState, err := platformlottery.ReadConfiguredAvailability(ctx, f.pool, "", game.ID, nextVersion.ID)
+	if err != nil || platformState.Platform.Version != 3 || !platformState.Platform.Items["operator_new_play"]["lucky"] {
+		t.Fatal("platform odds and availability did not apply together exactly once", platformState, err)
 	}
 	mustStatus(t, f.call("POST", path, "configured-replace-stale", auth.AccessToken, "", nextInput), 409)
 	var retainedRule, retainedPrice string

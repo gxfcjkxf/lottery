@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { exchangeResult, minor, decimal, isCashConfig, isCashState, currencies, emptyDestination, createCashApi } from "./cash";
+import { exchangeResult, withdrawalFee, validWithdrawalFee, minor, decimal, isCashConfig, isCashState, currencies, emptyDestination, createCashApi } from "./cash";
 import { cashCatalog } from "./cash-catalog";
 describe("currency money rules", () => {
   it("floors destination amounts without float drift or roundtrip gain", () => {
@@ -40,4 +40,13 @@ describe('personal payment accounts', () => {
     vi.stubGlobal('fetch',fetcher);
     await expect(createCashApi('/api/v1').saveDestination(binding,'save-key')).rejects.toMatchObject({code:'INVALID_RESPONSE'});
   });
+});
+
+it('calculates fixed and percentage withdrawal fees with currency precision', () => {
+ expect(withdrawalFee('50','1000','CNY')).toBe('50');
+ expect(withdrawalFee('0','1000','USDT')).toBe('0');
+ expect(withdrawalFee('10%','123.45','CNY')).toBe('12.34');
+ expect(withdrawalFee('10%','123.456789','USDT')).toBe('12.345678');
+ expect(validWithdrawalFee('100%','CNY')).toBe(false);
+ expect(validWithdrawalFee('10%%','CNY')).toBe(false);
 });

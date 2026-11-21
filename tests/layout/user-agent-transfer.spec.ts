@@ -1,3 +1,4 @@
+import {expectDialogFieldColumns} from './dialog-form-columns'
 import {userUiCatalog} from '../../user-web/src/i18n-catalog-ui'
 import {test,expect,type Locator} from '@playwright/test'
 import {installLayoutApi,installOrdersLayoutApi,origins,gameId,expectNoPageOverflow} from './fixture'
@@ -135,5 +136,28 @@ for(const locale of ['zh-CN','en'] as const)test(`ledger types wrap naturally wh
    expect(issues,`${locale} ${width}px headings`).toEqual([])
   }
   if(width===320||width===375||width===preset.width)await page.screenshot({path:info.outputPath(`all-types-${locale}-${width}.png`),fullPage:true})
+ }
+})
+
+for(const locale of ['zh-CN','en'] as const)test(`agent transfer keeps facts aligned and amount compact (${locale})`,async({page},info)=>{
+ const {resolve}=await import('node:path'),origin=origins.agent
+ const source=await(await page.request.get(origin+'/src/TransferDialog.vue')).text()
+ const vuePath=source.match(/from "([^"]*deps\/vue\.js[^"]*)"/)![1]
+ await page.route('**/api/v1/agent/**',route=>{
+  expect(route.request().method()).toBe('GET')
+  expect(new URL(route.request().url()).pathname).toBe('/api/v1/agent/wallet')
+  return route.fulfill({json:{success:true,data:{available_points:'12345.67',commission_points:'0'}}})
+ })
+ const url=origin+'/__transfer-alignment'
+ await page.route(url,route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"><main class="management-console" id="review"></main></div><script type="module">import{createApp}from'${vuePath}';import C from'/src/TransferDialog.vue';import{i18n}from'/src/i18n.ts';${['styles','management','key-value','controls','themes','form-validation'].map(name=>`import'/@fs${resolve('shared/src/'+name+'.css')}';`).join('')}i18n.setLocale('${locale}');createApp(C,${JSON.stringify({ownerKey:'transfer-layout-review',member:{id:gameId,username:'test004'}})}).mount('#review')</script></html>`}))
+ await page.goto(url)
+ const dialog=page.getByRole('dialog',{name:locale==='en'?'Transfer points':'转移积分',exact:true})
+ await expect(dialog.locator('input')).toBeEnabled();await dialog.locator('input').fill('12345.67')
+ const preset=page.viewportSize()!
+ for(const width of info.project.name.endsWith('reflow')?[320,640,900,901,1440]:[preset.width]){
+  if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:preset.height})
+  await expectDialogFieldColumns(dialog);await expectNoPageOverflow(page)
+  await expect(dialog.locator('input')).toHaveCSS('text-align','end')
+  await page.screenshot({path:info.outputPath(`agent-transfer-alignment-${locale}-${width}.png`)})
  }
 })

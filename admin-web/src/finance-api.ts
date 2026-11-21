@@ -229,11 +229,12 @@ export function createFinanceApi(fetcher: FetchLike = fetch) {
         `/wallets/${encodeURIComponent(memberId)}/reconciliation`,
       );
     },
-    recharges(brandId: string, memberId?: string, limit = 50, offset = 0) {
+    recharges(brandId: string, memberId?: string, limit = 50, offset = 0, state = "") {
       const query = new URLSearchParams({
         limit: String(limit),
         offset: String(offset),
       });
+      if (state) query.set("state", state);
       if (memberId) query.set("member_id", memberId);
       return request<{ items: Recharge[]; total_count: string }>(
         brandId,

@@ -94,6 +94,8 @@
     "./PuzzleCaptcha.vue": "./src/PuzzleCaptcha.vue",
     "./ManagementList.vue": "./src/ManagementList.vue",
     "./BatchDelete.vue": "./src/BatchDelete.vue",
+    "./RechargeStateSelect.vue": "./src/RechargeStateSelect.vue",
+    "./RechargeRecordTypeSelect.vue": "./src/RechargeRecordTypeSelect.vue",
     "./CashConsole.vue": "./src/CashConsole.vue",
     "./AnnouncementsManagement.vue": "./src/AnnouncementsManagement.vue",
     "./ThemeSwitcher.vue": "./src/ThemeSwitcher.vue",

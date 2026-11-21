@@ -28,10 +28,7 @@ test(`platform brand creation retains an uncertain committed request across navi
   const code = `brand_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   await dialog.getByLabel('Brand code', { exact: true }).fill(code);
   await dialog.getByLabel('Brand name', { exact: true }).fill('Independent platform creation test');
-  await selectControl(dialog.getByRole('combobox'), 'zh-CN');
-  await dialog.getByLabel('Timezone', { exact: true }).fill('Asia/Manila');
-  await dialog.getByLabel('Reason for creation', { exact: true }).fill('Verify real audited platform creation');
-  await dialog.getByRole('button', { name: /Review request/ }).click();
+  await expect(dialog.getByRole('combobox')).toHaveAttribute('data-value', 'zh-CN');
   const attempts: Array<{ body: string | null; key: string | undefined }> = [];
   let receipt: { id: string; code: string; status: string; version: number; audit_log_id: string } | undefined;
   await page.route('**/api/v1/platform/brands', async route => {
@@ -46,17 +43,17 @@ test(`platform brand creation retains an uncertain committed request across navi
       else await route.fulfill({ status: 400, json: { success: false, error: 'legacy proxy response' } });
     } else await route.continue();
   });
-  await dialog.getByRole('button', { name: 'Confirm and create', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Submit', exact: true }).click();
   await expect.poll(() => Boolean(receipt)).toBe(true);
-  await expect(dialog.getByRole('button', { name: 'Retry same request', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   if (await page.locator('button[aria-controls="platform-brand-tabs"]').getAttribute('aria-expanded') === 'false') await page.locator('button[aria-controls="platform-brand-tabs"]').click()
   await page.locator('.nav-subitem').filter({ hasText: 'Member list' }).click();
   await page.locator('.nav-subitem').filter({ hasText: 'Brand list' }).click();
   await page.getByRole('button', { name: /New brand/ }).click();
-  await expect(dialog).toContainText(code);
-  await dialog.getByRole('button', { name: 'Retry same request', exact: true }).click();
+  await expect(dialog.getByLabel('Brand code', { exact: true })).toHaveValue(code);
+  await dialog.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('.message.success')).toContainText('Brand created in paused status.');
   await expect(page.getByLabel('Find a brand', { exact: true })).toHaveValue('');

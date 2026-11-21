@@ -70,6 +70,7 @@ for(const locale of ['en','zh-CN'] as const) {
   await expect(input).toHaveValue('Draft template');await expect(input).toBeEnabled()
   await expect(save.locator('xpath=ancestor::form[1]')).not.toHaveAttribute('data-write-locked','true')
   await input.fill('Final template');await save.click();await expect.poll(()=>writes).toBe(2)
-  await expect(input).toBeEnabled();await review(page,info,`template-${locale}`)
+  await expect(dialog).toHaveCount(0)
+  await page.locator('.template-table .row-action').click();await expect(input).toHaveValue('Final template');await review(page,info,`template-${locale}`)
  })
 }

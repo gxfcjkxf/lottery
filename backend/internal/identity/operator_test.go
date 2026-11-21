@@ -177,6 +177,51 @@ func TestOperatorCreateDirectLoginAndGlobalUniqueness(t *testing.T) {
 	}
 }
 
+func TestOperatorCreateRequiresAccountAndAllowsNoPhone(t *testing.T) {
+	p := testdb.New(t)
+	s, err := New(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	adminID := operatorTestAdmin(t, ctx, p)
+	for _, username := range []string{"", "   "} {
+		tx, err := p.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := s.OperatorCreate(ctx, tx, operatorTestBrand, adminID, OperatorInput{Username: username, Phone: "+12025550999", Password: "operator-member-password"}, Metadata{})
+		_ = tx.Rollback(ctx)
+		if err != nil || result.Status != 400 || result.Error == nil || result.Error.Code != "OPERATOR_INPUT_INVALID" {
+			t.Fatalf("missing account accepted: %+v %v", result, err)
+		}
+	}
+	var count int
+	if err := p.QueryRow(ctx, "SELECT count(*) FROM global_users WHERE phone='+12025550999'").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("invalid create changed identities: %d %v", count, err)
+	}
+	tx, err := p.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	result, err := s.OperatorCreate(ctx, tx, operatorTestBrand, adminID, OperatorInput{Username: "account_without_phone", Password: "operator-member-password", Notes: "member note"}, Metadata{})
+	if err != nil || result.Status != 201 {
+		t.Fatalf("account without phone rejected: %+v %v", result, err)
+	}
+	var created operatorCreated
+	if err := json.Unmarshal(result.Data, &created); err != nil {
+		t.Fatal(err)
+	}
+	var username, phone, notes string
+	if err := tx.QueryRow(ctx, `SELECT u.username,coalesce(u.phone,''),m.notes FROM global_users u JOIN brand_members m ON m.global_user_id=u.id WHERE u.id=$1 AND m.brand_id=$2`, created.UserID, operatorTestBrand).Scan(&username, &phone, &notes); err != nil {
+		t.Fatal(err)
+	}
+	if username != "account_without_phone" || phone != "" || notes != "member note" {
+		t.Fatalf("unexpected member fields: %q %q %q", username, phone, notes)
+	}
+}
+
 func TestOperatorCreateReturnsTransientPasswordHashBusyError(t *testing.T) {
 	p := testdb.New(t)
 	s, err := New(p)

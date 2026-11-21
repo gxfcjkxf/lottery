@@ -100,7 +100,7 @@ export function registerMemberBatchDeleteTests(reflow = false) {
       }
       await page.screenshot({ path: info.outputPath(`batch-delete-${app}-${locale}.png`) })
       if (reflow) await page.setViewportSize(viewport)
-      const retry = dialog.getByRole('button', { name: zh ? '重试未完成项' : 'Retry unfinished', exact: true })
+      const retry = dialog.getByRole('button', { name: zh ? '重试' : 'Retry', exact: true })
       await retry.click()
       await expect(dialog).toContainText(zh ? '已删除 2 个 · 未完成 1 个' : '2 deleted · 1 unfinished')
       await expect(dialog).toContainText(zh ? '删除失败' : 'Failed')

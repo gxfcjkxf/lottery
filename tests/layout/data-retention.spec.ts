@@ -43,9 +43,9 @@ for(const locale of ['en','zh-CN'] as const)test(`monthly retention records, pol
  }
  await panel.getByRole('button',{name:locale==='en'?'Execution details':'执行详情',exact:true}).first().click()
  await expect(page.getByRole('dialog')).toBeVisible();await expect(page.getByRole('dialog')).not.toContainText(/Asia\/Singapore|UTC|时区|Timezone/);await noOverflow();await page.getByRole('button',{name:locale==='en'?'Close':'关闭',exact:true}).click()
- await panel.getByRole('button',{name:locale==='en'?'Retry':'重试',exact:true}).click()
+ await panel.getByRole('button',{name:locale==='en'?'Retry':'重试',exact:true}).filter({visible:true}).last().click()
  await expect(panel).toContainText(locale==='en'?'The result is unconfirmed':'结果尚未确认')
- await panel.getByRole('button',{name:locale==='en'?'Retry original request':'重试原请求',exact:true}).click()
+ await panel.getByRole('button',{name:locale==='en'?'Retry':'重试',exact:true}).filter({visible:true}).last().click()
  await expect.poll(()=>retries).toBe(2);expect(writes[0]).toEqual(writes[1]);expect(writes[0].actor).toBe(actor)
  await panel.getByRole('tab',{name:locale==='en'?'Archive settings':'归档设置',exact:true}).click()
  await expect(panel).not.toContainText(/Asia\/Singapore|UTC|时区|Timezone/)
@@ -55,6 +55,9 @@ for(const locale of ['en','zh-CN'] as const)test(`monthly retention records, pol
  await selectControl(panel.locator('.retention-form .select-control-trigger').first(),'28')
  await panel.getByRole('button',{name:locale==='en'?'Save':'保存',exact:true}).click()
  await expect.poll(()=>policy.version).toBe(2);expect(policy.execution_day).toBe(28);expect(policy.enabled).toBe(true)
+ await expect(panel.getByRole('tab',{name:locale==='en'?'Execution records':'执行记录',exact:true})).toHaveAttribute('aria-selected','true')
+ await expect(panel.locator('.retention-form')).toHaveCount(0)
+ await panel.getByRole('tab',{name:locale==='en'?'Archive settings':'归档设置',exact:true}).click()
  await expect(panel).toContainText('2026-11-01')
  for(const width of info.project.name.endsWith('reflow')?[320,700,701,900,1280]:[preset.width]){
   if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:preset.height})

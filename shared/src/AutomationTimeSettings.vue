@@ -10,7 +10,7 @@ import {vInlineValidation,formValidationText} from './form-validation'
 import {showOperationToast} from './operation-toast'
 import PlatformTemporalInput from './PlatformTemporalInput.vue'
 const props=defineProps<{gameId:string;locale:'en'|'zh-CN';canWrite:boolean}>()
-const emit=defineEmits<{failure:[cause:unknown]}>()
+const emit=defineEmits<{failure:[cause:unknown];saved:[]}>()
 const catalog={en:{...automationCatalog.en,...drawScheduleCatalog.en,openBefore:automationCatalog.en.openBefore,notConfigured:automationCatalog.en.notConfigured},'zh-CN':{...automationCatalog['zh-CN'],...drawScheduleCatalog['zh-CN'],openBefore:automationCatalog['zh-CN'].openBefore,notConfigured:automationCatalog['zh-CN'].notConfigured}}
 const i18n=createCatalogI18n(catalog,props.locale),t=i18n.t
 watch(()=>props.locale,locale=>i18n.setLocale(locale))
@@ -26,7 +26,7 @@ async function save(){
  if(busy.value||!plan.value||!props.canWrite)return
  if(!pending.value){const p=plan.value;pending.value={key:crypto.randomUUID(),body:{version:p.version,open_before_seconds:p.open_before_seconds,close_before_seconds:p.close_before_seconds,anchor_draw_at:upstream.value?null:new Date(anchor.value+'Z').toISOString(),anchor_period_no:upstream.value?null:p.anchor_period_no,interval_seconds:upstream.value?null:p.interval_seconds}}}
  const intent=pending.value,g=generation;busy.value=true
- try{const out=await api.write('/'+props.gameId+'/automation-timing',intent.body,intent.key) as AutomationPlan;if(!alive||g!==generation)return;assign(out);pending.value=null;showOperationToast(()=>t('saved'),'success')}
+ try{const out=await api.write('/'+props.gameId+'/automation-timing',intent.body,intent.key) as AutomationPlan;if(!alive||g!==generation)return;assign(out);pending.value=null;showOperationToast(()=>t('saved'),'success');emit('saved')}
  catch(cause){if(!alive||g!==generation)return;if(cause instanceof PlatformLotteryError&&cause.status>=400&&cause.status<500){pending.value=null;failed.value=true};showOperationToast(()=>t('saveFailure'),'error');if(cause instanceof PlatformLotteryError&&cause.status===401)emit('failure',cause)}finally{if(alive&&g===generation)busy.value=false}
 }
 watch(()=>props.gameId,()=>{pending.value=null;void withGlobalLoading(load)},{immediate:true})
@@ -41,8 +41,8 @@ onUnmounted(()=>{alive=false;generation++})
 <label>{{t('openBefore')}}<input v-model.number="plan.open_before_seconds" type="number" :min="plan.close_before_seconds+1" :max="upstream?31536000:plan.interval_seconds??undefined" step="1" required /></label>
 <label>{{t('closeBefore')}}<input v-model.number="plan.close_before_seconds" type="number" min="0" :max="plan.open_before_seconds===null?0:Math.min(upstream?86400:plan.open_before_seconds-1,plan.open_before_seconds-1)" step="1" required /></label>
 </div></fieldset>
-<p v-if="pending" role="status">{{t('pending')}}</p>
-<div class="ui-form-actions"><button v-if="canWrite" type="submit" class="button button-primary" :disabled="busy||failed">{{t(pending?'retry':'save')}}</button></div>
+<p v-if="pending&&!busy" role="status">{{t('pending')}}</p>
+<div class="ui-form-actions"><button v-if="canWrite" type="submit" class="button button-primary" :disabled="busy||failed">{{t(pending&&!busy?'retry':'save')}}</button></div>
 </form>
 <p v-else-if="loaded">{{t('notConfigured')}}</p>
 <button v-if="failed&&!pending" type="button" class="button button-secondary" @click="withGlobalLoading(load)">{{t('reload')}}</button>

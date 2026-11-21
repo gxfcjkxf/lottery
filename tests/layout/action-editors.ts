@@ -1,3 +1,4 @@
+import { expectDialogFieldColumns } from './dialog-form-columns'
 import { test, expect } from '@playwright/test'
 import { resolve } from 'node:path'
 import { origins, gameId, expectInsideViewport, expectNoPageOverflow } from './fixture'
@@ -64,6 +65,7 @@ export function registerActionEditorTests(reflow = false) {
       const submit=dialog.locator('.ui-form > .button, .ui-form-actions > button[type=submit], .detail-modal-footer > button').last()
       await submit.scrollIntoViewIfNeeded()
       await expect(submit).toBeInViewport()
+      await expectDialogFieldColumns(dialog)
       await expectInsideViewport(dialog)
       await expectNoPageOverflow(page)
       await page.screenshot({path:info.outputPath(`action-editor-${name}-${locale}-${width}.png`)})

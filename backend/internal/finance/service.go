@@ -209,8 +209,11 @@ func (s Service) CancelRecharge(ctx context.Context, tx pgx.Tx, brand, id string
 	return record, nil
 }
 
-func (s Service) ListRecharges(ctx context.Context, brand, member string, limit, offset int) ([]Recharge, error) {
+func (s Service) ListRecharges(ctx context.Context, brand, member string, limit, offset int, state string) ([]Recharge, error) {
 	if !financeUUIDPattern.MatchString(brand) || (member != "" && !financeUUIDPattern.MatchString(member)) || limit < 1 || limit > 100 || offset < 0 || offset > 1_000_000 {
+		return nil, points.ErrInvalid
+	}
+	if state != "" && state != "pending" && state != "confirmed" && state != "cancelled" {
 		return nil, points.ErrInvalid
 	}
 	if member != "" {
@@ -230,19 +233,9 @@ func (s Service) ListRecharges(ctx context.Context, brand, member string, limit,
 		LEFT JOIN global_users gu ON gu.id=bm.global_user_id
 		LEFT JOIN admin_accounts ca ON ca.id=r.created_by
 		LEFT JOIN admin_accounts qa ON qa.id=r.confirmed_by
-		WHERE r.brand_id=$1 ORDER BY r.created_at DESC,r.id DESC LIMIT $2 OFFSET $3`
-	args := []any{brand, limit, offset}
-	if member != "" {
-		query = `SELECT r.id::text,r.brand_id::text,r.member_id::text,COALESCE(gu.username,''),r.account_id::text,r.points,r.method,r.state,r.proof_reference,r.remark,r.created_by::text,COALESCE(ca.username,''),
-			COALESCE(r.confirmed_by::text,''),COALESCE(qa.username,''),r.version,r.created_at,r.confirmed_at,COALESCE(r.ledger_entry_id::text,'')
-			FROM recharge_orders r
-			LEFT JOIN brand_members bm ON bm.brand_id=r.brand_id AND bm.id=r.member_id
-			LEFT JOIN global_users gu ON gu.id=bm.global_user_id
-			LEFT JOIN admin_accounts ca ON ca.id=r.created_by
-			LEFT JOIN admin_accounts qa ON qa.id=r.confirmed_by
-			WHERE r.brand_id=$1 AND r.member_id=$2 ORDER BY r.created_at DESC,r.id DESC LIMIT $3 OFFSET $4`
-		args = []any{brand, member, limit, offset}
-	}
+		WHERE r.brand_id=$1 AND ($2='' OR r.member_id=NULLIF($2,'')::uuid) AND ($3='' OR r.state=$3)
+		ORDER BY r.created_at DESC,r.id DESC LIMIT $4 OFFSET $5`
+	args := []any{brand, member, state, limit, offset}
 	rows, err := s.DB.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err

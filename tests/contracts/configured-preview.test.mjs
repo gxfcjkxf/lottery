@@ -56,6 +56,7 @@ test('brand platform games expose scoped configured sales alongside connection a
   'POST /api/v1/admin/platform-games/rule-preview',
   'POST /api/v1/admin/platform-games/{id}/availability',
   'POST /api/v1/admin/platform-games/{id}/bet-limits',
+  'POST /api/v1/admin/platform-games/{id}/configured/availability',
   'POST /api/v1/admin/platform-games/{id}/configured/sales',
   'POST /api/v1/admin/platform-games/{id}/connect',
  ]);

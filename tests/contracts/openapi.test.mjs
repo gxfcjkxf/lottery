@@ -1,5 +1,6 @@
 import * as bettingPreferences from '../../scripts/openapi-betting-preferences.mjs';
 import * as bettingHistory from '../../scripts/openapi-betting-history.mjs';
+import * as betFrequency from '../../scripts/openapi-bet-frequency.mjs';
 import * as configuredBusiness from "../../scripts/openapi-configured-business.mjs";
 import * as configuredPreview from "../../scripts/openapi-configured-preview.mjs";
 import * as platformShared from "../../scripts/openapi-platform-lottery.mjs";
@@ -39,7 +40,7 @@ import * as announcements from "../../scripts/openapi-announcements.mjs";
 import * as brandContacts from "../../scripts/openapi-brand-contacts.mjs";
 
 const modules=[identity,finance,lottery,withdrawals,withdrawalReports,workbench,commissionPolicies,commissionCycles,commissionDiscovery,commissionPayments,commissionAdjustments,commissionCorrections,commissionReports,commissionAnalysis,rechargeUser,rewards,rewardReports,dataRetention,attributionReports];
-modules.push(bettingPreferences,bettingHistory,platformShared,configuredPreview,configuredBusiness,markSix,canada,sharedAutomation,platformSettings,memberSummary,associationNames,filterOptions,agentPortal,brandContacts,cash,announcements);
+modules.push(bettingPreferences,bettingHistory,betFrequency,platformShared,configuredPreview,configuredBusiness,markSix,canada,sharedAutomation,platformSettings,memberSummary,associationNames,filterOptions,agentPortal,brandContacts,cash,announcements);
 const go=process.env.LOTTERY_GO_BIN??"go";
 const operation={method:"POST",path:"/api/v1/me/action",operationId:"performAction",summary:"Submit action",tag:"identity",auth:"user",idempotency:true,requestBody:{$ref:"#/components/schemas/EmptyObject"},data:{$ref:"#/components/schemas/EmptyObject"}};
 const routes=[{method:"POST",path:"/api/v1/me/action"},{method:"POST",path:"/api/v1/b/{brandCode}/me/action"}];
@@ -59,6 +60,16 @@ test("composes the explicit API module list against real registered routes, incl
   const doc=composeDocument(modules,routes);
   assertCoverage(doc,routes);
   assertReferences(doc);
+  const frequency=doc.paths['/api/v1/platform/reports/bet-frequency'].get;
+  const games=doc.paths['/api/v1/platform/reports/bet-frequency/games'].get;
+  assert.deepEqual(frequency.parameters.filter(parameter=>parameter.in==='query'),[
+    {name:'game_id',in:'query',required:true,schema:{$ref:'#/components/schemas/UUID'}},
+    {name:'from',in:'query',required:true,schema:{type:'string',format:'date'}},
+    {name:'to',in:'query',required:true,schema:{type:'string',format:'date'}},
+    {name:'limit',in:'query',schema:{type:'integer',minimum:1,maximum:100,default:20}},
+    {name:'offset',in:'query',schema:{type:'integer',minimum:0,maximum:1000000,default:0}},
+  ]);
+  assert.deepEqual(games.parameters.filter(parameter=>parameter.in==='query'),[]);
   assert.deepEqual(documentedRoutes(doc).filter(path=>path.startsWith("GET /api/v1/admin/commission-payment")||path.startsWith("POST /api/v1/admin/commission-payment")||path.startsWith("PUT /api/v1/admin/commission-payment")).sort(),[
     "GET /api/v1/admin/commission-payment-policy",
     "GET /api/v1/admin/commission-payments",

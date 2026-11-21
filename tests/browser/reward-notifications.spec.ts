@@ -39,9 +39,9 @@ test('real reward inbox preserves grant and reversal facts and exact read receip
  await selectLanguage(page, 'en');
  const writes:Array<{body:string|null;key:string|undefined}>=[];
  await page.route('**/api/v1/notifications/read',async route=>{writes.push({body:route.request().postData(),key:route.request().headers()['idempotency-key']});const response=await route.fetch();await data(response);if(writes.length===1)await route.abort('failed');else{expect(writes[1]).toEqual(writes[0]);await route.fulfill({response});}});
- await panel.getByRole('button',{name:'Mark this page read',exact:true}).click();await expect(panel.getByRole('button',{name:'Retry the same request',exact:true})).toBeVisible();
- await panel.getByRole('button',{name:'Reload',exact:true}).click();await expect(panel.getByRole('button',{name:'Retry the same request',exact:true})).toBeVisible();
- await panel.getByRole('button',{name:'Retry the same request',exact:true}).click();await expect(panel.getByRole('button',{name:'Retry the same request',exact:true})).toHaveCount(0);
+ await panel.getByRole('button',{name:'Mark this page read',exact:true}).click();await expect(panel.getByRole('button',{name:'Retry',exact:true})).toBeVisible();
+ await panel.getByRole('button',{name:'Reload',exact:true}).click();await expect(panel.getByRole('button',{name:'Retry',exact:true})).toBeVisible();
+ await panel.getByRole('button',{name:'Retry',exact:true}).click();await expect(panel.getByRole('button',{name:'Retry',exact:true})).toHaveCount(0);
  expect(writes).toHaveLength(2);expect(await economic()).toBe(before);
  const after=(await inbox()).items.filter(item=>item.event_type.startsWith('reward.order.'));expect(after).toHaveLength(2);
  for(const message of after){expect(message.read_at).not.toBeNull();expect(message.content).toEqual(messages.find(item=>item.id===message.id)?.content);}

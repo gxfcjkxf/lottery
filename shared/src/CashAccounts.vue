@@ -118,8 +118,8 @@ useOperationToast(notice, v => v, 'success');
           <CashDestinationFields v-if="!deleting" v-model="draft" :t="t" :manage-status="false" />
           <dl v-else><div><dt>{{ t(draft.currency === 'USDT' ? 'cash.address' : 'cash.number') }}</dt><dd>{{ draft.number }}</dd></div></dl>
         </fieldset>
-        <p v-if="pending" class="muted" role="status">{{ t('cash.unknown') }}</p>
-        <div class="ui-form-actions"><button type="submit" class="button button-primary" :disabled="busy || loading || !state">{{ t(pending ? 'cash.retry' : deleting ? 'cash.confirm' : 'cash.save') }}</button></div>
+        <p v-if="pending&&!busy" class="muted" role="status">{{ t('cash.unknown') }}</p>
+        <div class="ui-form-actions"><button type="submit" class="button button-primary" :disabled="busy || loading || !state">{{ t(pending && !busy ? 'cash.retry' : deleting ? 'cash.confirm' : 'cash.save') }}</button></div>
       </form>
     </DetailModal>
   </section>

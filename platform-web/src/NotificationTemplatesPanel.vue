@@ -49,6 +49,7 @@ async function save() {
   selected.value = result; draft.value = clone(result.content)
   templates.value = templates.value.map(item => item.key === event ? result : item)
   notice.value = message('templates.saved')
+  editorGeneration++; selected.value = null; draft.value = null
  } catch (cause) {
   if (alive && token === generation) {
    conflict.value = !(cause instanceof PlatformApiError) || cause.status === 0 || cause.status >= 500 || cause.status === 409 || cause.code === 'INVALID_RESPONSE'
@@ -84,8 +85,8 @@ useOperationToast(notice, value => displayError(value), 'success')
     <fieldset class="template-languages" :disabled="!canManage || writing || conflict">
      <div v-for="language in (['zh-CN', 'en'] as const)" :key="language" class="console-stack template-language">
       <h3>{{ t(language === 'en' ? 'platform.copy.d2332795' : 'platform.copy.01f1aac2') }}</h3>
-      <label>{{ t('platform.copy.1e908e34') }}<input v-model="draft[language].title" maxlength="240" required /></label>
-      <label>{{ t('platform.copy.29314db9') }}<textarea v-model="draft[language].body" rows="6" maxlength="2400" required /></label>
+      <label class="ui-field-row">{{ t('platform.copy.1e908e34') }}<input v-model="draft[language].title" maxlength="240" required /></label>
+      <label class="ui-field-row">{{ t('platform.copy.29314db9') }}<textarea v-model="draft[language].body" rows="6" maxlength="2400" required /></label>
      </div>
     </fieldset>
     <p class="template-scope">{{ t('templates.placeholders') }}</p>

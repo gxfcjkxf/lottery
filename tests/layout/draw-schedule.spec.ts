@@ -4,9 +4,12 @@ import {origins,gameId,expectNoPageOverflow,installLayoutApi} from './fixture'
 for(const locale of ['en','zh-CN'] as const)test(`game-level draw times and collection delay ${locale}`,async({page},info)=>{
  const zh=locale==='zh-CN',errors:string[]=[];page.on('pageerror',error=>errors.push(error.message))
  const schedule={version:1,enabled:true,mode:'daily',draw_time:'21:30:00',open_before_hours:24,close_before_seconds:15,collect_after_seconds:30}
+ const game={id:gameId,name:'Mark Six',version:1,status:'active',timezone:'Asia/Macau',rule_published:true,model:{model:'X_PLUS_Y',regular_count:6,special_count:1,regular_pool:{min:1,max:49,allow_repeat:false},special_pool:{min:1,max:49,allow_repeat:false},allow_repeat:false,ordered:true}}
  const writes:Array<{key:string;body:typeof schedule}>=[]
  await page.route('**/api/**',route=>{
   const req=route.request(),path=new URL(req.url()).pathname
+  if(req.method()==='GET'&&path.endsWith('/platform-games'))return route.fulfill({json:{success:true,data:{games:[game],limit:50,offset:0,total_count:'1'}}})
+  if(req.method()==='GET'&&path.endsWith('/'+gameId))return route.fulfill({json:{success:true,data:{game,periods:[],total_count:'0'}}})
   if(req.method()==='GET'&&path.endsWith('/automation'))return route.fulfill({json:{success:true,data:{schedule,plan:null,source_check:null,attempts:[],allowed_origins:[]}}})
   expect(path).toBe(`/api/v1/platform/platform-games/${gameId}/draw-schedule`)
   expect(req.method()).toBe('POST');writes.push({key:req.headers()['idempotency-key']!,body:req.postDataJSON()})
@@ -14,9 +17,10 @@ for(const locale of ['en','zh-CN'] as const)test(`game-level draw times and coll
   expect(writes[1]).toEqual(writes[0]);return route.fulfill({json:{success:true,data:{...writes[1]!.body,version:2}}})
  })
  const settings={theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}
- await page.route('**/__schedule',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app" class="management-console"></div><script type="module">import {createApp,h} from '/node_modules/.vite/deps/vue.js';import C from '/@fs${resolve('shared/src/DrawScheduleSettings.vue')}';import Host from '/@fs${resolve('shared/src/OperationToastHost.vue')}';import {setPlatformDisplaySettings} from '/@fs${resolve('shared/src/display-settings.ts')}';import '/@fs${resolve('shared/src/styles.css')}';import '/@fs${resolve('shared/src/management.css')}';import '/@fs${resolve('shared/src/controls.css')}';import '/@fs${resolve('shared/src/form-validation.css')}';setPlatformDisplaySettings(${JSON.stringify(settings)});createApp({render:()=>[h(C,${JSON.stringify({gameId,timezone:'Asia/Macau',locale,canWrite:true})}),h(Host,{locale:'${locale}'})]}).mount('#app')</script></html>`}))
+ await page.route('**/__schedule',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app" class="management-console"></div><script type="module">import {createApp,h} from '/node_modules/.vite/deps/vue.js';import C from '/@fs${resolve('shared/src/PlatformLottery.vue')}';import Host from '/@fs${resolve('shared/src/OperationToastHost.vue')}';import {setPlatformDisplaySettings} from '/@fs${resolve('shared/src/display-settings.ts')}';import '/@fs${resolve('shared/src/styles.css')}';import '/@fs${resolve('shared/src/management.css')}';import '/@fs${resolve('shared/src/controls.css')}';import '/@fs${resolve('shared/src/form-validation.css')}';setPlatformDisplaySettings(${JSON.stringify(settings)});createApp({render:()=>[h(C,${JSON.stringify({surface:'platform',brandId:'',locale,canManage:true,canConnect:false,displaySettings:settings})}),h(Host,{locale:'${locale}'})]}).mount('#app')</script></html>`}))
  await page.goto(origins.platform+'/__schedule')
- await expect(page.getByRole('region',{name:zh?'时间设置':'Time settings'})).toBeVisible()
+ await page.getByRole('button',{name:zh?'时间设置':'Time settings',exact:true}).click()
+ await expect(page.getByTestId('draw-schedule-settings')).toBeVisible()
  await page.getByLabel(zh?'开奖前开盘（小时）':'Open before draw (hours)',{exact:true}).fill('48')
  await page.getByLabel(zh?'开奖前封盘（秒）':'Close before draw (seconds)',{exact:true}).fill('60')
  await page.getByLabel(zh?'开奖后开始采集（秒）':'Start collection after draw (seconds)',{exact:true}).fill('90')
@@ -28,9 +32,10 @@ for(const locale of ['en','zh-CN'] as const)test(`game-level draw times and coll
  await expect(page.getByLabel(zh?'开奖后开始采集（秒）':'Start collection after draw (seconds)',{exact:true})).toBeDisabled()
  expect(writes[0]!.body).toEqual({...schedule,open_before_hours:48,close_before_seconds:60,collect_after_seconds:90})
  await page.locator('.toast-error button').click()
- await page.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true}).click()
+ await page.getByRole('button',{name:zh?'重试':'Retry',exact:true}).click()
  await expect(page.locator('.toast-success')).toBeVisible()
- await expect(page.getByLabel(zh?'开奖后开始采集（秒）':'Start collection after draw (seconds)',{exact:true})).toBeEnabled()
+ await expect(page.getByTestId('draw-schedule-settings')).toHaveCount(0)
+ await expect(page.getByRole('row').filter({hasText:game.name})).toBeVisible()
  await expectNoPageOverflow(page);expect(errors).toEqual([])
 })
 test('Mark Six schedule belongs to the game, source has result fields only',async({page},info)=>{
@@ -142,7 +147,8 @@ for(const locale of ['en','zh-CN'] as const)test(`Canada28 independent time sett
  await expect(page.locator('.toast-error')).toBeVisible();await expect(open).toBeDisabled()
  expect(writes[0]?.body).toEqual({version:1,open_before_seconds:180,close_before_seconds:20,anchor_draw_at:null,anchor_period_no:null,interval_seconds:null})
  await page.locator('.toast-error button').click()
- await page.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true}).click()
- await expect(page.locator('.toast-success')).toBeVisible();await expect(open).toBeEnabled()
+ await page.getByRole('button',{name:zh?'重试':'Retry',exact:true}).click()
+ await expect(page.locator('.toast-success')).toBeVisible();await expect(page.getByTestId('automation-time-settings')).toHaveCount(0)
+ await expect(row).toBeVisible()
  await expectNoPageOverflow(page);expect(errors).toEqual([])
 })

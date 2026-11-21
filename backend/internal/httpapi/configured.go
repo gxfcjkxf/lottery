@@ -130,6 +130,52 @@ func registerConfiguredAdminRoutes(register func(string, string, http.HandlerFun
 		out, e := platformLotteryResult(200, sales, e)
 		outputMutation(w, r, out, e)
 	})
+	const availabilityPath = "/platform-games/{id}/configured/availability"
+	register("GET", availabilityPath, func(w http.ResponseWriter, r *http.Request) {
+		a, brand, ok := platformLotteryActor(w, r, d, "view")
+		if !ok {
+			return
+		}
+		id, ok := ruleID(w, r, "id")
+		if !ok {
+			return
+		}
+		current, err := svc.ConfiguredRules(r.Context(), brand, id)
+		if err == nil && current == nil {
+			err = platformlottery.ErrNotFound
+		}
+		var value platformlottery.ConfiguredAvailability
+		if err == nil {
+			value, err = platformlottery.ReadConfiguredAvailability(r.Context(), d.Admins.DB, brand, id, current.ID)
+		}
+		if err == nil && !adminReadAudit(w, r, d, a, brand, "platform_game.view") {
+			return
+		}
+		result, err := platformLotteryResult(200, value, err)
+		outputMutation(w, r, result, err)
+	})
+	register("POST", availabilityPath, func(w http.ResponseWriter, r *http.Request) {
+		action := "sell"
+		if platform {
+			action = "write"
+		}
+		a, brand, ok := platformLotteryActor(w, r, d, action)
+		if !ok {
+			return
+		}
+		id, ok := ruleID(w, r, "id")
+		if !ok {
+			return
+		}
+		var in platformlottery.ConfiguredAvailabilityInput
+		if !decodeBodyLimit(w, r, &in, 4<<20) {
+			return
+		}
+		platformLotteryWrite(w, r, d, a, brand, action, "configured_availability.write", in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
+			out, err := svc.WriteConfiguredAvailability(ctx, tx, fresh, brand, id, in, pointMeta(r, fresh))
+			return platformLotteryResult(200, out, err)
+		})
+	})
 	if platform {
 		register("POST", "/platform-games/{id}/configured/rules", func(w http.ResponseWriter, r *http.Request) {
 			a, b, ok := platformLotteryActor(w, r, d, "write")
@@ -161,12 +207,18 @@ func registerConfiguredAdminRoutes(register func(string, string, http.HandlerFun
 		if !ok {
 			return
 		}
-		var in platformlottery.ConfiguredSales
+		var in platformlottery.ConfiguredSalesInput
 		if !decodeBodyLimit(w, r, &in, 4<<20) {
 			return
 		}
 		platformLotteryWrite(w, r, d, a, brand, "sell", "configured_sales.write", in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
-			out, e := svc.WriteConfiguredSales(ctx, tx, fresh, brand, id, in, pointMeta(r, fresh))
+			meta := pointMeta(r, fresh)
+			out, e := svc.WriteConfiguredSales(ctx, tx, fresh, brand, id, in.ConfiguredSales, meta)
+			if e == nil && in.Availability != nil {
+				_, e = svc.WriteConfiguredAvailability(ctx, tx, fresh, brand, id, platformlottery.ConfiguredAvailabilityInput{
+					RuleID: out.RuleID, Version: in.Availability.Version, Items: in.Availability.Items,
+				}, meta)
+			}
 			return platformLotteryResult(200, out, e)
 		})
 	})

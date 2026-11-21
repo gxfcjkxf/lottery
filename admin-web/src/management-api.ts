@@ -265,7 +265,7 @@ export function createManagementApi(fetcher: FetchLike = fetch) {
     createMember(
       brandId: string,
       body: {
-        username?: string;
+        username: string;
         phone?: string;
         password: string;
         display_name?: string;

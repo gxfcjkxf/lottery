@@ -41,12 +41,12 @@ test('platform resumes and pauses an owned brand with audited original-request r
     else { expect(data).toEqual(receipt); await route.fulfill({ response }); }
   });
   await dialog.getByRole('button', { name: 'Confirm status change', exact: true }).click();
-  await expect(dialog.getByRole('button', { name: 'Retry the same request', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
   expect(JSON.parse(attempts[0].body!).reason).toBe(reason);
   await dialog.getByRole('button', { name: 'Close', exact: true }).last().click();
   await expect(dialog).toHaveCount(0);
   await row.getByRole('button', { name: 'Manage status', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Retry the same request', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(row.locator('.status-pill')).toHaveText('Paused');
   expect(attempts).toHaveLength(2);

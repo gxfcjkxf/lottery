@@ -50,7 +50,7 @@ export function registerMemberDeleteTests(reflow = false) {
       await page.screenshot({ path: info.outputPath(`global-account-delete-${locale}.png`) })
       await dialog.getByRole('button', { name: label, exact: true }).click()
       await expect(page.locator('.toast')).toHaveCount(0)
-      const retry = dialog.getByRole('button', { name: locale === 'en' ? 'Retry the same deletion' : '重试原删除请求', exact: true })
+      const retry = dialog.getByRole('button', { name: locale === 'en' ? 'Retry' : '重试', exact: true })
       await expect(retry).toBeVisible()
       await retry.click()
       await expect(dialog).toHaveCount(0)

@@ -51,3 +51,9 @@ worker直接读取来源公布的下期期号与香港时间，不推算每日�
 - 三端类型检查与构建通过；API生成检查通过。构建仅有既有大包体积提示。
 
 本地验收证据保存在被忽略的`.local/`目录：`hk-browser-evidence.json`、`hk-live-results.json`、`hk-live-verify.log`、`hk-go-final.log`、`hk-contracts-final.log`。截图包括`hk-real-user-mobile.jpg`、`hk-fixture-sealed.jpg`、`hk-fixture-partial.jpg`、`hk-fixture-invalid.jpg`和`hk-wallet-ledger.jpg`。
+
+## 2026-11-17 DEV 来源替换
+
+`mark_six_trial` 改用用户指定的 `https://htpc28.com/index` 所使用的公开 JSON 接口 `https://htpc28.com/api/kj/getData?page=1&page_size=1&type=1`。仅提取 `data.lhc_current_period_sn`、`data.lhc_current_open_time`、`data.lottery_numbers[*].num` 和 `data.special_number.num`，不读取同一响应中的加拿大28结果。来源时间按 `2006-01-02 15:04:05` 和 `Asia/Hong_Kong` 解析；保留平台独立开奖日程。
+
+JSON 字段路径支持数组段 `*`，例如 `/data/lottery_numbers/*/num`，按源数组顺序逐个取值。缺少字段、空号码、数量不足和非标量号码明确报错，不补默认结果。

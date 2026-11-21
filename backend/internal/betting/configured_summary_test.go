@@ -49,8 +49,11 @@ func assertConfiguredSummary(t *testing.T, full, summary ConfiguredOrder) {
 					after = &compact.Catalog.Plays[i]
 				}
 			}
-			if before == nil || after == nil || !reflect.DeepEqual(before.Label, after.Label) || before.Selection.Domain != after.Selection.Domain {
+			if before == nil || after == nil || !reflect.DeepEqual(before.Label, after.Label) || before.Group != after.Group || before.StakeMode != after.StakeMode || !reflect.DeepEqual(before.Selection, after.Selection) {
 				t.Fatal("play label changed", line.PlayID)
+			}
+			if len(original.Catalog.Domains[before.Selection.Domain].Options) != len(compact.Catalog.Domains[after.Selection.Domain].Options) {
+				t.Fatal("display domain lost option cardinality", line.PlayID)
 			}
 			for _, id := range line.Options {
 				found := false
@@ -59,7 +62,7 @@ func assertConfiguredSummary(t *testing.T, full, summary ConfiguredOrder) {
 						continue
 					}
 					for _, display := range compact.Catalog.Domains[after.Selection.Domain].Options {
-						if display.ID == id && reflect.DeepEqual(display.Label, option.Label) {
+						if display.ID == id && reflect.DeepEqual(display.Label, option.Label) && display.SourceCode == option.SourceCode {
 							found = true
 						}
 					}

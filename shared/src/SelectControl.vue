@@ -150,7 +150,7 @@ onBeforeUnmount(close)
 <template>
   <span class="select-control" :class="attrs.class" :style="attrs.style as StyleValue">
     <span v-if="search" ref="trigger" class="select-control-trigger select-control-search" role="combobox" :aria-label="label" aria-haspopup="listbox" :aria-expanded="open" :aria-controls="`${id}-list`" :aria-activedescendant="open && active >= 0 ? `${id}-option-${active}` : undefined" @keydown="navigate" @focusout="blur">
-      <ClearableInput v-bind="{ ...attrs, class: undefined, style: undefined }" v-model="searchText" :locale="search.locale" :aria-label="label" :placeholder="placeholder || label" :disabled="disabled" @input="editSearch" @focus="show" @click="show" />
+      <ClearableInput v-bind="{ ...attrs, class: undefined, style: undefined }" v-model="searchText" :locale="search.locale" :aria-label="label" :placeholder="placeholder" :disabled="disabled" @input="editSearch" @focus="show" @click="show" />
       <button type="button" class="select-control-search-toggle" :disabled="disabled" :aria-label="label" :aria-expanded="open" @mousedown.prevent @click="open ? close() : show()"><SiteIcon name="down" /></button>
     </span>
     <button v-else v-bind="{ ...attrs, class: undefined, style: undefined }" ref="trigger" type="button" class="select-control-trigger" tabindex="0" role="combobox" :disabled="disabled"

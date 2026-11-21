@@ -1,12 +1,12 @@
 import {configuredSelectionOptionLabel} from '../../shared/src/configured-selection-groups'
-import { createCatalogI18n, configuredNumbers, configuredOptionPrices, type ConfiguredPlay, type ConfiguredSnapshot } from '@lottery/shared'
+import { configuredOptionDisabled, createCatalogI18n, configuredNumbers, configuredOptionPrices, type ConfiguredDisabledOptions, type ConfiguredPlay, type ConfiguredSnapshot } from '@lottery/shared'
 import type { RuleCondition, RuleDefinition } from '../../shared/src/rules'
 import { playRulesCatalog } from './play-rules-catalog'
 
 type Node = Record<string, any>
 interface PlayerRule { text: string; detail?: string; outcome?:string }
 export interface PlayerRules { instructions: string[]; prizes: PlayerRule[]; options: PlayerRule[] }
-export function describePlayRules(locale: 'en' | 'zh-CN', input: { snapshot: ConfiguredSnapshot; play: ConfiguredPlay; plate: string } | { definition: RuleDefinition }): PlayerRules {
+export function describePlayRules(locale: 'en' | 'zh-CN', input: { snapshot: ConfiguredSnapshot; play: ConfiguredPlay; plate: string; disabledOptions?: ConfiguredDisabledOptions } | { definition: RuleDefinition }): PlayerRules {
   const { t } = createCatalogI18n(playRulesCatalog, locale)
   const text = (key: string, params: Record<string, string | number> = {}) => {
     if (!(key in playRulesCatalog.en)) throw new Error('Unsupported player rule description')
@@ -115,17 +115,18 @@ export function describePlayRules(locale: 'en' | 'zh-CN', input: { snapshot: Con
     prizes.push({ text: text('round') })
   }
   if (play.cap_points) prizes.push({ text: text('cap', { points: play.cap_points }) })
-  const presentedOptions = options.map(option => ({ text: option.label[locale], detail: [configuredNumbers(snapshot, option).join(', '), ...configuredOptionPrices(snapshot, play, option, plate).map(price => `× ${price}`)].filter(Boolean).join(' · ') }))
+  const presentedOptions = options.filter(option => !configuredOptionDisabled(input.disabledOptions, play.id, option.id)).map(option => ({ text: option.label[locale], detail: [configuredNumbers(snapshot, option).join(', '), ...configuredOptionPrices(snapshot, play, option, plate).map(price => `× ${price}`)].filter(Boolean).join(' · ') }))
   return { instructions, prizes, options: presentedOptions }
 }
 
-export function describePlayGroup(locale:'en'|'zh-CN',snapshot:ConfiguredSnapshot,group:import('../../shared/src/configured-selection-groups').ConfiguredSelectionGroup,plate:string){
+export function describePlayGroup(locale:'en'|'zh-CN',snapshot:ConfiguredSnapshot,group:import('../../shared/src/configured-selection-groups').ConfiguredSelectionGroup,plate:string,disabledOptions?:ConfiguredDisabledOptions){
  const {t}=createCatalogI18n(playRulesCatalog,locale)
- const entries=group.plays.map(play=>{
+ const entries=group.plays.flatMap(play=>{
   const option=snapshot.catalog.domains[play.selection.domain]!.options[0]!
+  if(configuredOptionDisabled(disabledOptions,play.id,option.id))return []
   const rules=describePlayRules(locale,{snapshot,play,plate})
   rules.prizes=rules.prizes.filter(prize=>prize.outcome!=='lost')
-  return {id:play.id,label:configuredSelectionOptionLabel(play,option)[locale],prices:configuredOptionPrices(snapshot,play,option,plate),rules}
+  return [{id:play.id,label:configuredSelectionOptionLabel(play,option)[locale],prices:configuredOptionPrices(snapshot,play,option,plate),rules}]
  })
  const notes:string[]=[]
  if(group.id==='group:tailNumbers'&&group.plays.every(play=>!!play.decisions)){

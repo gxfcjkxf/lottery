@@ -246,6 +246,20 @@ func enablePointConversion(t *testing.T, f fixture) {
 func TestEligibleExchangePayoutReleaseAndSnapshot(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()
+	for _, scope := range []string{"platform", f.brand} {
+		if _, err := transact(t, f, func(tx pgx.Tx) (Config, error) {
+			cfg, err := ReadConfig(ctx, tx, scope)
+			if err != nil {
+				return cfg, err
+			}
+			for i := range cfg.Rules {
+				cfg.Rules[i].Fee = "10%"
+			}
+			return SaveConfig(ctx, tx, scope, cfg, points.Metadata{ActorType: "system"})
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	enablePointConversion(t, f)
 	_, e := transact(t, f, func(tx pgx.Tx) (points.Entry, error) {
 		var delta points.Balance
@@ -268,10 +282,13 @@ func TestEligibleExchangePayoutReleaseAndSnapshot(t *testing.T) {
 		t.Fatal(e)
 	}
 	o, e := transact(t, f, func(tx pgx.Tx) (Order, error) {
-		return f.s.Withdraw(ctx, tx, f.brand, f.member, Input{Currency: "CNY", Amount: "10", DestinationID: d.ID, DestinationVersion: d.Version, Fee: "0"}, f.meta)
+		return f.s.Withdraw(ctx, tx, f.brand, f.member, Input{Currency: "CNY", Amount: "10", DestinationID: d.ID, DestinationVersion: d.Version, Fee: "1"}, f.meta)
 	})
 	if e != nil {
 		t.Fatal(e)
+	}
+	if o.Fee != "1" {
+		t.Fatalf("fee snapshot: %+v", o)
 	}
 	d.Number = "456"
 	if d, e = transact(t, f, func(tx pgx.Tx) (Destination, error) { return SaveDestination(ctx, tx, f.brand, f.member, d, f.meta) }); e != nil {
@@ -300,7 +317,7 @@ func TestEligibleExchangePayoutReleaseAndSnapshot(t *testing.T) {
 		t.Fatal(b, e)
 	}
 	o, e = transact(t, f, func(tx pgx.Tx) (Order, error) {
-		return f.s.Withdraw(ctx, tx, f.brand, f.member, Input{Currency: "CNY", Amount: "10", DestinationID: d.ID, DestinationVersion: d.Version, Fee: "0"}, f.meta)
+		return f.s.Withdraw(ctx, tx, f.brand, f.member, Input{Currency: "CNY", Amount: "10", DestinationID: d.ID, DestinationVersion: d.Version, Fee: "1"}, f.meta)
 	})
 	if e != nil {
 		t.Fatal(e)
@@ -524,5 +541,43 @@ func TestUSDTSubmitWithoutHashRequiresVerifiedUniqueTransaction(t *testing.T) {
 	var balance int64
 	if e = f.db.QueryRow(ctx, `SELECT deposited FROM cash_balances WHERE brand_id=$1 AND member_id=$2 AND currency='USDT'`, f.brand, f.member).Scan(&balance); e != nil || balance != 100030000 {
 		t.Fatal("incorrect balance after duplicate", balance, e)
+	}
+}
+
+func TestDepositAboveRotationThreshold(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	_, err := transact(t, f, func(tx pgx.Tx) (Config, error) {
+		cfg, e := ReadConfig(ctx, tx, f.brand)
+		if e != nil {
+			return cfg, e
+		}
+		for i := range cfg.Rules {
+			cfg.Rules[i].Mode = "amount"
+			cfg.Rules[i].Threshold = "1000"
+		}
+		return SaveConfig(ctx, tx, f.brand, cfg, points.Metadata{ActorType: "system"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		o, e := transact(t, f, func(tx pgx.Tx) (Order, error) {
+			return f.s.Deposit(ctx, tx, f.brand, f.member, Input{Currency: "CNY", Amount: "10000"}, f.meta)
+		})
+		if e != nil || o.Amount != "10000" {
+			t.Fatal(o, e)
+		}
+		_, e = transact(t, f, func(tx pgx.Tx) (Order, error) {
+			return f.s.Advance(ctx, tx, f.brand, "", o.ID, "confirm", Input{Version: 1, Amount: "10000", Reference: ids.New()}, points.Metadata{ActorType: "admin"})
+		})
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
+	if _, e := transact(t, f, func(tx pgx.Tx) (Order, error) {
+		return f.s.Deposit(ctx, tx, f.brand, f.member, Input{Currency: "CNY", Amount: "10001"}, f.meta)
+	}); !errors.Is(e, ErrLimit) {
+		t.Fatalf("deposit maximum lost: %v", e)
 	}
 }

@@ -256,6 +256,36 @@ button[data-write-locked], form[data-write-locked] button[type=submit], form[dat
 #app .ui-form label.ui-field-row > :is(input, .select-control, .platform-temporal-input) { width: 100%; min-width: 0; }
 #app .ui-form label.ui-field-row > :is(small, .field-error) { grid-column: 2; }
 
+/* Simple dialog fields share one label column; nested editors keep their layout. */
+#app .detail-modal { --ui-form-label-width: min(112px, 38%); --ui-form-label-gap: 8px; }
+#app .detail-modal :is(.ui-form > label, .ui-form > fieldset > label, .ui-form > .form-grid > label, .ui-form > .form-row > label, label.ui-field-row):has(> :is(input:not([type="checkbox"], [type="radio"]), textarea, .select-control, .association-filter, .association-search, .platform-temporal-input, .am-ratio-input), > span + input[type="checkbox"]) {
+  display: grid;
+  grid-template-columns: var(--ui-form-label-width) minmax(0, 1fr);
+  align-items: center;
+  justify-items: stretch;
+  column-gap: var(--ui-form-label-gap);
+  text-align: var(--ui-field-label-align, end);
+  overflow-wrap: anywhere;
+}
+#app .detail-modal :is(.ui-form > label, .ui-form > fieldset > label, .ui-form > .form-grid > label, .ui-form > .form-row > label, label.ui-field-row) > :is(input:not([type="checkbox"], [type="radio"]), textarea, .select-control, .association-filter, .association-search, .platform-temporal-input, .am-ratio-input) { width: min(100%, var(--ui-field-control-width, 100%)); min-width: 0; max-width: 100%; justify-self: var(--ui-field-control-align, start); text-align: var(--ui-field-value-align, start); }
+#app .detail-modal :is(.ui-form > label, .ui-form > fieldset > label, .ui-form > .form-grid > label, .ui-form > .form-row > label, label.ui-field-row) > input:not([type="checkbox"], [type="radio"]) { --input-width: min(100%, var(--ui-field-control-width, 100%)); }
+#app .detail-modal :is(.ui-form > label, .ui-form > fieldset > label, .ui-form > .form-grid > label, .ui-form > .form-row > label, label.ui-field-row) > :is(small, .field-error, .inline-validation-error) { grid-column: 2; text-align: start; }
+#app .detail-modal :is(.ui-form > label, .ui-form > fieldset > label, .ui-form > .form-grid > label, .ui-form > .form-row > label, label.ui-field-row):has(> input:is([type="checkbox"], [type="radio"])):not(:has(> span + input[type="checkbox"])) { padding-inline-start: calc(var(--ui-form-label-width) + var(--ui-form-label-gap)); text-align: start; }
+#app .detail-modal :is(.ui-form > label, .ui-form > fieldset > label, .ui-form > .form-grid > label, .ui-form > .form-row > label, label.ui-field-row) > input:is([type="checkbox"], [type="radio"]) { margin: 0; justify-self: start; }
+#app .detail-modal :is(.role-identity, .ui-form > .form-row, .ui-form > .form-grid, .brand-operation-options, .automation-fields, .rule-flat-fields, .rule-initial-prices, .configured-sales-limits) { grid-template-columns: minmax(0, 1fr); }
+/* Quantities stay compact; identifiers, account numbers and long text keep their width. */
+#app .detail-modal :is(.ui-form label, label.ui-field-row):has(> input:is([type="number"], [inputmode="decimal"], .ui-number-input), > .am-ratio-input) { --ui-field-control-width: 160px; --ui-field-value-align: end; }
+#app .detail-modal .ui-facts-form { --ui-field-label-align: start; --ui-field-control-align: end; }
+#app .detail-modal .ui-facts-form .select-control { justify-content: flex-end; }
+#app .detail-modal .ui-facts-form .ui-field-row > span:first-child { color: var(--muted); font-weight: 400; }
+#app .detail-modal .automation-fields > label.ui-field-row { margin-block: 0; }
+#app .detail-modal .ui-form-field { display: grid; grid-template-columns: var(--ui-form-label-width) minmax(0, 1fr); align-items: center; gap: 6px var(--ui-form-label-gap); min-width: 0; min-height: var(--control-height); text-align: end; }
+#app .detail-modal .ui-form-field-label { color: var(--ink-secondary); font-weight: 600; overflow-wrap: anywhere; }
+#app .detail-modal .ui-form-field-value { min-width: 0; overflow-wrap: anywhere; text-align: start; }
+#app .detail-modal .draw-result-inputs { display: grid; grid-template-columns: var(--ui-form-label-width) minmax(0, 1fr); column-gap: var(--ui-form-label-gap); }
+#app .detail-modal .draw-result-label { text-align: end; white-space: normal; }
+#app .detail-modal .draw-result-errors { grid-column: 2; }
+
 /* Mobile rhythm reduces empty space without shrinking type or touch targets. */
 @media (max-width: 900px), (pointer: coarse) {
   #app .ui-filter-bar { row-gap: 4px; margin-bottom: 8px; }
@@ -300,7 +330,7 @@ button[data-write-locked], form[data-write-locked] button[type=submit], form[dat
 }
 
 /* Payment account labels share a column across currency and bank fields. */
-#app .cash-account-field { display: grid; grid-template-columns: minmax(0, min(8em, 38%)) minmax(0, 1fr); align-items: center; gap: 4px 8px; min-width: 0; }
+#app .cash-account-field { display: grid; grid-template-columns: var(--ui-form-label-width, minmax(0, min(8em, 38%))) minmax(0, 1fr); align-items: center; gap: 4px 8px; min-width: 0; }
 #app .cash-account-label { text-align: right; overflow-wrap: anywhere; }
 #app .ui-form .cash-account-label label { display: block; }
 #app .cash-account-control { min-width: 0; }

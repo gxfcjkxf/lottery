@@ -101,7 +101,7 @@ async function submit() {
     <ul class="member-batch-list">
       <li v-for="item in items" :key="item.entry.id"><div><strong>{{ entryLabel(item.entry) }}</strong><span>{{ t(item.state) }}</span></div><p v-if="feedback !== 'toast' && item.state === 'failed' && item.cause" class="message error" role="alert">{{ errorText(item.cause) }}</p></li>
     </ul>
-    <p v-if="unknown" class="message" role="status">{{ t('uncertain') }}</p>
+    <p v-if="unknown && !busy" class="message" role="status">{{ t('uncertain') }}</p>
     <div v-if="remainingCount" class="form-actions ui-form-actions">
       <button v-write-guard="busy" type="button" class="button button-danger" :disabled="busy || !enabled" @click="withGlobalLoading(submit)">{{ busy ? t('busy') : attempted ? t('retry') : t(subject === 'brands' ? 'confirmBrands' : subject === 'roles' ? 'confirmRoles' : 'confirm', { count: items.length }) }}</button>
     </div>

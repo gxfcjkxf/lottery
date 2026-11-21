@@ -85,8 +85,8 @@ for(const locale of ['en','zh-CN'] as const){
   await dialog.getByRole('button',{name:zh?'预览':'Preview',exact:true}).click();const preview=page.getByRole('dialog',{name:'Updated announcement',exact:true});await expect(preview).toBeVisible();await expectNoPageOverflow(page);await preview.getByRole('button',{name:zh?'关闭':'Close',exact:true}).click()
   const preset=page.viewportSize()!;for(const width of info.project.name.includes('reflow')?[320,640,700,1000,1440]:[preset.width]){if(info.project.name.includes('reflow'))await page.setViewportSize({width,height:800});await expectNoPageOverflow(page);await dialog.locator('.detail-modal-content').evaluate(el=>el.scrollTop=0);await page.screenshot({path:info.outputPath(`editor-${locale}-${width}.png`),fullPage:true})}
   await dialog.getByRole('button',{name:zh?'保存并发布':'Save and publish',exact:true}).click()
-  await expect(dialog.getByRole('button',{name:zh?'重试保存':'Retry save',exact:true})).toBeEnabled();await expect(dialog.getByLabel(zh?'标题':'Title',{exact:true})).toBeDisabled()
-  await dialog.getByRole('button',{name:zh?'重试保存':'Retry save',exact:true}).click();await expect(dialog).toHaveCount(0);expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1]);expect(JSON.parse(writes[0].body!).config).not.toHaveProperty('timezone')
+  await expect(dialog.getByRole('button',{name:zh?'重试':'Retry',exact:true})).toBeEnabled();await expect(dialog.getByLabel(zh?'标题':'Title',{exact:true})).toBeDisabled()
+  await dialog.getByRole('button',{name:zh?'重试':'Retry',exact:true}).click();await expect(dialog).toHaveCount(0);expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1]);expect(JSON.parse(writes[0].body!).config).not.toHaveProperty('timezone')
  })
 }
 

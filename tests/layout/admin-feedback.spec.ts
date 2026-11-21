@@ -1,3 +1,4 @@
+import { expectDialogFieldColumns } from './dialog-form-columns'
 import { expect, test, type Locator } from '@playwright/test'
 import { gameId, origins, installLayoutApi, expectNoPageOverflow } from './fixture'
 import { overviewFixture } from './platform-overview'
@@ -97,7 +98,7 @@ for (const locale of ['en', 'zh-CN'] as const) test(`brand operations share bott
   expect(await toast.locator('button').evaluate(e => { const r = e.getBoundingClientRect(); return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('button') === e })).toBe(true)
  }
  await openActions(); await page.getByRole('menuitem', { name: zh ? '充值' : 'Recharge', exact: true }).click()
- const recharge = page.getByRole('dialog', { name: zh ? '人工充值' : 'Manual recharge', exact: true })
+ const recharge = page.getByRole('dialog', { name: zh ? '积分充值' : 'Points recharge', exact: true })
  await recharge.locator('input[inputmode=decimal]').fill('10.25'); await recharge.locator('button[type=submit]').click()
  await feedbackVisible(page.locator('.toast-error'))
  await expect(recharge).toBeVisible(); await expect(recharge.locator('input[inputmode=decimal]')).toBeDisabled()
@@ -159,11 +160,12 @@ for(const locale of ['en','zh-CN'] as const)test(`fractional manual recharge pre
  await expect(page.locator('.member-directory-table')).toBeVisible()
  await page.locator('.member-directory-table').getByRole('button',{name:zh?'decimal_member 的操作':'Actions for decimal_member',exact:true}).click()
  await page.getByRole('menuitem',{name:zh?'充值':'Recharge',exact:true}).click()
- const dialog=page.getByRole('dialog',{name:zh?'人工充值':'Manual recharge',exact:true}),input=dialog.locator('input[inputmode=decimal]'),submit=dialog.locator('button[type=submit]')
+ const dialog=page.getByRole('dialog',{name:zh?'积分充值':'Points recharge',exact:true}),input=dialog.locator('input[inputmode=decimal]'),submit=dialog.locator('button[type=submit]')
  await input.pressSequentially('0.50');await expect(input).toHaveValue('0.50');await expect(submit).toBeEnabled()
  const preset=page.viewportSize()!
  for(const width of info.project.name.endsWith('reflow')?[320,620,900,1440]:[preset.width]){
   if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:preset.height})
+  await expectDialogFieldColumns(dialog)
   await expectNoPageOverflow(page)
  }
  await page.screenshot({path:info.outputPath('fractional-manual-recharge.png'),fullPage:true})

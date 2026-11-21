@@ -23,16 +23,16 @@ useOperationToast(error,v=>i18n.displayError(v),'error')
 useOperationToast(notice,v=>v,'success')
 </script>
 <template>
- <DetailModal class="ui-form-dialog agent-transfer" :title="t('transfer')" :close-label="t('close')" :close-disabled="busy||!!pending?.sent" @close="emit('close')">
+ <DetailModal class="ui-form-dialog ui-facts-dialog agent-transfer" :title="t('transfer')" :close-label="t('close')" :close-disabled="busy||!!pending?.sent" @close="emit('close')">
   <div class="console-stack">
    <SummaryFacts :fields="[{label:t('transferMember'),value:pending?.account??member.username},...(wallet?[{label:t('transferBalance'),value:formatPoints(wallet.available_points,locale)}]:[])]" />
    <button v-if="error&&!wallet" type="button" class="text-button" v-refresh-button :aria-label="t('retryRead')" @click="withGlobalLoading(load)">{{t('retryRead')}}</button>
-   <form class="ui-form" novalidate v-inline-validation v-write-guard="busy" @submit.prevent="withGlobalLoading(transfer)">
+   <form class="ui-form ui-facts-form" novalidate v-inline-validation v-write-guard="busy" @submit.prevent="withGlobalLoading(transfer)">
     <fieldset :disabled="busy||!!pending||!wallet">
-     <label><span>{{t('transferAmount')}}</span><input v-model="amount" required inputmode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" :data-validation-format="t('cash.numberFormat',{digits:2})" /></label>
+     <label class="ui-field-row"><span>{{t('transferAmount')}}</span><input v-model="amount" required inputmode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" :data-validation-format="t('cash.numberFormat',{digits:2})" /></label>
     </fieldset>
-    <p v-if="pending" role="status">{{t('unknown')}}</p>
-    <WriteFormActions :submit-label="t(pending?'retry':'transferConfirm')" :busy="busy" :invalid="!wallet" />
+    <p v-if="pending&&!busy" role="status">{{t('unknown')}}</p>
+    <WriteFormActions :submit-label="t(pending&&!busy?'retry':'transferConfirm')" :busy="busy" :invalid="!wallet" />
    </form>
   </div>
  </DetailModal>

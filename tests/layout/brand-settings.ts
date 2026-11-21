@@ -116,6 +116,8 @@ export function registerBrandSettingsTests(reflow = false) {
       expect(attempts).toHaveLength(2)
       expect(attempts[0].key).not.toBe(attempts[1].key)
       await dismissToasts()
+      await expect(display).toHaveCount(0)
+      if(await page.locator('.mobile-nav').isVisible()){await page.locator('.mobile-nav button').last().click();await page.locator('.mobile-more-menu').getByRole('button',{name:zh?'品牌设置':'Brand settings',exact:true}).click()}else await page.locator('.side-nav').getByRole('button',{name:zh?'品牌设置':'Brand settings',exact:true}).click()
       await expect(tabs).toHaveCount(8)
       await expect(tabs.filter({hasText:zh?'域名':'Domains'})).toHaveCount(0)
       expect(requests.some(request => request.includes('brand-domains'))).toBe(false)

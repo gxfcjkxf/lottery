@@ -148,6 +148,25 @@ func TestCashHTTPScopedIdempotencyAndPermission(t *testing.T) {
 	mustStatus(t, f.call("POST", path, "cash-confirm-original", f.token, brand, confirm), 200)
 	mustStatus(t, f.call("POST", path, "cash-confirm-original", f.token, brand, confirm), 200)
 
+	for _, tc := range []struct{ state, total string }{{"confirmed", "1"}, {"cancelled", "0"}} {
+		response := f.call("GET", "/api/v1/admin/cash/orders?kind=deposit&state="+tc.state, "", f.token, brand, nil)
+		mustStatus(t, response, 200)
+		var page struct {
+			Items []cash.Order `json:"items"`
+			Total string       `json:"total_count"`
+		}
+		managedData(t, response, &page)
+		if page.Total != tc.total {
+			t.Fatalf("state %s: %+v", tc.state, page)
+		}
+		for _, item := range page.Items {
+			if item.State != tc.state {
+				t.Fatal(item)
+			}
+		}
+	}
+	mustStatus(t, f.call("GET", "/api/v1/admin/cash/orders?kind=deposit&state=completed", "", f.token, brand, nil), 400)
+
 	// Independent agents deposit into their own wallet in this owned test brand.
 	createAgent := func(name string) agency.Node {
 		out := f.call("POST", "/api/v1/admin/agents", "cash-create-"+name, f.token, brand, agency.CreateInput{PolicyVersion: 1, Username: name, Password: "agent123", Config: agency.NodeConfig{Mode: new("loss"), Ratio: "0", Status: "active"}})

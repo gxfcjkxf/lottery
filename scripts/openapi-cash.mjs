@@ -22,7 +22,7 @@ export const schemas = {
     deposit_max: decimal,
     withdrawal_min: decimal,
     withdrawal_max: decimal,
-    fee: decimal,
+    fee: { type: 'string', pattern: '^(0|[1-9][0-9]*)(\\.[0-9]{1,6})?%?$', description: 'Withdrawal fee setting: fixed currency amount or percentage such as 10%; 0 is free. Percentage must be below 100%.' },
     mode: { type: "string", enum: ["count", "amount"] },
     threshold: decimal,
     enabled: { type: "boolean" },
@@ -290,7 +290,7 @@ export const operations = [
       tag: "finance",
       auth: "admin",
       brandHeader: true,
-      parameters: pagination,
+      parameters: [...pagination, {name: "state", in: "query", schema: {type: "string", enum: ["pending", "submitted", "confirmed", "cancelled", "expired", "completed"]}, description: "Filter deposit or conversion records by state. Omit for all states."}],
       permissions: [
         `recharge.view.${scope === "admin" ? "brand" : "platform"}`,
         `withdrawal.view.${scope === "admin" ? "brand" : "platform"}`,

@@ -1,3 +1,4 @@
+import { expectDialogFieldColumns } from './dialog-form-columns'
 import { selectControl } from '../select-control'
 import {test,expect} from '@playwright/test'
 import {resolve} from 'node:path'
@@ -71,6 +72,14 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','ad
    for(const name of ['Source A','Source B']){
     await page.getByRole('button',{name:zh?'新增数据源':'Add data source',exact:true}).click()
     await page.getByLabel(zh?'数据源名称':'Source name',{exact:true}).fill(name)
+    const sourceDialog=page.getByRole('dialog'),preset=page.viewportSize()!
+    for(const width of info.project.name.endsWith('reflow')?[320,640,900,1440]:[preset.width]){
+     if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:preset.height})
+     await expectDialogFieldColumns(sourceDialog)
+     expect(await sourceDialog.locator('.detail-modal-content').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true)
+     await page.screenshot({path:info.outputPath(`source-fields-${name}-${locale}-${width}.png`)})
+    }
+    if(info.project.name.endsWith('reflow'))await page.setViewportSize(preset)
     const dom=name==='Source B'
     await selectControl(page.getByRole('combobox',{name:zh?'期次排期方式':'Period schedule',exact:true}), 'source')
     await selectControl(page.getByRole('combobox',{name:zh?'响应格式':'Response format',exact:true}), dom?'html':'json')
@@ -102,7 +111,7 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','ad
      await page.getByLabel((zh?'开奖结果时间':'Result draw time')+' · '+pathLabel,{exact:true}).fill('/data/0/time')
      await selectControl(page.getByRole('combobox',{name:zh?'来源时间格式':'Source time format',exact:true}), 'custom')
      await page.getByLabel(zh?'Go 时间格式模板':'Go time layout',{exact:true}).fill('2006-01-02 15:04:05')
-     await page.getByLabel(zh?'来源时区':'Source timezone',{exact:true}).fill('Asia/Shanghai')
+     await expect(page.getByLabel(zh?'来源时区':'Source timezone',{exact:true})).toHaveCount(0)
      await page.getByRole('checkbox',{name:zh?'校验时间与开奖结果期号一致':'Verify the time belongs to the result period',exact:true}).check()
      await selectControl(page.getByRole('combobox',{name:(zh?'时间响应中的期号':'Time response period number')+' · '+(zh?'取值来源':'Value source'),exact:true}), 'history')
      await page.getByLabel((zh?'时间响应中的期号':'Time response period number')+' · '+pathLabel,{exact:true}).fill('/data/0/issue')
@@ -121,7 +130,7 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','ad
    expect(registry.items[1].plan.mapping.next_period).toBeNull()
    expect(registry.items[1].plan.mapping.regular.capture).toBe('ball_([0-9]+)')
    await page.getByTestId('draw-source-directory').locator('tbody tr').filter({hasText:'Source A'}).locator('.member-menu-trigger').click();await page.getByTestId('draw-source-directory').locator('tbody tr').filter({hasText:'Source A'}).getByRole('menuitem',{name:zh?'使用此版本':'Use this revision',exact:true}).click()
-   await page.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true}).click()
+   await page.getByRole('button',{name:zh?'重试':'Retry',exact:true}).click()
    const calls=writes.filter(x=>x.path.endsWith('/activate'));expect(calls).toHaveLength(2);expect(calls[1]).toEqual(calls[0])
    await page.getByTestId('draw-source-directory').locator('tbody tr').filter({hasText:'Source B'}).locator('.member-menu-trigger').click();await page.getByTestId('draw-source-directory').locator('tbody tr').filter({hasText:'Source B'}).getByRole('menuitem',{name:zh?'使用此版本':'Use this revision',exact:true}).click();await expect(page.locator('.automation-settings')).toContainText((zh?'当前数据源':'Current data source')+': Source B')
    await page.screenshot({path:info.outputPath(`sources-${locale}.png`),fullPage:true})

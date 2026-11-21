@@ -61,14 +61,14 @@ test('real manual rewards recover original receipts without duplicate money and 
     else{expect(result).toEqual(first);expect(grantWrites[1]).toEqual(grantWrites[0]);await route.fulfill({response});}
   });
   await fillGrant('100','Lost response after a genuine committed manual reward');await confirm(page);
-  await expect(panel.getByRole('button',{name:'使用原请求重试',exact:true})).toBeVisible();
+  await expect(panel.getByRole('button',{name:'重试',exact:true})).toBeVisible();
   expect((await wallet()).by_source.gift.available).toBe('100');
   const corrected=await post<Order>(`/reward-orders/${first.id}/revoke`,{version:1,reason:'Explicit synthetic operator reversal while original grant response is unresolved'},{'X-Reward-Actor-ID':account.id});
   expect(corrected.state).toBe('revoked');expect(corrected.version).toBe(2);
   const afterFirst=await economic();
-  await panel.getByTestId('rewards-list-refresh').click();await expect(panel.getByRole('button',{name:'使用原请求重试',exact:true})).toBeVisible();
+  await panel.getByTestId('rewards-list-refresh').click();await expect(panel.getByRole('button',{name:'重试',exact:true})).toBeVisible();
   await navigate(page,info.project.name,'工作台|Dashboard');await navigate(page,info.project.name,'人工奖励|Manual rewards');panel=page.locator('.rewards-management');
-  await panel.getByRole('button',{name:'使用原请求重试',exact:true}).click();await confirm(page);
+  await panel.getByRole('button',{name:'重试',exact:true}).click();await confirm(page);
   await expect(panel.getByTestId('rewards-receipt')).toContainText('已发放 · v1');await expect(panel.locator('.rw-detail')).toContainText('已撤销 · v2');
   expect(grantWrites).toHaveLength(2);expect(await economic()).toBe(afterFirst);
   await page.unroute('**/api/v1/admin/reward-orders');

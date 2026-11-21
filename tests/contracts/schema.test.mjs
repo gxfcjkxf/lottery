@@ -86,6 +86,22 @@ test("full-replacement finance requests require explicit nullable fields",()=>{
   assert.ok(!validate("FinanceWithdrawalGameConfig")({}));
 });
 
+test('bet frequency returns exact counts, bilingual labels and a game directory',()=>{
+  const games=validate('BetFrequencyGames');
+  assert.ok(games({items:[]}));
+  assert.ok(games({items:[{id:'11111111-1111-4111-8111-111111111111',name:'Canada 28'}]}));
+  assert.equal(games({items:[{id:'11111111-1111-4111-8111-111111111111',name:'Canada 28',brand_id:'unexpected'}]}),false);
+
+  const frequency=validate('BetFrequencyPage');
+  const item={play_id:'operator_new_play',label:{en:'Lucky group','zh-CN':'幸运组'},effective_item_count:'9007199254740993'};
+  const page={effective_item_count:'9007199254740994',play_count:'2',items:[item]};
+  assert.ok(frequency(page),JSON.stringify(frequency.errors));
+  assert.ok(frequency({...page,items:[]}));
+  assert.ok(frequency({effective_item_count:'0',play_count:'0',items:[]}));
+  assert.equal(frequency({...page,play_count:2}),false);
+  assert.equal(frequency({...page,items:[{...item,label:{en:'Lucky group'}}]}),false);
+});
+
 test("all withdrawal policy reads and writes require positive N",()=>{
   const check=validate("FinanceWithdrawalPositiveMultiple");
   for(const value of ["1","0.000001","0.25","2.5","999999.999999","1000000"])
@@ -132,12 +148,23 @@ test("retired compliance records and write contracts remain absent",()=>{
 });
 
 test('draw archive preserves unknown historical dates while validating recorded timestamps',()=>{
-  const item={period_no:'2026001',result:{regular:[1,2],special:[3],digits:[]},regular_order:[2,1],drawn_at:null,draw_date:null,attributes:{}};
-  const archive={mark_six:true,game_id:'11111111-1111-4111-8111-111111111111',game_name:'Mark Six',timezone:'Asia/Hong_Kong',daily:false,choices:['2026'],selected:'2026',items:[item],has_more:false};
+  const item={
+    period_no:'2026001',result:{regular:[1,2],special:[3],digits:[]},
+    regular_order:[2,1],draw_at:null,drawn_at:null,draw_date:null,attributes:{},
+  };
+  const archive={
+    mark_six:true,game_id:'11111111-1111-4111-8111-111111111111',game_name:'Mark Six',
+    timezone:'Asia/Hong_Kong',daily:false,recent_supported:false,recent:0,
+    today:'2026-10-26',yesterday:'2026-10-25',choices:['2026'],selected:'2026',total_count:'1',items:[item],has_more:false,
+  };
   const check=validate('LotteryPlayerDrawArchive');
   assert.ok(check(archive),JSON.stringify(check.errors));
-  assert.ok(check({...archive,items:[{...item,drawn_at:'2026-10-25T12:30:00Z',draw_date:'2026-10-25'}]}),JSON.stringify(check.errors));
-  for(const drawn_at of [0,'not-a-timestamp'])assert.equal(check({...archive,items:[{...item,drawn_at}]}),false);
-  const missing={...item};delete missing.drawn_at;
-  assert.equal(check({...archive,items:[missing]}),false);
+  assert.ok(check({...archive,items:[{
+    ...item,draw_at:'2026-10-25T12:29:00Z',drawn_at:'2026-10-25T12:30:00Z',draw_date:'2026-10-25',
+  }]}),JSON.stringify(check.errors));
+  for(const field of ['draw_at','drawn_at']){
+    for(const value of [0,'not-a-timestamp'])assert.equal(check({...archive,items:[{...item,[field]:value}]}),false);
+    const missing={...item};delete missing[field];
+    assert.equal(check({...archive,items:[missing]}),false);
+  }
 });

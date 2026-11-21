@@ -29,7 +29,7 @@ import AutomationSettings from './AutomationSettings.vue'
 import PlatformDrawOverview from './PlatformDrawOverview.vue'
 import PeriodOpeningDialog from './PeriodOpeningDialog.vue'
 import DrawResultInputs from './DrawResultInputs.vue'
-import { lotteryLocalTimeToISO } from './lottery-time'
+import { lotteryLocalTimeToISO, lotteryISOToLocalTime } from './lottery-time'
 import type { PlatformDisplaySettings } from './date-time'
 import { createCatalogI18n } from './localization'
 import { createPlatformLotteryClient, platformLotteryCatalog, PlatformLotteryError, type PlatformGame, type PlatformGameDetail, type PlatformPeriod } from './platform-lottery'
@@ -50,7 +50,7 @@ const games = ref<PlatformGame[]>([]), detail = ref<PlatformGameDetail | null>(n
 const selectedId = ref(''), offset = ref(0), periodOffset = ref(0), loading = ref(false), error = ref(''), notice = ref(false)
 const markSix=computed(()=>detail.value?.game.model.model==='X_PLUS_Y'&&detail.value.game.model.regular_count===6&&detail.value.game.model.special_count===1)
 const canManagePlatform = computed(() => props.surface === 'platform' && props.canManage)
-const catalogColumnCount = computed(() => props.surface === 'admin' ? 3 : 4 + (props.unifiedCatalog ? 1 : 0) + (props.surface === 'platform' ? 3 + (canManagePlatform.value ? 1 : 0) : 0))
+const catalogColumnCount = computed(() => props.surface === 'admin' ? 3 : 4 + (props.unifiedCatalog ? 1 : 0) + (props.surface === 'platform' ? 4 + (canManagePlatform.value ? 1 : 0) : 0))
 const view = ref<'periods' | 'plays' | 'model' | 'automation' | 'schedule' | 'draws'>('periods')
 const detailPage = computed(() => props.surface !== 'user' && !!selectedId.value)
 defineExpose({ detailPage })
@@ -84,8 +84,10 @@ const modelDraft = ref<RuleModel>(defaultModel())
 const resultModel = computed(() => detail.value?.game.model)
 const drawInputs = ref<InstanceType<typeof DrawResultInputs> | null>(null)
 const drawOverview = ref<InstanceType<typeof PlatformDrawOverview> | null>(null)
-function manualResult() {
- form.value.periodNo = ''; form.value.drawDate = ''
+function manualResult(latestPeriodNo: string | null) {
+ if (latestPeriodNo !== null && !/^\d+$/.test(latestPeriodNo)) { error.value = 'invalid'; return }
+ form.value.periodNo = latestPeriodNo === null ? '' : String(BigInt(latestPeriodNo) + 1n).padStart(latestPeriodNo.length, '0')
+ form.value.drawDate = lotteryISOToLocalTime(new Date().toISOString(), props.displaySettings!.timezone).slice(0, 10)
  begin('result')
 }
 const modelLocked = computed(() => !!detail.value && (detail.value.game.rule_published || detail.value.periods.length > 0))
@@ -196,7 +198,7 @@ async function submit() {
     await api.write(snapshot.path, snapshot.body, snapshot.key)
     if (!alive || request !== generation) return
     pending.value = null; formKind.value = null; notice.value = true
-    if (snapshot.path.endsWith('/results')) await drawOverview.value?.load((snapshot.body as {draw_date: string}).draw_date.slice(0, 4), 0)
+    if (snapshot.path.endsWith('/results')) await drawOverview.value?.loadDate((snapshot.body as {draw_date: string}).draw_date)
     if (snapshot.path.endsWith('/name') || snapshot.path.endsWith('/lifecycle') || snapshot.path.endsWith('/availability')) await load(offset.value)
     else if (current) await open(current, nextView, periodOffset.value); else await load(offset.value)
   } catch (cause) {
@@ -246,8 +248,8 @@ async function clearCatalog() { lifecycleDraft.value = 'active'; await searchCat
         <button v-else-if="!oddsOnly && canSell && game.connected" type="button" role="menuitem" :disabled="loading" @click="changeAvailability(game)">{{t(game.brand_enabled ? 'shortDisable' : 'shortEnable')}}</button>
       </MemberActionsMenu></template>
     </ManagementTable>
-    <div v-else class="table-wrap"><table class="console-table platform-lottery-catalog-table console-responsive-table"><thead><tr><th>{{ t('name') }}</th><th v-if="unifiedCatalog">{{ t('ownership') }}</th><th>{{ t('periods') }}</th><th>{{ t('plays') }}</th><th v-if="surface === 'platform'">{{ t('timeSettings') }}</th><th v-if="surface === 'platform'">{{ t('drawSources') }}</th><th>{{ t('model') }}</th><th v-if="surface !== 'user'">{{ t('status') }}</th><th v-if="canManagePlatform">{{ t('actions') }}</th></tr></thead><tbody>
-      <tr v-for="row in visibleRows" :key="`${row.source}:${row.game.id}`"><td :data-label="String(t('name'))">{{ row.game.name }}</td><td :data-label="String(t('ownership'))" v-if="unifiedCatalog">{{ row.source === 'platform' ? t('platformOwner') : brandName }}</td><td :data-label="String(t('periods'))"><button class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'periods')">{{ t('periods') }}</button></td><td :data-label="String(t('plays'))"><button class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'plays')">{{ t('plays') }}</button></td><td :data-label="String(t('timeSettings'))" v-if="surface === 'platform'"><button v-if="row.source === 'platform'" class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'schedule')">{{t('timeSettings')}}</button><span v-else>—</span></td><td :data-label="String(t('drawSources'))" v-if="surface === 'platform'"><button v-if="row.source === 'platform'" class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'automation')">{{ t('drawSources') }}</button><span v-else>—</span></td><td :data-label="String(t('model'))"><button class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'model')">{{ t('model') }}</button></td><td :data-label="String(t('status'))" v-if="surface !== 'user'"><span v-if="row.source==='platform'" class="status-chip">{{ row.game.status==='offline'?t('offline'):t('active') }}</span></td><td :data-label="String(t('actions'))" v-if="canManagePlatform"><div v-if="row.source==='platform'" class="platform-lottery-actions"><MemberActionsMenu v-if="canManagePlatform" :id="`lottery-actions-${row.game.id}`" :label="t('actions')"><button type="button" role="menuitem" :disabled="loading" @click="begin('name', row.game)">{{ t('editName') }}</button><button type="button" role="menuitem" :disabled="loading" @click="changeLifecycle(row.game,row.game.status==='active'?'offline':'active')">{{ t(row.game.status==='active'?'takeOffline':'relist') }}</button><button type="button" role="menuitem" class="danger-text" :disabled="loading || !row.game.deletable" :title="row.game.deletable ? undefined : t('cannotDelete')" @click="changeLifecycle(row.game,'deleted')">{{ t('deleteGame') }}</button></MemberActionsMenu></div></td></tr>
+    <div v-else class="table-wrap"><table class="console-table platform-lottery-catalog-table console-responsive-table"><thead><tr><th>{{ t('name') }}</th><th v-if="unifiedCatalog">{{ t('ownership') }}</th><th>{{ t('periods') }}</th><th>{{ t('plays') }}</th><th v-if="surface === 'platform'">{{ t('salesOdds') }}</th><th v-if="surface === 'platform'">{{ t('timeSettings') }}</th><th v-if="surface === 'platform'">{{ t('drawSources') }}</th><th>{{ t('model') }}</th><th v-if="surface !== 'user'">{{ t('status') }}</th><th v-if="canManagePlatform">{{ t('actions') }}</th></tr></thead><tbody>
+      <tr v-for="row in visibleRows" :key="`${row.source}:${row.game.id}`"><td :data-label="String(t('name'))">{{ row.game.name }}</td><td :data-label="String(t('ownership'))" v-if="unifiedCatalog">{{ row.source === 'platform' ? t('platformOwner') : brandName }}</td><td :data-label="String(t('periods'))"><button class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'periods')">{{ t('periods') }}</button></td><td :data-label="String(t('plays'))"><button class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'plays')">{{ t('plays') }}</button></td><td v-if="surface === 'platform'" :data-label="String(t('salesOdds'))"><button v-if="row.source === 'platform'" class="text-button row-action text-link" @click="salesGame=row.game">{{ t('salesOdds') }}</button><span v-else>—</span></td><td :data-label="String(t('timeSettings'))" v-if="surface === 'platform'"><button v-if="row.source === 'platform'" class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'schedule')">{{t('timeSettings')}}</button><span v-else>—</span></td><td :data-label="String(t('drawSources'))" v-if="surface === 'platform'"><button v-if="row.source === 'platform'" class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'automation')">{{ t('drawSources') }}</button><span v-else>—</span></td><td :data-label="String(t('model'))"><button class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'model')">{{ t('model') }}</button></td><td :data-label="String(t('status'))" v-if="surface !== 'user'"><span v-if="row.source==='platform'" class="status-chip">{{ row.game.status==='offline'?t('offline'):t('active') }}</span></td><td :data-label="String(t('actions'))" v-if="canManagePlatform"><div v-if="row.source==='platform'" class="platform-lottery-actions"><MemberActionsMenu v-if="canManagePlatform" :id="`lottery-actions-${row.game.id}`" :label="t('actions')"><button type="button" role="menuitem" :disabled="loading" @click="begin('name', row.game)">{{ t('editName') }}</button><button type="button" role="menuitem" :disabled="loading" @click="changeLifecycle(row.game,row.game.status==='active'?'offline':'active')">{{ t(row.game.status==='active'?'takeOffline':'relist') }}</button><button type="button" role="menuitem" class="danger-text" :disabled="loading || !row.game.deletable" :title="row.game.deletable ? undefined : t('cannotDelete')" @click="changeLifecycle(row.game,'deleted')">{{ t('deleteGame') }}</button></MemberActionsMenu></div></td></tr>
       <tr v-global-loading="loading || brandLoading" v-if="!error && !visibleRows.length"><td :colspan="catalogColumnCount" class="empty-state">{{ loading || brandLoading ? t('loading') : t('empty') }}</td></tr>
     </tbody></table></div>
     <template v-if="surface !== 'user'" #pagination><TablePagination class="wallet-pagination page-actions" :total="String(filteredRows.length)" :page="Math.floor(offset / catalogPageSize + 1)" :count="visibleRows.length" :locale="locale" :page-size="catalogPageSize" :previous-disabled="loading || brandLoading || offset === 0" :next-disabled="loading || brandLoading || !hasNext" :previous-label="t('previous')" :next-label="t('next')" :go-to="(target: number) => goPage((target - 1) * catalogPageSize)" :change-page-size="async (size: number) => { catalogPageSize = size; await load(0) }" :busy="loading || brandLoading" /></template>
@@ -262,8 +264,8 @@ async function clearCatalog() { lifecycleDraft.value = 'active'; await searchCat
 
       <template v-if="detail">
         <PlatformDrawOverview ref="drawOverview" v-if="view === 'draws' && surface === 'platform'" :game-id="detail.game.id" :locale="locale" :can-manage="canManagePlatform&&detail.game.rule_published" @failure="emit('failure', $event)" @manual="manualResult" />
-        <DrawScheduleSettings v-if="view==='schedule'&&surface==='platform'&&markSix" :game-id="detail.game.id" :timezone="detail.game.timezone" :locale="locale" :can-write="canManagePlatform" @failure="emit('failure',$event)" />
-        <AutomationTimeSettings v-if="view==='schedule'&&surface==='platform'&&!markSix" :game-id="detail.game.id" :locale="locale" :can-write="canManagePlatform" @failure="emit('failure',$event)" />
+        <DrawScheduleSettings v-if="view==='schedule'&&surface==='platform'&&markSix" :game-id="detail.game.id" :timezone="detail.game.timezone" :locale="locale" :can-write="canManagePlatform" @saved="closeDetail" @failure="emit('failure',$event)" />
+        <AutomationTimeSettings v-if="view==='schedule'&&surface==='platform'&&!markSix" :game-id="detail.game.id" :locale="locale" :can-write="canManagePlatform" @saved="closeDetail" @failure="emit('failure',$event)" />
         <slot v-if="view==='schedule'&&detail.game.timezone==='Asia/Hong_Kong'" name="calendar" />
         <AutomationSettings v-if="view === 'automation' && surface !== 'user'" :surface="surface" :game-id="detail.game.id" :brand-id="brandId" :locale="locale" :can-write="canManagePlatform" @failure="emit('failure', $event)" />
         <template v-if="view === 'periods'"><ManagementList embedded>
@@ -273,14 +275,14 @@ async function clearCatalog() { lifecycleDraft.value = 'active'; await searchCat
           <template #pagination><TablePagination class="wallet-pagination page-actions" :total="detail.total_count" :page="Math.floor(periodOffset / periodPageSize + 1)" :count="detail.periods.length" :locale="locale" :page-size="periodPageSize" :previous-disabled="loading || periodOffset === 0" :next-disabled="loading || detail.periods.length < periodPageSize" :previous-label="t('previous')" :next-label="t('next')" :go-to="(target: number) => open(detail!.game, view, (target - 1) * periodPageSize)" :change-page-size="async (size: number) => { periodPageSize = size; await open(detail!.game, view, 0) }" :busy="loading" /></template></ManagementList>
         </template>
         <template v-else-if="view === 'plays'">
-          <ConfiguredRuleWorkbench ref="rulesWorkbench" v-if="surface !== 'user'" :surface="surface" :brand-id="brandId" :game-id="detail.game.id" :model="detail.game.model" :locale="locale" :can-write="canManagePlatform" @failure="emit('failure',$event)" />
+          <ConfiguredRuleWorkbench ref="rulesWorkbench" v-if="surface !== 'user'" :surface="surface" :brand-id="brandId" :game-id="detail.game.id" :model="detail.game.model" :locale="locale" :can-write="canManagePlatform" @saved="closeDetail" @failure="emit('failure',$event)" />
 
         </template>
         <template v-else-if="view === 'model'"><button v-if="canManagePlatform" class="button button-primary" :disabled="loading || modelLocked" @click="begin('model')">{{ t('editModel') }}</button><p v-if="canManagePlatform && modelLocked" class="platform-lottery-note">{{ t('modelLocked') }}</p><NumberModelEditor :model-value="detail.game.model" :locale="locale" disabled read-only /></template>
       </template>
     </component>
-    <DetailModal class="brand-sales-modal" v-if="surface==='admin'&&salesGame" :class="{ 'brand-odds-modal': oddsOnly }" :title="`${salesGame.name} · ${t(oddsOnly?'salesOdds':'salesConfiguration')}`" :close-label="t('close')" :close-disabled="salesLocked" @close="salesGame=null">
-      <ConfiguredPublishing :odds-only="oddsOnly" surface="admin" :brand-id="brandId" :game-id="salesGame.id" :locale="locale" :snapshot="null" :can-write="!!canSell" @locked="salesLocked=$event" @saved="withGlobalLoading(load)" @failure="emit('failure',$event)" />
+    <DetailModal class="lottery-sales-modal" v-if="surface!=='user'&&salesGame" :class="{ 'lottery-odds-modal': surface==='platform'||oddsOnly }" :title="`${salesGame.name} · ${t(surface==='platform'||oddsOnly?'salesOdds':'salesConfiguration')}`" :close-label="t('close')" :close-disabled="salesLocked" @close="salesGame=null">
+      <ConfiguredPublishing :odds-only="surface==='platform'||oddsOnly" :surface="surface" :brand-id="brandId" :game-id="salesGame.id" :locale="locale" :snapshot="null" :can-write="surface==='platform'?canManagePlatform:!!canSell" @locked="salesLocked=$event" @saved="salesGame=null;withGlobalLoading(load)" @failure="emit('failure',$event)" />
     </DetailModal>
     <PeriodOpeningDialog v-if="openingPeriod" :key="openingPeriod.id" :period="openingPeriod" :locale="locale" @close="openingPeriod=null" @saved="openingPeriod=null;withGlobalLoading(open,detail!.game,view,periodOffset)" @failure="emit('failure',$event)" />
     <DetailModal v-if="formKind" :class="{ 'platform-lottery-confirm-modal': isConfirmation, 'ui-form-dialog': formKind === 'result' }" :title="dialogTitle" :close-label="t('close')" :close-disabled="loading||!!pending" @close="!loading && !pending && (formKind = null)">
@@ -290,9 +292,9 @@ async function clearCatalog() { lifecycleDraft.value = 'active'; await searchCat
         <template v-if="formKind === 'game'"><NumberModelEditor v-model="modelDraft" :locale="locale" :disabled="loading || !!pending" /></template><NumberModelEditor v-if="formKind === 'model'" v-model="modelDraft" :locale="locale" :disabled="loading || !!pending" />
         <template v-if="formKind === 'period'">
           <label class="period-field">{{ t('periodNo') }}<input v-model.trim="form.periodNo" required /></label>
-          <div v-for="field in (['start', 'end', 'draw'] as const)" :key="field" class="period-field">
-            <span>{{ t(field === 'start' ? 'start' : field === 'end' ? 'end' : 'drawAt') }}</span>
-            <span class="period-time-controls">
+          <div v-for="field in (['start', 'end', 'draw'] as const)" :key="field" class="period-field ui-form-field">
+            <span class="ui-form-field-label">{{ t(field === 'start' ? 'start' : field === 'end' ? 'end' : 'drawAt') }}</span>
+            <span class="period-time-controls ui-form-field-value">
               <PlatformDateInput v-model="form[`${field}Date`]" :locale="locale" :display-settings="displaySettings!" :label="`${t(field === 'start' ? 'start' : field === 'end' ? 'end' : 'drawAt')} · ${t('date')}`" />
               <PlatformTimeInput v-model="form[`${field}Time`]" :locale="locale" :display-settings="displaySettings!" :label="`${t(field === 'start' ? 'start' : field === 'end' ? 'end' : 'drawAt')} · ${t('time')}`" />
             </span>
@@ -304,15 +306,18 @@ async function clearCatalog() { lifecycleDraft.value = 'active'; await searchCat
           <DrawResultInputs v-if="resultModel" ref="drawInputs" :model="resultModel" :locale="locale" />
         </template>
 
-      </fieldset><p v-if="pending">{{ t('awaiting') }}</p><div class="platform-lottery-form-actions ui-form-actions" :class="{ 'confirmation-actions': isConfirmation }"><button class="button" :class="formKind === 'lifecycle' && lifecycleAction === 'deleted' ? 'button-danger' : 'button-primary'" :disabled="loading" type="submit">{{ pending ? t('retry') : isConfirmation ? actionLabel : t('save') }}</button></div></form>
+      </fieldset><p v-if="pending && !loading">{{ t('awaiting') }}</p><div class="platform-lottery-form-actions ui-form-actions" :class="{ 'confirmation-actions': isConfirmation }"><button class="button" :class="formKind === 'lifecycle' && lifecycleAction === 'deleted' ? 'button-danger' : 'button-primary'" :disabled="loading" type="submit">{{ pending && !loading ? t('retry') : isConfirmation ? actionLabel : t('save') }}</button></div></form>
     </DetailModal>
   </section>
 </template>
 
 <style scoped>
-.brand-sales-modal.detail-modal{width:min(640px,calc(100vw - 24px))}
-.brand-sales-modal.brand-odds-modal{width:min(760px,calc(100vw - 24px))}
-.brand-sales-modal :deep(.configured-publishing>h3){display:none}
+.lottery-sales-modal.detail-modal{width:min(640px,calc(100vw - 24px))}
+.lottery-sales-modal.lottery-odds-modal{width:min(1120px,calc(100vw - 24px))}
+.lottery-sales-modal :deep(.configured-publishing>h3){display:none}
+.lottery-odds-modal :deep(.configured-publishing>.ui-form-actions){position:sticky;bottom:-12px;z-index:1;margin:0 -16px -12px;padding:8px 16px 12px;background:var(--surface);border-top:1px solid var(--line)}
+@media(max-width:620px){.lottery-odds-modal :deep(.configured-publishing>.ui-form-actions){margin-inline:-14px;padding-inline:14px}}
+
 
 .lottery-detail-page{min-width:0;padding:16px}.lottery-detail-page-heading{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px}.lottery-detail-page-heading h2{margin:0;overflow-wrap:anywhere;font-size:18px}.lottery-detail-page-heading .button{min-height:var(--control-height)}
 .platform-lottery{text-align:left}

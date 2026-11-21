@@ -187,9 +187,9 @@ test("brand point policy persists; pending recharge cancellation does not credit
     wp.getByRole("alert").filter({ hasText: "由于读取结果不含本次请求凭据" }),
   ).toBeVisible();
   await expect(
-    wp.getByRole("button", { name: "使用原请求重试", exact: true }),
+    wp.getByRole("button", { name: "重试", exact: true }),
   ).toBeEnabled();
-  await wp.getByRole("button", { name: "使用原请求重试", exact: true }).click();
+  await wp.getByRole("button", { name: "重试", exact: true }).click();
   await expect(
     wp.getByRole("status").filter({ hasText: "配置已保存" }),
   ).toBeVisible();

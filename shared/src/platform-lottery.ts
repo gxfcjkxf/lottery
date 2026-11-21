@@ -15,9 +15,9 @@ export interface PlatformGameDetail { total_count: string;
   game: PlatformGame
   periods: PlatformPeriod[]
 }
-export interface PlatformDrawOverview { total_count: string; mark_six: boolean;
+export interface PlatformDrawOverview { latest_period_no: string | null; total_count: string; mark_six: boolean; recent: number; recent_supported: boolean; daily: boolean; date: string; today: string; yesterday: string;
  years: string[]; year: string; has_more: boolean; pending_has_more: boolean
- items: Array<{ period_no: string; draw_date: string | null; result: NonNullable<PlatformPeriod['result']>; source: 'hkjc' | '6hch_123565_agreement' | 'published' | 'manual'; attributes: Record<string, {wave: string; zodiac: string; element: string}> }>
+ items: Array<{ period_no: string; draw_date: string | null; draw_at: string | null; result: NonNullable<PlatformPeriod['result']>; source: 'hkjc' | '6hch_123565_agreement' | 'published' | 'manual'; attributes: Record<string, {wave: string; zodiac: string; element: string}> }>
  pending: Array<PlatformPeriod & { state: 'scheduled' | 'open' | 'closed' | 'waiting' }>
 }
 export interface OfficialDrawCalendar {
@@ -46,7 +46,7 @@ export function createPlatformLotteryClient(surface: 'platform' | 'admin' | 'use
   return {
     officialCalendar: () => request<OfficialDrawCalendar>('/official-calendar'),
     syncOfficialCalendar: (key: string) => request<OfficialCalendarSyncResult>('/official-calendar/sync', {}, key),
-    drawOverview: (id: string, year = '', offset = 0, limit = 50) => request<PlatformDrawOverview>(`/${encodeURIComponent(id)}/draw-overview?year=${encodeURIComponent(year)}&limit=${limit}&offset=${offset}`),
+    drawOverview: (id: string, year = '', offset = 0, limit = 50, date = '', recent = 0) => request<PlatformDrawOverview>(`/${encodeURIComponent(id)}/draw-overview?year=${encodeURIComponent(year)}&date=${encodeURIComponent(date)}&limit=${limit}&offset=${offset}${recent ? `&recent=${recent}` : ''}`),
     drawSources:(id:string)=>request<import('./automation').DrawSourceList>(`/${encodeURIComponent(id)}/draw-sources`),
     automation:(id:string)=>request<import('./automation').AutomationConfig>(`/${encodeURIComponent(id)}/automation`),
     list: (offset = 0, limit = 50) => request<{ games: PlatformGame[]; total_count: string; limit: number; offset: number }>(`?limit=${limit}&offset=${offset}`),
@@ -57,7 +57,7 @@ export function createPlatformLotteryClient(surface: 'platform' | 'admin' | 'use
 
 export const platformLotteryCatalog = {
  en: {
-  manualAdd:'Manually add draw result', drawDate:'Draw date', drawNumbers:'Draw numbers:', numberLabel:'{group} {index}', numberRange:'Enter a number from {min} to {max}.', numberOutsidePool:'This number is not in the configured pool.', numberDuplicate:'This number cannot be repeated.', numberRequired:'Enter all draw numbers.',
+  manualAdd:'Manually add draw result', drawDate:'Draw date', drawNumbers:'Draw numbers:', numberLabel:'{group} {index}', numberRange:'Enter a number from {min} to {max}.', numberOutsidePool:'This number is not in the configured pool.', numberDuplicate:'This number cannot be repeated.', numberRequired:'Enter the draw number for {field}.',
   backToGames: 'Back to game list',
   editOpening: 'Set opening date and time', openingHelp: 'Applies to this period, including automatic periods. Periods with bets, closed periods and published results cannot be changed.', openingInvalid: 'Enter an opening date and time before closing.',
   'error.PLATFORM_PERIOD_IN_USE': 'This period has bets or has closed. Its opening date and time cannot be changed.',
@@ -83,13 +83,13 @@ export const platformLotteryCatalog = {
   'error.PLATFORM_GAME_VERSION_CONFLICT': 'The game was updated. Reopen its model before editing.',
   ownership: 'Owner', platformOwner: 'Platform', loading: 'Loading…',
   modelDigits: 'Ordered digits (0–9)', modelXY: 'Regular and special numbers', modelMN: 'Choose numbers from a pool',
-  title: 'Platform games', name: 'Name', code: 'Code',  periods: 'Periods', plays: 'Play rules', model: 'Number model', connect: 'Connect', connected: 'Connected', create: 'Create game', close: 'Close', refresh: 'Refresh', previous: 'Previous page', next: 'Next page', empty: 'No records', reason: 'Reason', save: 'Save', retry: 'Retry original request', readonly: 'Number models, periods and results are managed by the platform and shared by connected brands. Brands can only enable or disable platform games.',
+  title: 'Platform games', name: 'Name', code: 'Code',  periods: 'Periods', plays: 'Play rules', model: 'Number model', connect: 'Connect', connected: 'Connected', create: 'Create game', close: 'Close', refresh: 'Refresh', previous: 'Previous page', next: 'Next page', empty: 'No records', reason: 'Reason', save: 'Save', retry: 'Retry', readonly: 'Number models, periods and results are managed by the platform and shared by connected brands. Brands can only enable or disable platform games.',
   modelYes:'Yes',modelNo:'No',
-  type: 'Model type', digits: 'Digits', regularCount: 'Regular count', specialCount: 'Special count', pool: 'Pool maximum', repeat: 'Allow repeats', ordered: 'Ordered', result: 'Result', periodNo: 'Period number', start: 'Betting opens', end: 'Betting closes', drawAt: 'Draw time', date: 'Date', time: 'Time', pending: 'Not published', publish: 'Publish result', createPeriod: 'Create period', createPlay: 'Create play rule', definition: 'Rule definition', numbers: 'Numbers', regular: 'Regular numbers', special: 'Special numbers', awaiting: 'Request result unknown. Retry the same request.', success: 'Saved',
+  type: 'Model type', digits: 'Digits', regularCount: 'Regular count', specialCount: 'Special count', pool: 'Pool maximum', repeat: 'Allow repeats', ordered: 'Ordered', result: 'Result', periodNo: 'Period number', start: 'Betting opens', end: 'Betting closes', drawAt: 'Draw time', date: 'Date', time: 'Time', pending: 'Not published', publish: 'Publish result', createPeriod: 'Create period', createPlay: 'Create play rule', definition: 'Rule definition', numbers: 'Numbers', regular: 'Regular numbers', special: 'Special numbers', awaiting: 'The result is unconfirmed. Please retry.', success: 'Saved',
   'error.NETWORK_ERROR': 'Connection failed. Retry the original request.', 'error.INVALID_RESPONSE': 'Invalid server response.', 'error.PLATFORM_GAME_INVALID': 'Check that the result matches the configured number model and rules.', 'error.PLATFORM_GAME_CONFLICT': 'Already connected, duplicate record, or the draw is not ready.', 'error.PERMISSION_DENIED': 'Permission denied.', 'error.RESOURCE_NOT_FOUND': 'Game not found or not connected.', 'error.AUTH_SESSION_REVOKED': 'Please sign in again.', 'error.SERVICE_UNAVAILABLE': 'Service unavailable.', invalid: 'Check the entered values.',
  },
  'zh-CN': {
-  manualAdd:'手动添加开奖结果', drawDate:'开奖日期', drawNumbers:'开奖号码：', numberLabel:'{group}第 {index} 位', numberRange:'请输入 {min}–{max} 范围内的号码。', numberOutsidePool:'该号码不在配置的号码池内。', numberDuplicate:'该号码不允许重复。', numberRequired:'请填写全部开奖号码。',
+  manualAdd:'手动添加开奖结果', drawDate:'开奖日期', drawNumbers:'开奖号码：', numberLabel:'{group} {index}', numberRange:'请输入 {min}–{max} 范围内的号码。', numberOutsidePool:'该号码不在配置的号码池内。', numberDuplicate:'该号码不允许重复。', numberRequired:'请填写{field} 开奖号码。',
   backToGames: '返回彩种列表',
   editOpening: '设置开盘日期时间', openingHelp: '仅修改本期，自动期次同样适用。已产生注单、已封盘或已开奖的期次不可修改。', openingInvalid: '请选择早于封盘的完整开盘日期时间。',
   'error.PLATFORM_PERIOD_IN_USE': '本期已产生注单或已封盘，不能修改开盘日期时间。',
@@ -115,9 +115,9 @@ export const platformLotteryCatalog = {
   'error.PLATFORM_GAME_VERSION_CONFLICT': '记录已被更新，请重新读取后再修改。',
   ownership: '归属', platformOwner: '平台', loading: '加载中…',
   modelDigits: '有序数字（0–9）', modelXY: '普通号码＋特别号码', modelMN: '号码池选取',
-  title: '平台彩种', name: '名称', code: '代码',  periods: '期次', plays: '玩法规则', model: '号码模型', connect: '接入', connected: '已接入', create: '创建彩种', close: '关闭', refresh: '刷新', previous: '上一页', next: '下一页', empty: '暂无记录', reason: '原因', save: '保存', retry: '重试原请求', readonly: '平台统一维护号码模型、期次及开奖结果；品牌仅可启用或停用平台彩种。',
+  title: '平台彩种', name: '名称', code: '代码',  periods: '期次', plays: '玩法规则', model: '号码模型', connect: '接入', connected: '已接入', create: '创建彩种', close: '关闭', refresh: '刷新', previous: '上一页', next: '下一页', empty: '暂无记录', reason: '原因', save: '保存', retry: '重试', readonly: '平台统一维护号码模型、期次及开奖结果；品牌仅可启用或停用平台彩种。',
   modelYes:'是',modelNo:'否',
-  type: '模型类型', digits: '位数', regularCount: '普通号码数量', specialCount: '特别号码数量', pool: '号码池最大值', repeat: '允许重复', ordered: '有序', result: '开奖结果', periodNo: '期号', start: '开盘时间', end: '封盘时间', drawAt: '开奖时间', date: '日期', time: '时间', pending: '尚未发布', publish: '发布开奖结果', createPeriod: '创建期次', createPlay: '新增玩法规则', definition: '规则定义', numbers: '号码', regular: '普通号码', special: '特别号码', awaiting: '请求结果尚未确认，请使用原请求重试。', success: '已保存',
+  type: '模型类型', digits: '位数', regularCount: '普通号码数量', specialCount: '特别号码数量', pool: '号码池最大值', repeat: '允许重复', ordered: '有序', result: '开奖结果', periodNo: '期号', start: '开盘时间', end: '封盘时间', drawAt: '开奖时间', date: '日期', time: '时间', pending: '尚未发布', publish: '发布开奖结果', createPeriod: '创建期次', createPlay: '新增玩法规则', definition: '规则定义', numbers: '号码', regular: '普通号码', special: '特别号码', awaiting: '结果尚未确认，请重试。', success: '已保存',
   'error.NETWORK_ERROR': '连接失败，请重试原请求。', 'error.INVALID_RESPONSE': '服务器响应不正确。', 'error.PLATFORM_GAME_INVALID': '请检查开奖结果是否符合已配置的号码模型和规则。', 'error.PLATFORM_GAME_CONFLICT': '已接入、记录重复或尚未到开奖时间。', 'error.PERMISSION_DENIED': '无操作权限。', 'error.RESOURCE_NOT_FOUND': '彩种不存在或尚未接入。', 'error.AUTH_SESSION_REVOKED': '请重新登录。', 'error.SERVICE_UNAVAILABLE': '服务暂时不可用。', invalid: '请检查输入内容。',
  },
 } as const

@@ -268,3 +268,8 @@ func CanadaNiuProfit(stake points.Amount, odds string, multiplier int64) (points
 	amount, e := exactPoints(new(big.Rat).Mul(rate, new(big.Rat).SetInt64(int64(stake))), nil)
 	return amount, display, e
 }
+
+// IsCanada28Model identifies the three ordered decimal digits used by Canada 28.
+func IsCanada28Model(m Model) bool {
+	return m.Type == "DIGITS_0_9" && m.Length == 3 && m.Ordered && m.AllowRepeat
+}

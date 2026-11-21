@@ -37,9 +37,9 @@ test(`platform manages both account types with explicit roles and original-reque
     } else await route.continue();
   });
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(dialog.getByRole('button', { name: 'Retry original request', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
   await expect(scopes.getByRole('button', { name: 'Brand staff', exact: true })).toBeDisabled();
-  await dialog.getByRole('button', { name: 'Retry original request', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(attempts).toHaveLength(2);
   expect(attempts[1]).toEqual(attempts[0]);

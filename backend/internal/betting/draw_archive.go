@@ -19,28 +19,32 @@ type ArchiveNumberAttribute struct {
 type DrawArchiveRow struct {
 	PeriodNo     string                            `json:"period_no"`
 	Result       rules.Draw                        `json:"result"`
+	DrawAt       *time.Time                        `json:"draw_at"`
 	DrawnAt      *time.Time                        `json:"drawn_at"`
 	RegularOrder []int                             `json:"regular_order"`
 	DrawDate     *string                           `json:"draw_date"`
 	Attributes   map[string]ArchiveNumberAttribute `json:"attributes"`
 	periodID     string
-	scheduledAt  *time.Time
 }
 type DrawArchive struct {
-	TotalCount string           `json:"total_count"`
-	MarkSix    bool             `json:"mark_six"`
-	GameID     string           `json:"game_id"`
-	GameName   string           `json:"game_name"`
-	Timezone   string           `json:"timezone"`
-	Daily      bool             `json:"daily"`
-	Choices    []string         `json:"choices"`
-	Selected   string           `json:"selected"`
-	Items      []DrawArchiveRow `json:"items"`
-	HasMore    bool             `json:"has_more"`
+	RecentSupported bool             `json:"recent_supported"`
+	Recent          int              `json:"recent"`
+	Today           string           `json:"today"`
+	Yesterday       string           `json:"yesterday"`
+	TotalCount      string           `json:"total_count"`
+	MarkSix         bool             `json:"mark_six"`
+	GameID          string           `json:"game_id"`
+	GameName        string           `json:"game_name"`
+	Timezone        string           `json:"timezone"`
+	Daily           bool             `json:"daily"`
+	Choices         []string         `json:"choices"`
+	Selected        string           `json:"selected"`
+	Items           []DrawArchiveRow `json:"items"`
+	HasMore         bool             `json:"has_more"`
 }
 
 // DrawArchive exposes only the selected game's current published results.
-func (s Service) DrawArchive(ctx context.Context, brand, game, kind, selected string, limit, offset int) (DrawArchive, error) {
+func (s Service) DrawArchive(ctx context.Context, brand, game, kind, selected string, limit, offset, recent int) (DrawArchive, error) {
 	out := DrawArchive{TotalCount: "0", GameID: game, Choices: []string{}, Items: []DrawArchiveRow{}}
 	if !validIDs(game) || kind != "configured" || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
 		return out, ErrInvalid
@@ -63,11 +67,22 @@ func (s Service) DrawArchive(ctx context.Context, brand, game, kind, selected st
 	if err = json.Unmarshal(modelRaw, &model); err != nil {
 		return out, err
 	}
+	if rules.IsCanada28Model(model) && recent == 0 && selected == "" {
+		recent = 50
+	}
+	if recent != 0 && (!rules.IsCanada28Model(model) || (recent != 50 && recent != 100) || selected != "") {
+		return out, ErrInvalid
+	}
+	out.Recent = recent
+	out.RecentSupported = rules.IsCanada28Model(model)
 	out.MarkSix = rules.ValidateMarkSixModel(model) == nil
+	fast = fast || rules.IsCanada28Model(model)
 	location, err := time.LoadLocation(out.Timezone)
 	if err != nil {
 		return out, err
 	}
+	out.Today = now.In(location).Format("2006-01-02")
+	out.Yesterday = now.In(location).AddDate(0, 0, -1).Format("2006-01-02")
 	// Imported history carries a calendar year and an optional date, never a fabricated timestamp.
 	from := ` FROM (
  SELECT p.game_id,p.period_no,p.result,p.published_at AS drawn_at,p.id::text AS period_id,p.draw_at AS scheduled_at,
@@ -86,7 +101,7 @@ func (s Service) DrawArchive(ctx context.Context, brand, game, kind, selected st
 		bucket = `p.calendar_date`
 	}
 
-	dates, err := tx.Query(ctx, `SELECT DISTINCT `+bucket+from+` ORDER BY 1 DESC`, brand, game, out.Timezone, now)
+	dates, err := tx.Query(ctx, `SELECT DISTINCT `+bucket+from+` AND `+bucket+` IS NOT NULL ORDER BY 1 DESC`, brand, game, out.Timezone, now)
 	if err != nil {
 		return out, err
 	}
@@ -122,26 +137,37 @@ func (s Service) DrawArchive(ctx context.Context, brand, game, kind, selected st
 			seen[value] = true
 		}
 	}
-	if selected == "" {
-		selected = current
-	}
-	parsed, err := time.ParseInLocation(layout, selected, location)
-	if err != nil || parsed.Format(layout) != selected || selected > current {
-		return out, ErrInvalid
+	var selection any = selected
+	filter := bucket + "=$5"
+	countExpr := "count(*)::text"
+	pageLimit := "$7"
+	if recent != 0 {
+		selection = recent
+		filter = "$5::int>0"
+		countExpr = "least(count(*),$5::int)::text"
+		pageLimit = "least($7,greatest(0,$5::int-$6))"
+	} else {
+		if selected == "" {
+			selected = current
+		}
+		parsed, e := time.ParseInLocation(layout, selected, location)
+		if e != nil || parsed.Format(layout) != selected || selected > current {
+			return out, ErrInvalid
+		}
+		selection = selected
 	}
 	out.Selected = selected
-	if err := tx.QueryRow(ctx, `SELECT count(*)::text`+from+` AND `+bucket+`=$5`, brand, game, out.Timezone, now, selected).Scan(&out.TotalCount); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT `+countExpr+from+` AND `+filter, brand, game, out.Timezone, now, selection).Scan(&out.TotalCount); err != nil {
 		return out, err
 	}
-
-	rows, err := tx.Query(ctx, `SELECT `+resultFields+from+` AND `+bucket+`=$5 ORDER BY CASE WHEN p.period_no ~ '^[0-9]+$' THEN p.period_no::numeric END DESC NULLS LAST,p.period_no DESC,`+orderID+` DESC LIMIT $7 OFFSET $6`, brand, game, out.Timezone, now, selected, offset, limit+1)
+	rows, err := tx.Query(ctx, `SELECT `+resultFields+from+` AND `+filter+` ORDER BY CASE WHEN p.period_no ~ '^[0-9]+$' THEN p.period_no::numeric END DESC NULLS LAST,p.period_no DESC,`+orderID+` DESC LIMIT `+pageLimit+` OFFSET $6`, brand, game, out.Timezone, now, selection, offset, limit+1)
 	if err != nil {
 		return out, err
 	}
 	for rows.Next() {
 		var row DrawArchiveRow
 		var raw, attributesRaw, orderRaw []byte
-		if err = rows.Scan(&row.PeriodNo, &raw, &row.DrawnAt, &row.periodID, &row.scheduledAt, &row.DrawDate, &attributesRaw, &orderRaw); err != nil {
+		if err = rows.Scan(&row.PeriodNo, &raw, &row.DrawnAt, &row.periodID, &row.DrawAt, &row.DrawDate, &attributesRaw, &orderRaw); err != nil {
 			rows.Close()
 			return out, err
 		}
@@ -244,13 +270,19 @@ func (s Service) LatestConfiguredDraw(ctx context.Context, brand, game string) (
 	defer tx.Rollback(ctx)
 	var zone string
 	var daily bool
-	err = tx.QueryRow(ctx, `SELECT (SELECT timezone FROM platform_settings WHERE id=true),coalesce((SELECT v.interval_seconds<86400 FROM platform_automation_settings a JOIN platform_automation_versions v ON v.game_id=a.game_id AND v.version=a.version WHERE a.game_id=g.id),false) FROM platform_games g JOIN brand_platform_games b ON b.game_id=g.id WHERE b.brand_id=$1 AND g.id=$2`, brand, game).Scan(&zone, &daily)
+	var modelRaw []byte
+	var model rules.Model
+	err = tx.QueryRow(ctx, `SELECT g.model,(SELECT timezone FROM platform_settings WHERE id=true),coalesce((SELECT v.interval_seconds<86400 FROM platform_automation_settings a JOIN platform_automation_versions v ON v.game_id=a.game_id AND v.version=a.version WHERE a.game_id=g.id),false) FROM platform_games g JOIN brand_platform_games b ON b.game_id=g.id WHERE b.brand_id=$1 AND g.id=$2`, brand, game).Scan(&modelRaw, &zone, &daily)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	if err = json.Unmarshal(modelRaw, &model); err != nil {
+		return nil, err
+	}
+	daily = daily || rules.IsCanada28Model(model)
 	format := "YYYY"
 	historicalBucket := `h.draw_year::text`
 	if daily {
@@ -272,7 +304,7 @@ func (s Service) LatestConfiguredDraw(ctx context.Context, brand, game string) (
 	if bucket == nil {
 		return nil, nil
 	}
-	archive, err := s.DrawArchive(ctx, brand, game, "configured", *bucket, 50, 0)
+	archive, err := s.DrawArchive(ctx, brand, game, "configured", *bucket, 50, 0, 0)
 	if err != nil {
 		return nil, err
 	}

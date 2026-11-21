@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RechargeStateSelect from "@lottery/shared/RechargeStateSelect.vue"
 import ManagementList from "@lottery/shared/ManagementList.vue"
 import { readPaginationTotal } from '@lottery/shared'
 const totalCount = ref('0')
@@ -29,6 +30,7 @@ const api = createPlatformRechargeApi()
 const draftMember = ref('')
 const memberSearchPending = ref(false)
 const filterMember = ref('')
+const state = ref('')
 const rows = ref<Recharge[]>([])
 const detail = ref<Recharge | null>(null)
 const offset = ref(0)
@@ -60,7 +62,7 @@ async function load(nextOffset = 0, member = filterMember.value) {
   if (!brandId) { loading.value = false; return }
   loading.value = true
   try {
-    const records = await api.list(brandId, member, pageSize.value, nextOffset)
+    const records = await api.list(brandId, member, pageSize.value, nextOffset, state.value)
     if (request !== generation || props.brandId !== brandId) return
     [rows.value, totalCount.value] = [records.items, readPaginationTotal(records)]; more.value = BigInt(nextOffset + records.items.length) < BigInt(totalCount.value)
     offset.value = nextOffset; filterMember.value = member
@@ -72,7 +74,7 @@ async function load(nextOffset = 0, member = filterMember.value) {
 }
 watch(() => [props.brandId, props.memberId], () => {
   [rows.value,totalCount.value]=[[],'0']; more.value = false;
-  draftMember.value = ''; filterMember.value = props.memberId; offset.value = 0
+  state.value = ''; draftMember.value = ''; filterMember.value = props.memberId; offset.value = 0
   void withGlobalLoading(load)
 }, { immediate: true, flush: 'sync' })
 
@@ -83,13 +85,13 @@ useOperationToast(error, value => displayPublicError(value), 'error');
 <template>
   <ManagementList data-testid="platform-recharges" class="recharge-records">
     <template #filters><DirectorySearch :locale="locale" class="wallet-query" v-model="draftMember" :label="copy.memberPlaceholder" :query-label="ui('members.query')" :busy="loading || !brandId" :query-pending="memberSearchPending" :search="submitMemberQuery">
-      <template #input><FilterAssociationSearch :reset-key="filterReset" v-model="draftMember" v-model:pending="memberSearchPending" :brand-id="brandId" surface="platform" resource="recharge" :scope-key="memberId" :label="copy.member" :locale="locale" /></template>
+      <template #input><slot name="record-type" :disabled="loading" /><RechargeStateSelect v-model="state" kind="manual" :locale="locale" :disabled="loading" @change="withGlobalLoading(load, 0)" /><FilterAssociationSearch :reset-key="filterReset" v-model="draftMember" v-model:pending="memberSearchPending" :brand-id="brandId" surface="platform" resource="recharge" :scope-key="memberId" :label="copy.member" :locale="locale" /></template>
       <template #actions>
       </template>
     </DirectorySearch></template>
 
-    <section class="reward-detail recharge-list"><div class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ copy.detail }}</th><th>{{ui("platform.recharge.method")}}</th><th>{{ ui('platform.copy.098b8e97') }}</th><th>{{ copy.points }}</th><th><BusinessDetails :value="copy.state" :locale="props.locale" /></th><th>{{ copy.created }}</th></tr></thead><tbody>
-      <tr v-for="order in rows" :key="order.id"><td :data-label="copy.detail"><button class="text-button row-action" @click="detail = order">{{ copy.detail }}</button></td><td :data-label="ui('platform.recharge.method')">{{ui(order.method === "manual" ? "platform.recharge.manual" : "platform.recharge.automatic")}}</td><td :data-label="ui('platform.copy.098b8e97')">{{ order.member_username }}</td><td :data-label="copy.points">{{ order.points }}</td><td :data-label="copy.state">{{ copy[order.state] }}</td><td :data-label="copy.created">{{ formatPlatformDateTime(order.created_at, props.displaySettings, props.locale) }}</td></tr>
+    <section class="reward-detail recharge-list"><div class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ ui('platform.copy.098b8e97') }}</th><th>{{ui("platform.recharge.method")}}</th><th>{{ copy.points }}</th><th><BusinessDetails :value="copy.state" :locale="props.locale" /></th><th>{{ copy.created }}</th><th>{{ copy.detail }}</th></tr></thead><tbody>
+      <tr v-for="order in rows" :key="order.id"><td :data-label="ui('platform.copy.098b8e97')">{{ order.member_username }}</td><td :data-label="ui('platform.recharge.method')">{{ui(order.method === "manual" ? "platform.recharge.manual" : "platform.recharge.automatic")}}</td><td :data-label="copy.points">{{ order.points }}</td><td :data-label="copy.state">{{ copy[order.state] }}</td><td :data-label="copy.created">{{ formatPlatformDateTime(order.created_at, props.displaySettings, props.locale) }}</td><td :data-label="copy.detail"><button class="text-button row-action" @click="detail = order">{{ copy.detail }}</button></td></tr>
       <tr v-if="!loading && !error && !rows.length"><td colspan="6" class="empty-state">{{ copy.empty }}</td></tr>
     </tbody></table></div></section>
     <DetailModal v-if="detail" :title="copy.detail" :close-label="copy.close" @close="detail = null">

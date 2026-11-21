@@ -173,7 +173,7 @@ useOperationToast(() => receipt.value, () => t('admin.withdrawal.acted'), 'succe
     <ManagementList v-else>
 
       <p v-if="receipt" class="withdrawal-receipt" role="status">{{ words.receipt }} · {{ receipt.id }} · {{ stateName(receipt.state) }}</p>
-      <div v-if="pending && pending.scope === scope" class="withdrawal-confirm" role="alert"><strong>{{ words.unknown }} · {{ pending.orderId }}</strong><p v-if="pending.body.reason">{{ words.reason }} · {{ pending.body.reason }}</p><button v-write-guard="busy" class="button button-secondary" :disabled="busy" @click="withGlobalLoading(perform, pending.action, true)">{{ words.replay }}</button></div>
+      <div v-if="pending && pending.scope === scope" v-show="!busy" class="withdrawal-confirm" role="alert"><strong>{{ words.unknown }} · {{ pending.orderId }}</strong><p v-if="pending.body.reason">{{ words.reason }} · {{ pending.body.reason }}</p><button v-write-guard="busy" class="button button-secondary" :disabled="busy" @click="withGlobalLoading(perform, pending.action, true)">{{ words.replay }}</button></div>
       <template #filters><form novalidate v-inline-validation class="withdrawal-filters ui-filter-bar" @submit.prevent="withGlobalLoading(load, 0)">
         <label>
           <SelectControl v-model="stateFilter" :label="words.state" :options="[{ value: '', label: (String(words.all)).trim() }, ...((states).map((state) => ({ value: state, label: (String(stateName(state))).trim() })))]" />

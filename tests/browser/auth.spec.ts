@@ -68,13 +68,13 @@ test("real registration, cookie restoration, one-time profile fill and logout", 
     else await route.fulfill({response});
   });
   await inbox.getByRole("button", {name:"Mark this page read",exact:true}).click();
-  await expect(inbox.getByRole("button",{name:"Retry the same request",exact:true})).toBeVisible();
+  await expect(inbox.getByRole("button",{name:"Retry",exact:true})).toBeVisible();
   await inbox.getByRole("button",{name:"Reload",exact:true}).click();
   await expect(inbox.locator(".notification-card.read-card")).toHaveCount(1);
   // A read-only refresh is not evidence that the earlier user intent was acknowledged.
-  await expect(inbox.getByRole("button",{name:"Retry the same request",exact:true})).toBeVisible();
-  await inbox.getByRole("button",{name:"Retry the same request",exact:true}).click();
-  await expect(inbox.getByRole("button",{name:"Retry the same request",exact:true})).toHaveCount(0);
+  await expect(inbox.getByRole("button",{name:"Retry",exact:true})).toBeVisible();
+  await inbox.getByRole("button",{name:"Retry",exact:true}).click();
+  await expect(inbox.getByRole("button",{name:"Retry",exact:true})).toHaveCount(0);
   expect(intents).toHaveLength(2);
   expect(intents[0]).toEqual(intents[1]);
   await page.unroute("**/notifications/read");

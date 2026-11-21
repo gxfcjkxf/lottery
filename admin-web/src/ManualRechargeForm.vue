@@ -43,11 +43,11 @@ useOperationToast(() => notice.value, () => t('admin.recharge.credited'), 'succe
   <p><strong>{{t('admin.recharge.member')}}</strong> {{username}}</p>
   <form v-write-guard="busy" novalidate v-inline-validation class="manual-form ui-form" @submit.prevent="withGlobalLoading(submit)">
    <div class="recharge-amount-row">
-    <label>{{t('admin.workbench.field.rechargePoints')}}<input :value="amount" @input="updateAmount" inputmode="decimal" required pattern="(0|[1-9][0-9]*)([.][0-9]{1,2})?" :data-validation-format="formValidationText('positivePoints')" :disabled="busy||!!frozen" /></label>
+    <label class="ui-field-row">{{t('admin.workbench.field.rechargePoints')}}<input :value="amount" @input="updateAmount" inputmode="decimal" required pattern="(0|[1-9][0-9]*)([.][0-9]{1,2})?" :data-validation-format="formValidationText('positivePoints')" :disabled="busy||!!frozen" /></label>
     <RechargeQuotaPanel external-feedback summary-only ref="quota" :brand-id="brandId" :locale="locale" base-path="/api/v1/admin" @failure="cause => { error = errorMessage(cause,'read') }" />
    </div>
-   <label>{{t('admin.copy.fd2d2c8b')}}<input v-model.trim="remark" maxlength="500" :disabled="busy||!!frozen" /></label>
-   <button type="submit" class="button button-primary" :disabled="busy||(!frozen&&!isPositiveAmount(amount))">{{t(frozen?'admin.recharge.retry':'admin.recharge.credit')}}</button>
+   <label class="ui-field-row">{{t('admin.copy.fd2d2c8b')}}<input v-model.trim="remark" maxlength="500" :disabled="busy||!!frozen" /></label>
+   <div class="ui-form-actions"><button type="submit" class="button button-primary" :disabled="busy||(!frozen&&!isPositiveAmount(amount))">{{t(frozen&&!busy?'admin.recharge.retry':'admin.recharge.credit')}}</button></div>
   </form>
  </div>
 </template>
@@ -56,7 +56,7 @@ useOperationToast(() => notice.value, () => t('admin.recharge.credited'), 'succe
 .manual-form label {display:grid;gap:6px;font-size:var(--body-font-size);min-width:0;}
 .manual-form input {width:100%;box-sizing:border-box;min-width:0;}
 .recharge-amount-row {display:flex;flex-wrap:wrap;align-items:end;gap:6px 12px;min-width:0;}
-.recharge-amount-row label {width:140px;max-width:100%;}
-.manual-form .button {justify-self:start;}
+.recharge-amount-row label {flex:1 1 280px;min-width:0;max-width:100%;}
+
 p {margin:0;overflow-wrap:anywhere;}
 </style>

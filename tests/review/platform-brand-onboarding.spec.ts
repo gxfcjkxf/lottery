@@ -11,10 +11,8 @@ test('new brand receives its first administrator with the complete registered br
   const brandCode = `onboard_${suffix}`;
   await dialog.getByLabel('Brand code', { exact: true }).fill(brandCode);
   await dialog.getByLabel('Brand name', { exact: true }).fill(`Onboarding ${suffix}`);
-  await dialog.getByLabel('Reason for creation', { exact: true }).fill('Prepare owned first brand administrator');
-  await dialog.getByRole('button', { name: /Review request/ }).click();
   const created = page.waitForResponse(response => response.url() === `${origin}/api/v1/platform/brands` && response.request().method() === 'POST');
-  await dialog.getByRole('button', { name: 'Confirm and create', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Submit', exact: true }).click();
   const createdResponse = await created;
   expect(createdResponse.status()).toBe(201);
   const brandId = (await createdResponse.json()).data.id;

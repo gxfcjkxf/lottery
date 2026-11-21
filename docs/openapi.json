@@ -16690,7 +16690,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires user.create.brand and is denied to super-admins. Existing usernames or phones are not linked. At least one username or phone is required. No session is issued; success returns an audit log ID.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires user.create.brand and is denied to super-admins. Existing usernames or phones are not linked. Username is required; phone is optional. No session is issued; success returns an audit log ID.",
         "security": [
           {
             "adminBearer": []
@@ -43692,6 +43692,19 @@
             }
           },
           {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "confirmed",
+                "cancelled"
+              ]
+            }
+          },
+          {
             "name": "X-Request-ID",
             "in": "header",
             "required": false,
@@ -44395,6 +44408,19 @@
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "confirmed",
+                "cancelled"
+              ]
             }
           },
           {
@@ -66755,11 +66781,23 @@
             }
           },
           {
+            "name": "recent",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                50,
+                100
+              ],
+              "description": "Canada 28 latest draw window across dates; cannot be combined with selected. Pagination and total_count are limited to the latest N draws."
+            }
+          },
+          {
             "name": "selected",
             "in": "query",
             "schema": {
               "type": "string",
-              "description": "Platform-timezone year YYYY or date YYYY-MM-DD; defaults to the current year or day."
+              "description": "Platform-timezone year YYYY or date YYYY-MM-DD. Canada 28 defaults to latest 50 draws when selected/recent are omitted; other games default to the current year or day."
             }
           },
           {
@@ -67097,11 +67135,23 @@
             }
           },
           {
+            "name": "recent",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                50,
+                100
+              ],
+              "description": "Canada 28 latest draw window across dates; cannot be combined with selected. Pagination and total_count are limited to the latest N draws."
+            }
+          },
+          {
             "name": "selected",
             "in": "query",
             "schema": {
               "type": "string",
-              "description": "Platform-timezone year YYYY or date YYYY-MM-DD; defaults to the current year or day."
+              "description": "Platform-timezone year YYYY or date YYYY-MM-DD. Canada 28 defaults to latest 50 draws when selected/recent are omitted; other games default to the current year or day."
             }
           },
           {
@@ -116317,7 +116367,7 @@
         "tags": [
           "platform-games"
         ],
-        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Platform-only, read-only history. Imported evidence takes precedence for duplicate period numbers. Missing dates stay null; pending periods retain their operational IDs. Pending list contains the earliest 50 with pending_has_more.",
+        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Platform-only, read-only history. Imported evidence takes precedence for duplicate period numbers. Canada 28 defaults to its latest 50 draws when no filter is supplied; date=YYYY-MM-DD explicitly selects a platform calendar date; year is rejected for daily games. recent=50 or 100 reads the latest Canada 28 records across dates and cannot be combined with year/date; total_count is capped to that window. Other games use year. daily/date/today/yesterday describe the active filter and platform calendar shortcuts. Missing dates stay null; pending periods retain their operational IDs. Pending list contains the earliest 50 with pending_has_more.",
         "security": [
           {
             "adminBearer": []
@@ -116349,6 +116399,25 @@
             "in": "query",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "recent",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                50,
+                100
+              ]
             }
           },
           {
@@ -116664,7 +116733,7 @@
         "tags": [
           "platform-games"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Brand must be connected. Read-only history; pending is empty and pending_has_more is false. Imported evidence takes precedence for duplicate period numbers. Missing dates stay null; pending periods retain their operational IDs. Pending list contains the earliest 50 with pending_has_more.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Brand must be connected. Read-only history; pending is empty and pending_has_more is false. Imported evidence takes precedence for duplicate period numbers. Canada 28 defaults to its latest 50 draws when no filter is supplied; date=YYYY-MM-DD explicitly selects a platform calendar date; year is rejected for daily games. recent=50 or 100 reads the latest Canada 28 records across dates and cannot be combined with year/date; total_count is capped to that window. Other games use year. daily/date/today/yesterday describe the active filter and platform calendar shortcuts. Missing dates stay null; pending periods retain their operational IDs. Pending list contains the earliest 50 with pending_has_more.",
         "security": [
           {
             "adminBearer": []
@@ -116696,6 +116765,25 @@
             "in": "query",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "recent",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                50,
+                100
+              ]
             }
           },
           {
@@ -128338,7 +128426,7 @@
         "tags": [
           "configured-rules"
         ],
-        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. One atomic save with the current ID and revision. Validates the rule model, preserves immutable historical rule snapshots, replaces the current rules, and rejects concurrent changes. Brand sales must be saved against the new rules before accepting new bets; existing orders keep their snapshots.",
+        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. One atomic save with the current ID and revision. Validates the rule model, preserves immutable historical rule snapshots, replaces the current rules, and rejects concurrent changes. Optional item availability is committed in the same transaction and validated against the new rules and current scope version. Brand sales must be saved against the new rules before accepting new bets; existing orders keep their snapshots.",
         "security": [
           {
             "adminBearer": []
@@ -128684,6 +128772,1372 @@
         }
       }
     },
+    "/api/v1/admin/platform-games/{id}/configured/availability": {
+      "get": {
+        "operationId": "configuredAvailabilityReadadmin",
+        "summary": "Read configured betting item availability",
+        "tags": [
+          "configured-rules"
+        ],
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. ",
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          },
+          {
+            "name": "X-Brand-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            },
+            "description": "Selected brand; server revalidates current administrative scope and permission."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "request_id"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ConfiguredAvailability"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    },
+                    "associations": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/AssociationDisplayName"
+                      },
+                      "description": "Display-only names for structured references already in this authorized response. Keys are entity-kind:UUID. Original business data and CSV are unchanged; do not persist this metadata or submit it in mutations."
+                    },
+                    "association_error": {
+                      "type": "boolean",
+                      "description": "Display-name projection unavailable. Does not invalidate the acknowledged business response."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [
+          "platform_game.view.brand"
+        ],
+        "x-idempotent-operation": false
+      },
+      "post": {
+        "operationId": "configuredAvailabilityWriteadmin",
+        "summary": "Save configured betting item availability",
+        "tags": [
+          "configured-rules"
+        ],
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Atomically replaces the explicit states in this scope across all plates. Platform disables take precedence and suppress existing brand states until the platform re-enables the item. Brand writes may only change platform-enabled items. Missing platform items are enabled, and missing brand items inherit the platform. Requires the current published rule ID and scope version. Existing orders retain their frozen snapshots.",
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          },
+          {
+            "name": "X-Brand-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            },
+            "description": "Selected brand; server revalidates current administrative scope and permission."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_:.-]{8,128}$"
+            },
+            "description": "Unique operation intent. Unknown result retries preserve this key and exactly the same body. Same key/different body returns409; successful cached receipts describe the original result, not live state."
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required when any Cookie is sent: must match the original request Host and accepted scheme. Bearer-only nonbrowser requests may omit it. Client must not forge forwarded Host/IP."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "request_id"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ConfiguredAvailability"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    },
+                    "associations": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/AssociationDisplayName"
+                      },
+                      "description": "Display-only names for structured references already in this authorized response. Keys are entity-kind:UUID. Original business data and CSV are unchanged; do not persist this metadata or submit it in mutations."
+                    },
+                    "association_error": {
+                      "type": "boolean",
+                      "description": "Display-name projection unavailable. Does not invalidate the acknowledged business response."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [
+          "platform_game.sell.brand"
+        ],
+        "x-idempotent-operation": true,
+        "requestBody": {
+          "required": true,
+          "description": "Exactly one JSON object, at most16KiB; unknown fields rejected where documented. JSON Schema cannot represent duplicate-member rejection; see handler contract.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfiguredAvailabilityInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/platform-games/{id}/configured/availability": {
+      "get": {
+        "operationId": "configuredAvailabilityReadplatform",
+        "summary": "Read configured betting item availability",
+        "tags": [
+          "configured-rules"
+        ],
+        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. ",
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "platformAdminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "request_id"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ConfiguredAvailability"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    },
+                    "associations": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/AssociationDisplayName"
+                      },
+                      "description": "Display-only names for structured references already in this authorized response. Keys are entity-kind:UUID. Original business data and CSV are unchanged; do not persist this metadata or submit it in mutations."
+                    },
+                    "association_error": {
+                      "type": "boolean",
+                      "description": "Display-name projection unavailable. Does not invalidate the acknowledged business response."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [
+          "platform_game.view.platform"
+        ],
+        "x-idempotent-operation": false
+      },
+      "post": {
+        "operationId": "configuredAvailabilityWriteplatform",
+        "summary": "Save configured betting item availability",
+        "tags": [
+          "configured-rules"
+        ],
+        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Atomically replaces the explicit states in this scope across all plates. Platform disables take precedence and suppress existing brand states until the platform re-enables the item. Brand writes may only change platform-enabled items. Missing platform items are enabled, and missing brand items inherit the platform. Requires the current published rule ID and scope version. Existing orders retain their frozen snapshots.",
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "platformAdminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_:.-]{8,128}$"
+            },
+            "description": "Unique operation intent. Unknown result retries preserve this key and exactly the same body. Same key/different body returns409; successful cached receipts describe the original result, not live state."
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required when any Cookie is sent: must match the original request Host and accepted scheme. Bearer-only nonbrowser requests may omit it. Client must not forge forwarded Host/IP."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "request_id"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ConfiguredAvailability"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    },
+                    "associations": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/AssociationDisplayName"
+                      },
+                      "description": "Display-only names for structured references already in this authorized response. Keys are entity-kind:UUID. Original business data and CSV are unchanged; do not persist this metadata or submit it in mutations."
+                    },
+                    "association_error": {
+                      "type": "boolean",
+                      "description": "Display-name projection unavailable. Does not invalidate the acknowledged business response."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [
+          "platform_game.write.platform"
+        ],
+        "x-idempotent-operation": true,
+        "requestBody": {
+          "required": true,
+          "description": "Exactly one JSON object, at most16KiB; unknown fields rejected where documented. JSON Schema cannot represent duplicate-member rejection; see handler contract.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfiguredAvailabilityInput"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/platform-games/{id}/configured/sales": {
       "get": {
         "operationId": "configuredSalesRead",
@@ -129021,7 +130475,7 @@
         "tags": [
           "configured-rules"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Brand entry only. First save uses version 0; later saves require the current version. Explicitly binds the current published rules, validates complete prices against their ceilings and all four positive limits, and saves the enabled state. Same-key same-body replay is checked against current session and sell permission before returning a receipt. Cross-brand writes and stale sales or rule versions are rejected. Does not write orders, wallets or ledger entries; existing orders retain their frozen snapshots.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Brand entry only. First save uses version 0; later saves require the current version. Explicitly binds the current published rules, validates complete prices against their ceilings and all four positive limits, and saves the enabled state. Optional item availability is committed in the same transaction and requires its current scope version. Same-key same-body replay is checked against current session and sell permission before returning a receipt. Cross-brand writes and stale sales or rule versions are rejected. Does not write orders, wallets or ledger entries; existing orders retain their frozen snapshots.",
         "security": [
           {
             "adminBearer": []
@@ -129369,7 +130823,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ConfiguredSales"
+                "$ref": "#/components/schemas/ConfiguredSalesInput"
               }
             }
           }
@@ -132353,7 +133807,7 @@
         "x-idempotent-operation": true,
         "requestBody": {
           "required": true,
-          "description": "One object, at most 256 KiB. Requires signed preview actor_context, unchanged rule/sales versions and hash. Same idempotency key and same body replay the original receipt; changed body conflicts. Each expanded line is saved as one order with its own funding entry and settlement. Combination legs stay together. The complete batch, wallet allocation, period limits, closing time and brand availability are checked in the same transaction; any failure rolls back all items.",
+          "description": "One object, at most 256 KiB. Requires signed preview actor_context, unchanged rule/sales versions and hash. Same idempotency key and same body replay the original receipt; changed body conflicts. Each expanded line is saved as one order with its own funding entry and settlement. Combination legs stay together. The complete batch, wallet allocation, period limits, closing time, betting item and brand availability are checked in the same transaction; any failure rolls back all items.",
           "content": {
             "application/json": {
               "schema": {
@@ -133050,7 +134504,7 @@
         "x-idempotent-operation": true,
         "requestBody": {
           "required": true,
-          "description": "One object, at most 256 KiB. Requires signed preview actor_context, unchanged rule/sales versions and hash. Same idempotency key and same body replay the original receipt; changed body conflicts. Each expanded line is saved as one order with its own funding entry and settlement. Combination legs stay together. The complete batch, wallet allocation, period limits, closing time and brand availability are checked in the same transaction; any failure rolls back all items.",
+          "description": "One object, at most 256 KiB. Requires signed preview actor_context, unchanged rule/sales versions and hash. Same idempotency key and same body replay the original receipt; changed body conflicts. Each expanded line is saved as one order with its own funding entry and settlement. Combination legs stay together. The complete batch, wallet allocation, period limits, closing time, betting item and brand availability are checked in the same transaction; any failure rolls back all items.",
           "content": {
             "application/json": {
               "schema": {
@@ -134066,7 +135520,7 @@
         "x-idempotent-operation": false,
         "requestBody": {
           "required": true,
-          "description": "One object, at most 256 KiB. Empty actor_context allowed for preview. Prices are derived from current published/sales versions; the supplied snapshot hash must match. Returns signed actor context for confirmation.",
+          "description": "One object, at most 256 KiB. Empty actor_context allowed for preview. Prices are derived from current published/sales versions; the supplied snapshot hash must match. Disabled betting items are rejected. Returns signed actor context for confirmation.",
           "content": {
             "application/json": {
               "schema": {
@@ -134404,7 +135858,7 @@
         "x-idempotent-operation": false,
         "requestBody": {
           "required": true,
-          "description": "One object, at most 256 KiB. Empty actor_context allowed for preview. Prices are derived from current published/sales versions; the supplied snapshot hash must match. Returns signed actor context for confirmation.",
+          "description": "One object, at most 256 KiB. Empty actor_context allowed for preview. Prices are derived from current published/sales versions; the supplied snapshot hash must match. Disabled betting items are rejected. Returns signed actor context for confirmation.",
           "content": {
             "application/json": {
               "schema": {
@@ -174384,6 +175838,22 @@
             }
           },
           {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "submitted",
+                "confirmed",
+                "cancelled",
+                "expired",
+                "completed"
+              ]
+            },
+            "description": "Filter deposit or conversion records by state. Omit for all states."
+          },
+          {
             "name": "X-Request-ID",
             "in": "header",
             "required": false,
@@ -176077,6 +177547,22 @@
               "maximum": 1000000,
               "default": 0
             }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "submitted",
+                "confirmed",
+                "cancelled",
+                "expired",
+                "completed"
+              ]
+            },
+            "description": "Filter deposit or conversion records by state. Omit for all states."
           },
           {
             "name": "X-Request-ID",
@@ -184222,21 +185708,10 @@
           }
         },
         "required": [
+          "username",
           "password"
         ],
         "additionalProperties": false,
-        "anyOf": [
-          {
-            "required": [
-              "username"
-            ]
-          },
-          {
-            "required": [
-              "phone"
-            ]
-          }
-        ],
         "allOf": [
           {
             "if": {
@@ -184277,7 +185752,7 @@
             }
           }
         ],
-        "description": "At least one of username or phone is required. Creates a new global identity and brand member; it does not reuse existing identities or create a session. Empty attribution fields mean not supplied; non-empty codes are mutually exclusive."
+        "description": "Username is required; phone is optional. Creates a new global identity and brand member; it does not reuse existing identities or create a session. Empty attribution fields mean not supplied; non-empty codes are mutually exclusive."
       },
       "AdminOperatorCreateResult": {
         "type": "object",
@@ -188440,6 +189915,23 @@
           "daily": {
             "type": "boolean"
           },
+          "recent_supported": {
+            "type": "boolean"
+          },
+          "recent": {
+            "type": "integer",
+            "enum": [
+              0,
+              50,
+              100
+            ]
+          },
+          "today": {
+            "type": "string"
+          },
+          "yesterday": {
+            "type": "string"
+          },
           "choices": {
             "type": "array",
             "items": {
@@ -188448,6 +189940,9 @@
           },
           "selected": {
             "type": "string"
+          },
+          "total_count": {
+            "$ref": "#/components/schemas/NonnegativeInt64String"
           },
           "items": {
             "type": "array",
@@ -188521,6 +190016,16 @@
                   ],
                   "description": "Saved regular-ball draw sequence; null when no verified sequence is available. The special ball is separate."
                 },
+                "draw_at": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DateTime"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "drawn_at": {
                   "anyOf": [
                     {
@@ -188571,6 +190076,7 @@
                 "period_no",
                 "result",
                 "regular_order",
+                "draw_at",
                 "drawn_at",
                 "draw_date",
                 "attributes"
@@ -188588,8 +190094,13 @@
           "game_name",
           "timezone",
           "daily",
+          "recent_supported",
+          "recent",
+          "today",
+          "yesterday",
           "choices",
           "selected",
+          "total_count",
           "items",
           "has_more"
         ],
@@ -200956,6 +202467,39 @@
       "PlatformDrawOverview": {
         "type": "object",
         "properties": {
+          "latest_period_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recent_supported": {
+            "type": "boolean"
+          },
+          "recent": {
+            "type": "integer",
+            "enum": [
+              0,
+              50,
+              100
+            ]
+          },
+          "daily": {
+            "type": "boolean"
+          },
+          "date": {
+            "type": "string"
+          },
+          "today": {
+            "type": "string"
+          },
+          "yesterday": {
+            "type": "string"
+          },
           "mark_six": {
             "type": "boolean"
           },
@@ -201010,6 +202554,16 @@
                     }
                   ]
                 },
+                "draw_at": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DateTime"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "result": {
                   "$ref": "#/components/schemas/LotteryRuleDraw"
                 },
@@ -201027,6 +202581,7 @@
                 "period_no",
                 "attributes",
                 "draw_date",
+                "draw_at",
                 "result",
                 "source"
               ],
@@ -201119,6 +202674,13 @@
           }
         },
         "required": [
+          "latest_period_no",
+          "recent_supported",
+          "recent",
+          "daily",
+          "date",
+          "today",
+          "yesterday",
           "mark_six",
           "years",
           "year",
@@ -202750,6 +204312,9 @@
           },
           "snapshot": {
             "$ref": "#/components/schemas/ConfiguredSnapshot"
+          },
+          "availability": {
+            "$ref": "#/components/schemas/ConfiguredAvailabilityScope"
           }
         },
         "required": [
@@ -202797,6 +204362,81 @@
           "max_points",
           "max_period_points",
           "max_user_period_points"
+        ],
+        "additionalProperties": false
+      },
+      "ConfiguredOptionStates": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ConfiguredAvailabilityScope": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "items": {
+            "$ref": "#/components/schemas/ConfiguredOptionStates"
+          }
+        },
+        "required": [
+          "version",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "ConfiguredAvailability": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/ConfiguredAvailabilityScope"
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfiguredAvailabilityScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "rule_id",
+          "platform",
+          "brand"
+        ],
+        "additionalProperties": false
+      },
+      "ConfiguredAvailabilityInput": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "items": {
+            "$ref": "#/components/schemas/ConfiguredOptionStates"
+          }
+        },
+        "required": [
+          "rule_id",
+          "version",
+          "items"
         ],
         "additionalProperties": false
       },
@@ -203002,22 +204642,21 @@
                     "label": {
                       "$ref": "#/components/schemas/ConfiguredLabel"
                     },
+                    "group": {
+                      "type": "string"
+                    },
+                    "stake_mode": {
+                      "type": "string"
+                    },
                     "selection": {
-                      "type": "object",
-                      "properties": {
-                        "domain": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "domain"
-                      ],
-                      "additionalProperties": false
+                      "$ref": "#/components/schemas/ConfiguredSelection"
                     }
                   },
                   "required": [
                     "id",
                     "label",
+                    "group",
+                    "stake_mode",
                     "selection"
                   ],
                   "additionalProperties": false
@@ -203038,6 +204677,9 @@
                           },
                           "label": {
                             "$ref": "#/components/schemas/ConfiguredLabel"
+                          },
+                          "source_code": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -203085,6 +204727,16 @@
           },
           "snapshot_hash": {
             "type": "string"
+          },
+          "disabled_options": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "Effective disabled option IDs by play ID, omitted when all options are enabled."
           },
           "previous_draw": {
             "anyOf": [
@@ -203192,6 +204844,50 @@
           "snapshot_hash",
           "previous_draw",
           "period"
+        ],
+        "additionalProperties": false
+      },
+      "ConfiguredSalesInput": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rule_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "prices": {
+            "$ref": "#/components/schemas/ConfiguredPrices"
+          },
+          "min_points": {
+            "$ref": "#/components/schemas/Points"
+          },
+          "max_points": {
+            "$ref": "#/components/schemas/Points"
+          },
+          "max_period_points": {
+            "$ref": "#/components/schemas/Points"
+          },
+          "max_user_period_points": {
+            "$ref": "#/components/schemas/Points"
+          },
+          "availability": {
+            "$ref": "#/components/schemas/ConfiguredAvailabilityScope"
+          }
+        },
+        "required": [
+          "version",
+          "rule_id",
+          "enabled",
+          "prices",
+          "min_points",
+          "max_points",
+          "max_period_points",
+          "max_user_period_points"
         ],
         "additionalProperties": false
       },
@@ -212216,7 +213912,8 @@
           },
           "fee": {
             "type": "string",
-            "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,6})?$"
+            "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,6})?%?$",
+            "description": "Withdrawal fee setting: fixed currency amount or percentage such as 10%; 0 is free. Percentage must be below 100%."
           },
           "mode": {
             "type": "string",

@@ -27,7 +27,7 @@ func TestDrawOverviewHistoryAndPending(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	game, err := s.Create(ctx, tx, actor, GameInput{Code: "overview", Name: "Overview", Timezone: "UTC", Model: rules.Model{Type: "DIGITS_0_9", Length: 3, Ordered: true, AllowRepeat: true}}, points.Metadata{})
+	game, err := s.Create(ctx, tx, actor, GameInput{Code: "overview", Name: "Overview", Timezone: "UTC", Model: rules.Model{Type: "DIGITS_0_9", Length: 3, Ordered: true, AllowRepeat: false}}, points.Metadata{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,35 +50,35 @@ func TestDrawOverviewHistoryAndPending(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO platform_draw_history(game_id,period_no,draw_year,result,source) VALUES($1,'2025001',2025,'{"regular":[],"special":[],"digits":[4,5,6]}','hkjc'),($1,'2025002',2025,'{"regular":[],"special":[],"digits":[7,8,9]}','hkjc'),($2,'other',2025,'{"regular":[],"special":[],"digits":[0,0,0]}','hkjc')`, game.ID, other.ID); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO platform_draw_history(game_id,period_no,draw_year,result,source) VALUES($1,'2025001',2025,'{"regular":[],"special":[],"digits":[4,5,6]}','hkjc'),($1,'2025002',2025,'{"regular":[],"special":[],"digits":[7,8,9]}','hkjc'),($1,'2026009',2026,'{"regular":[],"special":[],"digits":[1,2,3]}','hkjc'),($2,'9999999',2025,'{"regular":[],"special":[],"digits":[0,0,0]}','hkjc')`, game.ID, other.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err = tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	out, err := s.DrawOverview(ctx, game.ID, "2025", 1, 0)
+	out, err := s.DrawOverview(ctx, game.ID, "2025", "", 1, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Items) != 1 || out.Items[0].PeriodNo != "2025002" || out.Items[0].DrawDate != nil || !out.HasMore {
+	if out.LatestPeriodNo == nil || *out.LatestPeriodNo != "2026009" || len(out.Items) != 1 || out.Items[0].PeriodNo != "2025002" || out.Items[0].DrawDate != nil || out.Items[0].DrawAt != nil || !out.HasMore {
 		t.Fatalf("history %#v", out)
 	}
 	if len(out.Pending) != 2 || out.Pending[0].PeriodNo != "overdue" || out.Pending[0].State != "waiting" || out.Pending[1].State != "open" {
 		t.Fatalf("pending %#v", out.Pending)
 	}
-	page, err := s.DrawOverview(ctx, game.ID, "2025", 1, 1)
+	page, err := s.DrawOverview(ctx, game.ID, "2025", "", 1, 1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.HasMore || len(page.Items) != 1 || page.Items[0].Result.Digits[0] != 4 || page.Items[0].Source != "hkjc" {
+	if page.LatestPeriodNo == nil || *page.LatestPeriodNo != "2026009" || page.HasMore || len(page.Items) != 1 || page.Items[0].Result.Digits[0] != 4 || page.Items[0].Source != "hkjc" {
 		t.Fatalf("duplicate or wrong evidence %#v", page)
 	}
 	for _, year := range []string{"bad", "02025", "9999"} {
-		if _, err = s.DrawOverview(ctx, game.ID, year, 50, 0); err != ErrInvalid {
+		if _, err = s.DrawOverview(ctx, game.ID, year, "", 50, 0, 0); err != ErrInvalid {
 			t.Fatalf("%s: %v", year, err)
 		}
 	}
-	if _, err = s.DrawOverview(ctx, ids.New(), "", 50, 0); err != ErrNotFound {
+	if _, err = s.DrawOverview(ctx, ids.New(), "", "", 50, 0, 0); err != ErrNotFound {
 		t.Fatal(err)
 	}
 }
@@ -120,11 +120,11 @@ func TestDrawOverviewSavedMarkSixAttributes(t *testing.T) {
 		}
 	}
 	for _, no := range []string{"2025001", "2025002"} {
-		if _, err = db.Exec(ctx, `INSERT INTO platform_game_periods(id,game_id,period_no,bet_start_at,bet_end_at,draw_at,result,published_at,published_by) VALUES($1,$2,$3,'2025-01-02','2025-01-02 01:00Z','2025-01-02 02:00Z','{"regular":[1,2,3,4,5,6],"special":[7],"digits":[]}','2025-01-02 02:00Z',$4)`, ids.New(), game, no, actor); err != nil {
+		if _, err = db.Exec(ctx, `INSERT INTO platform_game_periods(id,game_id,period_no,bet_start_at,bet_end_at,draw_at,result,published_at,published_by) VALUES($1,$2,$3,'2025-01-02','2025-01-02 01:00Z','2025-01-02 02:00:37Z','{"regular":[1,2,3,4,5,6],"special":[7],"digits":[]}','2025-01-02 02:00Z',$4)`, ids.New(), game, no, actor); err != nil {
 			t.Fatal(err)
 		}
 	}
-	out, err := (Service{DB: db}).DrawOverview(ctx, game, "2025", 50, 0)
+	out, err := (Service{DB: db}).DrawOverview(ctx, game, "2025", "", 50, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,6 +133,9 @@ func TestDrawOverviewSavedMarkSixAttributes(t *testing.T) {
 	}
 	if a := out.Items[0].Attributes["01"]; a.Wave != "green" || a.Zodiac != "snake" {
 		t.Fatalf("imported attributes: %#v", a)
+	}
+	if out.Items[0].DrawAt != nil || out.Items[1].DrawAt == nil || !out.Items[1].DrawAt.Equal(time.Date(2025, 1, 2, 2, 0, 37, 0, time.UTC)) {
+		t.Fatalf("historical date and operational seconds: %#v", out.Items)
 	}
 	if a := out.Items[1].Attributes["01"]; a.Wave != "red" || a.Zodiac != "rat" {
 		t.Fatalf("historical rule attributes: %#v", a)

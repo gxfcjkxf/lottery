@@ -2,11 +2,13 @@
 import { useOperationToast } from "@lottery/shared";
 import {computed,ref,watch,onUnmounted} from 'vue'
 import {createCatalogI18n,configuredRuleCatalog,vWriteGuard,withGlobalLoading} from '@lottery/shared'
+import DetailModal from '@lottery/shared/DetailModal.vue'
 import SiteIcon from '@lottery/shared/SiteIcon'
 import {createQuickAmountsApi,validQuickAmount} from './betting-preferences'
 const props=defineProps<{brandId:string;memberId:string;brandCode?:string;locale:'en'|'zh-CN'}>()
 const i18n=createCatalogI18n(configuredRuleCatalog,props.locale),t=i18n.t
 watch(()=>props.locale,value=>i18n.setLocale(value))
+const editorOpen=ref(false)
 const amounts=ref<string[]>(Array(5).fill('')),confirmed=ref<string[]>([])
 const error=ref<'preferencesReadFailed'|'quickAmountInvalid'|'preferencesSaveFailed'|null>(null),readFailed=ref(false),saved=ref(false),saving=ref(false),loading=ref(false)
 let generation=0
@@ -18,7 +20,7 @@ async function load(){
  try{const values=await createQuickAmountsApi({brandCode:props.brandCode}).read(props.brandId,props.memberId);if(token===generation){confirmed.value=values;amounts.value=[...values,...Array(5-values.length).fill('')]}}
  catch{if(token===generation){readFailed.value=true;error.value='preferencesReadFailed'}}finally{if(token===generation)loading.value=false}
 }
-watch(()=>[props.brandId,props.memberId,props.brandCode],load,{immediate:true})
+watch(()=>[props.brandId,props.memberId,props.brandCode],()=>{editorOpen.value=false;void load()},{immediate:true})
 function editAmount(index:number,event:Event){
  const input=event.target as HTMLInputElement,value=input.value
  saved.value=false
@@ -34,7 +36,7 @@ async function save(){
  saving.value=true
  try{
   const result=await createQuickAmountsApi({brandCode:props.brandCode}).save(props.brandId,props.memberId,values)
-  if(token===generation){confirmed.value=result;amounts.value=[...result,...Array(5-result.length).fill('')];saved.value=true}
+  if(token===generation){confirmed.value=result;amounts.value=[...result,...Array(5-result.length).fill('')];saved.value=true;editorOpen.value=false}
  }catch{if(token===generation)error.value='preferencesSaveFailed'}finally{if(token===generation){saving.value=false}}
 }
 function removeAmount(index:number){amounts.value.splice(index,1);amounts.value.push('');saved.value=false;error.value=null}
@@ -42,8 +44,11 @@ useOperationToast(() => error.value==='quickAmountInvalid' ? error.value : null,
 useOperationToast(saved, () => t('quickAmountsSaved'), 'success');
 </script>
 <template>
- <section class="detail-panel betting-preferences" data-testid="betting-preferences">
-  <h2>{{t('personalSettings')}}</h2><h3>{{t('quickAmounts')}}</h3>
+ <div class="betting-preferences-entry">
+ <button type="button" class="button button-secondary" aria-haspopup="dialog" @click="editorOpen=true;withGlobalLoading(load)">{{t('personalSettings')}}</button>
+ <DetailModal v-if="editorOpen" class="ui-form-dialog" :title="t('personalSettings')" :close-label="t('closeEditor')" :close-disabled="saving" @close="editorOpen=false">
+ <section class="betting-preferences" data-testid="betting-preferences">
+  <h3>{{t('quickAmounts')}}</h3>
   <p v-if="error&&error!=='quickAmountInvalid'" class="message error" role="alert">{{t(error)}} <button v-if="readFailed" type="button" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load)">{{t('retryRead')}}</button><button v-else-if="error==='preferencesSaveFailed'" v-write-guard="saving" type="button" class="button button-secondary" :disabled="saving" @click="withGlobalLoading(save)">{{t('retryRead')}}</button></p>
   <div class="stake-chips quick-amount-chips" :aria-label="t('quickAmounts')">
    <div v-for="(_,index) in amounts" :key="index" class="stake-chip quick-amount-chip" :style="{'--chip-digits':amounts[index]!.length}" :class="{'quick-amount-chip-empty':amounts[index]===''}">
@@ -53,6 +58,8 @@ useOperationToast(saved, () => t('quickAmountsSaved'), 'success');
   </div>
   <div class="form-actions ui-form-actions"><button v-write-guard="saving" type="button" class="button button-primary" :disabled="saving||loading||readFailed||!changed" @click="withGlobalLoading(save)">{{t('savePreferences')}}</button></div>
  </section>
+ </DetailModal>
+ </div>
 </template>
 <style src="@lottery/shared/quick-stake-chips.css"></style>
 <style scoped>

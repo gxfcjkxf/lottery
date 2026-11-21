@@ -100,9 +100,9 @@ export function isCashConfig(v: unknown): v is CashConfig {
           "deposit_max",
           "withdrawal_min",
           "withdrawal_max",
-          "fee",
           "threshold",
         ].every((k) => cashDecimal(r[k])) &&
+        validWithdrawalFee(r.fee, r.currency) &&
         ["count", "amount"].includes(String(r.mode)),
     )
   );
@@ -299,9 +299,9 @@ export function createCashApi(
       ),
     agentRecords:(page:number,size:number)=>get(`/wallet/records?limit=${size}&offset=${(page-1)*size}`,(v):v is {items:AgentWalletRecord[];total_count:string}=>object(v)&&Array.isArray(v.items)&&v.items.every(item=>object(item)&&typeof item.id==='string'&&typeof item.created_at==='string'&&(item.kind==='transfer'?item.order===null&&object(item.transfer)&&typeof item.transfer.member_id==='string'&&(item.transfer.member_account===null||typeof item.transfer.member_account==='string')&&cashDecimal(item.transfer.amount):item.transfer===null&&isCashOrder(item.order)&&item.order.kind===item.kind))&&typeof v.total_count==='string'&&/^\d+$/.test(v.total_count)),
     agentTransfers: (page:number,size:number)=>get(`/transfers?limit=${size}&offset=${(page-1)*size}`,(v):v is AgentPointTransferPage=>object(v)&&Array.isArray(v.items)&&v.items.every(item=>object(item)&&typeof item.id==='string'&&typeof item.member_id==='string'&&(item.member_account===null||typeof item.member_account==='string')&&cashDecimal(item.amount)&&typeof item.created_at==='string'&&Number.isFinite(Date.parse(item.created_at)))&&typeof v.total_count==='string'&&/^\d+$/.test(v.total_count)),
-    orders: (kind: string, page: number, size: number) =>
+    orders: (kind: string, page: number, size: number, state = "") =>
       get(
-        `/cash/orders?kind=${encodeURIComponent(kind)}&limit=${size}&offset=${(page - 1) * size}`,
+        `/cash/orders?kind=${encodeURIComponent(kind)}&limit=${size}&offset=${(page - 1) * size}${state ? `&state=${encodeURIComponent(state)}` : ""}`,
         (v): v is { items: CashOrder[]; total_count: string } =>
           object(v) &&
           Array.isArray(v.items) &&
@@ -380,3 +380,16 @@ export interface PendingCashWrite {
 export const pendingCashWrites = new Map<string, PendingCashWrite>();
 
 export const cashWithdrawalDrafts = new Map<string, { currency: Currency; amount: string }>();
+
+export function validWithdrawalFee(value: unknown, currency: Currency): value is string {
+  if (typeof value !== 'string') return false;
+  if (!value.endsWith('%')) return money(value, currency);
+  const rate = value.slice(0, -1);
+  return cashDecimal(rate) && minor(rate) < 100000000n;
+}
+export function withdrawalFee(setting: string, amount: string, currency: Currency): string {
+  if (!validWithdrawalFee(setting, currency) || !money(amount, currency)) throw new Error('Invalid withdrawal fee');
+  if (!setting.endsWith('%')) return setting;
+  const unit = currency === 'USDT' ? 1n : 10000n;
+  return decimal(minor(amount) * minor(setting.slice(0, -1)) / (100000000n * unit) * unit);
+}

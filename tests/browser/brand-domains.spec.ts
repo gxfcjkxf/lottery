@@ -26,6 +26,5 @@ for (const locale of ['en', 'zh-CN'] as const) test(`domain editor has one enabl
  await expect(dialog).not.toContainText(zh ? '主域名' : 'Primary domain')
  await dialog.locator('input[autocomplete=off]').fill('play.example.com'); await dialog.getByRole('checkbox').check()
  await dialog.locator('button[type=submit]').click()
- await page.getByRole('dialog').getByRole('button', { name: zh ? '提交' : 'Submit', exact: true }).click()
  await expect(page.getByRole('dialog')).toHaveCount(0); await expect(page.locator('.brand-domains tbody tr')).toContainText('play.example.com'); expect(writes).toHaveLength(1)
 })

@@ -8474,3 +8474,12 @@ END $pin$;
 ALTER TABLE brand_presentations ADD CONSTRAINT brand_presentations_config_keys_check CHECK (jsonb_typeof(config) = 'object' AND config ?& ARRAY['display_name','logo_text','logo_url','favicon_url','default_locale','available_locales','content']::text[] AND config - ARRAY['display_name','logo_text','logo_url','favicon_url','default_locale','available_locales','content']::text[] = '{}'::jsonb);
 ALTER TABLE brand_presentation_revisions ADD CONSTRAINT brand_presentation_revisions_config_keys_check CHECK (jsonb_typeof(config) = 'object' AND config ?& ARRAY['display_name','logo_text','logo_url','favicon_url','default_locale','available_locales','content']::text[] AND config - ARRAY['display_name','logo_text','logo_url','favicon_url','default_locale','available_locales','content']::text[] = '{}'::jsonb);
 ALTER TABLE brand_presentation_revisions ADD CONSTRAINT brand_presentation_revisions_effective_keys_check CHECK (jsonb_typeof(effective) = 'object' AND effective ?& ARRAY['display_name','logo_text','logo_url','favicon_url','default_locale','available_locales','content']::text[] AND effective - ARRAY['display_name','logo_text','logo_url','favicon_url','default_locale','available_locales','content']::text[] = '{}'::jsonb);
+
+CREATE TABLE configured_availability (
+ game_id uuid NOT NULL REFERENCES platform_games(id),
+ brand_id uuid,
+ version bigint NOT NULL CHECK (version > 0),
+ items jsonb NOT NULL CHECK (jsonb_typeof(items) = 'object'),
+ UNIQUE NULLS NOT DISTINCT (game_id, brand_id),
+ FOREIGN KEY (brand_id, game_id) REFERENCES brand_platform_games(brand_id, game_id) ON DELETE CASCADE
+);

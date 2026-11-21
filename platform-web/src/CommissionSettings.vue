@@ -6,7 +6,7 @@ import { vWriteGuard, vInlineValidation, withGlobalLoading } from '@lottery/shar
 import { createPlatformApi, PlatformApiError, type PlatformCommissionPolicy } from './platform-api'
 import { usePlatformI18n } from './i18n'
 const props = defineProps<{ timezone: string; canManage: boolean; canView: boolean }>()
-const emit = defineEmits<{ failure: [cause: unknown] }>()
+const emit = defineEmits<{ failure: [cause: unknown]; saved: [] }>()
 const { t, message, errorMessage, displayError } = usePlatformI18n()
 const api = createPlatformApi()
 const current = ref<PlatformCommissionPolicy | null>(null)
@@ -40,6 +40,7 @@ async function save() {
  try {
   const item = await api.updateCommissionSettings(pending.value.body,pending.value.key); if (!alive) return; current.value = item; pending.value = null
   notice.value = message(item.payouts_enabled ? 'commission.settings.saved' : 'commission.settings.disabled')
+  emit('saved')
  } catch(cause) {
   if (!alive) return
   if(cause instanceof PlatformApiError && cause.status >= 400 && cause.status < 500) {pending.value = null;conflict.value = cause.status === 409}
@@ -65,7 +66,7 @@ useOperationToast(error, value => displayError(value), 'error');
     <label class="commission-enabled"><input v-model="payoutsEnabled" type="checkbox" />{{ t('commission.settings.payoutsEnabled') }}</label>
     <label>{{ t('commission.settings.mode') }}<SelectControl v-model="mode" :label="String(t('commission.settings.mode'))" :options="[{ value: 'manual', label: (String(t('commission.settings.manual'))).trim() }, { value: 'automatic', label: (String(t('commission.settings.automatic'))).trim() }]" /></label>
    </fieldset>
-   <div class="form-actions ui-form-actions"><button v-if="canManage && !conflict" type="submit" class="button button-primary" :disabled="busy">{{ t(pending ? 'commission.settings.retry' : 'commission.settings.save') }}</button><button v-if="conflict" type="button" class="button" :disabled="busy" @click="withGlobalLoading(load)">{{ t('commission.settings.reload') }}</button></div>
+   <div class="form-actions ui-form-actions"><button v-if="canManage && !conflict" type="submit" class="button button-primary" :disabled="busy">{{ t(pending && !busy ? 'commission.settings.retry' : 'commission.settings.save') }}</button><button v-if="conflict" type="button" class="button" :disabled="busy" @click="withGlobalLoading(load)">{{ t('commission.settings.reload') }}</button></div>
   </form>
   <button v-else type="button" class="button" :disabled="busy" @click="withGlobalLoading(load)">{{ t('commission.settings.reload') }}</button>
  </section>

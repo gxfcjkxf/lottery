@@ -35,13 +35,13 @@ const baseAccount: AdminAccount = {
 
 const RewardsComponent = compileComponent();
 type HostNode = {
-  tag: string; props: Record<string, unknown>; children: HostNode[]; text: string; parent?: HostNode;
+  tag: string; style: {display:string}; props: Record<string, unknown>; children: HostNode[]; text: string; parent?: HostNode;
   value?: string; checked?: boolean; addEventListener: (...args: unknown[]) => void;
   removeEventListener: (...args: unknown[]) => void; getRootNode: () => HostNode; options: HostNode[];
   listeners: Record<string, Array<(event: { target: HostNode }) => void>>;
 };
 function element(tag: string): HostNode {
-  const node = { tag, props: {}, children: [] as HostNode[], text: "", value: "", checked: false, listeners: {} as HostNode["listeners"],
+  const node = { tag, style: {display:""}, props: {}, children: [] as HostNode[], text: "", value: "", checked: false, listeners: {} as HostNode["listeners"],
     addEventListener(type: string, listener: (event: { target: HostNode }) => void) { (this.listeners[type] ??= []).push(listener); },
     removeEventListener(type: string, listener: (event: { target: HostNode }) => void) { this.listeners[type] = (this.listeners[type] ?? []).filter((candidate) => candidate !== listener); },
     getRootNode() { return this; }, get options() { return this.children.filter((child) => child.tag === "option"); } };
@@ -288,8 +288,8 @@ describe("RewardsManagement", () => {
     expect(frozenBefore?.body).toEqual({ member_id: member, points: "25", reason: "" });
     click(byTestId(mounted.container, "rewards-list-refresh")); await flush();
     expect(RewardsState.getPendingRewardIntent({ accountId: actor, brandId: brand, operation: "grant" })).toEqual(frozenBefore);
-    expect(button(mounted.container, "使用原请求重试")).not.toBeNull();
-    click(button(mounted.container, "使用原请求重试")); await flush();
+    expect(button(mounted.container, "重试")).not.toBeNull();
+    click(button(mounted.container, "重试")); await flush();
 
     setModel(byTestId(mounted.container, "rewards-review-confirmed"), true); await flush(); click(byTestId(mounted.container, "rewards-confirm-submit")); await flush();
     expect(requests).toHaveLength(2);
@@ -311,7 +311,7 @@ describe("RewardsManagement", () => {
     expect(committed.calls.filter((call) => call.init?.method === "POST")).toHaveLength(1);
     expect(byTestId(second.container, "rewards-receipt")).not.toBeNull();
     expect(textOf(byTestId(second.container, "rewards-receipt")!) + operationToastText()).toContain("已撤销");
-    expect(button(second.container, "使用原请求重试")).toBeNull();
+    expect(button(second.container, "重试")).toBeNull();
     expect(committed.failedDetailReads).toBe(1);
     expect(textOf(second.container) + operationToastText()).not.toContain("暂未确认操作结果");
     expect(byTestId(second.container, "rewards-revoke")).toBeNull();
@@ -359,7 +359,7 @@ describe("RewardsManagement", () => {
     await fillGrant(mounted);
     expect(byTestId(mounted.container, "rewards-grant-open")?.props.disabled).toBe(true);
     expect(writes(server)).toHaveLength(1);
-    click(button(mounted.container, "使用原请求重试")); await flush();
+    click(button(mounted.container, "重试")); await flush();
     const review = byTestId(mounted.container, "rewards-review")!;
     for (const value of [actor, brand, member, original.key]) expect(textOf(review) + operationToastText()).not.toContain(value);
     expect(textOf(review) + operationToastText()).toContain("92233720368547758.07");
@@ -392,7 +392,7 @@ describe("RewardsManagement", () => {
     expect(RewardsState.getPendingRewardIntent(scope)).toBeNull();
     expect(RewardsState.listPendingRewardIntents(actor, brand)).toEqual([]);
     mounted = mount(baseAccount); await flush();
-    expect(button(mounted.container, "使用原请求重试")).toBeNull();
+    expect(button(mounted.container, "重试")).toBeNull();
     expect(byTestId(mounted.container, "rewards-conflict-discard")).toBeNull();
     await fillGrant(mounted);
     expect(byTestId(mounted.container, "rewards-grant-review")?.props.disabled).toBe(false);
@@ -421,7 +421,7 @@ describe("RewardsManagement", () => {
     expect(RewardsState.getPendingRewardIntent(oldScope)).toBeNull();
     expect(byTestId(mounted.container, "rewards-grant-open")?.props.disabled).toBe(true);
     expect(byTestId(mounted.container, "rewards-receipt")).toBeNull();
-    click(button(mounted.container, "使用原请求重试")); await flush();
+    click(button(mounted.container, "重试")); await flush();
     const review = byTestId(mounted.container, "rewards-review")!;
     for (const value of [otherActor, currentIntent.key]) expect(textOf(review) + operationToastText()).not.toContain(value);
     expect(writes(server)).toHaveLength(2);

@@ -1,3 +1,5 @@
+import {expectWriteProgress} from './write-progress'
+import { expectDialogFieldColumns } from './dialog-form-columns'
 import { test, expect, type Page } from "@playwright/test";
 import {
   installLayoutApi,
@@ -105,6 +107,7 @@ async function userFixture(page: Page, locale: "en" | "zh-CN", agent = false) {
       body: req.postData(),
       key: req.headers()["idempotency-key"],
     });
+    if(path.endsWith("/destinations") && test.info().title.startsWith("profile payment account CRUD")) await expectWriteProgress(page,".detail-modal",`account-${locale}-${agent}-${writes.length}`);
     if (lose) { lose=false; return route.abort("failed"); }
     if (path.endsWith("/exchanges")) {
       const converted=exchangeResult(body.amount,body.rate,body.direction==='to_points',body.currency);
@@ -148,6 +151,8 @@ async function userFixture(page: Page, locale: "en" | "zh-CN", agent = false) {
     if (path.endsWith("/withdrawals")) {
       const o = {
         ...order("withdrawal", body.currency, body.amount),
+        fee: body.fee,
+        destination: state.destinations.find(d => d.id === body.destination_id)!,
         state: "reviewing",
       };
       orders.push(o);
@@ -263,8 +268,8 @@ for (const locale of ["en", "zh-CN"] as const) {
     await dialog.getByLabel(zh?'金额':'Amount',{exact:true}).fill('10');
     fixture.loseNext();
     await dialog.getByRole('button',{name:zh?'确认':'Confirm',exact:true}).click();
-    await expect(dialog.getByRole('button',{name:zh?'重试原操作':'Retry original operation'})).toBeVisible();
-    await dialog.getByRole('button',{name:zh?'重试原操作':'Retry original operation'}).click();
+    await expect(dialog.getByRole('button',{name:zh?'重试':'Retry'})).toBeVisible();
+    await dialog.getByRole('button',{name:zh?'重试':'Retry'}).click();
     expect(fixture.writes[0]).toEqual(fixture.writes[1]);
     await expect(dialog).toContainText(zh?'收款人':'Recipient');
     await dialog.getByRole('button',{name:zh?'关闭':'Close',exact:true}).click();
@@ -324,16 +329,25 @@ for (const locale of ["en", "zh-CN"] as const) {
     await page.goto(origins.user + '/wallet');
     await page.locator('.currency-wallet').getByRole('button', {name:zh?'兑换':'Exchange',exact:true}).click();
     const dialog=page.getByRole('dialog');
-    await expect(dialog.locator('.cash-exchange-balance')).toHaveText(zh?'当前资金：12 CNY':'Current funds: 12 CNY');
+    await expect(dialog.locator('.cash-exchange-balance dt')).toHaveText(zh?'当前资金':'Current funds');
+    await expect(dialog.locator('.cash-exchange-balance dd')).toHaveText('12 CNY');
     await dialog.getByRole('combobox',{name:zh?'类型':'Type',exact:true}).click();
     await page.getByRole('option',{name:zh?'积分转资金':'Convert points to currency',exact:true}).click();
-    await expect(dialog.locator('.cash-exchange-balance')).toHaveText(zh?'当前积分：0':'Current points: 0');
-    await widths(page,info.project.name.includes('reflow'),width=>page.screenshot({path:info.outputPath(`exchange-balance-${locale}-${width}.png`),fullPage:true}));
+    await expect(dialog.locator('.cash-exchange-balance dt')).toHaveText(zh?'当前积分':'Current points');
+    await expect(dialog.locator('.cash-exchange-balance dd')).toHaveText('0');
+    await widths(page,info.project.name.includes('reflow'),async width=>{
+      const field=await dialog.locator('.ui-field-row .select-control').first().boundingBox();
+      const rows=await dialog.locator('.cash-form-summary>div').evaluateAll(rows=>rows.map(row=>({label:row.querySelector('dt')!.getBoundingClientRect().right,value:row.querySelector('dd')!.getBoundingClientRect().left,align:getComputedStyle(row.querySelector('dd')!).textAlign})));
+      expect(rows).toHaveLength(3);
+      for(const row of rows){expect(row.value).toBeCloseTo(field!.x,0);expect(field!.x-row.label).toBeCloseTo(8,0);expect(row.align).toBe('start')}
+      await page.screenshot({path:info.outputPath(`exchange-balance-${locale}-${width}.png`),fullPage:true});
+    });
     await dialog.getByRole('combobox',{name:zh?'类型':'Type',exact:true}).click();
     await page.getByRole('option',{name:zh?'资金转积分':'Convert funds to points',exact:true}).click();
     await dialog.getByRole('combobox',{name:zh?'币种':'Currency',exact:true}).click();
     await page.getByRole('option',{name:'USDT',exact:true}).click();
-    await expect(dialog.locator('.cash-exchange-balance')).toHaveText(zh?'当前资金：123.456789 USDT':'Current funds: 123.456789 USDT');
+    await expect(dialog.locator('.cash-exchange-balance dt')).toHaveText(zh?'当前资金':'Current funds');
+    await expect(dialog.locator('.cash-exchange-balance dd')).toHaveText('123.456789 USDT');
   });
   test(`wallet exact default and frozen retry ${locale}`, async ({
     page,
@@ -360,7 +374,7 @@ for (const locale of ["en", "zh-CN"] as const) {
       .click();
     await expect(
       dialog.getByRole("button", {
-        name: zh ? "重试原操作" : "Retry original operation",
+        name: zh ? "重试" : "Retry",
       }),
     ).toBeVisible();
     await expect(
@@ -374,7 +388,7 @@ for (const locale of ["en", "zh-CN"] as const) {
     );
     await dialog
       .getByRole("button", {
-        name: zh ? "重试原操作" : "Retry original operation",
+        name: zh ? "重试" : "Retry",
       })
       .click();
     await expect(dialog).toHaveCount(0);
@@ -732,11 +746,15 @@ for (const locale of ["en", "zh-CN"] as const)
       })
       .first()
       .fill("8.25");
+    const feeInput = panel.getByRole('textbox', {name: zh ? '提现手续费' : 'Withdrawal fee', exact:true}).first();
+    await feeInput.fill('10%');
+    await expect(panel.locator('.cash-fee-help').first()).toHaveAttribute('title', /10%/);
     await panel.locator('.cash-rule').nth(1).getByRole('checkbox').uncheck();
     await panel
       .getByRole("button", { name: zh ? "保存" : "Save", exact: true })
       .click();
     await expect.poll(() => writes.length).toBe(1);
+    expect(cfg.rules[0].fee).toBe('10%');
     expect(cfg.rules[1].enabled).toBe(false);
     expect(cfg.rules[1].deposit_min).toBe('0');
     expect(cfg.rules[1].rate).toBe('');
@@ -898,13 +916,13 @@ for (const locale of ['en','zh-CN'] as const) test(`unique USDT console receipt 
   await page.route(`**/api/v1/${scope}/cash/orders?*`,route=>route.fulfill({json:{success:true,data:{items:[o],total_count:'1'}}}));
   const props={basePath:`/api/v1/${scope}`,brandId:gameId,actorId:gameId,locale,platform:surface==='platform',mode:'deposit',permissions:[`recharge.view.${surface}`,`recharge.confirm.${surface}`]};
   const url=origin+'/__unique-console';
-  await page.route(url,route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'${vuePath}';import C from'/@fs${resolve('shared/src/CashConsole.vue')}';import'/@fs${resolve('shared/src/styles.css')}';import'/@fs${resolve(dir+'/src/style.css')}';import'/@fs${resolve('shared/src/management.css')}';import'/@fs${resolve('shared/src/key-value.css')}';import'/@fs${resolve('shared/src/controls.css')}';createApp(C,${JSON.stringify(props)}).mount('#app')</script></html>`}));
+  await page.route(url,route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"><main class="management-console" id="review"></main></div><script type="module">import{createApp}from'${vuePath}';import C from'/@fs${resolve('shared/src/CashConsole.vue')}';import'/@fs${resolve('shared/src/styles.css')}';import'/@fs${resolve(dir+'/src/style.css')}';import'/@fs${resolve('shared/src/management.css')}';import'/@fs${resolve('shared/src/key-value.css')}';import'/@fs${resolve('shared/src/controls.css')}';createApp(C,${JSON.stringify(props)}).mount('#review')</script></html>`}));
   await page.goto(url);await page.getByRole('button',{name:zh?'详情':'Details',exact:true}).click();
   const dialog=page.getByRole('dialog');await expect(dialog).toContainText('100.000137 USDT');await expect(dialog).toContainText('0.000137 USDT');
   await widths(page,info.project.name.includes('reflow'),width=>page.screenshot({path:info.outputPath(`unique-console-${surface}-${locale}-${width}.png`),fullPage:true}));
   if(surface==='brand'){
    await dialog.getByRole('button',{name:zh?'确认到账':'Confirm receipt',exact:true}).click();
-   await expect(dialog.getByLabel(zh?'实际到账金额':'Actual amount received',{exact:true})).toHaveValue('100.000137');
+   await expect(dialog.getByLabel(zh?'实际到账金额':'Actual amount received',{exact:true})).toHaveValue('100.000137');await expectDialogFieldColumns(dialog);await page.screenshot({path:info.outputPath(`receipt-confirm-fields-${locale}.png`)});
   }
  }
 });
@@ -937,11 +955,13 @@ for (const locale of ['en', 'zh-CN'] as const) for (const agent of [false, true]
       expect(fixture.writes.filter(w => w.body?.includes('invalid'))).toHaveLength(0);
     }
     await dialog.getByLabel(index === 0 ? zh?'收款账号':'Payment account' : zh?'收款地址':'Receiving address', {exact:true}).fill(number);
+    await expectDialogFieldColumns(dialog);
+    await page.screenshot({path:info.outputPath(`payment-account-fields-${locale}-${agent}-${index}.png`)});
     if (index === 0) fixture.loseNext();
     await dialog.getByRole('button', {name:zh?'保存':'Save',exact:true}).click();
     if (index === 0) {
       await expect(dialog.getByRole('button', {name:zh?'关闭':'Close', exact:true})).toBeDisabled();
-      await dialog.getByRole('button', {name:zh?'重试原操作':'Retry original operation', exact:true}).click();
+      await dialog.getByRole('button', {name:zh?'重试':'Retry', exact:true}).click();
       expect(fixture.writes[0]).toEqual(fixture.writes[1]);
     }
     await expect(dialog).toHaveCount(0);
@@ -971,7 +991,7 @@ for (const locale of ['en', 'zh-CN'] as const) for (const agent of [false, true]
   await row(0).getByRole('button',{name:zh?'删除收款账号':'Delete payment account',exact:true}).click();
   fixture.loseNext();
   await dialog.getByRole('button',{name:zh?'确认':'Confirm',exact:true}).click();
-  await dialog.getByRole('button',{name:zh?'重试原操作':'Retry original operation',exact:true}).click();
+  await dialog.getByRole('button',{name:zh?'重试':'Retry',exact:true}).click();
   expect(fixture.writes.at(-1)).toEqual(fixture.writes.at(-2));
   await expect(row(0)).toContainText(zh?'未绑定':'Not bound');
   expect(fixture.state.destinations).toHaveLength(1);
@@ -1018,6 +1038,33 @@ for (const locale of ['en', 'zh-CN'] as const) test(`withdrawal shows only match
     }
   }
   if(info.project.name.includes('reflow')) await page.setViewportSize({width:320,height:800});
+  await dialog.getByRole('combobox',{name:zh?'币种':'Currency',exact:true}).click();
+  await page.getByRole('option',{name:'USDT',exact:true}).click();
+  await expect(dialog.locator('.cash-withdrawal-account')).toContainText(address);
   await expectNoPageOverflow(page);
+  await dialog.screenshot({path:info.outputPath(`withdrawal-address-${locale}.png`)});
   expect(fixture.writes).toHaveLength(0);
+});
+
+for (const locale of ['en','zh-CN'] as const) for (const agent of [false,true]) test(`percentage withdrawal preview and request ${locale} ${agent ? 'agent' : 'user'}`, async ({page},info) => {
+ const zh=locale==='zh-CN'; const fixture=await userFixture(page,locale,agent);
+ fixture.state.brand.rules.forEach(r=>r.fee='10%');
+ fixture.state.destinations.push(destination('CNY'));
+ await page.goto(agent ? origins.agent + '/#/withdrawal' : origins.user + '/withdraw');
+ await page.locator('.currency-wallet').getByRole('button',{name:zh?'提现':'Withdrawal',exact:true}).click();
+ const dialog=page.getByRole('dialog');
+ await dialog.getByLabel(zh?'金额':'Amount',{exact:true}).fill('100');
+ await expect(dialog.getByText('10 CNY',{exact:true})).toBeVisible();
+ await expect(dialog.getByText('90 CNY',{exact:true})).toBeVisible();
+ await widths(page,info.project.name.includes('reflow'),async width=>{
+  const field=await dialog.locator('.ui-field-row .select-control').first().boundingBox();
+  const rows=await dialog.locator('.cash-form-summary>div').evaluateAll(rows=>rows.map(row=>({label:row.querySelector('dt')!.getBoundingClientRect().right,value:row.querySelector('dd')!.getBoundingClientRect().left,align:getComputedStyle(row.querySelector('dd')!).textAlign})));
+  expect(rows).toHaveLength(5);
+  for(const row of rows){expect(row.value).toBeCloseTo(field!.x,0);expect(field!.x-row.label).toBeCloseTo(8,0);expect(row.align).toBe('start')}
+  await dialog.screenshot({path:info.outputPath(`withdrawal-fee-${locale}-${agent}-${width}.png`)});
+ });
+ await dialog.getByRole('button',{name:zh?'确认':'Confirm',exact:true}).click();
+ await expect.poll(()=>fixture.writes.length).toBe(1);
+ expect(JSON.parse(fixture.writes[0].body!).fee).toBe('10');
+ await expect(dialog).toHaveCount(0);
 });

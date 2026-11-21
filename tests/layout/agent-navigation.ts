@@ -1,3 +1,4 @@
+import {expectDialogFieldColumns} from './dialog-form-columns'
 import { selectControl } from '../select-control'
 import {test,expect} from '@playwright/test'
 import {gameId,origins,installLayoutApi,expectNoPageOverflow} from './fixture'
@@ -8,16 +9,25 @@ export function registerAgentNavigationTests(reflow=false){
   const childId='aaaaaaaa-aaaa-4aaa-8aaa-000000000002', at='2026-10-21T00:00:00Z'
   const root={id:gameId,brand_id:gameId,agent_account_id:gameId,parent_id:null,depth:1,path:[gameId],version:1,config:{ratio:'0.1',mode:null,status:'active',can_create_children:true},effective_mode:'loss',mode_source_agent_id:null,policy_version:1,parent_version:null,created_by:gameId,created_at:at,updated_at:at}
   const child={...root,id:childId,agent_account_id:childId,parent_id:gameId,depth:2,path:[gameId,childId],parent_version:1}
+  const siblingId='aaaaaaaa-aaaa-4aaa-8aaa-000000000003'
+  const sibling={...child,id:siblingId,agent_account_id:siblingId,path:[gameId,siblingId]}
+  const grandchildren=Array.from({length:21},(_,i)=>{const id=`bbbbbbbb-bbbb-4bbb-8bbb-${String(i+1).padStart(12,'0')}`;return {...child,id,agent_account_id:id,parent_id:childId,depth:3,path:[gameId,childId,id],config:{...child.config,can_create_children:false}}})
+  const treeReads:URL[]=[];let failChildren=false
   const grants=['user.view','agent.view','agent.write','agent_policy.view','agent_policy.write','commission_policy.view','commission_policy.write'].map(p=>p+'.brand')
   await page.route('**/api/v1/admin/**',async route=>{
    const req=route.request(),url=new URL(req.url()),path=url.pathname;expect(req.method()).toBe('GET');reads.push(path)
-   const reply=(data:unknown)=>route.fulfill({json:{success:true,data,associations:{[`member:${gameId}`]:{name:'root_agent'},[`member:${childId}`]:{name:'child_agent'},[`agent:${gameId}`]:{name:'root_agent'},[`agent:${childId}`]:{name:'child_agent'},[`brand:${gameId}`]:{name:'Aurora'}}}})
+   const reply=(data:unknown)=>route.fulfill({json:{success:true,data,associations:{[`member:${gameId}`]:{name:'root_agent'},[`member:${childId}`]:{name:'child_agent'},[`agent:${gameId}`]:{name:'root_agent'},[`agent:${childId}`]:{name:'child_agent'},[`brand:${gameId}`]:{name:'Aurora'},[`agent:${siblingId}`]:{name:'sibling_agent'},...Object.fromEntries(grandchildren.map((n,i)=>[`agent:${n.id}`,{name:`grand_${i+1}`}]))}}})
    if(path.endsWith('/me'))return reply({account:{id:gameId,username:'navigation_reviewer',super_admin:false,brand_ids:[gameId],permissions_by_brand:{[gameId]:grants}}})
    if(path.endsWith('/brands'))return reply({items:[{id:gameId,name:'Aurora',code:'aurora',status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z'}]})
    expect(req.headers()['x-brand-id']).toBe(gameId)
    if(path.endsWith('/users'))return reply({items:[],limit:100,offset:0,total_count:'0'})
    if(path.endsWith('/agent-policy'))return reply({brand_id:gameId,version:1,config:{enabled:true,max_depth:5,loss_ratio_cap: '0.25', turnover_ratio_cap: '0.03',mode:'loss',cycle:'monthly'},updated_at:at})
-   if(path.endsWith('/agents/tree')) { const parent=url.searchParams.get('parent_id'); return reply({brand_id:gameId,parent_id:parent,items:parent?[child]:[root],limit:20,offset:0,total_count:'1'}) }
+   if(path.endsWith('/agents/tree')) {
+    treeReads.push(url);const parent=url.searchParams.get('parent_id'),limit=Number(url.searchParams.get('limit')),offset=Number(url.searchParams.get('offset'))
+    if(parent===childId && failChildren){failChildren=false;return route.fulfill({status:503,json:{success:false,error:{code:'SERVICE_UNAVAILABLE',message:'Synthetic read failure'}}})}
+    const items=parent===gameId?[child,sibling]:parent===childId?grandchildren:parent?[]:[root]
+    return reply({brand_id:gameId,parent_id:parent,items:items.slice(offset,offset+limit),limit,offset,total_count:String(items.length)})
+   }
    if(path.endsWith('/agents/'+gameId))return reply(root)
    if(path.endsWith('/agents'))return reply({brand_id:gameId,items:[{...root,username:'root_agent',online:true,display_points:'120'},{...child,username:'child_agent',online:false,display_points:'80'}],limit:20,offset:0,total_count:'2'})
    if(path.endsWith('/commission-policy'))return reply({brand_id:gameId,version:1,config:{enabled:false,calendar:null,payout_mode:'manual'},created_at:at,updated_at:at,revision_id:gameId})
@@ -42,6 +52,18 @@ export function registerAgentNavigationTests(reflow=false){
   await expect(page.locator('.page-footer')).toHaveCount(0)
   await expect(page.locator('.management-list .table-pagination')).toHaveCSS('margin-top','0px')
   await expect(page.locator('.commission-policy-panel')).toHaveCount(0)
+  const tabsPreset=page.viewportSize()!
+  for(const width of reflow?[320,640,900,1080,1440]:[tabsPreset.width]){
+   if(reflow)await page.setViewportSize({width,height:tabsPreset.height})
+   const tabs=await page.locator('.am-view-switch').boundingBox()
+   const action=await page.getByRole('button',{name:zh?'新建代理':'Create agent',exact:true}).boundingBox()
+   const filters=await page.locator('.agent-management .management-list-filters').boundingBox()
+   if(width>=640)expect(action!.y).toBeLessThan(tabs!.y+tabs!.height)
+   expect(filters!.y).toBeGreaterThanOrEqual(action!.y+action!.height)
+   await expectNoPageOverflow(page)
+   await page.screenshot({path:info.outputPath(`agent-tabs-${locale}-${width}.png`),fullPage:true})
+  }
+  await page.setViewportSize(tabsPreset)
   await page.getByRole('button',{name:zh?'新建代理':'Create agent',exact:true}).click()
   const create=page.getByRole('dialog'), mode=create.getByRole('combobox',{name:zh?'代理模式':'Agent mode',exact:true})
   await mode.click();await expect(page.getByRole('option')).toHaveText(zh?['选择模式','输赢','流水']:['Select mode','Loss','Turnover'])
@@ -51,18 +73,18 @@ export function registerAgentNavigationTests(reflow=false){
   await expect(loss).toHaveCount(0);await expect(turnover).toHaveCount(0)
   await expect(create.locator('button[type=submit]')).toBeDisabled()
   await selectControl(mode, 'loss');await expect(loss).toBeVisible();await expect(turnover).toHaveCount(0)
-  await expect(create.locator('.am-ratio-input > span')).toHaveText('%')
+  await expect(create.locator('.am-ratio-value > span')).toHaveText('%')
   await expect(create.locator('.am-form small')).toHaveCount(0)
   for(const invalid of ['333','100.01','2.345']) { await loss.fill(invalid); await expect(create.locator('.am-field-error')).toHaveText(zh?'请输入 0–100 的百分比，最多保留 2 位小数。':'Enter a valid ratio: 0 ~ 100, with up to 2 decimal places.'); await expect(create.locator('button[type=submit]')).toBeDisabled() }
   await loss.fill('20');await selectControl(mode, 'turnover');await expect(turnover).toHaveValue('')
-  await turnover.fill('4');await expect(create.getByRole('alert')).toHaveText(zh?'比例不能超过当前上限 3%。':'The ratio cannot exceed the current cap of 3%.');await expect(create).toContainText(zh?'佣金比例上限：3%':'Commission ratio cap: 3%')
-  await turnover.fill('3');await expect(create.locator('.am-ratio-input > span')).toHaveText('%');await expect(create.locator('.am-field-error')).toHaveCount(0);await selectControl(mode, 'loss');await expect(loss).toHaveValue('20')
+  await turnover.fill('4');await expect(create.getByRole('alert')).toHaveText(zh?'比例不能超过当前上限 3%。':'The ratio cannot exceed the current cap of 3%.');await expect(create).toContainText(zh?'比例最大值：3%':'Maximum ratio: 3%')
+  await turnover.fill('3');await expect(create.locator('.am-ratio-value > span')).toHaveText('%');await expect(create.locator('.am-field-error')).toHaveCount(0);await selectControl(mode, 'loss');await expect(loss).toHaveValue('20')
   expect(await create.locator('.am-form label').allTextContents()).toEqual(expect.arrayContaining([expect.stringContaining(zh?'代理模式':'Agent mode'),expect.stringContaining(zh?'占成比例':'Profit share ratio')]))
   const agentAccount=create.getByRole('textbox',{name:zh?'代理账号':'Agent account',exact:true})
-  await expect(agentAccount).toHaveAttribute('placeholder',zh?'请输入新的代理账号':'Enter a new agent account')
+  await expect(agentAccount).not.toHaveAttribute('placeholder')
   await agentAccount.fill('new_agent')
   await create.getByLabel(zh?'密码':'Password',{exact:true}).fill('agent123')
-  await expect(create).toContainText(zh?'占成比例上限：25%':'Profit share cap: 25%')
+  await expect(create).toContainText(zh?'比例最大值：25%':'Maximum ratio: 25%')
   await loss.fill('26')
   await expect(create.getByRole('alert')).toHaveText(zh?'比例不能超过当前上限 25%。':'The ratio cannot exceed the current cap of 25%.')
   await expect(create.locator('button[type=submit]')).toBeDisabled()
@@ -118,18 +140,75 @@ export function registerAgentNavigationTests(reflow=false){
   expect(writes).toHaveLength(3);expect(writes[1].key).toBeTruthy();expect(writes[2]).toEqual(writes[1]);expect(writes[0].key).not.toBe(writes[1].key)
   await page.unroute('**/api/v1/admin/agents')
 
-  const hierarchy=page.locator('.am-view-switch').getByRole('button',{name:zh?'按上下级查看':'Browse hierarchy',exact:true})
-  const all=page.locator('.am-view-switch').getByRole('button',{name:zh?'全部代理':'All agents',exact:true})
+  const hierarchy=page.locator('.am-view-switch').getByRole('button',{name:zh?'代理树':'Agent tree',exact:true})
+  const all=page.locator('.am-view-switch').getByRole('button',{name:zh?'代理列表':'Agent list',exact:true})
   await hierarchy.click();await expect(page.locator('.am-node')).toHaveCount(1)
   await expect(page.locator('.am-node')).toContainText('root_agent')
-  await page.locator('.am-node button').last().click()
-  await expect(page.locator('.am-node')).toContainText('child_agent')
-  await page.locator('.agent-management .console-page-actions button').first().click()
-  await expect(page.locator('.am-node')).toContainText('root_agent')
+  await expect(page.locator('.agent-management .management-list-filters')).toHaveCount(0)
+  await expectNoPageOverflow(page)
+  await page.screenshot({path:info.outputPath(`agent-hierarchy-${locale}.png`),fullPage:true})
+  const branch=(id:string)=>page.locator(`.agent-tree-row[data-agent-id="${id}"]`)
+  const rootToggle=branch(gameId).locator('.agent-tree-toggle')
+  await rootToggle.click();await expect(page.locator('.am-node')).toHaveCount(3)
+  await expect(rootToggle).toHaveAttribute('aria-expanded','true')
+  await expect(branch(gameId)).toContainText('root_agent');await expect(branch(siblingId)).toBeVisible()
+  failChildren=true
+  await branch(childId).locator('.agent-tree-toggle').click()
+  await expect(page.locator('.am-node')).toHaveCount(3)
+  const retryChildren=page.getByRole('button',{name:zh?'重新读取下级':'Retry child agents',exact:true})
+  await expect(retryChildren).toBeVisible();await retryChildren.click()
+  await expect(page.locator('.am-node')).toHaveCount(24)
+  await expect(page.locator('.agent-management .table-pagination')).toHaveCount(0)
+  const grandLevel=branch(childId).locator('..').locator(':scope > .agent-tree-children > .agent-tree-level')
+  await expect.poll(()=>grandLevel.evaluate(el=>el.scrollHeight>el.clientHeight)).toBe(true)
+  await expect.poll(()=>grandLevel.evaluate(el=>{
+   const rows=Array.from(el.children).slice(0,10).map(branch=>branch.querySelector('.agent-tree-row')!)
+   return Math.abs(el.clientHeight-(rows.reduce((sum,row)=>sum+row.getBoundingClientRect().height,0)+9*8))
+  })).toBeLessThanOrEqual(1)
+  await branch(grandchildren[20].id).scrollIntoViewIfNeeded()
+  await expect(branch(grandchildren[20].id)).toContainText('grand_21')
+  expect(treeReads.at(-1)!.searchParams.get('offset')).toBe('0')
+  await branch(grandchildren[20].id).locator('.agent-tree-toggle').click()
+  await expect(page.getByText(zh?'暂无下级代理':'No child agents',{exact:true})).toBeVisible()
+  const readsBeforeCollapse=treeReads.length
+  await rootToggle.click();await expect(page.locator('.am-node:visible')).toHaveCount(1)
+  await expect(rootToggle).toHaveAttribute('aria-expanded','false')
+  await rootToggle.click();await expect(page.locator('.am-node:visible')).toHaveCount(24)
+  expect(treeReads).toHaveLength(readsBeforeCollapse)
+  await branch(siblingId).getByRole('button',{name:zh?'新建下级':'Create child',exact:true}).click()
+  await expect(create).toBeVisible();await expect(create).toContainText('sibling_agent')
+  await expect(create.locator('.ui-form-field-label')).toHaveText(zh?'上级代理':'Parent agent')
+  await expect(create.locator('.ui-form-field-value')).toHaveText('sibling_agent')
+  await expect(create.locator('.am-ratio-maximum')).toHaveText(zh?'比例最大值：10%':'Maximum ratio: 10%')
+  await expect(create.locator('.am-note')).toHaveCount(0)
+  const childCreatePreset=page.viewportSize()!
+  for(const width of reflow?[320,640,900,1080,1440]:[childCreatePreset.width]){
+   if(reflow)await page.setViewportSize({width,height:childCreatePreset.height})
+   await expectDialogFieldColumns(create);await expectNoPageOverflow(page)
+   await create.screenshot({path:info.outputPath(`agent-child-create-columns-${locale}-${width}.png`)})
+  }
+  await page.setViewportSize(childCreatePreset)
+  await create.locator('.detail-modal-close').click();await expect(page.locator('.am-node:visible')).toHaveCount(24)
+  await page.getByRole('button',{name:zh?'新建代理':'Create agent',exact:true}).click()
+  await expect(create.getByRole('combobox',{name:zh?'代理模式':'Agent mode',exact:true})).toContainText(zh?'选择模式':'Select mode')
+  await create.locator('.detail-modal-close').click()
+  await expect(branch(grandchildren[20].id)).toBeVisible()
+  const treePreset=page.viewportSize()!
+  for(const width of reflow?[320,640,900,1080,1440]:[treePreset.width]){
+   if(reflow)await page.setViewportSize({width,height:treePreset.height})
+   await expectNoPageOverflow(page)
+   const rootBox=await branch(gameId).boundingBox(),childBox=await branch(childId).boundingBox(),grandBox=await branch(grandchildren[20].id).boundingBox()
+   expect(childBox!.x).toBeGreaterThan(rootBox!.x);expect(grandBox!.x).toBeGreaterThan(childBox!.x)
+   await page.screenshot({path:info.outputPath(`agent-tree-expanded-${locale}-${width}.png`),fullPage:true})
+  }
+  await page.setViewportSize(treePreset)
   await all.click();await expect(page.locator('.agent-directory-table tbody tr')).toHaveCount(2)
   await page.locator('.agent-directory-table tbody tr').first().locator('.member-menu-trigger').click()
   await page.getByRole('menuitem').last().click()
-  await expect(page.locator('.am-node')).toContainText('child_agent')
+  await expect(page.locator('.am-node')).toHaveCount(3)
+  await expect(branch(gameId)).toContainText('root_agent');await expect(branch(childId)).toContainText('child_agent')
+  await page.locator('.agent-management .console-page-actions button').first().click()
+  await expect(page.locator('.am-node')).toHaveCount(1)
   await all.click();await expect(page.locator('.agent-directory-table tbody tr')).toHaveCount(2)
   const before=reads.filter(path=>path.endsWith('/agents')||path.endsWith('/agents/tree')).length
   await openMenu();await menu.getByRole('button',{name:zh?'品牌设置':'Brand settings',exact:true}).click()

@@ -21,6 +21,7 @@ import {
   currencies,
   cashWithdrawalDrafts,
   exchangeResult,
+  withdrawalFee,
   minor,
   decimal,
   type Currency,
@@ -143,18 +144,13 @@ const quote = computed(() => {
     return "0";
   }
 });
+const fee = computed(() => {
+  const setting = data.value?.brand.rules.find(r => r.currency === currency.value)?.fee;
+  if (setting === undefined || !amount.value) return "0";
+  try { return withdrawalFee(setting, amount.value, currency.value); } catch { return "0"; }
+});
 const net = computed(() => {
-  try {
-    return decimal(
-      minor(amount.value) -
-        minor(
-          data.value?.brand.rules.find((r) => r.currency === currency.value)
-            ?.fee ?? "0",
-        ),
-    );
-  } catch {
-    return "0";
-  }
+  try { return decimal(minor(amount.value) - minor(fee.value)); } catch { return "0"; }
 });
 const clock = ref(Date.now());
 function canContinueDeposit(order: CashOrder) {
@@ -388,8 +384,7 @@ async function submit() {
       destination_version: accounts.value.find(
         (a) => a.id === selectedAccount.value,
       )?.version,
-      fee: data.value?.brand.rules.find((r) => r.currency === currency.value)
-        ?.fee,
+      fee: fee.value,
     });
   }
 }
@@ -713,39 +708,41 @@ useOperationToast(notice, (v) => v, "success");
                 "
             /></label>
             <p v-if="dialog === 'deposit'" :id="depositAmountHintId" class="muted">{{ t("cash.depositAmountHint") }}</p>
-            <p v-if="dialog === 'exchange'" :id="exchangeBalanceHintId" class="cash-exchange-balance muted" role="status">{{ direction === 'to_points'
-              ? t('cash.currentFunds', { amount: balance ? decimal(minor(balance.deposited) + minor(balance.withdrawable)) : '—', currency })
-              : t('cash.currentPoints', { amount: availablePoints === null ? '—' : formatPoints(availablePoints, locale) }) }}</p>
-            <dl v-if="dialog === 'exchange' && rule" class="cash-detail">
-              <div>
-                <dt>{{ t("cash.rateQuote") }}</dt>
-                <dd>
-                  1 {{ currency }} = {{ rule.rate }} {{ t("cash.points") }}
-                </dd>
+            <dl v-if="dialog === 'exchange'" class="cash-detail cash-form-summary">
+              <div :id="exchangeBalanceHintId" class="cash-exchange-balance" role="status">
+                <dt>{{ t(direction === 'to_points' ? 'cash.currentFunds' : 'cash.currentPoints') }}</dt>
+                <dd>{{ direction === 'to_points'
+                  ? balance ? decimal(minor(balance.deposited) + minor(balance.withdrawable)) : '—'
+                  : availablePoints === null ? '—' : formatPoints(availablePoints, locale) }}<template v-if="direction === 'to_points'">{{ ` ${currency}` }}</template></dd>
               </div>
-              <div>
-                <dt>{{ t("cash.receive") }}</dt>
-                <dd>
-                  {{ quote }}
-                  {{ direction === "to_points" ? t("cash.points") : currency }}
-                </dd>
-              </div>
+              <template v-if="rule">
+                <div>
+                  <dt>{{ t("cash.rateQuote") }}</dt>
+                  <dd>
+                    1 {{ currency }} = {{ rule.rate }} {{ t("cash.points") }}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{{ t("cash.receive") }}</dt>
+                  <dd>
+                    {{ quote }}
+                    {{ direction === "to_points" ? t("cash.points") : currency }}
+                  </dd>
+                </div>
+              </template>
             </dl>
             <template v-if="dialog === 'withdrawal'">
-              <dl v-if="accounts[0]" class="cash-detail cash-withdrawal-account">
+              <dl v-if="accounts[0]" class="cash-detail cash-withdrawal-account cash-form-summary">
                 <div v-if="accounts[0].holder"><dt>{{ t('cash.holder') }}</dt><dd>{{ accounts[0].holder }}</dd></div>
                 <div><dt>{{ t(currency === 'USDT' ? 'cash.network' : 'cash.institution') }}</dt><dd>{{ accounts[0].institution || accounts[0].channel }}</dd></div>
                 <div><dt>{{ t(currency === 'USDT' ? 'cash.address' : 'cash.number') }}</dt><dd>{{ accounts[0].number }}</dd></div>
               </dl>
               <p v-else class="muted">{{ t('cash.unbound') }}</p>
-              <dl class="cash-detail">
+              <dl class="cash-detail cash-form-summary">
                 <div>
-                  <dt>{{ t("cash.fee") }}</dt>
+                  <dt>{{ t("cash.withdrawalFee") }}</dt>
                   <dd>
-                    {{
-                      data?.brand.rules.find((r) => r.currency === currency)
-                        ?.fee
-                    }}
+                    {{ fee }}
                     {{ currency }}
                   </dd>
                 </div>
@@ -808,7 +805,7 @@ useOperationToast(notice, (v) => v, "success");
           <div v-if="detail.credited_at"><dt>{{ t("cash.creditedAt") }}</dt><dd>{{ formatDisplayDateTime(detail.credited_at,locale) }}</dd></div>
           <div v-if="detail.sender"><dt>{{ t("cash.sender") }}</dt><dd class="cash-address key-value-wide">{{ detail.sender }}</dd></div>
           <div v-if="detail.fee !== '0'">
-            <dt>{{ t("cash.fee") }}</dt>
+            <dt>{{ t(detail.kind === 'withdrawal' ? 'cash.withdrawalFee' : 'cash.fee') }}</dt>
             <dd>{{ detail.fee }} {{ detail.currency }}</dd>
           </div>
         </dl>
@@ -966,7 +963,10 @@ useOperationToast(notice, (v) => v, "success");
 .cash-toolbar h3 {
   font-size: 16px;
 }
-.cash-exchange-balance { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.cash-form-summary.cash-detail { margin: 0; }
+.cash-form-summary > div { grid-template-columns: var(--ui-form-label-width) minmax(0, 1fr) !important; column-gap: var(--ui-form-label-gap) !important; }
+.cash-form-summary.cash-detail dt { text-align: end; }
+.cash-form-summary.cash-detail dd { text-align: start; }
 .cash-flow-help { margin: 0; line-height: 1.6; }
 .cash-actions {
   justify-content: flex-start;
@@ -977,11 +977,8 @@ useOperationToast(notice, (v) => v, "success");
   gap: 8px;
 }
 .cash-balance:only-child { grid-column: 1 / -1; }
-@media (min-width: 701px) {
-  .cash-balance:only-child dl { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-  .cash-balance:only-child dl > div { display: grid; gap: 8px; }
-}
 .cash-balance {
+  container-type: inline-size;
   display: grid;
   gap: 8px;
   min-width: 0;
@@ -1016,6 +1013,12 @@ useOperationToast(notice, (v) => v, "success");
   white-space: nowrap;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+}
+@container (min-width: 480px) {
+  .cash-balance dl {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
 }
 .cash-detail {
   display: grid;

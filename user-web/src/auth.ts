@@ -29,6 +29,7 @@ interface TelegramAuthResult {
 
 declare global {
   interface Window {
+    TelegramWebviewProxy?: { postEvent: (event: string, data: string) => void };
     Telegram?: {
       Login?: {
         auth: (
@@ -42,6 +43,12 @@ declare global {
 
 const telegramSdkUrl = "https://oauth.telegram.org/js/telegram-login.js";
 let telegramSdkPromise: Promise<void> | undefined;
+
+export function openTelegramLoginWindow(): Window | null {
+  // Telegram's browser SDK reuses this named window after the async setup.
+  // Open it during the click so mobile browsers retain the user's permission.
+  return window.open("", "telegram_oidc_login", "popup,width=550,height=650");
+}
 
 export function isTelegramClientIdConfigured(
   value: string | undefined,

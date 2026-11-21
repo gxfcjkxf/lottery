@@ -171,13 +171,13 @@ func TestRechargeValidationBrandIsolationAndList(t *testing.T) {
 	if !errors.Is(err, points.ErrNotFound) {
 		t.Fatalf("cross-brand recharge error=%v, want points.ErrNotFound", err)
 	}
-	if _, err := f.service.ListRecharges(ctx, f.otherBrand, f.memberID, 20, 0); !errors.Is(err, points.ErrNotFound) {
+	if _, err := f.service.ListRecharges(ctx, f.otherBrand, f.memberID, 20, 0, ""); !errors.Is(err, points.ErrNotFound) {
 		t.Fatalf("cross-brand list error=%v, want points.ErrNotFound", err)
 	}
-	if _, err := f.service.ListRecharges(ctx, f.brandID, f.memberID, 101, 0); !errors.Is(err, points.ErrInvalid) {
+	if _, err := f.service.ListRecharges(ctx, f.brandID, f.memberID, 101, 0, ""); !errors.Is(err, points.ErrInvalid) {
 		t.Fatalf("invalid list page error=%v, want points.ErrInvalid", err)
 	}
-	if _, err := f.service.ListRecharges(ctx, f.brandID, "", 20, 1_000_001); !errors.Is(err, points.ErrInvalid) {
+	if _, err := f.service.ListRecharges(ctx, f.brandID, "", 20, 1_000_001, ""); !errors.Is(err, points.ErrInvalid) {
 		t.Fatalf("oversized list offset error=%v, want points.ErrInvalid", err)
 	}
 	tx = financeTx(t, f.pool)
@@ -186,12 +186,25 @@ func TestRechargeValidationBrandIsolationAndList(t *testing.T) {
 		t.Fatal(err)
 	}
 	commitFinanceTx(t, tx)
-	rows, err := f.service.ListRecharges(ctx, f.brandID, f.memberID, 20, 0)
+	rows, err := f.service.ListRecharges(ctx, f.brandID, f.memberID, 20, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(rows) != 1 || rows[0].ID != pending.ID || rows[0].Points != "42" || rows[0].ProofReference != "proof-42" || rows[0].Remark != "memo-42" {
 		t.Fatalf("brand-member recharge list mismatch: %+v", rows)
+	}
+
+	for _, tc := range []struct {
+		state string
+		count int
+	}{{"pending", 1}, {"confirmed", 0}, {"cancelled", 0}} {
+		filtered, err := f.service.ListRecharges(ctx, f.brandID, f.memberID, 20, 0, tc.state)
+		if err != nil || len(filtered) != tc.count {
+			t.Fatalf("state %s: %+v %v", tc.state, filtered, err)
+		}
+	}
+	if _, err := f.service.ListRecharges(ctx, f.brandID, "", 20, 0, "completed"); !errors.Is(err, points.ErrInvalid) {
+		t.Fatal(err)
 	}
 
 	secondGlobal, secondMember, secondAccount := ids.New(), ids.New(), ids.New()
@@ -218,14 +231,14 @@ func TestRechargeValidationBrandIsolationAndList(t *testing.T) {
 		t.Fatal(err)
 	}
 	commitFinanceTx(t, tx)
-	all, err := f.service.ListRecharges(ctx, f.brandID, "", 100, 0)
+	all, err := f.service.ListRecharges(ctx, f.brandID, "", 100, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(all) != 2 || all[0].MemberID == all[1].MemberID {
 		t.Fatalf("brand-wide optional-member list mismatch: %+v", all)
 	}
-	secondOnly, err := f.service.ListRecharges(ctx, f.brandID, secondMember, 100, 0)
+	secondOnly, err := f.service.ListRecharges(ctx, f.brandID, secondMember, 100, 0, "")
 	if err != nil || len(secondOnly) != 1 || secondOnly[0].ID != second.ID {
 		t.Fatalf("member-filtered list=%+v err=%v", secondOnly, err)
 	}

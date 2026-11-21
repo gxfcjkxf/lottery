@@ -15,10 +15,10 @@ const groups = computed(() => {
 })
 const values = ref<Record<string, string[]>>({})
 watch(groups, value => { values.value = Object.fromEntries(value.map(group => [group.key, Array(group.count).fill('')])) }, { immediate: true })
-const root = ref<HTMLElement | null>(null), touched = ref<Set<string>>(new Set())
+const root = ref<HTMLElement | null>(null), failure = ref<{key: string; index: number; message: string} | null>(null)
 function error(key: string, index: number, pool: RulePool) {
  const text = values.value[key]![index]!
- if (!/^\d{1,2}$/.test(text)) return t('numberRequired')
+ if (!/^\d{1,2}$/.test(text)) return t('numberRequired', {field: t('numberLabel', {group: t(key as 'digits' | 'regular' | 'special'), index: index + 1})})
  const number = Number(text), min = pool.values?.length ? Math.min(...pool.values) : pool.min ?? 0, max = pool.values?.length ? Math.max(...pool.values) : pool.max ?? 0
  if (number < min || number > max) return t('numberRange', { min, max })
  if (pool.values?.length && !pool.values.includes(number)) return t('numberOutsidePool')
@@ -29,12 +29,11 @@ function error(key: string, index: number, pool: RulePool) {
  if ((m.model === 'M_SELECT_N' || markSix) && key !== 'digits' && values.value[key === 'regular' ? 'special' : 'regular']?.some(other => other !== '' && Number(other) === number)) return t('numberDuplicate')
  return ''
 }
-function check(key: string, index: number) { touched.value.add(`${key}:${index}`) }
 async function input(event: Event, key: string, index: number, pool: RulePool) {
  const element = event.target as HTMLInputElement
  values.value[key]![index] = element.value
+ failure.value = null
  if (element.value.length === (key === 'digits' ? 1 : 2)) {
-  check(key, index)
   if (!error(key, index, pool)) {
    await nextTick()
    const inputs = [...root.value!.querySelectorAll('input')]
@@ -43,9 +42,11 @@ async function input(event: Event, key: string, index: number, pool: RulePool) {
  }
 }
 function result(): NonNullable<PlatformPeriod['result']> | null {
+ failure.value = null
  for (const group of groups.value) for (let index = 0; index < group.count; index++) {
-  check(group.key, index)
-  if (error(group.key, index, group.pool)) {
+  const message = error(group.key, index, group.pool)
+  if (message) {
+   failure.value = {key: group.key, index, message}
    root.value?.querySelector<HTMLInputElement>(`input[data-number="${group.key}:${index}"]`)?.focus()
    return null
   }
@@ -60,19 +61,17 @@ defineExpose({ result })
   <div class="draw-result-cells">
    <template v-for="group in groups" :key="group.key">
     <span v-if="group.key === 'special'" class="draw-result-plus" aria-hidden="true">+</span>
-    <input v-for="(_, index) in values[group.key]" :key="`${group.key}:${index}`" :value="values[group.key]![index]" :data-number="`${group.key}:${index}`" :aria-label="t('numberLabel', {group: t(group.key), index: index + 1})" :aria-invalid="touched.has(`${group.key}:${index}`) && !!error(group.key,index,group.pool)" :aria-describedby="touched.has(`${group.key}:${index}`) && error(group.key,index,group.pool) ? `${group.key}-error-${index}` : undefined" type="text" inputmode="numeric" autocomplete="off" :maxlength="group.key === 'digits' ? 1 : 2" required @input="input($event,group.key,index,group.pool)" @blur="check(group.key,index)" @focus="($event.target as HTMLInputElement).select()" />
+    <input v-for="(_, index) in values[group.key]" :key="`${group.key}:${index}`" :value="values[group.key]![index]" :data-number="`${group.key}:${index}`" :aria-label="t('numberLabel', {group: t(group.key), index: index + 1})" :aria-invalid="failure?.key === group.key && failure?.index === index" :aria-describedby="failure?.key === group.key && failure?.index === index ? `${group.key}-error-${index}` : undefined" type="text" inputmode="numeric" autocomplete="off" :maxlength="group.key === 'digits' ? 1 : 2" @input="input($event,group.key,index,group.pool)" @focus="($event.target as HTMLInputElement).select()" />
    </template>
   </div>
-  <div v-for="group in groups" :key="group.key" class="draw-result-errors">
-   <template v-for="(_, index) in values[group.key]" :key="index"><p v-if="touched.has(`${group.key}:${index}`) && error(group.key,index,group.pool)" :id="`${group.key}-error-${index}`" class="message error" role="alert">{{ t('numberLabel', {group:t(group.key),index:index + 1}) }}: {{ error(group.key,index,group.pool) }}</p></template>
-  </div>
+  <div v-if="failure" class="draw-result-errors"><p :id="`${failure.key}-error-${failure.index}`" class="message error" role="alert">{{ failure.message }}</p></div>
  </div>
 </template>
 <style scoped>
 .draw-result-inputs{display:flex;flex-wrap:wrap;align-items:center;gap:8px;grid-column:1/-1;min-width:0}
 .draw-result-label{white-space:nowrap}
 .draw-result-cells{display:flex;flex-wrap:wrap;align-items:center;gap:4px;min-width:0}
-#app .draw-result-inputs .draw-result-cells input{box-sizing:border-box;flex:0 0 auto;width:calc(2ch + 10px);min-width:0;max-width:none;min-height:var(--control-height);padding:4px;text-align:center;font:inherit;font-variant-numeric:tabular-nums;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink)}
+#app .draw-result-inputs .draw-result-cells input{box-sizing:border-box;--input-width:calc(2ch + 10px);flex:0 0 auto!important;width:var(--input-width)!important;min-width:0;max-width:none;min-height:var(--control-height);padding:4px;text-align:center;font:inherit;font-variant-numeric:tabular-nums;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink)}
 .draw-result-cells input:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 #app .draw-result-inputs .draw-result-cells input[aria-invalid=true]{border-color:var(--danger)}
 .draw-result-plus{color:var(--muted);line-height:1}

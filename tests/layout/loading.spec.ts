@@ -132,6 +132,7 @@ test('quick stake edits remain local until save and failed saves preserve the dr
   })
   try {
     await page.goto(`${origins.user}/account`)
+    await page.getByRole('button',{name:'Personal settings',exact:true}).click()
     const settings = page.getByTestId('betting-preferences'), overlay = page.locator('.global-loading-overlay')
     const input = settings.locator('input').first()
     await expect(input).toHaveValue('10')
@@ -147,6 +148,9 @@ test('quick stake edits remain local until save and failed saves preserve the dr
     release()
     await expect(overlay).toBeHidden()
     await expect.poll(() => values).toEqual(['20'])
+    await expect(settings).toHaveCount(0)
+    await page.getByRole('button',{name:'Personal settings',exact:true}).click()
+    await expect(input).toHaveValue('20')
     await settings.locator('.chip-delete').click()
     expect(writes).toBe(1)
     gate = new Promise<void>(resolve => { release = resolve })
@@ -167,7 +171,8 @@ test('quick stake edits remain local until save and failed saves preserve the dr
     release()
     await expect(overlay).toBeHidden()
     await expect.poll(() => values).toEqual([])
-    await expect(settings.getByRole('alert')).toHaveCount(0)
+    await expect(settings).toHaveCount(0)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
   } finally { release() }
 })
 
@@ -183,6 +188,7 @@ test('configured wallet retry waits for the response and preserves unavailable-w
   })
   try {
     await page.goto(`${origins.user}/configured/${gameId}`)
+    await page.locator('.configured-options button').first().click()
     const warning = page.locator('.configured-funds-warning'), overlay = page.locator('.global-loading-overlay')
     await expect(warning).toBeVisible()
     await expect(overlay).toBeHidden()

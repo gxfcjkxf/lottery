@@ -144,14 +144,14 @@ func registerIndependentAgentRoutes(mux routeRegistrar, d Dependencies) {
 				var out any
 				switch action.path {
 				case "wallet/records":
-					if !cashReadParameters(r, true) || r.URL.Query().Has("kind") {
+					if !cashReadParameters(r, true, false) || r.URL.Query().Has("kind") {
 						err = cash.ErrInvalid
 						break
 					}
 					limit, offset, _ := pageParams(r)
 					out, err = cash.AgentWalletRecords(r.Context(), tx, b.ID, v.AccountID, limit, offset)
 				case "transfers":
-					if !cashReadParameters(r, true) || r.URL.Query().Has("kind") {
+					if !cashReadParameters(r, true, false) || r.URL.Query().Has("kind") {
 						err = cash.ErrInvalid
 						break
 					}

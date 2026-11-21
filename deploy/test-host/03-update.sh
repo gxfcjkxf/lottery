@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build a source snapshot locally, then activate a release over SSH.
 set -Eeuo pipefail
-[[ $# == 1 || ( $# == 2 && $2 == --upgrade-brand-presentation ) || ( $# == 2 && $2 == --upgrade-data-retention ) || ( $# == 2 && $2 == --web-only ) || ( $# == 2 && $2 == --upgrade-agent-wallet ) || ( $# == 2 && $2 == --upgrade-themes ) || ( $# == 2 && $2 == --upgrade-unique-usdt ) || ( $# == 2 && $2 == --remove-announcement-timezone ) || ( $# == 2 && $2 == --remove-auth-consent ) || ( $# == 2 && $2 == --remove-dedicated-wallet ) || ( $# == 2 && $2 == --upgrade-tron-key-pool ) || ( $# == 2 && $2 == --upgrade-tron-deposits ) || ( $# == 2 && $2 == --upgrade-release-20261111 ) || ( $# == 2 && $2 == --upgrade-cash-wallet ) || ( $# == 2 && $2 == --upgrade-brand-contacts ) || ( $# == 2 && $2 == --upgrade-profile-contacts ) || ( $# == 2 && $2 == --upgrade-fixed-entries ) || ( $# == 2 && $2 == --upgrade-manual-results ) || ( $# == 3 && $2 == --initial ) ]] || {
-  echo "Usage: $0 SSH_HOST [--upgrade-brand-presentation|--upgrade-data-retention|--web-only|--upgrade-agent-wallet|--upgrade-themes|--upgrade-unique-usdt|--remove-announcement-timezone|--remove-auth-consent|--remove-dedicated-wallet|--upgrade-tron-key-pool|--upgrade-tron-deposits|--upgrade-release-20261111|--upgrade-cash-wallet|--upgrade-brand-contacts|--upgrade-fixed-entries|--upgrade-manual-results|--upgrade-profile-contacts]   (first deployment: 02-deploy.sh SSH_HOST CONFIG.json)" >&2; exit 1;
+[[ $# == 1 || ( $# == 2 && $2 == --upgrade-brand-presentation ) || ( $# == 2 && $2 == --upgrade-betting-availability ) || ( $# == 2 && $2 == --upgrade-data-retention ) || ( $# == 2 && $2 == --web-only ) || ( $# == 2 && $2 == --upgrade-agent-wallet ) || ( $# == 2 && $2 == --upgrade-themes ) || ( $# == 2 && $2 == --upgrade-unique-usdt ) || ( $# == 2 && $2 == --remove-announcement-timezone ) || ( $# == 2 && $2 == --remove-auth-consent ) || ( $# == 2 && $2 == --remove-dedicated-wallet ) || ( $# == 2 && $2 == --upgrade-tron-key-pool ) || ( $# == 2 && $2 == --upgrade-tron-deposits ) || ( $# == 2 && $2 == --upgrade-release-20261111 ) || ( $# == 2 && $2 == --upgrade-cash-wallet ) || ( $# == 2 && $2 == --upgrade-brand-contacts ) || ( $# == 2 && $2 == --upgrade-profile-contacts ) || ( $# == 2 && $2 == --upgrade-fixed-entries ) || ( $# == 2 && $2 == --upgrade-manual-results ) || ( $# == 3 && $2 == --initial ) ]] || {
+  echo "Usage: $0 SSH_HOST [--upgrade-brand-presentation|--upgrade-betting-availability|--upgrade-data-retention|--web-only|--upgrade-agent-wallet|--upgrade-themes|--upgrade-unique-usdt|--remove-announcement-timezone|--remove-auth-consent|--remove-dedicated-wallet|--upgrade-tron-key-pool|--upgrade-tron-deposits|--upgrade-release-20261111|--upgrade-cash-wallet|--upgrade-brand-contacts|--upgrade-fixed-entries|--upgrade-manual-results|--upgrade-profile-contacts]   (first deployment: 02-deploy.sh SSH_HOST CONFIG.json)" >&2; exit 1;
 }
 host=$1
 [[ $host =~ ^[a-zA-Z0-9][a-zA-Z0-9_.@-]*$ ]] || { echo 'Invalid SSH host.' >&2; exit 1; }
@@ -28,6 +28,7 @@ if [[ $# == 2 && $2 == --upgrade-tron-key-pool ]]; then upgrade_script=upgrade-t
 if [[ $# == 2 && $2 == --upgrade-agent-wallet ]]; then upgrade_script=upgrade-agent-wallet.py; fi
 if [[ $# == 2 && $2 == --upgrade-data-retention ]]; then upgrade_script=upgrade-data-retention.py; fi
 if [[ $# == 2 && $2 == --upgrade-brand-presentation ]]; then upgrade_script=upgrade-brand-presentation.py; fi
+if [[ $# == 2 && $2 == --upgrade-betting-availability ]]; then upgrade_script=upgrade-betting-availability.py; fi
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -118,6 +119,7 @@ cp deploy/test-host/upgrade-tron-deposits-remote.py deploy/test-host/upgrade-tro
 cp deploy/test-host/upgrade-tron-key-pool-remote.py deploy/test-host/upgrade-tron-key-pool.sql "$work/release/ops/"
 cp deploy/test-host/upgrade-brand-presentation.py deploy/test-host/upgrade-brand-presentation.sql "$work/release/ops/"
 cp deploy/test-host/upgrade-data-retention.py deploy/test-host/upgrade-data-retention.sql "$work/release/ops/"
+cp deploy/test-host/upgrade-betting-availability.py "$work/release/ops/"
 cp deploy/test-host/upgrade-agent-wallet.py deploy/test-host/upgrade-agent-wallet.sql "$work/release/ops/"
 cp deploy/test-host/remove-announcement-timezone.py deploy/test-host/remove-announcement-timezone.sql "$work/release/ops/"
 cp deploy/test-host/remove-auth-consent.py deploy/test-host/remove-auth-consent.sql "$work/release/ops/"
@@ -261,7 +263,13 @@ runuser -u postgres -- psql -X -d lottery -v ON_ERROR_STOP=1 \
 INSERT INTO platform_domains(domain,enabled) VALUES (:'platform_domain',true),(:'admin_domain',true),(:'agent_domain',true)
 ON CONFLICT(domain) DO UPDATE SET enabled=excluded.enabled;
 SQL
-app check-draw-sources
+# Static-only updates already require byte-identical API and baseline above.
+# Upstream data health is independent of publishing unchanged backend code.
+if [[ $api_release == none ]]; then
+  app check-draw-sources
+else
+  echo 'Web-only release: API and baseline match; external draw-source probing is outside frontend activation.'
+fi
 # Prepare TLS and nginx before interrupting the application.
 mapfile -t domains < <(python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); print("\n".join(c["user_domains"]+[c[k] for k in ("admin_domain","platform_domain","agent_domain")]))' "$candidate/deploy.json")
 email=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["certificate_email"])' "$candidate/deploy.json")

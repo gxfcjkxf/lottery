@@ -6,7 +6,7 @@ import { useAdminI18n } from './i18n'
 import PresentationFields from './PresentationFields.vue'
 import { brandPresentationPermissions, createBrandPresentationApi, validBrandPresentationConfig, type BrandPresentationEffective, type BrandPresentationConfig, type BrandPresentationRecord } from './brand-presentation-api'
 const props = defineProps<{ account: AdminAccount; brandId: string }>()
-const emit = defineEmits<{ 'session-invalid': []; loaded: [value: { accountId: string; record: BrandPresentationRecord }] }>()
+const emit = defineEmits<{ 'session-invalid': []; saved: []; loaded: [value: { accountId: string; record: BrandPresentationRecord }] }>()
 const { t, message, display, errorMessage } = useAdminI18n()
 const api = createBrandPresentationApi()
 const rights = computed(() => brandPresentationPermissions(props.account, props.brandId))
@@ -43,7 +43,7 @@ async function save() {
   if (!current(token)) return
   record.value = result; draft.value = clone(result.config)
   emit('loaded', { accountId: props.account.id, record: result })
-  notice.value = message('admin.settings.saved')
+  notice.value = message('admin.settings.saved'); emit('saved')
  } catch (cause) {
   if (!current(token)) return
   error.value = errorMessage(cause)

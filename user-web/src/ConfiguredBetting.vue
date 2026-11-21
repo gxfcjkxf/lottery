@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { pointsMinor } from '@lottery/shared'
 
-import { useOperationToast } from "@lottery/shared";
+import { showOperationToast, useOperationToast } from "@lottery/shared";
 import { vGlobalLoading, vWriteGuard } from "@lottery/shared";
 import { computed,onMounted,onUnmounted,ref,shallowRef,watch } from 'vue'
 import { RouterLink } from 'vue-router'
@@ -10,7 +10,8 @@ import {createQuickAmountsApi,validBetAmount} from './betting-preferences'
 import BettingSheet from './BettingSheet.vue'
 import ConfiguredBetReviewTable from './ConfiguredBetReviewTable.vue'
 import PlayRules from './PlayRules.vue'
-import {configuredSelectionGroups,configuredSelectionRequests} from '../../shared/src/configured-selection-groups'
+import {configuredOptionDisabled,configuredPlayAvailable} from '../../shared/src/configured-business'
+import {configuredIndependentPlay,configuredSelectionRequests} from '../../shared/src/configured-selection-groups'
 import UserPeriodStrip from './UserPeriodStrip.vue'
 import {markSixCatalog} from '../../shared/src/mark-six'
 import {useUserI18n} from './i18n'
@@ -73,22 +74,30 @@ let generation=0
 let syncTimer:ReturnType<typeof setTimeout>|undefined
 let clockTimer:ReturnType<typeof setInterval>|undefined
 const now=ref(Date.now())
+const optionRefreshInterval=15000
 function scheduleSync(){
  clearTimeout(syncTimer)
  if(busy.value||pending.value||error.value||document.visibilityState!=='visible')return
  const current=Date.now(),period=data.value?.period
  const upcoming=[...(period?[period.bet_start_at,period.bet_end_at]:[]),...periods.value.filter(p=>!p.result).map(p=>p.draw_at)].map(Date.parse).filter(time=>time>current)
- // During an open period, read again only at its next time boundary.
- // Without an upcoming boundary, check once a minute for the next period.
- const delay=upcoming.length?Math.min(...upcoming)-current+100:60000
- syncTimer=setTimeout(()=>{now.value=Date.now();void load(true)},delay)
+ const boundaryDelay=upcoming.length?Math.min(...upcoming)-current+100:60000
+ const refreshItems=!!period&&boundaryDelay>optionRefreshInterval
+ syncTimer=setTimeout(()=>{now.value=Date.now();void load(true,refreshItems)},refreshItems?optionRefreshInterval:boundaryDelay)
 }
 function resumeSync(){if(document.visibilityState==='visible'&&!busy.value&&!pending.value){now.value=Date.now();void load(true);void refreshWallet()}else clearTimeout(syncTimer)}
 onMounted(()=>{window.addEventListener(WALLET_SNAPSHOT_EVENT,walletSnapshot);document.addEventListener('visibilitychange',resumeSync);clockTimer=setInterval(()=>{now.value=Date.now()},1000)})
 onUnmounted(()=>{generation++;walletGeneration++;window.removeEventListener(WALLET_SNAPSHOT_EVENT,walletSnapshot);clearTimeout(syncTimer);clearInterval(clockTimer);document.removeEventListener('visibilitychange',resumeSync)})
 watch([busy,pending],scheduleSync)
 const currentPlay=computed(()=>data.value?.snapshot.catalog.plays.find(play=>play.id===request.value.play_id))
-const currentGroup=computed(()=>data.value?configuredSelectionGroups(data.value.snapshot).find(group=>group.plays.some(play=>play.id===request.value.play_id)):undefined)
+const rulesAvailable = computed(() => {
+ const catalog=data.value
+ return !!catalog&&!!request.value.plate&&catalog.snapshot.catalog.plays.some(play=>configuredPlayAvailable(catalog.snapshot,play,catalog.disabled_options))
+})
+const rulesOpen = ref(false)
+watch(rulesAvailable,available=>{if(!available)rulesOpen.value=false})
+function openRules() { rulesOpen.value = rulesAvailable.value }
+defineExpose({ rulesAvailable, openRules })
+watch(() => props.gameId, () => { rulesOpen.value = false })
 const reviewQuote=computed(()=>pending.value ? pending.value.quote : quote.value)
 const unavailableState=computed(()=>{
  const catalog=data.value
@@ -108,19 +117,64 @@ const unavailableText=computed(()=>unavailableState.value==='notOpen'?userText('
 const clearUnavailableToast=useOperationToast(unavailableState, () => unavailableText.value, 'error', 'center', 0)
 onUnmounted(clearUnavailableToast)
 function report(cause:unknown,read=false){error.value=i18n.errorMessage(cause,read?'read':'write');if((cause as {status?:number}).status===401)emit('auth-expired')}
-async function load(background=false){
+async function load(background=false,catalogOnly=false){
  const token=++generation;clearTimeout(syncTimer);if(!background)busy.value=true;error.value=null;now.value=Date.now()
  try{
-  try{const [value,detail,amounts]=await Promise.all([api.value.catalog(props.gameId),createPlatformLotteryClient('user',()=>'',fetch,props.brandCode).detail(props.gameId),createQuickAmountsApi({brandCode:props.brandCode}).read(props.auth!.member.brand_id,props.auth!.member.id)]);if(token!==generation)return;quickAmounts.value=amounts;periods.value=detail.periods;if(data.value&&(data.value.snapshot_hash!==value.snapshot_hash||data.value.period?.id!==value.period?.id)){quote.value=null;review.value=null}data.value=value;emit('game-title',value.game.name);if(!request.value.play_id||!value.snapshot.catalog.plays.some(p=>p.id===request.value.play_id)){const p=value.snapshot.catalog.plays[0]!;request.value={play_id:p.id,options:[],plate:value.snapshot.catalog.plates[0]!,points:p.stake_mode==='unit_multiplier'?'0':lastPoints.value,multiplier:'1'}}}catch(e){if(token===generation){data.value=null;periods.value=[];quote.value=null;review.value=null;report(e,true)}}
- }finally{if(token===generation){if(!background)busy.value=false;scheduleSync()}}
+  const [value,nextPeriods,amounts]=await Promise.all([
+   api.value.catalog(props.gameId),
+   catalogOnly ? periods.value : createPlatformLotteryClient('user',()=>'',fetch,props.brandCode).detail(props.gameId).then(detail=>detail.periods),
+   catalogOnly ? quickAmounts.value : createQuickAmountsApi({brandCode:props.brandCode}).read(props.auth!.member.brand_id,props.auth!.member.id),
+  ])
+  if(token!==generation)return
+  quickAmounts.value=amounts
+  periods.value=nextPeriods
+  if(data.value&&(data.value.snapshot_hash!==value.snapshot_hash||data.value.period?.id!==value.period?.id)){
+   quote.value=null
+   review.value=null
+  }
+  data.value=value
+  emit('game-title',value.game.name)
+  const catalog=value.snapshot.catalog
+  const play=catalog.plays.find(p=>p.id===request.value.play_id)
+  if(!play){
+   const first=catalog.plays[0]!
+   request.value={play_id:first.id,options:[],plate:catalog.plates[0]!,points:first.stake_mode==='unit_multiplier'?'0':lastPoints.value,multiplier:'1'}
+  }else{
+   const options=request.value.options.filter(option=>!configuredOptionDisabled(value.disabled_options,play.id,option))
+   if(options.length!==request.value.options.length)request.value={...request.value,options}
+  }
+  const allowed=selectedPlays.value.filter(id=>{
+   const selected=catalog.plays.find(p=>p.id===id)
+   return selected&&configuredIndependentPlay(value.snapshot,selected)&&!configuredOptionDisabled(value.disabled_options,id,catalog.domains[selected.selection.domain]!.options[0]!.id)
+  })
+  if(allowed.length!==selectedPlays.value.length)selectedPlays.value=allowed
+ }catch(cause){
+  if(token===generation){data.value=null;periods.value=[];quote.value=null;review.value=null;report(cause,true)}
+ }finally{
+  if(token===generation){if(!background)busy.value=false;scheduleSync()}
+ }
 }
+async function reportBetFailure(cause:unknown){
+ if((cause as {code?:string}).code==='BET_OPTION_DISABLED'){
+  reviewOpen.value=false
+  const token=generation+1
+  await load()
+  if(token===generation&&data.value){
+   const message=i18n.errorMessage(cause)
+   showOperationToast(()=>i18n.displayError(message),'error')
+  }
+  return
+ }
+ report(cause)
+}
+
 watch(()=>[props.gameId,owner.value],()=>{generation++;selectedPlays.value=[];reviewOpen.value=false;selectionInvalid.value=false;pending.value=null;quote.value=null;review.value=null;data.value=null;periods.value=[];intentError.value=false;notice.value=false;try{const raw=sessionStorage.getItem(storageKey.value);if(raw!==null){const saved=JSON.parse(raw) as Intent;if(saved.owner!==owner.value||!saved.key||!saved.body.actor_context||!saved.body.requests.length||!saved.snapshot||!saved.quote)throw new Error('Invalid saved intent');pending.value=saved;reviewOpen.value=true}}catch(e){intentError.value=true;report(e)}void load()},{immediate:true,flush:'sync'})
 watch([request,selectedPlays],()=>{if(!pending.value){quote.value=null;review.value=null}},{deep:true})
-async function preview(){if(busy.value)return;reviewOpen.value=true;selectionInvalid.value=false;pointsInvalid.value=false;error.value=null;if(pending.value)return;if(!data.value?.period||!canBet.value)return;if(!betRequests.value.length||betRequests.value.some(r=>r.options.length<data.value!.snapshot.catalog.plays.find(p=>p.id===r.play_id)!.selection.min)){selectionInvalid.value=true;return;}if(betRequests.value.some(r=>data.value!.snapshot.catalog.plays.find(p=>p.id===r.play_id)!.stake_mode==='per_line'&&!validBetAmount(r.points))){pointsInvalid.value=true;return;}const token=generation;busy.value=true;error.value=null;notice.value=false;try{const body:ConfiguredLiveInput={period_id:data.value.period.id,rule_id:data.value.rule_id,sales_version:data.value.sales.version,snapshot_hash:data.value.snapshot_hash,actor_context:'',requests:JSON.parse(JSON.stringify(betRequests.value))};const [result]=await Promise.all([api.value.preview(body),refreshWallet()]);if(token!==generation)return;if(result.snapshot_hash!==body.snapshot_hash||result.rule_id!==body.rule_id||result.sales_version!==body.sales_version)throw new Error('Quote version mismatch');review.value={...body,actor_context:result.actor_context};quote.value=result}catch(e){if(token===generation)report(e)}finally{if(token===generation)busy.value=false}}
+async function preview(){if(busy.value)return;reviewOpen.value=true;selectionInvalid.value=false;pointsInvalid.value=false;error.value=null;if(pending.value)return;if(!data.value?.period||!canBet.value)return;if(!betRequests.value.length||betRequests.value.some(r=>r.options.length<data.value!.snapshot.catalog.plays.find(p=>p.id===r.play_id)!.selection.min)){selectionInvalid.value=true;return;}if(betRequests.value.some(r=>data.value!.snapshot.catalog.plays.find(p=>p.id===r.play_id)!.stake_mode==='per_line'&&!validBetAmount(r.points))){pointsInvalid.value=true;return;}const token=generation;busy.value=true;error.value=null;notice.value=false;try{const body:ConfiguredLiveInput={period_id:data.value.period.id,rule_id:data.value.rule_id,sales_version:data.value.sales.version,snapshot_hash:data.value.snapshot_hash,actor_context:'',requests:JSON.parse(JSON.stringify(betRequests.value))};const [result]=await Promise.all([api.value.preview(body),refreshWallet()]);if(token!==generation)return;if(result.snapshot_hash!==body.snapshot_hash||result.rule_id!==body.rule_id||result.sales_version!==body.sales_version)throw new Error('Quote version mismatch');review.value={...body,actor_context:result.actor_context};quote.value=result}catch(e){if(token===generation)await reportBetFailure(e)}finally{if(token===generation)busy.value=false}}
 async function place(){now.value=Date.now();if(busy.value||!props.auth||intentError.value)return;if(!pending.value&&!canBet.value)return;if(!pending.value){if(!review.value||!quote.value||!data.value||!wallet.value||quoteInsufficient.value)return;const intent:Intent={owner:owner.value,key:crypto.randomUUID(),body:JSON.parse(JSON.stringify(review.value)),quote:quote.value,snapshot:data.value.snapshot};try{sessionStorage.setItem(storageKey.value,JSON.stringify(intent));pending.value=intent}catch(e){intentError.value=true;report(e);return}}
  const intent=pending.value,token=++generation;busy.value=true;error.value=null
  try{await api.value.place(intent.body,intent.key);if(token!==generation)return;sessionStorage.removeItem(storageKey.value);pending.value=null;quote.value=null;review.value=null;notice.value=true;reviewOpen.value=false;selectedPlays.value=[];request.value={...request.value,options:[],points:currentPlay.value!.stake_mode==='unit_multiplier'?'0':lastPoints.value,multiplier:'1'};await refreshWallet();await load()}
- catch(e){if(token!==generation)return;const status=(e as {status?:number}).status;if(status&&status>=400&&status<500){sessionStorage.removeItem(storageKey.value);pending.value=null;quote.value=null;review.value=null}report(e)}finally{if(token===generation)busy.value=false}
+ catch(e){if(token!==generation)return;const status=(e as {status?:number}).status;if(status&&status>=400&&status<500){sessionStorage.removeItem(storageKey.value);pending.value=null;quote.value=null;review.value=null}await reportBetFailure(e)}finally{if(token===generation)busy.value=false}
 }
 useOperationToast(notice, () => t('placed'), 'success');
 useOperationToast(error, value => i18n.displayError(value), 'error');
@@ -137,15 +191,16 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
   </template>
   <span v-if="previousDraw?.result.digits.length===3" class="configured-result-sum" :aria-label="`${userText('draw.summary.total')}: ${previousDraw.result.digits.reduce((sum,n)=>sum+n,0)}`"><span aria-hidden="true">=</span><strong>{{previousDraw.result.digits.reduce((sum,n)=>sum+n,0)}}</strong></span>
  </UserPeriodStrip>
- <PlayRules v-if="data&&currentPlay" :locale="locale" :name="currentGroup!.label[localeCode]" :group="currentGroup" :snapshot="data.snapshot" :play="currentPlay" :plate="request.plate" />
- <ConfiguredSelection v-if="data" v-model="request" v-model:selected-plays="selectedPlays" :snapshot="data.snapshot" :quick-amounts="quickAmounts" :locale="localeCode" :disabled="busy||!!pending||intentError||!canBet" :available-points="wallet ? wallet.available_points : null" :wallet-failed="walletFailed" @refresh-wallet="withGlobalLoading(refreshWallet)" v-slot="{ insufficientPoints }" sale><button type="button" class="button button-primary" :disabled="busy||intentError||(!pending&&(!canBet||insufficientPoints))" @click="withGlobalLoading(preview)">{{t(pending?'retryWrite':'previewBet')}}</button></ConfiguredSelection>
+ <PlayRules v-if="rulesOpen && data && rulesAvailable" :locale="locale" :snapshot="data.snapshot" :disabled-options="data.disabled_options" :plate="request.plate" @close="rulesOpen = false" />
+ <ConfiguredSelection v-if="data" v-model="request" v-model:selected-plays="selectedPlays" :snapshot="data.snapshot" :disabled-options="data.disabled_options" :quick-amounts="quickAmounts" :locale="localeCode" :disabled="busy||!!pending||intentError||!canBet" :available-points="wallet ? wallet.available_points : null" :wallet-failed="walletFailed" @refresh-wallet="withGlobalLoading(refreshWallet)" v-slot="{ insufficientPoints }" sale><button type="button" class="button button-primary" :disabled="busy||intentError||(!pending&&(!canBet||insufficientPoints))" @click="withGlobalLoading(preview)">{{t(pending&&!busy?'retryWrite':'previewBet')}}</button></ConfiguredSelection>
+ <button v-if="pending && !reviewOpen && !request.options.length && !selectedPlays.length" type="button" class="button button-primary selection-reopen" @click="reviewOpen = true">{{t('retryWrite')}}</button>
  <BettingSheet v-if="reviewOpen" :title="t('previewBet')" :close-label="t('closeBet')" @close="reviewOpen=false">
 
   <p v-if="selectionInvalid" class="message error" role="alert">{{t('selectionRequired',{min:currentPlay!.selection.min})}}</p>
   <p v-if="pointsInvalid" class="message error" role="alert">{{t('preferencesInvalid')}}</p>
   <p v-if="busy&&!quote&&!pending" v-global-loading role="status">{{t('loadingQuote')}}</p>
   <template v-if="pending">
-   <p>{{t('unknownWrite')}}</p>
+   <p v-if="!busy">{{t('unknownWrite')}}</p>
    <ConfiguredBetReviewTable :snapshot="pending.snapshot" :lines="pending.quote.lines" :locale="localeCode" />
   </template>
   <template v-else-if="quote&&data">
@@ -153,7 +208,7 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
    <ConfiguredBetReviewTable :snapshot="data.snapshot" :lines="quote.lines" :locale="localeCode" />
   </template>
   <p v-else-if="!busy&&!selectionInvalid&&!error&&unavailableText">{{unavailableText}}</p>
-  <template #footer><div class="configured-review-footer"><div v-if="reviewQuote" class="configured-review-totals"><span>{{t('entries')}}: <strong>{{reviewQuote.lines.length}}</strong></span><span>{{t('bet')}}: <strong>{{reviewQuote.bet_points}}</strong></span><span v-if="reviewQuote.reserved_points">{{t('reserved')}}: <strong>{{reviewQuote.reserved_points}}</strong></span></div><div class="configured-review-actions"><button v-if="pending||(quote&&data)" v-write-guard="busy" type="button" class="button button-primary" :disabled="busy||!auth||intentError||(!pending&&(!canBet||!wallet||quoteInsufficient))" @click="withGlobalLoading(place)">{{t(pending?'retryWrite':'confirmBet')}}</button></div></div></template>
+  <template #footer><div class="configured-review-footer"><div v-if="reviewQuote" class="configured-review-totals"><span>{{t('entries')}}: <strong>{{reviewQuote.lines.length}}</strong></span><span>{{t('bet')}}: <strong>{{reviewQuote.bet_points}}</strong></span><span v-if="reviewQuote.reserved_points">{{t('reserved')}}: <strong>{{reviewQuote.reserved_points}}</strong></span></div><div class="configured-review-actions"><button v-if="pending||(quote&&data)" v-write-guard="busy" type="button" class="button button-primary" :disabled="busy||!auth||intentError||(!pending&&(!canBet||!wallet||quoteInsufficient))" @click="withGlobalLoading(place)">{{t(pending&&!busy?'retryWrite':'confirmBet')}}</button></div></div></template>
  </BettingSheet>
 
  </section>

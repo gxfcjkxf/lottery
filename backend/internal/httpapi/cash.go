@@ -69,7 +69,7 @@ func cashOutput(w http.ResponseWriter, r *http.Request, out any, e error) {
 	v, err := cashResult(out, e)
 	outputMutation(w, r, v, err)
 }
-func cashReadParameters(r *http.Request, list bool) bool {
+func cashReadParameters(r *http.Request, list, allowState bool) bool {
 	if r.URL.ForceQuery || !rechargeUserNoBody(r) {
 		return false
 	}
@@ -87,6 +87,10 @@ func cashReadParameters(r *http.Request, list bool) bool {
 		switch key {
 		case "limit", "offset":
 			if !canonicalRechargePageNumber.MatchString(values[0]) {
+				return false
+			}
+		case "state":
+			if !allowState {
 				return false
 			}
 		case "kind":
@@ -107,7 +111,7 @@ func registerCashUser(mux routeRegistrar, d Dependencies) {
 	for _, prefix := range []string{"/api/v1", "/api/v1/b/{brandCode}"} {
 		for _, path := range []string{"/cash", "/cash/orders"} {
 			mux.HandleFunc("GET "+prefix+path, func(w http.ResponseWriter, r *http.Request) {
-				if !cashReadParameters(r, path == "/cash/orders") {
+				if !cashReadParameters(r, path == "/cash/orders", false) {
 					cashOutput(w, r, nil, cash.ErrInvalid)
 					return
 				}
@@ -124,7 +128,7 @@ func registerCashUser(mux routeRegistrar, d Dependencies) {
 						if !ok {
 							return nil, cash.ErrInvalid
 						}
-						return cash.List(r.Context(), tx, b.ID, v.Member.ID, r.URL.Query().Get("kind"), limit, offset)
+						return cash.List(r.Context(), tx, b.ID, v.Member.ID, r.URL.Query().Get("kind"), limit, offset, "")
 					}
 					if r.URL.RawQuery != "" {
 						return nil, cash.ErrInvalid
@@ -249,7 +253,7 @@ func registerCashUser(mux routeRegistrar, d Dependencies) {
 func registerCashAdmin(handle func(string, string, http.HandlerFunc), d Dependencies, platform bool) {
 	s := cashService(d)
 	handle("GET", "/cash/balances/{memberID}", func(w http.ResponseWriter, r *http.Request) {
-		if !cashReadParameters(r, false) {
+		if !cashReadParameters(r, false, false) {
 			cashOutput(w, r, nil, cash.ErrInvalid)
 			return
 		}
@@ -281,7 +285,7 @@ func registerCashAdmin(handle func(string, string, http.HandlerFunc), d Dependen
 	// accounts, allocation and their own operating limits. Platform cannot pay.
 	for _, path := range []string{"/cash/config", "/cash/orders", "/cash/destinations"} {
 		handle("GET", path, func(w http.ResponseWriter, r *http.Request) {
-			if !cashReadParameters(r, path == "/cash/orders") {
+			if !cashReadParameters(r, path == "/cash/orders", true) {
 				cashOutput(w, r, nil, cash.ErrInvalid)
 				return
 			}
@@ -336,7 +340,7 @@ func registerCashAdmin(handle func(string, string, http.HandlerFunc), d Dependen
 					e = cash.ErrInvalid
 					break
 				}
-				out, e = cash.List(r.Context(), tx, brand, "", kind, limit, offset)
+				out, e = cash.List(r.Context(), tx, brand, "", kind, limit, offset, r.URL.Query().Get("state"))
 			}
 			if e == nil {
 				e = tx.Commit(r.Context())

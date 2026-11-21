@@ -38,9 +38,9 @@ const baseAccount: AdminAccount = {
   },
 };
 
-type HostNode = { tag: string; props: Record<string, unknown>; children: HostNode[]; text: string; parent?: HostNode; value?: string; checked?: boolean; addEventListener: (...args: unknown[]) => void; removeEventListener: (...args: unknown[]) => void; getRootNode: () => HostNode; options: HostNode[] };
+type HostNode = { tag: string; style: {display:string}; props: Record<string, unknown>; children: HostNode[]; text: string; parent?: HostNode; value?: string; checked?: boolean; addEventListener: (...args: unknown[]) => void; removeEventListener: (...args: unknown[]) => void; getRootNode: () => HostNode; options: HostNode[] };
 function element(tag: string): HostNode {
-  return { tag, props: {}, children: [], text: "", value: "", checked: false, addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((child) => child.tag === "option"); } };
+  return { tag, style: {display:""}, props: {}, children: [], text: "", value: "", checked: false, addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((child) => child.tag === "option"); } };
 }
 const renderer = createRenderer<HostNode, HostNode>({
   createElement: element,
@@ -282,7 +282,7 @@ describe("CommissionCyclesManagement", () => {
 
     const second = mount(baseAccount, brandA); await flush();
     expect(buttonTexts(second.container).some((label) => label.includes("丢弃此请求"))).toBe(false);
-    const recover = findNode(second.container, (node) => node.tag === "button" && textOf(node).includes("检查并恢复原请求"));
+    const recover = findNode(second.container, (node) => node.tag === "button" && textOf(node).includes("重试"));
     expect(recover).not.toBeNull(); (recover!.props.onClick as () => void)(); await nextTick();
     expect(textOf(second.container)).toContain('周结');
     expect(textOf(second.container)).not.toContain(anchorId);

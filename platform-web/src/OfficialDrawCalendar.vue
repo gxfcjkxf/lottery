@@ -31,7 +31,7 @@ function dateLabel(date: string) {
  const [year, month, day] = date.split('-')
  return props.displaySettings.date_format.replace('YYYY', year!).replace('MM', month!).replace('DD', day!)
 }
-const timeLabel = (value: string | null, empty: 'calendar.never' | 'calendar.unscheduled') => value ? formatPlatformDateTime(value, props.displaySettings, props.locale) : t(empty)
+const timeLabel = (value: string | null) => value ? formatPlatformDateTime(value, props.displaySettings, props.locale) : t('calendar.never')
 async function load() {
  if (busy.value) return
  busy.value = true; failed.value = false
@@ -71,17 +71,15 @@ useOperationToast(() => syncNotice.value === 'syncFailed' ? syncNotice.value : '
 
 <template>
  <section class="panel official-calendar" data-testid="official-calendar" :aria-busy="busy || syncing" aria-labelledby="official-calendar-title">
-  <div class="official-calendar-heading console-page-heading">
+  <div class="official-calendar-heading">
    <h2 id="official-calendar-title">{{ t('calendar.title') }}</h2>
    <span v-if="data" class="status-pill calendar-status" :class="`calendar-${data.status}`" role="status" :aria-label="t('calendar.status')">{{ t(`calendar.${data.status}`) }}</span>
-   <div class="calendar-actions console-page-actions"><button v-if="canManage" v-write-guard="syncing" type="button" class="button button-primary" :disabled="busy || syncing" @click="withGlobalLoading(syncNow)">{{ t(syncing ? 'calendar.syncing' : pendingKey ? 'calendar.syncRetry' : 'calendar.syncNow') }}</button></div>
   </div>
   <p v-if="busy && !data" v-global-loading role="status" class="calendar-note">{{ t('calendar.loading') }}</p>
   <div v-if="failed" role="alert" class="message error">{{ t('calendar.readFailed') }} <button type="button" class="button button-secondary" :disabled="busy || syncing" v-refresh-button="t('calendar.retry')" @click="withGlobalLoading(load)">{{ t('calendar.retry') }}</button></div>
   <template v-if="data">
    <dl class="calendar-meta">
-    <div><dt>{{ t('calendar.lastSuccess') }}</dt><dd>{{ timeLabel(data.last_success_at, 'calendar.never') }}</dd></div>
-    <div><dt>{{ t('calendar.nextAttempt') }}</dt><dd>{{ timeLabel(data.next_attempt_at, 'calendar.unscheduled') }}</dd></div>
+    <div><dt>{{ t('calendar.lastSuccess') }}</dt><dd>{{ timeLabel(data.last_success_at) }}</dd></div>
    </dl>
    <p v-if="(data.status === 'failed' && syncNotice !== 'syncFailed') || data.status === 'overdue'" class="message error" role="status">{{ t(data.status === 'failed' ? 'calendar.failedHelp' : 'calendar.overdueHelp') }}</p>
    <section class="calendar-month-view" :aria-label="t('calendar.monthView')">
@@ -91,13 +89,13 @@ useOperationToast(() => syncNotice.value === 'syncFailed' ? syncNotice.value : '
     <ul class="calendar-legend"><li><span class="calendar-symbol calendar-draw" aria-hidden="true"></span>{{t('calendar.draw')}}</li><li><span class="calendar-symbol calendar-snowball" aria-hidden="true"></span>{{t('calendar.snowball')}}</li><li><span class="calendar-symbol calendar-presale" aria-hidden="true"></span>{{t('calendar.presale')}}</li></ul>
    </section>
   </template>
-  
+  <div v-if="canManage" class="calendar-actions console-page-actions"><button v-write-guard="syncing" type="button" class="button button-primary" :disabled="busy || syncing" @click="withGlobalLoading(syncNow)">{{ t(syncing ? 'calendar.syncing' : pendingKey ? 'calendar.syncRetry' : 'calendar.syncNow') }}</button></div>
  </section>
 </template>
 
 <style scoped>
-.official-calendar{display:grid;gap:12px;min-width:0;margin-bottom:12px;padding:12px}
-.official-calendar-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.official-calendar{display:grid;gap:12px;min-width:0;margin:12px 0;padding:12px}
+.official-calendar-heading{display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:8px}
 .official-calendar h2{margin:0;font-size:16px}
 .calendar-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:8px;margin:0}
 .official-calendar .calendar-meta>div{min-width:0;padding:0;border:0}
@@ -121,6 +119,7 @@ useOperationToast(() => syncNotice.value === 'syncFailed' ? syncNotice.value : '
 .calendar-snowball-label,.calendar-failed,.calendar-overdue{background:var(--warning-bg);color:var(--warning-text)}
 .calendar-synced{background:var(--success-bg);color:var(--success-text)}
 .calendar-note{margin:0;line-height:1.6}.official-calendar .message{margin:0}
-.calendar-actions{display:flex;flex-wrap:wrap;gap:8px}.calendar-sync-success{background:var(--success-bg);color:var(--success-text)}
+.calendar-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px}.calendar-sync-success{background:var(--success-bg);color:var(--success-text)}
 
+@media(max-width:900px),(pointer:coarse){.official-calendar{gap:8px;margin:8px 0;padding-block:8px}}
 </style>

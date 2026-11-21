@@ -1,3 +1,4 @@
+import { expectDialogFieldColumns } from './dialog-form-columns'
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { configuredDemo, type ConfiguredCatalog, type ConfiguredSnapshot } from '../../shared/src/configured-rules'
@@ -17,6 +18,7 @@ async function mount(page: Page, locale: string, surface = 'platform', canWrite 
 async function fits(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
   const dialog = page.getByRole('dialog')
+  if(await dialog.locator('label.ui-field-row').count())await expectDialogFieldColumns(dialog)
   expect(await dialog.locator('.detail-modal-content').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
 }
 
@@ -82,34 +84,18 @@ for (const locale of ['zh-CN', 'en'] as const) {
     await page.screenshot({ path: info.outputPath(`bindings-${locale}.png`) })
     await apply()
 
-    await open(zh ? '赔率表' : 'Odds table')
-    await expect(dialog.locator('details')).toHaveCount(0)
-    const price = dialog.locator('.rule-price-table tbody tr').first().locator('input').first()
-    await price.fill('6.5')
-    await close()
-    await open(zh ? '赔率表' : 'Odds table')
-    await expect(price).toHaveValue('2')
-    await price.fill('3.5')
-    if (info.project.name.endsWith('reflow')) {
-      for (const width of [320, 480, 768, 1280]) {
-        await page.setViewportSize({ width, height: 800 })
-        await fits(page)
-      }
-    }
-    await fits(page)
-    await page.screenshot({ path: info.outputPath(`prices-${locale}.png`) })
-    await apply()
+    await expect(page.getByRole('button', { name: zh ? '赔率表' : 'Odds table', exact: true })).toHaveCount(0)
     expect(writes).toHaveLength(0)
     await open(zh ? '保存' : 'Save')
     await expect.poll(() => writes.length).toBe(1)
     expect(writes[0]!.catalog.plays).toHaveLength(catalog.plays.length + 2)
     expect(writes[0]!.bindings.attributes.zodiac!.rat).toEqual(original.split(', ').map(Number).reverse())
-    expect(writes[0]!.prices.plates.A![key]).toBe('3.5')
+    expect(writes[0]!.prices.plates.A![key]).toBe('2')
     expect(writes[0]!.prices.version).toBe('synthetic-prices')
     expect(errors).toEqual([])
   })
 
-  test(`flat dialogs remain read only for platform and brand viewers ${locale}`, async ({ page }) => {
+  test(`flat dialogs remain read only for platform and brand viewers ${locale}`, async ({ page }, info) => {
     const zh = locale === 'zh-CN', snapshot = configuredDemo(catalog), writes: string[] = []
     await page.route('**/api/v1/**', route => {
       const req = route.request(), path = new URL(req.url()).pathname
@@ -126,10 +112,30 @@ for (const locale of ['zh-CN', 'en'] as const) {
       await expect(dialog.getByLabel(zh ? '绿波号码' : 'Green numbers', { exact: true })).toHaveAttribute('readonly', '')
       await expect(dialog.getByRole('button', { name: zh ? '应用配置' : 'Apply configuration', exact: true })).toHaveCount(0)
       await dialog.getByRole('button', { name: zh ? '关闭' : 'Close', exact: true }).click()
-      await page.getByRole('button', { name: zh ? '赔率表' : 'Odds table', exact: true }).click()
-      await expect(dialog.locator('input').first()).toBeDisabled()
-      await fits(page)
+      const prices = page.getByRole('button', { name: zh ? '赔率表' : 'Odds table', exact: true })
+      await expect(prices).toHaveCount(0)
+      await page.screenshot({path:info.outputPath(`rules-without-odds-${surface}-${locale}.png`)})
     }
     expect(writes).toEqual([])
   })
 }
+
+for(const locale of ['zh-CN','en'] as const)test(`Canada workbench current categories ${locale}`,async({page},info)=>{
+ const zh=locale==='zh-CN',snapshot=configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/canada_28.json','utf8')))
+ await page.route('**/api/v1/**',route=>{
+  expect(route.request().method()).toBe('GET')
+  return route.fulfill({json:{success:true,data:{id:gameId,game_id:gameId,revision:1,snapshot,snapshot_hash:'test',status:'published',cases:[],validation:null}}})
+ })
+ await mount(page,locale)
+ const filter=page.getByRole('combobox',{name:zh?'分组':'Group',exact:true})
+ for(const [key,count] of [['sides',10],['shapes',3],['sums',28],['tailNumbers',16]] as const){
+  await selectControl(filter,key)
+  await expect(page.locator('.rule-directory tbody tr')).toHaveCount(count)
+ }
+ await selectControl(filter,'sums')
+ const label=zh?'总和 · 24':'Sum · 24'
+ await page.getByRole('button',{name:label,exact:true}).click()
+ await expect(page.getByRole('dialog')).toHaveAccessibleName(label)
+ await fits(page)
+ await page.screenshot({path:info.outputPath(`canada-workbench-${locale}.png`)})
+})

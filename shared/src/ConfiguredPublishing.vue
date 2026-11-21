@@ -7,16 +7,40 @@ import { vWriteGuard } from './write-guard'
 import { withGlobalLoading } from './global-loading'
 import { createCatalogI18n, type LocalizedMessage } from './localization'
 import { configuredRuleCatalog } from './configured-rule-catalog'
-import { createConfiguredBusinessClient, type ConfiguredVersion, type ConfiguredSales } from './configured-business'
-import type { ConfiguredSnapshot } from './configured-rules'
+import { configuredAvailabilityDisabled, configuredGroupsForScope, configuredItemState, configuredOptionsForScope, createConfiguredBusinessClient, type ConfiguredAvailability, type ConfiguredOptionStates, type ConfiguredVersion, type ConfiguredSales } from './configured-business'
+import { configuredOptionPriceKeys, type ConfiguredSnapshot } from './configured-rules'
 import ConfiguredSalesPrices from './ConfiguredSalesPrices.vue'
 const props=defineProps<{surface:'platform'|'admin';brandId:string;gameId:string;locale:'en'|'zh-CN';snapshot:ConfiguredSnapshot|null;canWrite?:boolean;oddsOnly?:boolean}>()
 const emit=defineEmits<{load:[snapshot:ConfiguredSnapshot];locked:[value:boolean];failure:[cause:unknown];saved:[]}>()
 const i18n=createCatalogI18n(configuredRuleCatalog,props.locale)
 watch(()=>props.locale,value=>i18n.setLocale(value))
 const t=i18n.t,api=computed(()=>createConfiguredBusinessClient(props.surface,props.brandId))
+const oddsDraft=shallowRef<ConfiguredSnapshot|null>(null)
+const platformSnapshot=computed(()=>props.oddsOnly?oddsDraft.value:props.snapshot)
 const current=shallowRef<ConfiguredVersion|null>(null),sales=shallowRef<ConfiguredSales|null>(null)
-const busy=ref(false),ready=ref(false),saved=ref(false),error=ref<LocalizedMessage|null>(null)
+const availability=shallowRef<ConfiguredAvailability|null>(null)
+const availabilityDraft=shallowRef<ConfiguredOptionStates|null>(null)
+const oddsAvailability=computed(()=>{
+ const value=availability.value,items=availabilityDraft.value
+ if(!value||!items)return value
+ return value.brand
+  ? {...value,brand:{...value.brand,items}}
+  : {...value,platform:{...value.platform,items}}
+})
+const oddsGroup=ref('')
+const oddsGroups=computed(()=>current.value&&oddsAvailability.value?configuredGroupsForScope(current.value.snapshot,oddsAvailability.value):[])
+watch(oddsGroups,groups=>{
+ if(!groups.some(group=>group.id===oddsGroup.value))oddsGroup.value=groups[0]?.id??''
+})
+const hasEditableOdds=computed(()=>{
+ const group=oddsGroups.value.find(item=>item.id===oddsGroup.value)
+ return !!group?.plays.some(play=>configuredOptionsForScope(current.value!.snapshot,play,oddsAvailability.value!).some(option=>
+  !configuredAvailabilityDisabled(oddsAvailability.value!,play.id,option.id),
+ ))
+})
+const originalPrices=shallowRef<ConfiguredSnapshot['prices']|null>(null)
+const currentPrices=computed(()=>props.surface==='admin'?sales.value?.prices:oddsDraft.value?.prices)
+const busy=ref(false),ready=ref(false),saved=ref<string|null>(null),error=ref<LocalizedMessage|null>(null)
 const pending=shallowRef<{path:string;body:unknown;key:string}|null>(null)
 let generation=0
 onUnmounted(()=>generation++)
@@ -28,47 +52,143 @@ const salesValid=computed(()=>{
  const v=sales.value;return pointsMinor(v.max_points)>=pointsMinor(v.min_points)&&pointsMinor(v.max_period_points)>=pointsMinor(v.max_points)&&pointsMinor(v.max_user_period_points)>=pointsMinor(v.max_points)
 })
 function editLimit(key:typeof limitFields[number],value:string){if(sales.value)sales.value={...sales.value,[key]:value}}
-function editPrices(value:ConfiguredSales['prices']){if(sales.value)sales.value={...sales.value,prices:value}}
+function editPrices(prices:ConfiguredSnapshot['prices']){
+ if(props.surface==='admin')sales.value={...sales.value!,prices}
+ else oddsDraft.value={...oddsDraft.value!,prices}
+}
+function setItems(items:{play:string;option:string}[],enabled:boolean){
+ const settings=oddsAvailability.value
+ if(!availability.value||!settings||busy.value||pending.value||!props.canWrite)return
+ const original=(availability.value.brand??availability.value.platform).items
+ const next:ConfiguredOptionStates=Object.assign(Object.create(null),availabilityDraft.value??original)
+ for(const {play,option} of items){
+  if(configuredAvailabilityDisabled(settings,play,option)===!enabled)continue
+  const states:Record<string,boolean>=Object.assign(Object.create(null),next[play])
+  if(!enabled)states[option]=false
+  else if(configuredItemState(original,play,option)===true)states[option]=true
+  else delete states[option]
+  if(Object.keys(states).length)next[play]=states
+  else delete next[play]
+ }
+ const changed=Object.keys(next).length!==Object.keys(original).length||Object.entries(next).some(([play,options])=>
+  Object.keys(options).length!==Object.keys(original[play]??{}).length||
+  Object.entries(options).some(([option,state])=>configuredItemState(original,play,option)!==state),
+ )
+ availabilityDraft.value=changed?next:null
+}
+const changedPrices=computed(()=>{
+ const snapshot=current.value?.snapshot, settings=oddsAvailability.value
+ const original=originalPrices.value, prices=currentPrices.value
+ if(!snapshot||!settings||!original||!prices||prices===original)return null
+ const canEdit=new Set(snapshot.catalog.plays.flatMap(play=>configuredOptionsForScope(snapshot,play,settings)
+  .filter(option=>!configuredAvailabilityDisabled(settings,play.id,option.id))
+  .flatMap(option=>configuredOptionPriceKeys(snapshot,play,option)),
+ ))
+ let changed=false
+ const plates=Object.fromEntries(Object.entries(prices.plates).map(([plate,values])=>[
+  plate,{...original.plates[plate],...Object.fromEntries(Object.entries(values).filter(([key,value])=>{
+   if(!canEdit.has(key)||value===original.plates[plate]?.[key])return false
+   changed=true
+   return true
+  }))},
+ ]))
+ return changed?{...prices,plates}:null
+})
+const canSavePrices=computed(()=>!!changedPrices.value||(
+ props.surface==='admin'&&!!sales.value&&!availabilityDraft.value&&hasEditableOdds.value&&
+ (sales.value.version===0||sales.value.rule_id!==current.value?.id)
+))
+const canSaveConfiguration=computed(()=>
+ (props.surface==='platform'?!!platformSnapshot.value:salesValid.value)&&(!props.oddsOnly||canSavePrices.value),
+)
+const canSave=computed(()=>{
+ if(props.oddsOnly&&canSavePrices.value)return canSaveConfiguration.value
+ return canSaveConfiguration.value||!!availabilityDraft.value
+})
 function report(cause:unknown){if((cause as {status?:number}).status===401){emit('failure',cause);return}error.value=i18n.errorMessage(cause)}
 async function load(){
- const token=++generation;busy.value=true;ready.value=false;error.value=null
+ const token=++generation;busy.value=true;ready.value=false;error.value=null;availabilityDraft.value=null
  try{
   const rules=await api.value.rules(props.gameId)
   if(token!==generation)return
   current.value=rules
-  if(rules)emit('load',JSON.parse(JSON.stringify(rules.snapshot)))
+  if(props.surface==='platform'&&props.oddsOnly)oddsDraft.value=rules?JSON.parse(JSON.stringify(rules.snapshot)):null
+  if(rules){
+   emit('load',JSON.parse(JSON.stringify(rules.snapshot)))
+  }
+  if(props.oddsOnly&&rules){
+   const value=await api.value.availability(props.gameId)
+   if(token!==generation)return
+   if(value.rule_id!==rules.id)throw {code:'VERSION_CONFLICT',status:409}
+   availability.value=value
+  }
   if(props.surface==='admin'&&rules){
    try{const value=await api.value.sales(props.gameId);if(token!==generation)return;sales.value=value}
    catch(cause){if((cause as {code?:string}).code!=='RESOURCE_NOT_FOUND')throw cause;if(token!==generation)return;sales.value={version:0,rule_id:rules.id,enabled:false,prices:JSON.parse(JSON.stringify(rules.snapshot.prices)),min_points:'1',max_points:'100',max_period_points:'10000',max_user_period_points:'5000'}}
   }
+  if(props.oddsOnly)originalPrices.value=currentPrices.value??null
   ready.value=true
  }catch(cause){if(token===generation)report(cause)}finally{if(token===generation)busy.value=false}
 }
-watch(()=>[props.gameId,props.brandId,props.surface],()=>{current.value=null;sales.value=null;pending.value=null;saved.value=false;void withGlobalLoading(load)},{immediate:true})
+watch(()=>[props.gameId,props.brandId,props.surface],()=>{
+ oddsGroup.value='';current.value=null;availability.value=null;sales.value=null;oddsDraft.value=null;originalPrices.value=null;pending.value=null;saved.value=null
+ void withGlobalLoading(load)
+},{immediate:true})
 async function save(){
- if(!props.canWrite||!ready.value||(!pending.value&&props.surface==='admin'&&!salesValid.value))return
+ if(!props.canWrite||busy.value||!ready.value)return
  if(!pending.value){
-  const body=props.surface==='platform'?{id:current.value?.id??'',revision:current.value?.revision??0,snapshot:props.snapshot}:sales.value&&current.value?{...sales.value,rule_id:current.value.id}:null
-  if(!body||(props.surface==='platform'&&!props.snapshot))return
-  pending.value={path:`/${props.gameId}/configured/${props.surface==='platform'?'rules':'sales'}`,body:JSON.parse(JSON.stringify(body)),key:crypto.randomUUID()}
+  if(!canSave.value)return
+  const settings=availability.value, items=availabilityDraft.value
+  const scope=settings&&items?{version:(settings.brand??settings.platform).version,items}:null
+  let body:unknown
+  let endpoint:string
+  if(canSaveConfiguration.value){
+   const prices=changedPrices.value
+   const availabilityInput=scope?{availability:scope}:{}
+   if(props.surface==='platform'){
+    const snapshot=platformSnapshot.value!
+    body={id:current.value?.id??'',revision:current.value?.revision??0,snapshot:prices?{...snapshot,prices}:snapshot,...availabilityInput}
+    endpoint='rules'
+   }else{
+    const sale=sales.value!
+    body={...sale,rule_id:current.value!.id,prices:prices??sale.prices,...availabilityInput}
+    endpoint='sales'
+   }
+  }else{
+   body={rule_id:settings!.rule_id,...scope}
+   endpoint='availability'
+  }
+  pending.value={path:`/${props.gameId}/configured/${endpoint}`,body:JSON.parse(JSON.stringify(body)),key:crypto.randomUUID()}
  }
- const token=generation;busy.value=true;error.value=null;saved.value=false
+ const token=generation;busy.value=true;error.value=null;saved.value=null
  try{
   await api.value.request(pending.value.path,pending.value.body,pending.value.key)
   if(token!==generation)return
-  pending.value=null;await load();saved.value=ready.value;if(ready.value)emit('saved')
- }catch(cause){if(token!==generation)return;const status=(cause as {status?:number}).status;if(status&&status>=400&&status<500){pending.value=null;if(status===409)ready.value=false}report(cause)}finally{if(token===generation)busy.value=false}
+  pending.value=null
+  await load()
+  if(ready.value){
+   saved.value=props.oddsOnly?'oddsSettingsSaved':props.surface==='admin'?'salesSaved':'rulesSaved'
+   emit('saved')
+  }
+ }catch(cause){
+  if(token!==generation)return
+  const status=(cause as {status?:number}).status
+  if(status&&status>=400&&status<500){
+   pending.value=null
+   if(status===409)ready.value=false
+   report(cause)
+  }
+ }finally{if(token===generation)busy.value=false}
 }
-useOperationToast(saved, () => t(props.surface==='admin'?(props.oddsOnly?'oddsSaved':'salesSaved'):'rulesSaved'), 'success');
+useOperationToast(saved, key => t(key), 'success');
 
 useOperationToast(error, value => i18n.displayError(value), 'error');
 </script>
 <template>
  <section class="configured-publishing">
+  <p v-if="pending&&!busy" role="status">{{t('unknownWrite')}}</p>
 
-  <p v-if="pending" role="status">{{t('unknownWrite')}}</p>
-
-  <p v-if="ready&&!current&&surface==='admin'" class="empty-state">{{t('rulesEmpty')}}</p>
+  <p v-if="ready&&!current&&(surface==='admin'||oddsOnly)" class="empty-state">{{t('rulesEmpty')}}</p>
 
   <template v-if="surface==='admin'&&ready&&current&&sales">
    <h3>{{t(oddsOnly?'salesOdds':'brandSales')}}</h3>
@@ -83,14 +203,19 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
      </span>
      <span :class="{'sales-toggle-active':sales.enabled}">{{t('salesEnabled')}}</span>
     </label>
-    <div class="configured-sales-limits"><label v-for="field in limitFields" :key="field">{{t(field)}}<input inputmode="decimal" :value="sales[field]" @input="editLimit(field,($event.target as HTMLInputElement).value)" /></label></div>
+    <div class="configured-sales-limits"><label v-for="field in limitFields" :key="field" class="ui-field-row"><span>{{t(field)}}</span><input inputmode="decimal" :value="sales[field]" @input="editLimit(field,($event.target as HTMLInputElement).value)" /></label></div>
     <p v-if="!salesValid" role="alert">{{t('salesLimitsInvalid')}}</p>
    </fieldset>
-   <ConfiguredSalesPrices v-if="oddsOnly" :key="sales.version" :snapshot="current.snapshot" :model-value="sales.prices" :locale="locale" :locked="busy||!!pending" :disabled="busy||!!pending||!canWrite" @update:model-value="editPrices" />
   </template>
 
+  <ConfiguredSalesPrices v-if="oddsOnly&&ready&&current&&currentPrices&&oddsAvailability" v-model:group-id="oddsGroup"
+   :snapshot="current.snapshot" :availability="oddsAvailability" :model-value="currentPrices" :locale="locale"
+   :locked="busy||!!pending" :can-write="!!canWrite" @update:model-value="editPrices" @set-items="setItems" />
+
   <div class="configured-actions ui-form-actions">
-   <button v-if="canWrite&&(surface==='platform'||sales)" v-write-guard="busy" type="button" class="button button-primary" :disabled="busy||!ready||(surface==='platform'&&!snapshot)||(surface==='admin'&&!pending&&!salesValid)" @click="withGlobalLoading(save)">{{t(pending?'retryWrite':surface==='admin'?(oddsOnly?'saveOdds':'saveSales'):'saveRules')}}</button>
+   <button v-if="canWrite&&(!oddsOnly||oddsGroups.length)&&(surface==='platform'||sales)" v-write-guard="busy" type="button" class="button button-primary"
+    :disabled="busy||!ready||(!pending&&!canSave)"
+    @click="withGlobalLoading(save)">{{t(pending&&!busy?'retryWrite':oddsOnly?'saveOddsSettings':surface==='admin'?'saveSales':'saveRules')}}</button>
    <button v-if="error&&!pending" type="button" class="button button-secondary" :disabled="busy" @click="withGlobalLoading(load)">{{t('retryRead')}}</button>
   </div>
  </section>

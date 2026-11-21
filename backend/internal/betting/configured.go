@@ -113,7 +113,15 @@ func (s Service) ConfiguredCatalog(ctx context.Context, brand, game string) (any
 	if previous != nil {
 		previousDraw = map[string]any{"period_no": previous.PeriodNo, "result": previous.Result, "regular_order": previous.RegularOrder, "attributes": previous.Attributes}
 	}
-	return map[string]any{"game": detail.Game, "snapshot": snap, "rule_id": v.ID, "sales": sales, "snapshot_hash": engine.SnapshotHash(), "period": period, "previous_draw": previousDraw}, nil
+	availability, e := platformlottery.ReadConfiguredAvailability(ctx, s.DB, brand, game, v.ID)
+	if e != nil {
+		return nil, e
+	}
+	out := map[string]any{"game": detail.Game, "snapshot": snap, "rule_id": v.ID, "sales": sales, "snapshot_hash": engine.SnapshotHash(), "period": period, "previous_draw": previousDraw}
+	if disabled := availability.DisabledOptions(); len(disabled) > 0 {
+		out["disabled_options"] = disabled
+	}
+	return out, nil
 }
 func configuredWindow(ctx context.Context, tx pgx.Tx, brand, game, period, member string, total points.Amount, sale platformlottery.ConfiguredSales) error {
 	var open bool
@@ -209,6 +217,17 @@ func (s Service) configuredQuote(ctx context.Context, tx pgx.Tx, brand string, v
 	quote, e := engine.Prepare(ctx, in.Requests)
 	if e != nil {
 		return q, nil, sales, e
+	}
+	availability, e := platformlottery.ReadConfiguredAvailability(ctx, tx, brand, game, publication.ID)
+	if e != nil {
+		return q, nil, sales, e
+	}
+	for _, request := range in.Requests {
+		for _, option := range request.Options {
+			if availability.OptionDisabled(request.PlayID, option) {
+				return q, nil, sales, ErrOptionDisabled
+			}
+		}
 	}
 	for _, line := range quote.Lines {
 		if line.Stake < sales.MinPoints || line.Stake > sales.MaxPoints {
@@ -326,11 +345,10 @@ const configuredOrderSummarySelect = configuredOrderSelectPrefix + `(
  )
  SELECT jsonb_build_object('catalog',jsonb_build_object(
    'funding',o.snapshot->'catalog'->'funding',
-   'plays',(SELECT jsonb_agg(jsonb_build_object('id',play->'id','label',play->'label','selection',jsonb_build_object('domain',play->'selection'->'domain'))) FROM selected_plays),
+   'plays',(SELECT jsonb_agg(jsonb_build_object('id',play->'id','label',play->'label','group',play->'group','stake_mode',play->'stake_mode','selection',play->'selection')) FROM selected_plays),
    'domains',(SELECT jsonb_object_agg(domain.key,jsonb_build_object('options',(
-     SELECT jsonb_agg(jsonb_build_object('id',option->'id','label',option->'label'))
+     SELECT jsonb_agg(jsonb_strip_nulls(jsonb_build_object('id',option->'id','label',option->'label','source_code',option->'source_code')))
      FROM jsonb_array_elements(domain.value->'options') option
-     WHERE option->'id' IN (SELECT jsonb_path_query(o.quote,'$.lines.**.options[*]'))
    ))) FROM jsonb_each(o.snapshot->'catalog'->'domains') domain
    WHERE domain.key IN (SELECT play->'selection'->>'domain' FROM selected_plays))
  ))

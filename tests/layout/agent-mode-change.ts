@@ -55,7 +55,7 @@ export function registerAgentModeChangeTests(reflow=false){
   await expect(page.getByRole('alert')).toBeVisible()
   await expect(rootRatio).toHaveValue('20');await expect(childRatio).toHaveValue('0');await expect(grandchildRatio).toHaveValue('0')
   await expect(rootRatio).toBeDisabled();await expect(childRatio).toBeDisabled()
-  await detail.getByRole('button',{name:zh?'重试此操作':'Retry this operation',exact:true}).click()
+  await detail.getByRole('button',{name:zh?'重试':'Retry',exact:true}).click()
   await expect.poll(()=>keys.length).toBe(2);expect(keys[0]).toBe(keys[1]);expect(bodies[0]).toEqual(bodies[1]);expect(bodies[0]).toMatchObject({items:[{agent_id:gameId,ratio:'0.2'},{agent_id:childId,ratio:'0'},{agent_id:grandchildId,ratio:'0'}]})
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.getByRole('button',{name:'level1_agent',exact:true}).click()

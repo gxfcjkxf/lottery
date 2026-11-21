@@ -32,6 +32,8 @@ func betError(data any, err error) (mutation.Result, error) {
 		return mutation.Fail(404, "BET_RESOURCE_NOT_FOUND", "未找到对应投注记录"), nil
 	case errors.Is(err, betting.ErrVersion):
 		return mutation.Fail(409, "BET_VERSION_CONFLICT", "投注配置或记录已变化，请刷新后重试"), nil
+	case errors.Is(err, betting.ErrOptionDisabled):
+		return mutation.Fail(409, "BET_OPTION_DISABLED", "A selected betting option is disabled"), nil
 	case errors.Is(err, betting.ErrClosed):
 		return mutation.Fail(409, "BET_PERIOD_CLOSED", "当前投注期不接受此操作"), nil
 	case errors.Is(err, betting.ErrLimit):

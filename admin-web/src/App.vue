@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RechargeRecordTypeSelect, { type RechargeRecordType } from "@lottery/shared/RechargeRecordTypeSelect.vue";
 import ThemeSwitcher from "@lottery/shared/ThemeSwitcher.vue"
 import CashConsole from "@lottery/shared/CashConsole.vue";
 import { effectiveBrandPermissions as cashPermissions } from "./point-policy-api";
@@ -170,6 +171,10 @@ const nav: { name: Page; icon: SiteIconName; group: string | null }[] = [
   { name: "审计日志", icon: "audit", group: "系统管理" },
 ];
 const page = ref<Page>("首页");
+const settingsReturnPage = ref<Page>("首页");
+watch(page, (next, previous) => {
+  if (next === '品牌设置' && previous !== next) settingsReturnPage.value = previous;
+}, { flush: 'sync' });
 const financePages = { '充值记录': 'recharges', '提现管理': 'withdrawals' } as const;
 const financeView = computed(() => financePages[page.value as keyof typeof financePages]);
 const memberCreateOpen = ref(false);
@@ -217,6 +222,8 @@ watch([loginIdentifier, loginPassword], () => {
 });
 const adminBrands = ref<AdminBrand[]>([]);
 const selectedBrandId = ref("");
+const rechargeRecordType = ref<RechargeRecordType>("deposit");
+watch(() => [account.value?.id, selectedBrandId.value, financeView.value], () => { rechargeRecordType.value = "deposit"; }, { flush: "sync" });
 const rechargeMember = ref<Member | null>(null);
 const rechargePending = ref(false);
 const canRechargeMember = computed(() => Boolean(account.value && selectedBrandId.value && canWriteFinance(account.value, selectedBrandId.value, 'recharge.write.brand')));
@@ -315,12 +322,12 @@ const visibleNav = computed(() => nav.filter(item => (item.name !== "开奖记�
 const mobileNavPages = computed<Page[]>(() => ['首页', '会员管理', '彩种管理']);
 const memberDetail = ref<Member | null>(null);
 watch(() => [account.value?.id, selectedBrandId.value], () => { memberFinance.value = null; memberDetail.value = null; editTarget.value = null; kickTarget.value = null; resetTarget.value = null; memberActionError.value = ''; });
-const go = (target: Page) => {
+const go = (target: Page, clearFeedback = true) => {
   if (!nav.some(item => item.name === target)) throw new Error(`Unsupported administration page: ${target}`);
   page.value = target;
   memberCreateOpen.value = false;
   memberFinance.value = null;
-  dismissOperationToast();
+  if (clearFeedback) dismissOperationToast();
   mobileMore.value = false;
 };
 const canViewMemberWallet = computed(() => Boolean(account.value && selectedBrandId.value && brandPermissionSet(account.value, selectedBrandId.value).has('user.view.brand') && canViewWallet(account.value, selectedBrandId.value)));
@@ -398,6 +405,7 @@ const statusClass = (status: MemberStatus) =>
 const apiErrorText = (error: unknown) =>
   error instanceof Error ? publicErrorMessage(error) : display(message('admin.copy.5dabb92e'));
 const clearAdminData = () => {
+  settingsReturnPage.value = "首页";
   dismissOperationToast();
   page.value = "首页";
   memberReadGeneration++;
@@ -786,16 +794,16 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
             <h2>{{ t('admin.copy.93b5af0f') }}</h2>
 
           </article>
-          <BrandPresentation v-if="selectedBrandId && brandSettingsView === 'presentation'" :key="`${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" @loaded="acceptPresentation"/>
+          <BrandPresentation v-if="selectedBrandId && brandSettingsView === 'presentation'" :key="`${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @saved="go(settingsReturnPage, false)" @session-invalid="clearAdminData" @loaded="acceptPresentation"/>
 
           <AnnouncementsManagement v-if="selectedBrandId && brandSettingsView === 'announcements'" base-path="/api/v1/admin" :key="`announcements:${account.id}:${selectedBrandId}`" :actor-id="account.id" :brand-id="selectedBrandId" :locale="locale" :permissions="[...cashPermissions(account,selectedBrandId)]" @failure="handleQuotaFailure" />
-          <BrandContacts v-if="brandSettingsView === 'contacts'" :key="`contacts:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+          <BrandContacts v-if="brandSettingsView === 'contacts'" :key="`contacts:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @saved="go(settingsReturnPage, false)" @session-invalid="clearAdminData" />
           <div v-if="brandSettingsView === 'funds'" class="console-stack">
-            <CashConsole base-path="/api/v1/admin" mode="settings" :key="`cash:${account.id}:${selectedBrandId}`" :actor-id="account.id" :brand-id="selectedBrandId" :locale="locale" :permissions="[...cashPermissions(account,selectedBrandId)]" @failure="handleQuotaFailure" />
-            <PointPolicySettings :key="`points:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+            <CashConsole base-path="/api/v1/admin" mode="settings" :key="`cash:${account.id}:${selectedBrandId}`" :actor-id="account.id" :brand-id="selectedBrandId" :locale="locale" :permissions="[...cashPermissions(account,selectedBrandId)]" @saved="go(settingsReturnPage, false)" @failure="handleQuotaFailure" />
+            <PointPolicySettings :key="`points:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @saved="go(settingsReturnPage, false)" @session-invalid="clearAdminData" />
           </div>
           <div v-if="brandSettingsView === 'withdrawal'" class="console-stack">
-            <WithdrawalPolicySettings :key="`withdrawal-policy:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+            <WithdrawalPolicySettings :key="`withdrawal-policy:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @saved="go(settingsReturnPage, false)" @session-invalid="clearAdminData" />
           </div>
           <BetPolicySettings v-if="brandSettingsView === 'betting'" embedded :key="`bet-policy:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
           <div v-if="brandSettingsView === 'agents'" class="console-stack">
@@ -825,8 +833,9 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
             <ManagementList :busy="membersLoading"><template v-if="hasPermission('user.create.brand')" #actions><button v-if="hasPermission('user.create.brand')" type="button" class="button button-primary" :aria-expanded="memberCreateOpen" aria-controls="member-create-form" @click="memberCreateOpen = !memberCreateOpen"><SiteIcon :name="memberCreateOpen ? 'close' : 'plus'" />{{ t('admin.copy.40acb767') }}</button></template><template #filters>
               <DirectorySearch :locale="locale" v-model="search" :label="t('admin.members.search')" :query-label="t('admin.members.query')" :busy="membersLoading" :search="searchMembers"><SelectControl v-model="memberOnlineFilter" :label="t('admin.members.onlineStatus')" :options="[{ value: '', label: (String(t('admin.members.allOnline'))).trim() }, { value: 'true', label: (String(t('admin.members.online'))).trim() }, { value: 'false', label: (String(t('admin.members.offline'))).trim() }]" /></DirectorySearch></template>
               <BatchDelete subject="accounts" :entry-label="member => member.username || member.phone" :scope-key="String(memberOffset) + JSON.stringify(search)" feedback="toast" :key="account.id + ':' + selectedBrandId" :entries="members" :enabled="canDeleteMembers" :locale="locale" :loading="membersLoading" :delete-entry="(member, key) => api.deleteMember(member.brand_id, member.id, key)" :error-text="cause => display(apiErrorText(cause))" :is-unknown="cause => !(cause instanceof AdminApiError) || cause.status === 0 || cause.status >= 500 || cause.code === 'INVALID_RESPONSE'" @deleted="batchMemberDeleted" @finished="withGlobalLoading(refreshBatchMembers)" v-slot="{ selected, toggle, selectLabel, locked }">
-              <ManagementTable table-class="member-directory-table" :entries="members" :columns="[{key:'account',label:t('admin.copy.851c6121')},{key:'online',label:t('admin.members.onlineStatus')},{key:'points',label:t('admin.members.points'),cellClass:'member-points'},{key:'phone',label:t('admin.copy.d794da3d')},{key:'status',label:t('admin.copy.cf6d9c6d')},{key:'joined',label:t('admin.copy.ac08e5ed')},{key:'notes',label:t('admin.copy.fd2d2c8b'),cellClass:'member-notes'},{key:'tags',label:t('admin.copy.b96f43c6')},{key:'actions',label:t('admin.copy.d21fcbef')}]" :empty="!membersLoading && !membersError && !members.length" :empty-label="t('admin.copy.ef8be9d6')">
+              <ManagementTable table-class="member-directory-table" :entries="members" :columns="[{key:'account',label:t('admin.copy.851c6121')},{key:'displayName',label:t('admin.copy.b60e278d')},{key:'online',label:t('admin.members.onlineStatus')},{key:'points',label:t('admin.members.points'),cellClass:'member-points'},{key:'phone',label:t('admin.copy.d794da3d')},{key:'status',label:t('admin.copy.cf6d9c6d')},{key:'joined',label:t('admin.copy.ac08e5ed')},{key:'notes',label:t('admin.copy.fd2d2c8b'),cellClass:'member-notes'},{key:'tags',label:t('admin.copy.b96f43c6')},{key:'actions',label:t('admin.copy.d21fcbef')}]" :empty="!membersLoading && !membersError && !members.length" :empty-label="t('admin.copy.ef8be9d6')">
                 <template #account="{entry:m}"><span class="member-account-select"><label v-if="canDeleteMembers" class="member-select-control"><input type="checkbox" :checked="selected.includes(m.id)" :aria-label="selectLabel(m.username || m.phone)" :disabled="locked" @change="toggle(m.id)" /></label><button type="button" class="text-button member-account" @click="memberDetail=m">{{m.username || m.phone || t('association.unnamed')}}</button></span></template>
+                <template #displayName="{entry:m}">{{ m.display_name || '—' }}</template>
                 <template #online="{entry:m}"><span class="member-presence" :class="{'is-online':m.online}"><i aria-hidden="true" />{{t(m.online?'admin.members.online':'admin.members.offline')}}</span></template>
                 <template #points="{entry:m}">{{m.display_points===null?t('admin.members.pointsRestricted'):formatPoints(m.display_points,locale)}}</template>
                 <template #phone="{entry:m}">{{m.phone || '—'}}</template>
@@ -892,7 +901,9 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
       </section>
 
       <section v-else-if="financeView" class="page-content">
-        <CashConsole v-if="account && selectedBrandId && ['withdrawals','recharges'].includes(financeView || '')" base-path="/api/v1/admin" :mode="financeView === 'withdrawals' ? 'withdrawal' : 'deposit'" :key="`cash:${account.id}:${selectedBrandId}:${financeView}`" :actor-id="account.id" :brand-id="selectedBrandId" :locale="locale" :permissions="[...cashPermissions(account,selectedBrandId)]" @failure="handleQuotaFailure" />
+        <CashConsole v-if="account && selectedBrandId && (financeView === 'withdrawals' || (financeView === 'recharges' && rechargeRecordType !== 'manual'))" base-path="/api/v1/admin" :mode="financeView === 'withdrawals' ? 'withdrawal' : 'deposit'" :key="`cash:${account.id}:${selectedBrandId}:${financeView}`" :actor-id="account.id" :brand-id="selectedBrandId" :locale="locale" :permissions="[...cashPermissions(account,selectedBrandId)]" :record-type="financeView === 'recharges' && rechargeRecordType !== 'manual' ? rechargeRecordType : undefined" @failure="handleQuotaFailure">
+          <template v-if="financeView === 'recharges'" #record-type="{ disabled }"><RechargeRecordTypeSelect v-model="rechargeRecordType" :locale="locale" :disabled="disabled" /></template>
+        </CashConsole>
         <WithdrawalManagement
           :active="financeView === 'withdrawals'"
           v-if="account && selectedBrandId && financeView === 'withdrawals'"
@@ -902,13 +913,15 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
           @session-invalid="clearAdminData"
         />
         <FinanceManagement
-          v-if="account && selectedBrandId && financeView === 'recharges'"
+          v-if="account && selectedBrandId && financeView === 'recharges' && rechargeRecordType === 'manual'"
           view="recharges"
           :key="`${selectedBrandId}:${page}`"
           :account="account"
           :brand-id="selectedBrandId"
           @session-invalid="clearAdminData"
-        />
+        >
+          <template #record-type="{ disabled }"><RechargeRecordTypeSelect v-model="rechargeRecordType" :locale="locale" :disabled="disabled" /></template>
+        </FinanceManagement>
         <div v-if="!account || !selectedBrandId" class="panel directory-state">
           <h1>{{ navLabel(page) }}</h1>
           <p>
@@ -1012,18 +1025,17 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
       </DetailModal>
       <DetailModal v-if="editTarget" :open="!resetTarget" class="console-member-dialog ui-form-dialog" :title="t('admin.copy.0ebe57dc')" :close-label="t('association.close')" :close-disabled="editBusy" @close="!editBusy && (editTarget = null)">
           <p>{{ editTarget.username || editTarget.phone || t('association.unnamed') }}</p>
-          <label class="modal-label"
+          <label class="modal-label ui-field-row"
             >{{ t('admin.copy.cf6d9c6d') }}<SelectControl v-model="editStatus" :disabled="!canEditUsers" :label="String(t('admin.copy.cf6d9c6d'))" :options="Object.entries(statusLabel).map(([status, label]) => ({ value: status, label: (String(t(adminKey(label)))).trim() }))" /></label
-          ><label class="modal-label"
+          ><label class="modal-label ui-field-row"
             >{{ t('admin.copy.fd2d2c8b') }}<textarea
               v-model="editNotes" :disabled="!canEditUsers"
               rows="3"
               maxlength="2000"
             ></textarea></label
           >
-          <button v-if="canResetPasswords" type="button" class="button button-secondary" :disabled="editBusy" @click="openReset(editTarget)">{{ t('admin.copy.d1e2ba79') }}</button>
-
           <div class="modal-actions ui-form-actions">
+            <button v-if="canResetPasswords" type="button" class="button button-secondary" :disabled="editBusy" @click="openReset(editTarget)">{{ t('admin.copy.d1e2ba79') }}</button>
             <button
               v-write-guard="editBusy"
               class="button button-primary"
@@ -1051,9 +1063,8 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
       </DetailModal>
       <DetailModal v-if="resetTarget" class="console-member-dialog ui-form-dialog" :title="t('admin.copy.c608f380')" :close-label="t('association.close')" :close-disabled="resetBusy" @close="!resetBusy && (resetTarget = null)">
           <p>{{ resetTarget.username || resetTarget.phone || t('association.unnamed') }}</p>
-          <label class="modal-label"
-            >{{ t('admin.copy.6b88b89d') }} <span>{{ t('admin.copy.2ed0ac9e') }}</span
-            ><input
+          <label class="modal-label ui-field-row"
+            >{{ t('admin.copy.6b88b89d') }}<input
               v-model="resetPasswordValue"
               class="field"
               type="password"

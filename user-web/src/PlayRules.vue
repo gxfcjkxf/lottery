@@ -1,47 +1,126 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { createCatalogI18n, type ConfiguredPlay, type ConfiguredSnapshot } from '@lottery/shared'
+import { computed, ref, useId } from 'vue'
+import { configuredAvailableSelectionGroups, createCatalogI18n, type ConfiguredDisabledOptions, type ConfiguredSnapshot } from '@lottery/shared'
 import SiteIcon from '@lottery/shared/SiteIcon'
 import DetailModal from '@lottery/shared/DetailModal.vue'
-import type { RuleDefinition } from '../../shared/src/rules'
-import { describePlayRules,describePlayGroup } from './play-rules'
+import { describePlayRules, describePlayGroup } from './play-rules'
 import { playRulesCatalog } from './play-rules-catalog'
-import type {ConfiguredSelectionGroup} from '../../shared/src/configured-selection-groups'
-const props = defineProps<{ locale: 'en' | 'zh'; name: string; snapshot?: ConfiguredSnapshot; play?: ConfiguredPlay; plate?: string; group?:ConfiguredSelectionGroup; definition?: RuleDefinition }>()
-const open = ref(false)
+
+const props = defineProps<{ locale: 'en' | 'zh'; snapshot: ConfiguredSnapshot; disabledOptions?: ConfiguredDisabledOptions; plate: string }>()
+defineEmits<{ close: [] }>()
+const accordionName = useId()
+const openGroupId = ref<string | null>(null)
 const localeCode = computed(() => props.locale === 'en' ? 'en' : 'zh-CN')
-const t = (key: string) => createCatalogI18n(playRulesCatalog, localeCode.value).t(key)
-const grouped=computed(()=>props.group&&props.group.plays.length>1)
-const groupDescription=computed(()=>{if(!grouped.value)return null;try{return describePlayGroup(localeCode.value,props.snapshot!,props.group!,props.plate!)}catch{return null}})
+const i18n = computed(() => createCatalogI18n(playRulesCatalog, localeCode.value))
+const t = (key: string) => i18n.value.t(key)
+const groups = computed(() => configuredAvailableSelectionGroups(props.snapshot, props.disabledOptions))
 const description = computed(() => {
+  const group = groups.value.find(group => group.id === openGroupId.value)
+  if (!group) return null
+  const { snapshot, plate } = props
   try {
-    if (props.snapshot && props.play && props.plate) return describePlayRules(localeCode.value, { snapshot: props.snapshot, play: props.play, plate: props.plate })
-    if (props.definition) return describePlayRules(localeCode.value, { definition: props.definition })
-    throw new Error('Missing play rules')
-  } catch { return null }
+    if (group.plays.length > 1) {
+      return { kind: 'group' as const, rules: describePlayGroup(localeCode.value, snapshot, group, plate, props.disabledOptions) }
+    }
+    return { kind: 'play' as const, rules: describePlayRules(localeCode.value, { snapshot, play: group.plays[0]!, plate, disabledOptions: props.disabledOptions }) }
+  } catch {
+    return null
+  }
 })
+
+function toggleGroup(id: string, event: Event) {
+  if ((event.currentTarget as HTMLDetailsElement).open) openGroupId.value = id
+  else if (openGroupId.value === id) openGroupId.value = null
+}
 </script>
 <template>
-  <div class="play-rules-entry"><button type="button" class="text-link text-button" tabindex="0" aria-haspopup="dialog" @click="open = true">{{ t('title') }}</button></div>
-  <DetailModal v-if="open" class="player-rules-dialog" :title="`${t('title')} · ${name}`" :close-label="t('close')" @close="open = false">
-    <template v-if="grouped&&groupDescription">
-      <section><h3>{{t('how')}}</h3><p v-for="instruction in groupDescription.instructions" :key="instruction">{{instruction}}</p><p v-for="note in groupDescription.notes" :key="note">{{note}}</p></section>
-      <section><h3>{{t('win')}} · {{t('odds')}}</h3>
-        <details v-for="entry in groupDescription.entries" :key="entry.id" class="player-group-rule" :data-play-id="entry.id">
-          <summary><span>{{entry.label}}</span><span class="player-group-price">{{entry.prices.map(price=>`× ${price}`).join(' / ')}}</span><SiteIcon name="down" aria-hidden="true" /></summary>
-          <div v-for="(prize,index) in entry.rules.prizes" :key="index" class="player-rule-prize"><p>{{prize.text}}</p><p v-if="prize.detail" class="player-rule-detail">{{prize.detail}}</p></div>
-        </details>
-      </section>
-    </template>
-    <p v-else-if="grouped||!description" class="message error" role="alert">{{ t('unavailable') }}</p>
-    <template v-else>
-      <section><h3>{{ t('how') }}</h3><p v-for="instruction in description.instructions" :key="instruction">{{ instruction }}</p></section>
-      <section><h3>{{ t('win') }}</h3><div v-for="(prize, index) in description.prizes" :key="index" class="player-rule-prize"><p>{{ prize.text }}</p><p v-if="prize.detail" class="player-rule-detail">{{ prize.detail }}</p></div></section>
-      <details v-if="description.options.length"><summary>{{ t('options') }} · {{ t('odds') }}</summary><dl><div v-for="(option,index) in description.options" :key="index"><dt>{{ option.text }}</dt><dd>{{ option.detail }}</dd></div></dl></details>
-    </template>
+  <DetailModal class="player-rules-dialog" :title="t('title')" :close-label="t('close')" @close="$emit('close')">
+    <div class="player-rules-list">
+      <details v-for="group in groups" :key="group.id" :name="accordionName" class="player-rules-section" @toggle="toggleGroup(group.id, $event)">
+        <summary>
+          <span>{{ group.label[localeCode] }}</span><SiteIcon name="down" aria-hidden="true" />
+        </summary>
+        <div v-if="openGroupId === group.id" class="player-rule-body">
+          <template v-if="description?.kind === 'group'">
+            <section>
+              <h3>{{ t('how') }}</h3>
+              <p v-for="instruction in description.rules.instructions" :key="instruction">{{ instruction }}</p>
+              <p v-for="note in description.rules.notes" :key="note">{{ note }}</p>
+            </section>
+            <section>
+              <h3>{{ t('win') }} · {{ t('odds') }}</h3>
+              <details v-for="entry in description.rules.entries" :key="entry.id" :name="`${accordionName}-${group.id}`" class="player-group-rule" :data-play-id="entry.id">
+                <summary>
+                  <span>{{ entry.label }}</span><span class="player-group-price">{{ entry.prices.map(price => `× ${price}`).join(' / ') }}</span><SiteIcon name="down" aria-hidden="true" />
+                </summary>
+                <div v-for="(prize, index) in entry.rules.prizes" :key="index" class="player-rule-prize">
+                  <p>{{ prize.text }}</p><p v-if="prize.detail" class="player-rule-detail">{{ prize.detail }}</p>
+                </div>
+              </details>
+            </section>
+          </template>
+          <template v-else-if="description?.kind === 'play'">
+            <section>
+              <h3>{{ t('how') }}</h3>
+              <p v-for="instruction in description.rules.instructions" :key="instruction">{{ instruction }}</p>
+            </section>
+            <section>
+              <h3>{{ t('win') }}</h3>
+              <div v-for="(prize, index) in description.rules.prizes" :key="index" class="player-rule-prize">
+                <p>{{ prize.text }}</p><p v-if="prize.detail" class="player-rule-detail">{{ prize.detail }}</p>
+              </div>
+            </section>
+            <details v-if="description.rules.options.length" class="player-group-rule">
+              <summary><span>{{ t('options') }} · {{ t('odds') }}</span><SiteIcon name="down" aria-hidden="true" /></summary>
+              <dl>
+                <div v-for="(option, index) in description.rules.options" :key="index"><dt>{{ option.text }}</dt><dd>{{ option.detail }}</dd></div>
+              </dl>
+            </details>
+          </template>
+          <p v-else class="message error" role="alert">{{ t('unavailable') }}</p>
+        </div>
+      </details>
+    </div>
   </DetailModal>
 </template>
 <style scoped>
-.play-rules-entry{display:flex;justify-content:flex-end;margin:4px 0}.player-rules-dialog h3{font-size:15px;margin:0 0 10px}.player-rules-dialog section+section{margin-top:20px}.player-rules-dialog p{font-size:14px;line-height:1.7;margin:6px 0;overflow-wrap:anywhere}.player-rule-prize+.player-rule-prize{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}.player-rule-detail{white-space:pre-line;color:var(--ink-secondary)}.player-rules-dialog summary{min-height:44px;cursor:pointer;font-size:14px;line-height:1.6;padding:12px 0}.player-rules-dialog dl>div{display:grid;grid-template-columns:minmax(64px,1fr) minmax(0,3fr);gap:12px;padding:8px 0;border-top:1px solid var(--line);font-size:var(--body-font-size);line-height:1.6}.player-rules-dialog dd{margin:0;overflow-wrap:anywhere}
-.player-group-rule{border-top:1px solid var(--line)}.player-group-rule summary{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;min-height:var(--control-height);box-sizing:border-box}.player-group-rule summary>span:first-child{flex:1;min-width:0;overflow-wrap:anywhere}.player-group-price{white-space:nowrap;color:var(--danger-text);font-variant-numeric:tabular-nums}.player-group-rule summary :deep(.site-icon){color:var(--muted)}.player-group-rule[open] summary{font-weight:600}.player-group-rule[open] summary :deep(.site-icon){transform:rotate(180deg)}.player-group-rule .player-rule-prize:last-child{padding-bottom:8px}@media(max-width:900px),(pointer:coarse){.player-rules-dialog section+section{margin-top:8px}.player-rules-dialog h3{margin-bottom:8px}.player-rules-dialog p{margin:4px 0}}
+.player-rules-section + .player-rules-section,
+.player-group-rule { border-top: 1px solid var(--line); }
+.player-rules-section > summary,
+.player-group-rule > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 4px 0;
+  box-sizing: border-box;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 22px;
+}
+.player-rules-section > summary { font-weight: 650; }
+.player-rules-section > summary::-webkit-details-marker,
+.player-group-rule > summary::-webkit-details-marker { display: none; }
+.player-rules-dialog summary > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.player-rules-dialog summary :deep(.site-icon) { flex-shrink: 0; color: var(--muted); }
+.player-rules-dialog details[open] > summary :deep(.site-icon) { transform: rotate(180deg); }
+.player-rules-section[open] > summary { color: var(--primary-dark); }
+.player-rule-body { padding: 4px 0 8px; }
+.player-rule-body h3 { font-size: 15px; margin: 0 0 8px; }
+.player-rule-body section + section { margin-top: 12px; }
+.player-rule-body p { font-size: 14px; line-height: 1.6; margin: 4px 0; overflow-wrap: anywhere; }
+.player-rule-prize + .player-rule-prize { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+.player-rule-detail { white-space: pre-line; color: var(--ink-secondary); }
+.player-group-price { white-space: nowrap; color: var(--danger-text); font-variant-numeric: tabular-nums; }
+.player-rule-body dl { margin: 0; }
+.player-rule-body dl > div {
+  display: grid;
+  grid-template-columns: minmax(64px, 1fr) minmax(0, 3fr);
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--body-font-size);
+  line-height: 1.6;
+}
+.player-rule-body dd { margin: 0; overflow-wrap: anywhere; }
 </style>

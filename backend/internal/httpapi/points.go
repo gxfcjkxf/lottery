@@ -183,10 +183,15 @@ func registerPointAdminRoutes(handle func(string, string, http.HandlerFunc), d D
 			failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
 			return
 		}
-		items, err := f.ListRecharges(r.Context(), brand, member, limit, offset)
+		state := r.URL.Query().Get("state")
+		if values, exists := r.URL.Query()["state"]; exists && (len(values) != 1 || state == "") {
+			failure(w, r, 400, "REQUEST_INVALID", "状态参数不正确")
+			return
+		}
+		items, err := f.ListRecharges(r.Context(), brand, member, limit, offset, state)
 		var data map[string]any
 		if err == nil {
-			data, err = countedItems(r.Context(), d.Admins.DB, items, `SELECT count(*)::text FROM recharge_orders WHERE brand_id=$1 AND ($2='' OR member_id=NULLIF($2,'')::uuid)`, brand, member)
+			data, err = countedItems(r.Context(), d.Admins.DB, items, `SELECT count(*)::text FROM recharge_orders WHERE brand_id=$1 AND ($2='' OR member_id=NULLIF($2,'')::uuid) AND ($3='' OR state=$3)`, brand, member, state)
 		}
 		if err == nil && !adminReadAudit(w, r, d, a, brand, "recharge.view") {
 			return

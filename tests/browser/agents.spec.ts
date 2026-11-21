@@ -50,9 +50,9 @@ test("real agent policy tree and direct-child configuration retain audited idemp
   await agent.getByLabel("Ratio fraction",{exact:true}).fill("0.03");await agent.getByLabel("Review reason",{exact:true}).fill("User adjusts only the direct child ratio");
   const childWrites:Array<{body:string|null,key:string|undefined}>=[];
   await userPage.route(`**/agent/children/${child.id}/config`,async route=>{childWrites.push({body:route.request().postData(),key:route.request().headers()["idempotency-key"]});const r=await route.fetch({url:route.request().url().replace("harbor.localhost","localhost"),headers:{...(await route.request().allHeaders()),host:"harbor.localhost:5173"}});expect(r.status(),await r.text()).toBe(200);if(childWrites.length===1)await route.abort("failed");else await route.fulfill({response:r})});
-  await agent.getByRole("button",{name:"Review change",exact:true}).click();await agent.getByRole("button",{name:"Confirm update",exact:true}).click();await expect(agent.getByRole("button",{name:"Retry the same request",exact:true})).toBeVisible();
-  await agent.getByRole("button",{name:"Reload",exact:true}).click();await expect(agent.getByRole("button",{name:"Retry the same request",exact:true})).toBeVisible();
-  await agent.getByRole("button",{name:"Retry the same request",exact:true}).click();await expect(agent.getByRole("button",{name:"Retry the same request",exact:true})).toHaveCount(0);
+  await agent.getByRole("button",{name:"Review change",exact:true}).click();await agent.getByRole("button",{name:"Confirm update",exact:true}).click();await expect(agent.getByRole("button",{name:"Retry",exact:true})).toBeVisible();
+  await agent.getByRole("button",{name:"Reload",exact:true}).click();await expect(agent.getByRole("button",{name:"Retry",exact:true})).toBeVisible();
+  await agent.getByRole("button",{name:"Retry",exact:true}).click();await expect(agent.getByRole("button",{name:"Retry",exact:true})).toHaveCount(0);
   expect(childWrites).toHaveLength(2);expect(childWrites[0]).toEqual(childWrites[1]);
   const currentChild=await adminCall(`/agents/${child.id}`,"GET");expect(currentChild).toMatchObject({version:2,config:{ratio:"0.03",mode:null},parent_id:root.id});
   const history=await adminCall(`/agents/${child.id}/history`,"GET");expect(history.items.map((v:{version:number})=>v.version)).toEqual([2,1]);expect(history.items[0].actor_type).toBe("user");

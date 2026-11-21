@@ -1,3 +1,4 @@
+import { expectDialogFieldColumns } from './dialog-form-columns'
 import { expectRealEntry, expectListLayout } from './real-page-review'
 import { selectControl } from '../select-control'
 import {test,expect} from '@playwright/test'
@@ -83,9 +84,21 @@ export function registerMemberManagementTests(reflow=false){
   await create.click()
   const creation=page.getByRole('dialog',{name:zh?'添加会员':'Add member',exact:true})
   await expect(creation).toBeVisible()
+  const accountInput=creation.getByRole('textbox',{name:zh?'账号':'Account',exact:true}),phoneInput=creation.getByRole('textbox',{name:zh?'手机号':'Phone number',exact:true}),initialPassword=creation.getByLabel(zh?'初始密码':'Initial password',{exact:true})
+  await expect(accountInput).toHaveAttribute('required','')
+  await expect(phoneInput).not.toHaveAttribute('required')
+  await expect(creation.getByRole('textbox',{name:zh?'备注':'Notes',exact:true})).toBeVisible()
+  await expect(creation).not.toContainText(zh?'账号或手机号至少填写一项':'Enter at least an account or a phone number')
+  await initialPassword.fill('member-test-password-2026');await phoneInput.fill('+12025550999')
+  await expect(creation.locator('button[type=submit]')).toBeDisabled()
+  await accountInput.fill('new_required_account');await phoneInput.fill('')
+  await expect(creation.locator('button[type=submit]')).toBeEnabled()
+  await expectDialogFieldColumns(creation)
+
   const createSubmit=creation.locator('.ui-form-actions button[type=submit]')
   if(reflow){
    await page.setViewportSize({width:320,height:800})
+   await expectDialogFieldColumns(creation)
    await createSubmit.scrollIntoViewIfNeeded()
    await expect(createSubmit).toBeVisible()
    await expectInsideViewport(creation);await expectRealEntry(page,'brand');await expectListLayout(page)
@@ -106,6 +119,7 @@ export function registerMemberManagementTests(reflow=false){
   await menuButton().click();await menu.getByRole('menuitem',{name:zh?'编辑':'Edit',exact:true}).click()
   const edit=page.getByRole('dialog',{name:zh?'编辑会员':'Edit member',exact:true})
   await expect(edit).toBeVisible();await edit.locator('textarea').fill('updated member notes')
+  await page.screenshot({path:info.outputPath(`member-edit-${locale}.png`)})
   await edit.getByRole('button',{name:zh?'重置密码':'Reset password',exact:true}).click()
   const reset=page.getByRole('dialog',{name:zh?'重置密码':'Reset password',exact:true})
   await expect(reset).toBeVisible();await expect(edit).not.toBeVisible();await reset.locator('input[type=password]').fill('member-password-2026');await expect(reset.getByRole('checkbox')).toHaveCount(0);await expect(reset.locator('.danger-note')).toHaveCount(0);await expectInsideViewport(reset);await expectRealEntry(page,'brand');await expectListLayout(page);await page.screenshot({path:info.outputPath(`member-reset-${locale}.png`)})

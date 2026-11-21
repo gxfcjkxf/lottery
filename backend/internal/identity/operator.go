@@ -114,22 +114,17 @@ func (s *Store) operatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 	if !ok {
 		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "备注最多 2000 字符且须为有效 UTF-8"), nil
 	}
-	if in.Username != "" {
-		var err error
-		in.Username, err = normalizeUsername(in.Username)
-		if err != nil {
-			return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "用户名格式不正确"), nil
-		}
+	username, err := normalizeUsername(in.Username)
+	if err != nil {
+		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "账号格式不正确"), nil
 	}
+	in.Username = username
 	if in.Phone != "" {
 		var err error
 		in.Phone, err = normalizePhone(in.Phone)
 		if err != nil {
 			return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "手机号格式不正确"), nil
 		}
-	}
-	if in.Username == "" && in.Phone == "" {
-		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "需要用户名或手机号"), nil
 	}
 	if utf8.RuneCountInString(in.Password) < 6 || utf8.RuneCountInString(in.Password) > 30 {
 		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字符"), nil

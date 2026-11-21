@@ -316,6 +316,16 @@ export function createAgentsApi(fetchImpl: typeof fetch = fetch) {
       invalidResponse(false);
     return value as unknown as AgentTree;
   }
+  async function treeLevel(brand: string, parentId: string | null = null): Promise<AgentTree> {
+    const result = await tree(brand, parentId, MAX_PAGE_SIZE);
+    while (BigInt(result.items.length) < BigInt(result.total_count)) {
+      const next = await tree(brand, parentId, MAX_PAGE_SIZE, result.items.length);
+      if (!next.items.length) invalidResponse(false);
+      result.items.push(...next.items);
+      result.total_count = next.total_count;
+    }
+    return result;
+  }
   async function node(brand: string, id: string): Promise<AgentNode> {
     if (!validUuid(id)) invalidInput("Agent ID must be a UUID");
     const value = await request(`${BASE}/agents/${encodeURIComponent(id)}`, brand);
@@ -358,6 +368,7 @@ export function createAgentsApi(fetchImpl: typeof fetch = fetch) {
       return value as unknown as ModeChangeReceipt;
     },
     tree,
+    treeLevel,
     list,
     node,
     async createNode(brand: string, body: CreateAgentBody, key: string): Promise<AgentNode> {

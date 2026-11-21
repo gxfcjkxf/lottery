@@ -1,3 +1,5 @@
+import {expectWriteProgress} from './write-progress'
+import { expectDialogFieldColumns } from './dialog-form-columns'
 import { expectNavigationStyle } from './navigation-style'
 import {test,expect} from '@playwright/test'
 import {readFileSync} from 'node:fs'
@@ -100,7 +102,7 @@ export function registerAgentPortalTests(reflow=false){
   await expect(dialog.locator('form')).not.toHaveAttribute('data-write-locked','true')
   await confirm.fill('changed456');await dialog.getByRole('button',{name:zh?'保存密码':'Save password',exact:true}).click();await expect.poll(()=>writes.length).toBe(1)
   await expect(current).toBeDisabled();await expect(next).toBeDisabled()
-  const retry=dialog.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true});await expect(dialog.locator('form')).not.toHaveAttribute('data-write-locked','true');await retry.click();await expect.poll(()=>writes.length).toBe(2)
+  const retry=dialog.getByRole('button',{name:zh?'重试':'Retry',exact:true});await expect(dialog.locator('form')).not.toHaveAttribute('data-write-locked','true');await retry.click();await expect.poll(()=>writes.length).toBe(2)
   try{
    await dialog.locator('form').evaluate((form:HTMLFormElement)=>form.requestSubmit());expect(writes).toHaveLength(2)
    await expect(retry).toBeDisabled();expect(writes[0]).toEqual(writes[1]);expect(JSON.parse(writes[0].body!)).toEqual({current_password:'agent123',new_password:'changed456'})
@@ -164,8 +166,10 @@ export function registerSharedAccountMenuTests(){
    const req=route.request(),path=new URL(req.url()).pathname,reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
    if(req.method()==='POST'){
     expect(path).toBe(`/api/v1/agent/${kind}`);writes.push({body:req.postDataJSON(),key:req.headers()['idempotency-key']});expect(writes.at(-1)!.key).toBeTruthy()
+    const gate=new Promise<void>(resolve=>{release=resolve})
+    await expectWriteProgress(page,'.agent-dialog',`agent-${kind}-${locale}-${writes.length}`)
     if(writes.length===1)return route.abort('failed')
-    await new Promise<void>(resolve=>{release=resolve});return reply({id:gameId,created_at:at})
+    await gate;return reply({id:gameId,created_at:at})
    }
    expect(req.method()).toBe('GET')
    if(path.endsWith('/auth/config'))return reply({captcha_enabled:false})
@@ -176,18 +180,18 @@ export function registerSharedAccountMenuTests(){
   })
   await page.goto(`${origins.agent}/#/${kind}`)
   await page.getByRole('button',{name:kind==='members'?(zh?'添加会员':'Add member'):(zh?'添加下级代理':'Add subagent'),exact:true}).click()
-  const dialog=page.getByRole('dialog');await expectInsideViewport(dialog);await expect(dialog.locator('.detail-modal-close')).toHaveCSS('border-top-width','0px')
+  const dialog=page.getByRole('dialog');await expectInsideViewport(dialog);await expectDialogFieldColumns(dialog);await expect(dialog.locator('.detail-modal-close')).toHaveCSS('border-top-width','0px')
   await dialog.getByLabel(zh?'账号':'Account',{exact:true}).fill('created_account')
   await dialog.getByLabel(zh?'密码':'Password',{exact:true}).fill('changed456')
-  if(kind==='members'){await expect(dialog.getByLabel(zh?'昵称':'Display name',{exact:true})).toHaveCount(0);await dialog.getByLabel(zh?'手机号':'Phone',{exact:true}).fill('12345678')}
+  if(kind==='members'){expect(await dialog.getByLabel(zh?'账号':'Account',{exact:true}).evaluate((input:HTMLInputElement)=>input.required)).toBe(true);expect(await dialog.getByLabel(zh?'手机号':'Phone',{exact:true}).evaluate((input:HTMLInputElement)=>input.required)).toBe(false);await expect(dialog.getByLabel(zh?'昵称':'Display name',{exact:true})).toHaveCount(0);await dialog.getByLabel(zh?'手机号':'Phone',{exact:true}).fill('12345678')}
   else{await dialog.getByLabel(zh?'占成比例':'Profit share ratio',{exact:true}).fill('15.5');await dialog.locator('input[type=checkbox]').check()}
-  if(info.project.name.endsWith('-reflow')){const preset=page.viewportSize()!;await page.setViewportSize({width:320,height:800});await expectInsideViewport(dialog);await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`agent-create-${kind}-${locale}-320.png`)});await page.setViewportSize(preset)}
+  if(info.project.name.endsWith('-reflow')){const preset=page.viewportSize()!;await page.setViewportSize({width:320,height:800});await expectDialogFieldColumns(dialog);await expectInsideViewport(dialog);await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`agent-create-${kind}-${locale}-320.png`)});await page.setViewportSize(preset)}
   await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`agent-create-${kind}-${locale}.png`)})
   await dialog.getByRole('button',{name:zh?'保存':'Save',exact:true}).click();await expect.poll(()=>writes.length).toBe(1)
   await expect(dialog.locator('input').first()).toBeDisabled();await expect(dialog.locator('.detail-modal-close')).toBeDisabled()
   await page.keyboard.press('Escape');await expect(dialog).toBeVisible()
   await page.locator('.toast-error .toast-close').click()
-  await dialog.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true}).click();await expect.poll(()=>writes.length).toBe(2)
+  await dialog.getByRole('button',{name:zh?'重试':'Retry',exact:true}).click();await expect.poll(()=>writes.length).toBe(2)
   try{
    expect(writes[1]).toEqual(writes[0])
    const base={username:'created_account',password:'changed456'}

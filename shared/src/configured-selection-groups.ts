@@ -1,11 +1,13 @@
 import type {ConfiguredLabel,ConfiguredPlay,ConfiguredSnapshot,ConfiguredOption,ConfiguredRequest} from './configured-rules'
 import {configuredRuleCatalog} from './configured-rule-catalog'
 
+export const configuredSelectionGroupKey=(group:string)=>group==='tails'?'tailNumbers':group==='extremes'?'sides':group
+
 export interface ConfiguredSelectionGroup {id:string;label:ConfiguredLabel;plays:ConfiguredPlay[]}
 
 // Presentation groups retain the original play and option identifiers for quotes.
 export function configuredSelectionGroups(snapshot:ConfiguredSnapshot):ConfiguredSelectionGroup[]{
- const groupKey=(play:ConfiguredPlay)=>play.group==='tails'?'tailNumbers':play.group==='extremes'?'sides':play.group
+ const groupKey=(play:ConfiguredPlay)=>configuredSelectionGroupKey(play.group)
  const members=new Map<string,ConfiguredPlay[]>()
  for(const play of snapshot.catalog.plays){const group=members.get(groupKey(play))??[];group.push(play);members.set(groupKey(play),group)}
  const result:ConfiguredSelectionGroup[]=[],seen=new Set<string>()
@@ -22,7 +24,7 @@ export function configuredSelectionGroups(snapshot:ConfiguredSnapshot):Configure
  return result
 }
 
-export function configuredSelectionOptionLabel(play:ConfiguredPlay,option:ConfiguredOption):ConfiguredLabel{
+export function configuredSelectionOptionLabel(play:Pick<ConfiguredPlay,'group'>,option:Pick<ConfiguredOption,'label'|'source_code'>):ConfiguredLabel{
  if(play.group==='tails'){
   const label=(locale:'en'|'zh-CN')=>{
    const text=option.label[locale],prefix=configuredRuleCatalog[locale].tailOptionPrefix

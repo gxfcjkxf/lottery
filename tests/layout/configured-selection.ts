@@ -79,6 +79,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
   let values:string[]=[]
   await page.route('**/api/v1/me/betting-preferences',route=>{if(route.request().method()==='PUT')values=route.request().postDataJSON().quick_amounts;return route.fulfill({json:{success:true,data:{brand_id:gameId,member_id:gameId,quick_amounts:values}}})})
   await page.goto(`${origins.user}/account`)
+  await page.getByRole('button',{name:locale==='en'?'Personal settings':'个人设置',exact:true}).click()
   const input=page.getByTestId('betting-preferences').locator('.quick-amount-chip input').first()
   await input.click();await expect(input).toBeFocused();await expect(input).toHaveValue('')
   const chip=input.locator('..')
@@ -101,6 +102,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
   let values=['10','100','1000','10000','999999'],writes=0
   await page.route('**/api/v1/me/betting-preferences',route=>{if(route.request().method()==='PUT'){writes++;values=route.request().postDataJSON().quick_amounts;}return route.fulfill({json:{success:true,data:{brand_id:gameId,member_id:gameId,quick_amounts:values}}})})
   await page.goto(`${origins.user}/account`)
+  await page.getByRole('button',{name:locale==='en'?'Personal settings':'个人设置',exact:true}).click()
   const settings=page.getByTestId('betting-preferences'),inputs=settings.locator('.quick-amount-chip input')
   await expect(inputs.last()).toHaveValue('999999')
   const sizes=await settings.locator('.quick-amount-chip').evaluateAll(chips=>chips.map(chip=>chip.getBoundingClientRect().width))
@@ -125,6 +127,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
   expect(writes).toBe(1)
   await expect(page.locator('.operation-toast-stack .toast-success')).toContainText(locale==='en'?'Quick stake amounts saved.':'常用投注积分已保存。')
   await page.reload()
+  await page.getByRole('button',{name:locale==='en'?'Personal settings':'个人设置',exact:true}).click()
   await expect(inputs.last()).toHaveValue('999998')
   await expect(settings.getByRole('button',{name:locale==='en'?'Save':'保存',exact:true})).toBeDisabled()
   async function fits(locator:ReturnType<typeof page.locator>){
@@ -141,13 +144,14 @@ for (const locale of ['en', 'zh-CN'] as const) {
   }
   await page.screenshot({path:info.outputPath(`focused-six-digit-chips-${locale}.png`),caret:'initial'})
   await page.goto(`${origins.user}/configured/${gameId}`)
-  await page.getByRole('spinbutton',{name:locale==='en'?'Points per entry':'每注积分',exact:true}).click()
+  await page.locator('.configured-options button').first().click()
+  await page.getByRole('spinbutton',{name:locale==='en'?'Per entry':'每注',exact:true}).click()
   const popup=page.locator('.configured-quick-amounts')
   await expect(popup.getByRole('button')).toHaveCount(5)
   await expect(popup.getByRole('button').first()).toHaveCSS('cursor','pointer')
   await fits(popup.locator('.stake-chip-core'));await expect(popup).toBeInViewport({ratio:1});await expectNoPageOverflow(page)
   const first=popup.getByRole('button').first(),beforeSelected=await first.boundingBox()
-  await first.click();await page.getByRole('spinbutton',{name:locale==='en'?'Points per entry':'每注积分',exact:true}).click()
+  await first.click();await page.getByRole('spinbutton',{name:locale==='en'?'Per entry':'每注',exact:true}).click()
   await expect(first).toHaveAttribute('aria-pressed','true')
   const afterSelected=await first.boundingBox()
   expect(afterSelected!.width).toBe(beforeSelected!.width);expect(afterSelected!.height).toBe(beforeSelected!.height)
@@ -166,8 +170,12 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await page.goto(`${origins.user}/configured/${gameId}`)
   const preset=page.viewportSize()!
   if(info.project.name.endsWith('reflow'))await page.setViewportSize({width:320,height:720})
-  const selection=page.getByTestId('configured-selection'),points=selection.locator('.configured-points-control input'),popup=selection.locator('.configured-quick-amounts'),summary=selection.locator('.configured-selected')
+  const selection=page.getByTestId('configured-selection'),points=selection.locator('.configured-points-control input'),popup=selection.locator('.configured-quick-amounts')
+  const dock=selection.locator('.configured-stakes--dock'),nav=page.locator('.mobile-primary-nav')
+  await expect(dock).toHaveCount(0)
+  if(page.viewportSize()!.width<1000)await expect(nav).toBeVisible()
   await selection.locator('.configured-options button').first().click()
+  if(page.viewportSize()!.width<1000)await expect(nav).toBeHidden()
   await points.click()
   // Preserve the layout viewport while simulating keyboard resize and iOS viewport panning.
   for(const offset of [0,24]){
@@ -180,13 +188,17 @@ for (const locale of ['en', 'zh-CN'] as const) {
    },offset)
    await expect.poll(async()=>Math.round((await selection.locator('.configured-stakes--dock').boundingBox())!.y+(await selection.locator('.configured-stakes--dock').boundingBox())!.height)).toBeLessThanOrEqual(Math.ceil(bottom))
    await expect.poll(async()=>{
-    const box=(await popup.boundingBox())!,anchor=(await summary.boundingBox())!
+    const box=(await popup.boundingBox())!,anchor=(await dock.boundingBox())!
     return box.y>=offset+7 && box.y+box.height<=anchor.y-7
    }).toBe(true)
    await expect(popup.getByRole('button')).toHaveCount(5)
    expect(await popup.evaluate(el=>el.offsetParent?.classList.contains('configured-stakes--dock'))).toBe(true)
    const rows=await popup.getByRole('button').evaluateAll(buttons=>buttons.map(button=>Math.round(button.getBoundingClientRect().top+button.getBoundingClientRect().height/2)))
    expect(new Set(rows).size).toBe(1)
+   expect(await popup.evaluate(element=>Array.from(element.children).every(chip=>{
+    const box=chip.getBoundingClientRect(),panel=element.getBoundingClientRect()
+    return box.top>=panel.top && box.bottom<=panel.bottom
+   }))).toBe(true)
    await expectNoPageOverflow(page)
    await page.screenshot({path:info.outputPath(`keyboard-${offset}-${locale}.png`)})
   }
@@ -194,6 +206,13 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await expect(points).toHaveValue('999999');await expect(popup).toHaveCount(0)
   await page.evaluate(()=>{const viewport=window.visualViewport!;delete (viewport as any).height;delete (viewport as any).offsetTop;viewport.dispatchEvent(new Event('resize'))})
   await points.click();await expect(popup).toBeInViewport({ratio:1})
+  await dock.getByRole('button',{name:locale==='en'?'Clear':'清空',exact:true}).click()
+  await expect(dock).toHaveCount(0)
+  await expect(popup).toHaveCount(0)
+  if(page.viewportSize()!.width<1000)await expect(nav).toBeVisible()
+  const first=selection.locator('.configured-options button').first()
+  await first.click();await expect(dock).toBeVisible()
+  await first.click();await expect(dock).toHaveCount(0)
   if(info.project.name.endsWith('reflow'))await page.setViewportSize(preset)
  })
  test(`quick stake popup follows amount input (${locale})`,async({page},info)=>{
@@ -204,6 +223,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
   for(const count of [1,5]){
    values=count===1?['50']:['5','10','20','50','100']
    await page.goto(`${origins.user}/configured/${gameId}`)
+   await page.locator('.configured-options button').first().click()
    const points=page.locator('.configured-stakes--dock input[type="number"]'),popup=page.locator('.configured-quick-amounts')
    for(const width of widths){
     if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:720})
@@ -215,11 +235,12 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await expect(popup).toHaveCount(0)
     const metrics=await points.evaluate(input=>{const s=getComputedStyle(input),probe=document.createElement('span');probe.style.font=s.font;probe.style.width='6ch';probe.style.display='inline-block';document.body.append(probe);const expected=probe.getBoundingClientRect().width;probe.remove();return {content:input.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight),expected}})
     expect(Math.abs(metrics.content-metrics.expected)).toBeLessThan(2)
-    expect(await page.locator('.configured-stake-entry').evaluate(entry=>entry.lastElementChild!.classList.contains('configured-selected-count'))).toBe(true)
+    await expect(page.locator('.configured-selected-count')).toHaveCount(0)
+    await expect(page.locator('.configured-plate')).not.toContainText(locale==='en'?'Plate':'盘口')
     await points.click();await expect(popup.getByRole('button')).toHaveCount(count)
     await expect(popup).toBeInViewport({ratio:1})
     await expect.poll(async()=>{
-     const p=await popup.boundingBox(),i=await points.boundingBox(),d=await page.locator('.configured-stakes--dock').boundingBox()
+     const p=await popup.boundingBox(),i=await points.boundingBox(),d=await page.locator(width<1000 ? '.configured-selected' : '.configured-stakes--dock').boundingBox()
      const center=Math.max(8+p!.width/2,Math.min(i!.x+i!.width/2,page.viewportSize()!.width-8-p!.width/2))
      return Math.max(Math.abs(p!.x+p!.width/2-center),Math.abs(p!.y+p!.height-d!.y+8))
     }).toBeLessThan(2)
@@ -233,6 +254,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
   let savedAmounts:string[]=[]
   await page.route('**/api/v1/me/betting-preferences',route=>{if(route.request().method()==='PUT')savedAmounts=route.request().postDataJSON().quick_amounts;return route.fulfill({json:{success:true,data:{brand_id:gameId,member_id:gameId,quick_amounts:savedAmounts}}})})
   await page.goto(`${origins.user}/account`)
+  const reopen=async()=>{await page.getByRole('button',{name:locale==='en'?'Personal settings':'个人设置',exact:true}).click();await expect(page.getByTestId('betting-preferences')).toBeVisible()}
+  await reopen()
   const settings=page.getByTestId('betting-preferences')
   await expect(settings).toBeVisible()
   const chipInputs=settings.locator('.quick-amount-chip input')
@@ -245,16 +268,20 @@ for (const locale of ['en', 'zh-CN'] as const) {
   expect(savedAmounts).toEqual([])
   await save.click()
   await expect.poll(()=>savedAmounts).toEqual(['5','10','20','50','100'])
+  await expect(settings).toHaveCount(0);await reopen()
   await expect(settings.getByRole('button',{name:locale==='en'?'Add':'添加',exact:true})).toHaveCount(0)
   await settings.locator('.quick-amount-chip').nth(1).getByRole('button').click()
   await save.click()
   await expect.poll(()=>savedAmounts.length).toBe(4)
+  await expect(settings).toHaveCount(0);await reopen()
   await chipInputs.first().fill('7')
   await save.click()
   await expect.poll(()=>savedAmounts[0]).toBe('7')
+  await expect(settings).toHaveCount(0);await reopen()
   await chipInputs.last().fill('200')
   await save.click()
   await expect.poll(()=>savedAmounts.at(-1)).toBe('200')
+  await expect(settings).toHaveCount(0);await reopen()
   await expect(save).toBeDisabled()
   if(info.project.name.endsWith('reflow')){
    for(const width of [320,768,1000,1440]){await page.setViewportSize({width,height:720});await expectNoPageOverflow(page)}
@@ -268,11 +295,14 @@ for (const locale of ['en', 'zh-CN'] as const) {
    await installLayoutApi(otherPage,locale);await installOrdersLayoutApi(otherPage)
    await otherPage.route('**/api/v1/me/betting-preferences',route=>route.fulfill({json:{success:true,data:{brand_id:gameId,member_id:gameId,quick_amounts:savedAmounts}}}))
    await otherPage.goto(`${origins.user}/account`)
+   await otherPage.getByRole('button',{name:locale==='en'?'Personal settings':'个人设置',exact:true}).click()
    await expect(otherPage.getByTestId('betting-preferences').locator('.quick-amount-chip input').first()).toHaveValue('7')
    expect(await otherPage.getByTestId('betting-preferences').locator('.quick-amount-chip input').evaluateAll(inputs=>inputs.map(input=>(input as HTMLInputElement).value))).toEqual(['7','20','50','100','200'])
   }finally{await otherContext.close()}
   await page.goto(`${origins.user}/configured/${gameId}`)
   const selection=page.getByTestId('configured-selection'),dock=selection.locator('.configured-stakes--dock'),points=dock.locator('input[type="number"]')
+  const chooseFirst = () => selection.locator('.configured-options button').first().click()
+  await chooseFirst()
   await expect(points).toHaveValue('')
   await points.click()
   const shortcuts=selection.getByRole('group',{name:locale==='en'?'Quick stake amounts':'常用投注积分',exact:true})
@@ -287,8 +317,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await shortcuts.getByRole('button',{name:'50',exact:true}).click()
   await expect(points).toHaveValue('50');await expect(shortcuts).toHaveCount(0)
   await points.fill('75')
-  await page.reload();await expect(points).toHaveValue('75')
-  await selection.getByRole('tab').nth(1).click();await expect(points).toHaveValue('75')
+  await page.reload();await chooseFirst();await expect(points).toHaveValue('75')
+  await selection.getByRole('tab').nth(1).click();await chooseFirst();await expect(points).toHaveValue('75')
   const clear=dock.getByRole('button',{name:locale==='en'?'Clear':'清空',exact:true}),bet=dock.getByRole('button',{name:locale==='en'?'Bet':'投注',exact:true})
   const sizes=info.project.name.endsWith('reflow')?[320,375,768,999,1000,1001,1440]:[page.viewportSize()!.width]
   for(const width of sizes){
@@ -297,11 +327,12 @@ for (const locale of ['en', 'zh-CN'] as const) {
    const popup=await shortcuts.boundingBox(),input=await points.boundingBox()
    const expectedCenter=Math.max(8+popup!.width/2,Math.min(input!.x+input!.width/2,page.viewportSize()!.width-8-popup!.width/2))
    expect(Math.abs(popup!.x+popup!.width/2-expectedCenter)).toBeLessThan(2)
-   expect(Math.abs(popup!.y+popup!.height-((await dock.boundingBox())!.y-8))).toBeLessThan(2)
+   expect(Math.abs(popup!.y+popup!.height-((await selection.locator(width<1000 ? '.configured-selected' : '.configured-stakes--dock').boundingBox())!.y-8))).toBeLessThan(2)
    const a=await clear.boundingBox(),b=await bet.boundingBox();expect(Math.abs(a!.y-b!.y)).toBeLessThan(2)
   }
   await page.screenshot({path:info.outputPath(`quick-stakes-${locale}.png`)})
   await page.goto(`${origins.user}/account`)
+  await reopen()
   await expect(settings.locator('.quick-amount-chip input').first()).toHaveValue('7')
   expect(await settings.locator('.quick-amount-chip input').evaluateAll(inputs=>inputs.map(input=>(input as HTMLInputElement).value))).toEqual(['7','20','50','100','200'])
   await settings.locator('.quick-amount-chip input').first().fill('8')
@@ -309,11 +340,11 @@ for (const locale of ['en', 'zh-CN'] as const) {
   expect(savedAmounts[0]).toBe('7')
   await save.click()
   await expect.poll(()=>savedAmounts[0]).toBe('8')
-  await page.goto(`${origins.user}/configured/${gameId}`);await expect(points).toHaveValue('75')
+  await page.goto(`${origins.user}/configured/${gameId}`);await chooseFirst();await expect(points).toHaveValue('75')
   await points.click();await expect(shortcuts.getByRole('button').first()).toHaveText('8')
   const fiveChipWidth=(await shortcuts.boundingBox())!.width
   savedAmounts=['8']
-  await page.reload();await points.click();await expect(shortcuts.getByRole('button')).toHaveCount(1)
+  await page.reload();await chooseFirst();await points.click();await expect(shortcuts.getByRole('button')).toHaveCount(1)
   await expect(shortcuts).toBeInViewport({ratio:1})
   const oneChipWidth=(await shortcuts.boundingBox())!.width
   const singlePopup=await shortcuts.boundingBox(),singleInput=await points.boundingBox()
@@ -330,12 +361,13 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await page.route('**/api/v1/wallet',route=>route.fulfill({json:{success:true,data:walletSnapshot('40',1)}}))
   const snapshot = configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/mark_six_v2.json', 'utf8')))
   let reads = 0, closed = false, orderReads = 0, periodReads = 0
+  let previousPeriodNo = '2026110'
   page.on('request', request => {if (new URL(request.url()).pathname === `/api/v1/configured/games/${gameId}/orders`) orderReads++})
   await page.route(`**/api/v1/configured/games/${gameId}`, route => {
    reads++
    return route.fulfill({json: {success: true, data: {
     game: {id: gameId, name: 'Mark Six', status: 'active', brand_enabled: true},
-    snapshot, rule_id: gameId, snapshot_hash: 'compact-selection', previous_draw:{period_no:'2026110',result:{regular:[1,2,3,4,5,6],special:[7],digits:[]},regular_order:[1,2,3,4,5,6],attributes:Object.fromEntries([1,2,3,4,5,6,7].map(n=>[String(n).padStart(2,'0'),{wave:['red','blue','green'][(n-1)%3],zodiac:'rat',element:'wood'}]))}, sales: {version: 1, enabled: true},
+    snapshot, rule_id: gameId, snapshot_hash: 'compact-selection', previous_draw:{period_no:previousPeriodNo,result:{regular:[1,2,3,4,5,6],special:[7],digits:[]},regular_order:[1,2,3,4,5,6],attributes:Object.fromEntries([1,2,3,4,5,6,7].map(n=>[String(n).padStart(2,'0'),{wave:['red','blue','green'][(n-1)%3],zodiac:'rat',element:'wood'}]))}, sales: {version: 1, enabled: true},
     period: !closed ? {id: gameId, period_no: '2026111', bet_start_at: new Date(start - 3600000).toISOString(), bet_end_at: new Date(start + 3600000).toISOString(), draw_at: new Date(start + 3660000).toISOString()} : null,
    }}})
   })
@@ -366,32 +398,19 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await expect(page.getByRole('button', {name: /刷新彩种与订单|Refresh game and orders/})).toHaveCount(0)
   await expect(selection).not.toContainText(/每个选项一注|可选.*项|Each option|options per entry|请在投注核对页/)
   const dock = selection.locator('.configured-stakes--dock')
-  await expect(dock).toHaveCSS('position', 'fixed')
-  await expect(dock.locator('.configured-available strong')).toHaveText('40')
-  for (const label of await dock.locator('label').all()) {
-   const title = await label.locator(':scope > span').first().boundingBox()
-   const field = await label.locator('input:not([aria-hidden=true]):not([type=hidden]),select,.select-control-trigger').boundingBox()
-   expect(title!.x + title!.width).toBeLessThanOrEqual(field!.x)
-   expect(title!.y).toBeLessThan(field!.y + field!.height)
-   expect(field!.y).toBeLessThan(title!.y + title!.height)
-  }
-  await expect(dock.locator('input[type="number"]')).toHaveValue('')
-  const betButton = dock.getByRole('button', {name: locale === 'en' ? 'Bet' : '投注', exact: true})
-  await betButton.click()
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await expect(page.getByRole('dialog').getByRole('alert')).toContainText(locale === 'en' ? 'Choose at least' : '请至少选择')
-  await page.getByRole('dialog').getByRole('button', {name: locale === 'en' ? 'Continue choosing' : '继续选号', exact: true}).last().click()
-  await selection.locator('.configured-options button').first().click()
-  await betButton.click()
-  await expect(page.getByRole('dialog').getByRole('alert')).toContainText(locale==='en'?'up to 2 decimal places':'最多两位小数')
-  await page.getByRole('dialog').getByRole('button',{name:locale==='en'?'Continue choosing':'继续选号',exact:true}).last().click()
-  await dock.getByRole('button',{name:locale==='en'?'Clear':'清空',exact:true}).click()
-  await dock.locator('input[type="number"]').fill('10')
+  await expect(dock).toHaveCount(0)
   const first = selection.locator('.configured-options button').first()
   await expect(first.locator('.configured-option-price')).toHaveCount(1)
   await expect(first.locator('.configured-option-price')).toHaveCSS('color', await tokenStyle(first,'color','--danger-text'))
-  await first.evaluate(element => element.scrollIntoView({block:'start'}))
   await first.click()
+  await expect(dock).toHaveCSS('position', 'fixed')
+  await expect(dock.locator('.configured-available strong')).toHaveText('40')
+  await expect(dock.locator('input[type="number"]')).toHaveValue('')
+  const betButton = dock.getByRole('button', {name: locale === 'en' ? 'Bet' : '投注', exact: true})
+  await betButton.click()
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText(locale==='en'?'up to 2 decimal places':'最多两位小数')
+  await page.getByRole('dialog').getByRole('button',{name:locale==='en'?'Continue choosing':'继续选号',exact:true}).last().click()
+  await dock.locator('input[type="number"]').fill('10')
   const total = dock.locator('.configured-total-points')
   const points = dock.locator('input[type="number"]')
   await expect(points).toHaveCSS('appearance', 'textfield')
@@ -410,11 +429,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
   const clear = dock.getByRole('button', {name: locale === 'en' ? 'Clear' : '清空', exact: true})
   await clear.click()
   await expect(selection.locator('.configured-options button[aria-pressed="true"]')).toHaveCount(0)
-  await expect(total).toHaveText('0')
-  await expect(betButton).toBeEnabled()
+  await expect(dock).toHaveCount(0)
   await expect(page.locator('.operation-toast-stack .toast-error')).toHaveCount(0)
-  await expect(points).toHaveValue('25')
-  await expect(clear).toBeDisabled()
   await first.evaluate(element => element.scrollIntoView({block:'start'}))
   await first.click()
   await second.click()
@@ -492,17 +508,19 @@ for (const locale of ['en', 'zh-CN'] as const) {
   const before = await strip.locator('.period-countdown').textContent()
   await page.clock.fastForward(1000)
   await expect(strip.locator('.period-countdown')).not.toHaveText(before!)
+  previousPeriodNo = '2026109'
   await page.clock.fastForward(59000)
-  expect(reads).toBe(initialReads)
+  await expect(strip.locator('.result-row')).toContainText(previousPeriodNo)
+  await expect.poll(() => reads).toBe(initialReads + 1)
   expect(orderReads).toBe(0)
   expect(periodReads).toBe(initialPeriodReads)
   closed = true
   await page.clock.fastForward(3541000)
-  await expect.poll(() => reads).toBe(initialReads + 1)
+  await expect.poll(() => reads).toBe(initialReads + 2)
   await expect(first).toBeDisabled()
   await expect(strip.locator('.period-countdown')).toHaveAttribute('aria-label', locale === 'en' ? 'Draws in' : '开奖倒计时')
   await page.clock.fastForward(60000)
-  await expect.poll(() => reads).toBe(initialReads + 2)
+  await expect.poll(() => reads).toBe(initialReads + 3)
  })
 }
 }

@@ -29,15 +29,36 @@ func registerPublicDrawRoutes(mux routeRegistrar, d Dependencies) {
 				failure(w, r, 400, "REQUEST_INVALID", "Invalid pagination")
 				return
 			}
-			for _, key := range []string{"game_id", "kind", "selected", "limit", "offset"} {
+			for _, key := range []string{"game_id", "kind", "selected", "recent", "limit", "offset"} {
 				if len(r.URL.Query()[key]) > 1 {
 					failure(w, r, 400, "REQUEST_INVALID", "Duplicate parameter")
 					return
 				}
 			}
-			out, err := betService(d).DrawArchive(r.Context(), brand.ID, r.URL.Query().Get("game_id"), r.URL.Query().Get("kind"), r.URL.Query().Get("selected"), limit, offset)
+			recent, valid := drawRecentParam(r)
+			if !valid {
+				failure(w, r, 400, "REQUEST_INVALID", "Invalid recent draw count")
+				return
+			}
+			out, err := betService(d).DrawArchive(r.Context(), brand.ID, r.URL.Query().Get("game_id"), r.URL.Query().Get("kind"), r.URL.Query().Get("selected"), limit, offset, recent)
 			result, e := betError(out, err)
 			outputMutation(w, r, result, e)
 		})
+	}
+}
+
+func drawRecentParam(r *http.Request) (int, bool) {
+	if len(r.URL.Query()["recent"]) > 1 {
+		return 0, false
+	}
+	switch r.URL.Query().Get("recent") {
+	case "":
+		return 0, true
+	case "50":
+		return 50, true
+	case "100":
+		return 100, true
+	default:
+		return 0, false
 	}
 }

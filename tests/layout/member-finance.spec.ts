@@ -107,7 +107,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`member finance opens from r
         const readsBeforeWrite = queries.length
         await submit.click()
         if (value === 'gift') {
-          const retry = detail.getByRole('button', {name:zh?'重试原请求':'Retry original request',exact:true})
+          const retry = detail.getByRole('button', {name:zh?'重试':'Retry',exact:true})
           await expect(retry).toBeVisible()
           await expect(amount).toBeDisabled()
           await expect(type).toBeDisabled()

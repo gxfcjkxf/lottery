@@ -164,8 +164,8 @@ func (c Config) Validate(platform bool) error {
 		b, e2 := Parse(r.DepositMax, r.Currency)
 		d, e3 := Parse(r.WithdrawalMin, r.Currency)
 		e, e4 := Parse(r.WithdrawalMax, r.Currency)
-		f, e5 := Parse(r.Fee, r.Currency)
-		if e1 != nil || e2 != nil || e3 != nil || e4 != nil || e5 != nil || a > b || d > e || r.Enabled && (a <= 0 || d <= 0 || f >= d) {
+		_, e5 := WithdrawalFee(r.Fee, r.WithdrawalMax, r.Currency)
+		if e1 != nil || e2 != nil || e3 != nil || e4 != nil || e5 != nil || a > b || d > e || r.Enabled && (a <= 0 || d <= 0) {
 			return ErrInvalid
 		}
 		if platform {
@@ -284,4 +284,32 @@ type Input struct {
 	Version            int64  `json:"version"`
 	Proof              string `json:"proof"`
 	Reference          string `json:"reference"`
+}
+
+// WithdrawalFee returns an exact fixed fee or a percentage rounded down to the
+// currency precision. Order snapshots always store the calculated amount.
+func WithdrawalFee(setting, amount, currency string) (int64, error) {
+	if !strings.HasSuffix(setting, "%") {
+		return Parse(setting, currency)
+	}
+	rate, err := Parse(strings.TrimSuffix(setting, "%"), "USDT")
+	if err != nil || rate >= 100000000 {
+		return 0, ErrInvalid
+	}
+	principal, err := Parse(amount, currency)
+	if err != nil {
+		return 0, err
+	}
+	precision, err := Precision(currency)
+	if err != nil {
+		return 0, err
+	}
+	unit := int64(1)
+	if precision == 2 {
+		unit = 10000
+	}
+	result := new(big.Int).Mul(big.NewInt(principal), big.NewInt(rate))
+	result.Quo(result, big.NewInt(100000000*unit))
+	result.Mul(result, big.NewInt(unit))
+	return result.Int64(), nil
 }

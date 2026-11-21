@@ -279,14 +279,15 @@ func TestManagementHTTPRolesAccountsReplayRevocationAndAudit(t *testing.T) {
 
 func TestManagementHTTPOperatorDirectLoginConfigCASAndSuperRestrictions(t *testing.T) {
 	f := managedFixture(t)
+	mustStatus(t, f.call("POST", "/api/v1/admin/users", "operator-missing-account", f.token, managedBrand, map[string]string{"phone": "+12025550999", "password": "member-test-password-2026"}), 400)
 	body := map[string]string{"username": "operator_member", "password": "member-test-password-2026", "display_name": "Created member", "notes": "test fixture", "reason": "provision user"}
 	r := f.call("POST", "/api/v1/admin/users", "operator-create-001", f.token, managedBrand, body)
 	if r.Code != 201 {
 		t.Fatal(r.Code, r.Body.String())
 	}
 	var created struct {
-		UserID        string `json:"user_id"`
-		MemberID      string `json:"member_id"`
+		UserID   string `json:"user_id"`
+		MemberID string `json:"member_id"`
 	}
 	managedData(t, r, &created)
 	if created.MemberID == "" {

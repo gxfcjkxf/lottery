@@ -349,17 +349,17 @@ useOperationToast(error, value => displayError(value), 'error');
         <form v-write-guard="saving" novalidate v-inline-validation class="brand-form ui-form" @submit.prevent="withGlobalLoading(saveForm)">
           <div class="access-form-fields">
           <fieldset :disabled="locked || optionsLoading">
-            <label v-if="formMode === 'account-create'">{{ copy.username }}<input v-model="form.username" pattern="[a-z][a-z0-9_]{2,31}" :data-validation-format="formValidationText('accountFormat')" required autocomplete="off" /></label>
-            <label v-if="formMode === 'account-create' || formMode === 'password'">{{ writeCopy.password }}<input v-model="form.password" data-min-characters="6" data-max-characters="30" type="password" maxlength="128" required autocomplete="new-password" /></label>
-            <label v-if="formMode === 'account-edit'"><BusinessDetails :value="copy.status" :locale="props.locale" /><SelectControl v-model="form.status" :label="copy.status" :options="[{ value: 'active', label: (String(stateLabel('active'))).trim() }, { value: 'disabled', label: (String(stateLabel('disabled'))).trim() }]" /></label>
+            <label class="ui-field-row" v-if="formMode === 'account-create'">{{ copy.username }}<input v-model="form.username" pattern="[a-z][a-z0-9_]{2,31}" :data-validation-format="formValidationText('accountFormat')" required autocomplete="off" /></label>
+            <label class="ui-field-row" v-if="formMode === 'account-create' || formMode === 'password'">{{ writeCopy.password }}<input v-model="form.password" data-min-characters="6" data-max-characters="30" type="password" maxlength="128" required autocomplete="new-password" /></label>
+            <label class="ui-field-row" v-if="formMode === 'account-edit'"><BusinessDetails :value="copy.status" :locale="props.locale" /><SelectControl v-model="form.status" :label="copy.status" :options="[{ value: 'active', label: (String(stateLabel('active'))).trim() }, { value: 'disabled', label: (String(stateLabel('disabled'))).trim() }]" /></label>
             <div v-if="formMode === 'account-create' || formMode === 'account-edit'" class="access-options">
               <p>{{ writeCopy.chooseRoles }}</p>
               <label v-for="role in roleOptions" :key="role.id"><input v-model="form.role_ids" type="checkbox" :value="role.id" :disabled="role.status !== 'active' && !form.role_ids.includes(role.id)" /> <AssociationName :record="role" kind="role" :id="role.id" :locale="locale" /> · {{ stateLabel(role.status) }}</label>
             </div>
             <div v-if="formMode === 'role-create' || formMode === 'role-edit'" class="role-identity">
-              <label>{{ copy.name }}<input v-model="form.name" maxlength="120" required /></label>
-              <label>{{ copy.code }}<input v-model="form.code" pattern="[a-z][a-z0-9_]{2,47}" :data-validation-format="formValidationText('codeFormat', {min: 3, max: 48})" required :readonly="formMode === 'role-edit'" :class="{'readonly-field': formMode === 'role-edit'}" /></label>
-              <label><BusinessDetails :value="copy.status" :locale="props.locale" /><SelectControl v-model="form.status" :label="copy.status" :options="[{ value: 'active', label: (String(stateLabel('active'))).trim() }, { value: 'disabled', label: (String(stateLabel('disabled'))).trim() }]" /></label>
+              <label class="ui-field-row">{{ copy.name }}<input v-model="form.name" maxlength="120" required /></label>
+              <label class="ui-field-row">{{ copy.code }}<input v-model="form.code" pattern="[a-z][a-z0-9_]{2,47}" :data-validation-format="formValidationText('codeFormat', {min: 3, max: 48})" required :readonly="formMode === 'role-edit'" :class="{'readonly-field': formMode === 'role-edit'}" /></label>
+              <label class="ui-field-row"><BusinessDetails :value="copy.status" :locale="props.locale" /><SelectControl v-model="form.status" :label="copy.status" :options="[{ value: 'active', label: (String(stateLabel('active'))).trim() }, { value: 'disabled', label: (String(stateLabel('disabled'))).trim() }]" /></label>
             </div>
             <PermissionPicker v-if="formMode === 'role-create' || formMode === 'role-edit'" v-model="form.permissions" :options="permissionOptions" :locale="locale" />
           </fieldset>

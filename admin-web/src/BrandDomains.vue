@@ -46,7 +46,7 @@ const isNewDomainValid = computed(() => operation.value === "edit" || isCanonica
 
 function restoreDraft(): void {
   const stored = getBrandDomainsDraft(scope()), intent = getPendingBrandDomainsWrite(scope());
-  pending.value = intent; confirmationOpen.value = Boolean(intent); conflictReloaded.value = false;
+  pending.value = intent; confirmationOpen.value = intent?.operation === 'delete'; conflictReloaded.value = false;
   if (intent) {
     if(intent.operation==='delete'){formOpen.value=false;return}
     formOpen.value = true;
@@ -93,7 +93,8 @@ function editDomain(item: BrandDomain): void {
   formOpen.value = true; operation.value = "edit"; domainId.value = item.id; domain.value = item.domain; enabled.value = item.enabled; reason.value = ""; persistDraft();
 }
 function startAdd(): void { if (!canEdit.value || (record.value?.domains.length ?? 100) >= 100) return; resetForm(false); formOpen.value = true; persistDraft(); }
-function reviewChange(): void {
+async function submitForm(): Promise<void> {
+  if (pending.value) { await send(true); return; }
   error.value = ""; notice.value = "";
   const existing = getPendingBrandDomainsWrite(scope());
   if (existing) { pending.value = existing; return; }
@@ -105,7 +106,7 @@ function reviewChange(): void {
     ? { version: record.value.version, domain: domain.value, enabled: enabled.value, reason: reason.value }
     : { version: record.value.version, enabled: enabled.value, reason: reason.value };
   const intent: PendingBrandDomainsWrite = { ...scope(), operation: operation.value, ...(domainId.value ? { domainId: domainId.value } : {}), body, key: createIdempotencyKey(), phase: "review" };
-  setPendingBrandDomainsWrite(scope(), intent); pending.value = getPendingBrandDomainsWrite(scope()); conflictReloaded.value = false; confirmationOpen.value = true;
+  setPendingBrandDomainsWrite(scope(), intent); pending.value = getPendingBrandDomainsWrite(scope()); conflictReloaded.value = false; await send();
 }
 function reviewDelete(item:BrandDomain):void {
   if(!canEdit.value||!record.value)return;
@@ -189,30 +190,32 @@ useOperationToast(() => notice.value, value => display(value), 'success');
         <template #status="{entry:item}"><span class="status-pill" :class="item.enabled ? 'active' : 'disabled'">{{ t(item.enabled ? 'admin.copy.5eb01613' : 'admin.copy.5e3326db') }}</span></template>
         <template #actions="{entry:item}"><MemberActionsMenu :id="'domain-actions-'+item.id" :label="t('admin.copy.d21fcbef')" :disabled="!canEdit"><button type="button" role="menuitem" @click="editDomain(item)">{{t('admin.copy.24dfbf6c')}}</button><button type="button" role="menuitem" class="danger-text" @click="reviewDelete(item)">{{t('admin.domains.delete')}}</button></MemberActionsMenu></template>
       </ManagementTable>
-      <button v-if="pending" class="button button-secondary" type="button" @click="confirmationOpen=true">{{t('admin.settings.reviewPending')}}</button>
-      <DetailModal v-if="pending&&confirmationOpen" class="brand-settings-dialog" :title="t('admin.settings.confirmSave')" :close-label="t('association.close')" :close-disabled="busy" @close="closeConfirmation">
+      <button v-if="pending && !formOpen" class="button button-secondary" type="button" @click="pending.operation === 'delete' ? (confirmationOpen=true) : (formOpen=true)">{{t('admin.settings.retryOperation')}}</button>
+      <DetailModal v-if="pending?.operation === 'delete' && confirmationOpen" class="brand-settings-dialog" :title="t('admin.domains.delete')" :close-label="t('association.close')" :close-disabled="busy" @close="closeConfirmation">
       <div class="review-panel">
 
         <p v-if="pending.operation==='delete'">{{t('admin.domains.confirmDelete',{domain:pending.domainName!})}}</p>
         <p v-if="pending.operation==='delete'" class="warning">{{t('admin.domains.deleteEffect')}}</p>
-        <p v-if="'enabled' in pending.body"><strong>{{ pending.operation === 'add' ? (pending.body as any).domain : record?.domains.find(d => d.id === pending?.domainId)?.domain }}</strong> {{ pending.body.enabled ? t('admin.copy.8f5a84b3') : t('admin.copy.844522fb') }}</p>
-        <p v-if="'reason' in pending.body&&pending.body.reason">{{ t('admin.copy.2809a1e6') }}{{ pending.body.reason }}</p>
-        <p v-if="pending.operation === 'edit' && 'enabled' in pending.body && !pending.body.enabled" class="warning">{{ t('admin.copy.1e634e9a') }}</p>
-        <div class="actions ui-form-actions"><button v-write-guard="busy" v-if="pending.phase === 'review'" type="button" class="button button-primary" :disabled="busy || !permissions.write || readOnly" @click="withGlobalLoading(send)">{{ busy ? t('admin.copy.46511dc0') : pending.operation==='delete'?t('admin.domains.confirmAction'):t('admin.copy.3135aeca') }}</button><button v-write-guard="busy" v-if="pending.phase === 'unknown'" type="button" class="button button-primary" :disabled="busy || !permissions.write || readOnly" @click="withGlobalLoading(send, true)">{{ t('admin.settings.retryOperation') }}</button><button v-if="pending.phase === 'conflict'" type="button" class="button button-secondary" :disabled="!conflictReloaded || busy" @click="abandon">{{ t('admin.settings.startAgain') }}</button></div>
+        <div class="actions ui-form-actions"><button v-write-guard="busy" v-if="pending.phase === 'review'" type="button" class="button button-primary" :disabled="busy || !permissions.write || readOnly" @click="withGlobalLoading(send)">{{ busy ? t('admin.copy.46511dc0') : t('admin.domains.confirmAction') }}</button><button v-write-guard="busy" v-if="pending.phase === 'unknown'" v-show="!busy" type="button" class="button button-primary" :disabled="busy || !permissions.write || readOnly" @click="withGlobalLoading(send, true)">{{ t('admin.settings.retryOperation') }}</button><button v-if="pending.phase === 'conflict'" type="button" class="button button-secondary" :disabled="!conflictReloaded || busy" @click="abandon">{{ t('admin.settings.startAgain') }}</button></div>
         <button v-if="pending.phase==='conflict'&&!conflictReloaded" class="button button-secondary" type="button" :disabled="loading||busy" @click="withGlobalLoading(loadRecord)">{{t('admin.settings.readAgain')}}</button>
         <small v-if="pending.phase === 'conflict' && !conflictReloaded">{{ t('admin.copy.7bf458e5') }}</small>
       </div>
       </DetailModal>
-      <DetailModal v-if="!pending && permissions.write && !readOnly && formOpen" class="brand-settings-dialog" :title="operation === 'add' ? t('admin.copy.56cdfefa') : t('admin.copy.23ee7918')" :close-label="t('association.close')" @close="resetForm()">
+      <DetailModal v-if="pending?.operation !== 'delete' && permissions.write && !readOnly && formOpen" class="brand-settings-dialog" :title="operation === 'add' ? t('admin.copy.56cdfefa') : t('admin.copy.23ee7918')" :close-label="t('association.close')" :close-disabled="busy" @close="!busy && (pending ? (formOpen=false) : resetForm())">
 
-      <form novalidate v-inline-validation class="domain-form ui-form" @submit.prevent="withGlobalLoading(reviewChange)">
+      <form v-write-guard="busy" novalidate v-inline-validation class="domain-form ui-form" @submit.prevent="withGlobalLoading(submitForm)">
+        <fieldset :disabled="busy || !!pending">
         <label v-if="operation === 'add'" class="field">{{ t('admin.copy.f79c7aea') }}<input v-model="domain" :aria-label="t('admin.copy.f79c7aea')" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="253" placeholder="play.example.com" :aria-invalid="domain.length > 0 && !isNewDomainValid" /></label>
         <label v-else class="field">{{ t('admin.copy.f79c7aea') }}<input :value="domain" :aria-label="t('admin.copy.f79c7aea')" readonly /></label>
         <label class="check"><input v-model="enabled" type="checkbox" @change="persistDraft()" /> {{ t('admin.copy.5eb01613') }}</label>
         <p v-if="operation === 'edit' && !enabled" class="warning">{{ t('admin.copy.1e634e9a') }}</p>
 
         <p v-if="(record?.domains.length ?? 0) >= 100 && operation === 'add'" class="warning">{{ t('admin.copy.32ce80e9') }}</p>
-        <div class="actions ui-form-actions"><button type="submit" class="button button-primary" :disabled="busy || !permissions.write || readOnly || (operation === 'add' && (!isNewDomainValid || domainCharacters > 253))  || reasonCharacters > 500 || (operation === 'add' && (record?.domains.length ?? 0) >= 100)">{{ t('admin.copy.d3410bba') }}</button></div>
+        </fieldset>
+        <p v-if="pending?.phase === 'unknown' && !busy" role="alert">{{ t('admin.settings.unknown') }}</p>
+        <p v-if="conflict" role="alert">{{ t('admin.settings.conflict') }}</p>
+        <button v-if="conflict" class="button button-secondary" type="button" :disabled="!conflictReloaded || busy" @click="abandon">{{ t('admin.settings.startAgain') }}</button>
+        <div v-else class="actions ui-form-actions"><button type="submit" class="button button-primary" :disabled="busy || !permissions.write || readOnly || (!pending && ((operation === 'add' && (!isNewDomainValid || domainCharacters > 253 || (record?.domains.length ?? 0) >= 100)) || reasonCharacters > 500))">{{ t(busy ? 'admin.copy.46511dc0' : pending ? 'admin.settings.retryOperation' : 'admin.copy.780ef330') }}</button></div>
       </form>
       </DetailModal>
     </template>
@@ -232,6 +235,7 @@ useOperationToast(() => notice.value, value => display(value), 'success');
 .badge { width:max-content;padding:2px 8px;border-radius:999px;background:var(--canvas);color:var(--ink-secondary); }
 .enabled-badge { background:var(--success-bg);color:var(--success-text); }
 .disabled-badge { background:var(--line-subtle);color:var(--muted); }
+.domain-form fieldset { display:grid;gap:12px;min-width:0;margin:0;padding:0;border:0; }
 .domain-form,.review-panel { display:grid;gap:12px;min-width:0; }
 .domain-form h3,.review-panel h3,.review-panel p { margin:0;overflow-wrap:anywhere; }
 .field { display:grid;gap:6px;min-width:0;height:auto;padding:0;border:0;background:transparent; }

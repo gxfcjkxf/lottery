@@ -1,3 +1,4 @@
+import {expectDialogFieldColumns} from './dialog-form-columns'
 import {test,expect} from '@playwright/test'
 import {resolve} from 'node:path'
 const origin=`http://127.0.0.1:${process.env.LOTTERY_LAYOUT_PORT_BASE ?? 15273}`,id='aaaaaaaa-aaaa-4aaa-8aaa-000000000001'
@@ -33,6 +34,7 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','pl
   await page.goto(origin+'/__role-permissions')
   await page.getByRole('button',{name:admin ? (zh?'新建角色':'Create role') : (zh?'新建角色':'New role'),exact:true}).click()
   await expect(page.getByRole('dialog')).toBeVisible()
+  await expectDialogFieldColumns(page.getByRole('dialog'))
   const picker=page.locator('.permission-picker'),accounts=picker.getByRole('checkbox',{name:zh?'账号':'Accounts',exact:true}),rolesGroup=picker.getByRole('checkbox',{name:zh?'角色':'Roles',exact:true})
   await expect(picker.getByRole('checkbox')).toHaveCount(9)
   await accounts.check()
@@ -58,15 +60,22 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','pl
    await expect(dialog.locator('.panel')).toHaveCount(0)
    const labels=dialog.locator('.role-identity > label')
    const boxes=await labels.evaluateAll(els=>els.map(el=>el.getBoundingClientRect().top))
-   if(page.viewportSize()!.width>620)expect(Math.abs(boxes[0]-boxes[1])).toBeLessThan(2)
-   else expect(boxes[1]).toBeGreaterThan(boxes[0])
+   expect(boxes[1]).toBeGreaterThan(boxes[0])
   }
   if(!admin){
    const labels=page.locator('.role-identity > label');await expect(labels).toHaveCount(3)
    const boxes=await labels.evaluateAll(els=>els.map(e=>({top:e.getBoundingClientRect().top,text:e.textContent})))
    expect(boxes[0].text).toContain(zh?'名称':'Name');expect(boxes[1].text).toContain(zh?'代码':'Code');expect(boxes[2].text).toContain(zh?'状态':'Status')
-   if(page.viewportSize()!.width>620)expect(Math.max(...boxes.map(b=>b.top))-Math.min(...boxes.map(b=>b.top))).toBeLessThan(2)
+   expect(boxes[1].top).toBeGreaterThan(boxes[0].top);expect(boxes[2].top).toBeGreaterThan(boxes[1].top)
   }
+  const preset=page.viewportSize()!
+  for(const width of info.project.name.endsWith('reflow')?[320,640,900,1440]:[preset.width]){
+   if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:preset.height})
+   await expectDialogFieldColumns(page.getByRole('dialog'))
+   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)
+   await page.screenshot({path:info.outputPath(`role-fields-${surface}-${locale}-${width}.png`)})
+  }
+  await page.setViewportSize(preset)
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)
   await page.screenshot({path:info.outputPath(`grouped-${surface}-${locale}.png`)})
   await page.getByRole('dialog').getByRole('button',{name:admin?(zh?'创建角色':'Create role'):(zh?'保存':'Save'),exact:true}).click()

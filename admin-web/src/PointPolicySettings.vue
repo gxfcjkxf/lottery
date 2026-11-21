@@ -28,7 +28,7 @@ const props = defineProps<{
   account: AdminAccount & Partial<PointPolicyAccount>;
   brandId: string;
 }>();
-const emit = defineEmits<{ (event: "session-invalid"): void }>();
+const emit = defineEmits<{ (event: "session-invalid"): void; (event: "saved"): void }>();
 const api = createPointPolicyApi();
 const { t, message, display } = useAdminI18n();
 const policy = ref<PointPolicy | null>(null);
@@ -139,6 +139,7 @@ async function savePolicy() {
     draft.value.max_adjustment_points = result.max_adjustment_points ?? "";
     draft.value.reason = "";
     notice.value = message('admin.copy.a41b44f9');
+    emit('saved');
   } catch (cause) {
     if (!current(generation, brandId)) return;
     if (cause instanceof AdminApiError && cause.status === 401)

@@ -1,3 +1,4 @@
+import {expectDialogFieldColumns} from './dialog-form-columns'
 import { openBrandPage } from './real-console-session'
 import {expect,test} from '@playwright/test'
 import {gameId,origins,installLayoutApi,openPlatformBrandList,expectNoPageOverflow} from './fixture'
@@ -18,6 +19,15 @@ for(const locale of ['en','zh-CN'] as const)test(`quota write permission restore
  })
  for(const allowed of [false,true]){
   canGrant=allowed;await page.goto(origins.platform);await openPlatformBrandList(page,locale)
+  await page.getByRole('button',{name:locale==='en'?'Manage Quota Brand recharge quota':'管理 Quota Brand 的充值额度',exact:true}).click()
+  const quotaDialog=page.getByRole('dialog')
+  await expect(quotaDialog.locator('.console-facts span')).toHaveText(locale==='en'?'Brand quota':'品牌额度')
+  await expect(quotaDialog.locator('.console-facts strong')).toHaveText('0')
+  await expect(quotaDialog.getByRole('heading',{name:locale==='en'?'Brand recharge quota':'品牌充值额度',exact:true})).toHaveCount(0)
+  await expect(quotaDialog.getByText(locale==='en'?'Shared available quota':'共享可用额度',{exact:true})).toHaveCount(0)
+  await expectNoPageOverflow(page)
+  await quotaDialog.screenshot({path:info.outputPath(`quota-summary-${locale}-${allowed}.png`)})
+  await quotaDialog.locator('.detail-modal-close').click()
   const navigation=page.locator('button[aria-controls="platform-navigation"]')
   if(await navigation.isVisible() && await navigation.getAttribute('aria-expanded')==='false')await navigation.click()
   const funds=page.locator('.sidebar').getByRole('button',{name:locale==='en'?'Finance':'资金',exact:true})
@@ -27,12 +37,14 @@ for(const locale of ['en','zh-CN'] as const)test(`quota write permission restore
   await page.getByRole('option',{name:'Quota Brand',exact:true}).click()
   const dialog=page.getByTestId('recharge-quota'),form=dialog.locator('.quota-form')
   await expect(dialog.locator('.console-facts strong')).toHaveText('0')
+  await expect(dialog.locator('.console-facts span')).toHaveText(locale==='en'?'Brand quota':'品牌额度')
   await expect(form).toHaveCount(0)
   const operation=dialog.getByRole('button',{name:locale==='en'?'Operation':'额度操作',exact:true})
   await expect(operation).toHaveCount(allowed?1:0)
   if(allowed){
    await operation.click()
-   await expect(page.getByRole('dialog')).toBeVisible()
+   await expect(page.getByRole('dialog')).toBeVisible();await expectDialogFieldColumns(page.getByRole('dialog'))
+   await expect(page.getByRole('dialog').getByText(locale==='en'?'Brand quota':'品牌额度',{exact:true})).toBeVisible()
    const submit=form.locator('button[type=submit]');await expect(submit).toHaveText(locale==='en'?'Add quota':'增加额度');await expect(submit).toBeDisabled()
    await form.locator('input[inputmode=decimal]').fill('0.25');await expect(submit).toBeEnabled()
    await form.getByRole('combobox').click();await page.getByRole('option',{name:locale==='en'?'Reclaim quota':'收回额度',exact:true}).click()
@@ -40,7 +52,7 @@ for(const locale of ['en','zh-CN'] as const)test(`quota write permission restore
    const preset=page.viewportSize()!
    for(const width of info.project.name.endsWith('reflow')?[320,1440]:[preset.width]){
     if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:preset.height})
-    await expectNoPageOverflow(page)
+    await expectNoPageOverflow(page);await expectDialogFieldColumns(page.getByRole('dialog'));await page.screenshot({path:info.outputPath(`quota-fields-${locale}-${width}.png`)})
    }
    await page.screenshot({path:info.outputPath(`quota-permission-${locale}.png`),fullPage:true})
   }
@@ -74,6 +86,7 @@ for(const locale of ['en','zh-CN'] as const)test(`brand quota management is a se
  if(await more.isVisible())await more.click()
  await openBrandPage(page,locale==='en'?'Quota management':'额度管理')
  const quota=page.getByTestId('recharge-quota')
+ await expect(quota.locator('.console-facts span')).toHaveText(locale==='en'?'Brand quota':'品牌额度')
  await expect(quota.locator('tbody tr')).toHaveCount(10)
  await expect(quota.locator('.quota-form')).toHaveCount(0)
  await expect(quota.locator('tbody tr').first()).toContainText(locale==='en'?'Member test001':'会员 test001')

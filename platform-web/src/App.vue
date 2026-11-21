@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RechargeRecordTypeSelect, { type RechargeRecordType } from "@lottery/shared/RechargeRecordTypeSelect.vue";
 import AuditFiltersForm from "@lottery/shared/AuditFilters.vue"
 const auditFilters = ref<Record<string, string>>({})
 function applyAuditFilters(next: Record<string, string>) { auditFilters.value = next; return loadAudit(selectedBrand.value, 0) }
@@ -86,7 +87,7 @@ function createLang() {
   title: t('platform.copy.a220464b'), loginTitle: t('platform.copy.d62bdbd5'), identifier: t('platform.copy.eeaa7275'), password: t('platform.copy.2a771a31'), signIn: t('platform.copy.ec3b65e9'),
   brands: t('platform.copy.79dd4298'), users: t('platform.copy.d84b8968'), brandAccounts: t('platform.copy.9c2e4b71'), audit: t('platform.copy.8262ff2c'), rewards: t('platform.copy.25982fc9'), createBrand: t('platform.copy.767e7f67'), selectBrand: t('platform.copy.1c0a1845'), allBrands: t('platform.copy.0a8ccdef'), brandCount: t('platform.copy.6a2943a0'),
   name: t('platform.copy.33b6c8e3'), code: t('platform.copy.9ba39db0'), status: t('platform.copy.c7260510'), view: t('platform.copy.b9fbecbf'), membersAction: t('platform.copy.c4bf0312'), accountsAction: t('platform.copy.d944b7ec'), statusAction: t('platform.copy.c7260510'), deleteAction: t('platform.copy.9851501a'), deleteBrand: t('platform.copy.15adaf08'), deleteConfirm: t('platform.copy.ac1de974'), deleteWarning: t('platform.copy.133eb17e'), deleteReason: t('platform.copy.351c71c8'), deleteSuccess: t('platform.copy.e188a90c'), username: t('platform.copy.eeaa7275'), role: t('platform.copy.6fc23cbb'), displayName: t('platform.copy.bcd89469'), phone: t('platform.copy.d05d61ad'), memberCount: t('platform.copy.1bd8aaad'), brandTotal: t('platform.copy.fa68aba0'),
-  locale: t('platform.copy.43eda349'), reason: t('platform.copy.f546783b'), cancel: t('platform.copy.2230b1a7'), review: t('platform.copy.9b85d866'), confirm: t('platform.copy.312420fb'), confirmation: t('platform.copy.e204e6ed'), action: t('platform.copy.75b7f6d4'), actor: t('platform.copy.3177f27f'), resource: t('platform.copy.de6bef13'), date: t('platform.copy.7069c6b9'), empty: t('platform.copy.b4600402'), loading: t('platform.copy.fa02e7b1'), logout: t('platform.copy.2315867e'), close: t('platform.copy.27b2fd29'), platformNote: '', platformAdmin: t('platform.copy.45ec43b6'), settings: t('common.platformSettings'), error: t('platform.copy.8b844392'), retry: t('platform.copy.8c0fb218'), unknown: t('platform.copy.e6aabad3'), created: t('platform.copy.bb362b87'), localeEnglish: t('platform.copy.f7f79167'), localeChinese: t('platform.copy.01f1aac2'), directory: t('platform.copy.0ef111d5'), directoryDescription: '', brandDirectory: t('platform.copy.6c32f38f'), brandDirectoryDescription: '', platformDirectory: t('platform.copy.3916c3b1'), createDescription: t('platform.copy.8e3e641a'), codePlaceholder: t('platform.copy.3d397d5f'), accountLabel: t('platform.copy.ce2d66f3'), brandLabel: t('platform.copy.d5b68c0f'), statusNormal: t('platform.copy.0e1df295'), statusFrozen: t('platform.copy.d21ee5d7'), statusDisabled: t('platform.copy.6762439b'), statusExpired: t('platform.copy.02dd0e6a'), statusCancelled: t('platform.copy.d9b0562c'), statusPaused: t('platform.copy.3d294087'), statusActive: t('platform.copy.15a92cfa'), countSuffix: t('platform.copy.13d2abd9'), accountProfile: t('platform.copy.9f9d8eb6'), accountPassword: t('platform.copy.3f21ce3e'), accountId: t('platform.copy.f985024d'),
+  locale: t('platform.copy.43eda349'), reason: t('platform.copy.f546783b'), cancel: t('platform.copy.2230b1a7'), action: t('platform.copy.75b7f6d4'), actor: t('platform.copy.3177f27f'), resource: t('platform.copy.de6bef13'), date: t('platform.copy.7069c6b9'), empty: t('platform.copy.b4600402'), loading: t('platform.copy.fa02e7b1'), logout: t('platform.copy.2315867e'), close: t('platform.copy.27b2fd29'), platformNote: '', platformAdmin: t('platform.copy.45ec43b6'), settings: t('common.platformSettings'), error: t('platform.copy.8b844392'), retry: t('platform.copy.8c0fb218'), unknown: t('platform.copy.e6aabad3'), created: t('platform.copy.bb362b87'), localeEnglish: t('platform.copy.f7f79167'), localeChinese: t('platform.copy.01f1aac2'), directory: t('platform.copy.0ef111d5'), directoryDescription: '', brandDirectory: t('platform.copy.6c32f38f'), brandDirectoryDescription: '', platformDirectory: t('platform.copy.3916c3b1'), createDescription: t('platform.copy.8e3e641a'), accountLabel: t('platform.copy.ce2d66f3'), brandLabel: t('platform.copy.d5b68c0f'), statusNormal: t('platform.copy.0e1df295'), statusFrozen: t('platform.copy.d21ee5d7'), statusDisabled: t('platform.copy.6762439b'), statusExpired: t('platform.copy.02dd0e6a'), statusCancelled: t('platform.copy.d9b0562c'), statusPaused: t('platform.copy.3d294087'), statusActive: t('platform.copy.15a92cfa'), countSuffix: t('platform.copy.13d2abd9'), accountProfile: t('platform.copy.9f9d8eb6'), accountPassword: t('platform.copy.3f21ce3e'), accountId: t('platform.copy.f985024d'),
   deleteMember: t('common.deleteMember'), memberDeleted: t('common.memberDeleted'),
   }
 }
@@ -165,6 +166,20 @@ watch(selectedBrand, brandId => {
 }, { flush: 'sync' })
 const section = ref<'home' | 'brands' | 'users' | 'audit' | 'rewards' | 'wallets' | 'bets' | 'games' | 'draws' | 'withdrawals' | 'commission' | 'access' | 'settings'>('home')
 const withdrawalInitialState = ref<'' | 'reviewing'>('')
+const settingsReturnSection = ref<typeof section.value>('home')
+let settingsReturnAuditView: typeof auditView.value
+watch(section, (next, previous) => {
+  if (next === 'settings' && previous !== next) {
+    settingsReturnSection.value = previous
+    settingsReturnAuditView = auditView.value
+  }
+}, { flush: 'sync' })
+async function finishSettings() {
+  if (settingsReturnSection.value === 'audit') {
+    section.value = 'audit'; auditView.value = settingsReturnAuditView; expandedNavigation.value = 'operations'
+    if (auditView.value === 'audit' && selectedBrand.value) await loadAudit(selectedBrand.value)
+  } else await chooseSection(settingsReturnSection.value)
+}
 const settingsTab = ref<'general' | 'auth' | 'commission' | 'currency'>('general')
 const retentionPolicyVisible=ref(false)
 const betTab = ref<'orders' | 'frequency'>('orders')
@@ -194,6 +209,8 @@ const brandsExpanded = navigationExpanded('brands')
 const brandSectionActive = computed(() => section.value === 'brands' || section.value === 'users' || (section.value === 'access' && accessScope.value === 'brand'))
 const operationsExpanded = navigationExpanded('operations')
 const walletView = ref<'recharges' | 'quota' | 'reports'>('recharges')
+const rechargeRecordType = ref<RechargeRecordType>("deposit")
+watch(() => [account.value?.id, selectedBrand.value, section.value, walletView.value], () => { rechargeRecordType.value = "deposit" }, { flush: "sync" })
 const walletsExpanded = navigationExpanded('wallets')
 const commissionExpanded = navigationExpanded('commission')
 const accessTab = ref<'accounts'>('accounts')
@@ -203,7 +220,7 @@ watch(() => [account.value?.id, selectedBrand.value], () => { memberFinance.valu
 const walletLabel = computed(() => t('common.finance'))
 const pointsAction = computed(() => t('common.points'))
 const memberColumns = computed(() => [
-  {key:'account',label:lang.value.username}, {key:'online',label:t('members.onlineStatus')},
+  {key:'account',label:lang.value.username}, {key:'displayName',label:lang.value.displayName}, {key:'online',label:t('members.onlineStatus')},
   {key:'points',label:pointsAction.value,cellClass:'member-points'}, {key:'phone',label:lang.value.phone},
   {key:'status',label:lang.value.status}, {key:'joined',label:t('members.joined')}, {key:'actions',label:t('common.actions')},
 ])
@@ -232,9 +249,8 @@ const notice = ref<string | import('@lottery/shared').LocalizedMessage>('')
 const identifier = ref('')
 const password = ref('')
 const modal = ref(false)
-const confirming = ref(false)
 const retryPayload = ref<FrozenBrandCreateRequest | null>(null)
-const form = ref<BrandCreateInput>({ code: '', name: '', default_locale: 'en', timezone: displaySettings.value.timezone })
+const form = ref<BrandCreateInput>({ code: '', name: '', default_locale: 'zh-CN', timezone: displaySettings.value.timezone })
 const deleteBrandTarget = ref<PlatformBrand | null>(null)
 const deleteBusy = ref(false)
 const deleteError = ref<string | import("@lottery/shared").LocalizedMessage>("")
@@ -281,6 +297,7 @@ function clearPrivateState() {
   quotaBrand.value = null
   securityIntents.clearAll()
   section.value = 'home'
+  settingsReturnSection.value = 'home'
   sessionStorage.removeItem(brandSelectionKey)
   accountWriteLocked.value = false
   accessScope.value = 'platform'
@@ -294,7 +311,7 @@ function clearPrivateState() {
   memberFinance.value = null
   resetMemberFilters()
   clearRetentionIntents(); account.value = null; platformSettings.value = null; brands.value = []; members.value = []; [auditRows.value,auditTotal.value]=[[],'0']; selectedBrand.value = ''
-  retryPayload.value = null; modal.value = false; confirming.value = false
+  retryPayload.value = null; modal.value = false
   deleteBrandTarget.value = null; deleteError.value = ''; deleteBusy.value = false
   deleteMemberTarget.value = null; deleteMemberError.value = ''; deleteMemberBusy.value = false
   deleteMemberIntent.value = null; deleteMemberUnknown.value = false
@@ -530,10 +547,9 @@ async function closeMemberFinance() {
 }
 function beginCreate() {
   if (!canCreateBrand.value) return
-  if (retryPayload.value) { confirming.value = true; modal.value = true; return }
-  form.value = { code: '', name: '', default_locale: 'en', timezone: displaySettings.value.timezone }; confirming.value = false; modal.value = true
+  if (retryPayload.value) { modal.value = true; return }
+  form.value = { code: '', name: '', default_locale: 'zh-CN', timezone: displaySettings.value.timezone }; modal.value = true
 }
-function reviewCreate() { if (!canCreateBrand.value) return; error.value = ''; confirming.value = true }
 function beginDelete(brand: PlatformBrand) {
   deleteBrandTarget.value = brand
   deleteError.value = ''
@@ -585,7 +601,7 @@ async function submitCreate() {
   try {
     await api.createBrand(pending.body, pending.key)
     brandQuery.value = ''; brandStatus.value = ''; appliedBrandQuery.value = ''; appliedBrandStatus.value = ''; brandPage.value = 1
-    modal.value = false; confirming.value = false; retryPayload.value = null; notice.value = message('platform.copy.bb362b87')
+    modal.value = false; retryPayload.value = null; notice.value = message('platform.copy.bb362b87')
     await loadWorkspace()
   } catch (cause) {
     if (cause instanceof PlatformApiError && (cause.network || cause.status >= 500 || cause.code === 'INVALID_RESPONSE')) { errorCause.value = cause; uncertainError.value = true }
@@ -628,7 +644,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
 </script>
 
 <template>
-  <GlobalLoadingOverlay :label="lang.loading" :hidden="accountWriteLocked" />
+  <GlobalLoadingOverlay :label="lang.loading" />
   <main v-if="!authReady" class="loading-shell" aria-busy="true"></main>
   <LoginEntry v-else-if="!account" class="platform-login" card-class="login-card" :brand-name="platformPresentation?.display_name ?? ''" :logo-text="platformPresentation?.logo_text" :logo-url="platformPresentation?.logo_url" :title="lang.signIn" title-id="platform-login-title" :locale="locale" :language-label="t('common.language')" :languages="(['en','zh-CN'] as const).map(code=>({code,label:nativeLocaleName(code)}))" @update:locale="setLocale">
       <template v-if="!platformPresentation"><p class="message error" role="alert">{{ t('platform.login.presentationUnavailable') }}</p><button class="button button-secondary" @click="withGlobalLoading(initialize)">{{ t('platform.login.retry') }}</button></template>
@@ -748,6 +764,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
             <BatchDelete subject="accounts" :entry-label="member => member.username || member.phone" :scope-key="String(memberOffset) + JSON.stringify(memberSearch)" :key="account.id + ':' + selectedBrand" :entries="members" :enabled="canDeleteMember" :locale="locale" :loading="loading" :delete-entry="(member, key) => api.deleteMemberAccount(member.global_user_id, member.brand_id, key)" :error-text="cause => displayPublicError(platformErrorMessage(cause, locale))" :is-unknown="cause => !(cause instanceof PlatformApiError) || cause.network || cause.status >= 500 || cause.code === 'INVALID_RESPONSE'" @deleted="batchMemberDeleted" @finished="withGlobalLoading(refreshBatchMembers)" v-slot="{ selected, toggle, selectLabel, locked }">
             <ManagementTable :entries="members" :columns="memberColumns" :empty="!loading && !error && !members.length" :empty-label="t('members.empty')" table-class="platform-member-table">
               <template #account="{entry:member}"><span class="member-account-select"><label v-if="canDeleteMember" class="member-select-control"><input type="checkbox" :checked="selected.includes(member.id)" :aria-label="selectLabel(member.username || member.phone)" :disabled="locked" @change="toggle(member.id)" /></label><button type="button" class="text-button member-account" @click="memberDetail = member">{{ member.username || member.phone || t('association.unnamed') }}</button></span></template>
+              <template #displayName="{entry:member}">{{ member.display_name || '—' }}</template>
               <template #online="{entry:member}"><span class="member-presence" :class="{ 'is-online': member.online }"><i aria-hidden="true" />{{ t(member.online ? 'members.online' : 'members.offline') }}</span></template>
               <template #points="{entry:member}">{{ member.display_points === null ? t('members.pointsRestricted') : formatPoints(member.display_points,locale) }}</template>
               <template #phone="{entry:member}">{{ member.phone || '—' }}</template>
@@ -785,8 +802,12 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
         </template>
         <template v-else-if="section === 'wallets'">
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ walletViewLabel }}</h1></div>
-          <CashConsole v-if="selectedBrand && walletView === 'recharges'" :key="`cash:${account.id}:${selectedBrand}`" base-path="/api/v1/platform" platform mode="deposit" :actor-id="account.id" :brand-id="selectedBrand" :locale="locale" :permissions="account.platform_permissions" @failure="handleFailure" />
-          <RechargesPanel :key="readScope" v-if="selectedBrand && walletView === 'recharges'" :brand-id="selectedBrand" member-id="" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
+          <CashConsole v-if="selectedBrand && walletView === 'recharges' && rechargeRecordType !== 'manual'" :key="`cash:${account.id}:${selectedBrand}`" base-path="/api/v1/platform" platform mode="deposit" :actor-id="account.id" :brand-id="selectedBrand" :locale="locale" :permissions="account.platform_permissions" :record-type="rechargeRecordType" @failure="handleFailure">
+            <template #record-type="{ disabled }"><RechargeRecordTypeSelect v-model="rechargeRecordType" :locale="locale" :disabled="disabled" /></template>
+          </CashConsole>
+          <RechargesPanel :key="readScope" v-if="selectedBrand && walletView === 'recharges' && rechargeRecordType === 'manual'" :brand-id="selectedBrand" member-id="" :locale="locale" :display-settings="displaySettings" @failure="handleFailure">
+            <template #record-type="{ disabled }"><RechargeRecordTypeSelect v-model="rechargeRecordType" :locale="locale" :disabled="disabled" /></template>
+          </RechargesPanel>
           <RechargeQuotaPanel v-else-if="selectedBrand && walletView === 'quota' && canViewRechargeQuota" standalone
             :key="`${account.id}:${selectedBrand}`" :brand-id="selectedBrand" :actor-id="account.id" :locale="locale"
             base-path="/api/v1/platform" :can-grant="canGrantRechargeQuota" @updated="updateBrandQuota" @failure="handleFailure" />
@@ -827,7 +848,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
           <CommissionPanel :key="readScope" v-if="selectedBrand" :brand-id="selectedBrand" :locale="locale" :initial-tab="commissionTab" :display-settings="displaySettings" @failure="handleFailure" />
         </template>
         <template v-else-if="section === 'settings'">
-          <PlatformSettingsPanel :key="account.id" v-if="platformSettings" v-model:tab="settingsTab" :account="account" :brand-id="selectedBrand" :brand-status="selected?.status || ''" :initial="platformSettings" :locale="locale" :can-manage="account.platform_permissions.includes('platform_settings.write.platform')" @saved="platformSettings = $event; notice = message('common.settingsSaved')" @failure="handleFailure" />
+          <PlatformSettingsPanel :key="account.id" v-if="platformSettings" v-model:tab="settingsTab" :account="account" :brand-id="selectedBrand" :brand-status="selected?.status || ''" :initial="platformSettings" :locale="locale" :can-manage="account.platform_permissions.includes('platform_settings.write.platform')" @completed="withGlobalLoading(finishSettings)" @saved="platformSettings = $event; notice = message('common.settingsSaved')" @failure="handleFailure" />
         </template>
         <template v-else>
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ withdrawalLabel }}</h1></div>
@@ -850,13 +871,16 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
     </DetailModal>
     <AccountProfileDialog v-if="accountProfileOpen" :title="t('common.profile')" :close-label="lang.close" :fields="[{label:lang.username,value:accountName},{label:lang.role,value:lang.platformAdmin}]" @close="accountProfileOpen=false" />
     <ChangePasswordDialog v-if="changePasswordOpen" v-model:current="currentPassword" v-model:next="newPassword" v-model:confirmation="confirmPassword" :title="t('common.changePassword')" :close-label="lang.close" :current-label="t('common.currentPassword')" :new-label="t('common.newPassword')" :confirm-label="t('common.confirmNewPassword')" :submit-label="passwordBusy ? lang.loading : t('common.savePassword')" :busy="passwordBusy" @close="changePasswordOpen=false" :submit="submitPasswordChange"></ChangePasswordDialog>
-    <DetailModal v-if="modal" class="confirmation-dialog brand-create-dialog ui-form-dialog" :title="confirming ? lang.confirmation : lang.createBrand" :close-label="lang.close" :close-disabled="busy" @close="!busy && (modal = false)">
-      <template v-if="!confirming">
-        <form novalidate v-inline-validation class="brand-form ui-form" @submit.prevent="withGlobalLoading(reviewCreate)"><label>{{ lang.code }}<input v-model.trim="form.code" required pattern="[a-z][a-z0-9_]{0,47}" :data-validation-format="formValidationText('codeFormat', {min: 1, max: 48})" :placeholder="lang.codePlaceholder" /></label><label>{{ lang.name }}<input v-model.trim="form.name" required maxlength="120" /></label><div class="form-row"><label>{{ lang.locale }}<SelectControl v-model="form.default_locale" :label="String(lang.locale)" :options="[{ value: 'en', label: (String(lang.localeEnglish)).trim() }, { value: 'zh-CN', label: (String(lang.localeChinese)).trim() }]" /></label></div><div class="form-actions ui-form-actions"><button class="button button-primary" :disabled="!canCreateBrand">{{ lang.review }} <span>→</span></button></div></form>
-      </template><template v-else><dl class="confirm-list"><div><dt>{{ lang.code }}</dt><dd>{{ retryPayload?.body.code || form.code }}</dd></div><div><dt>{{ lang.name }}</dt><dd>{{ retryPayload?.body.name || form.name }}</dd></div><div><dt>{{ lang.locale }}</dt><dd>{{ retryPayload?.body.default_locale || form.default_locale }}</dd></div></dl><p v-if="retryPayload && error" class="message error">{{ displayPublicError(error) }}</p><div class="form-actions ui-form-actions"><button v-write-guard="busy" class="button button-primary" :disabled="busy || !canCreateBrand" @click="withGlobalLoading(submitCreate)">{{ busy ? lang.loading : retryPayload ? lang.retry : lang.confirm }}</button></div></template>
+    <DetailModal v-if="modal" class="brand-create-dialog ui-form-dialog" :title="lang.createBrand" :close-label="lang.close" :close-disabled="busy" @close="!busy && (modal = false)">
+      <form v-write-guard="busy" novalidate v-inline-validation class="brand-form ui-form" @submit.prevent="withGlobalLoading(submitCreate)">
+        <label>{{ lang.code }}<input v-model.trim="form.code" :disabled="busy || !!retryPayload" required pattern="[a-z][a-z0-9_]{0,47}" :data-validation-format="formValidationText('codeFormat', {min: 1, max: 48})" /></label>
+        <label>{{ lang.name }}<input v-model.trim="form.name" :disabled="busy || !!retryPayload" required maxlength="120" /></label>
+        <div class="form-row"><label>{{ lang.locale }}<SelectControl v-model="form.default_locale" :disabled="busy || !!retryPayload" :label="String(lang.locale)" :options="[{ value: 'zh-CN', label: (String(lang.localeChinese)).trim() }, { value: 'en', label: (String(lang.localeEnglish)).trim() }]" /></label></div>
+        <div class="form-actions ui-form-actions"><button class="button button-primary" :disabled="busy || !canCreateBrand">{{ busy ? lang.loading : retryPayload ? lang.retry : t('admin.copy.3135aeca') }}</button></div>
+      </form>
     </DetailModal>
     <DetailModal v-if="deleteBrandTarget" class="confirmation-dialog brand-delete-dialog" :title="lang.deleteConfirm" :close-label="lang.close" :close-disabled="deleteBusy" @close="!deleteBusy && (deleteBrandTarget = null)"><p class="modal-intro">{{ lang.deleteWarning }}</p><dl class="confirm-list"><div><dt>{{ lang.name }}</dt><dd>{{ deleteBrandTarget.name }}</dd></div><div><dt>{{ lang.code }}</dt><dd>{{ deleteBrandTarget.code }}</dd></div></dl><div class="form-actions ui-form-actions"><button v-write-guard="deleteBusy" class="button button-danger" :disabled="deleteBusy" @click="withGlobalLoading(submitDelete)">{{ deleteBusy ? lang.loading : lang.deleteBrand }}</button></div></DetailModal>
-    <DetailModal v-if="deleteMemberTarget" class="confirmation-dialog member-delete-dialog" :title="lang.deleteMember" :close-label="lang.close" :close-disabled="deleteMemberBusy || deleteMemberUnknown" @close="!deleteMemberBusy && !deleteMemberUnknown && (deleteMemberTarget = null)"><dl class="confirm-list"><div><dt>{{ lang.username }}</dt><dd>{{ deleteMemberTarget.username || deleteMemberTarget.phone || t('association.unnamed') }}</dd></div><div><dt>{{ lang.displayName }}</dt><dd>{{ deleteMemberTarget.display_name || '—' }}</dd></div></dl><p v-if="deleteMemberUnknown" class="message" role="status">{{ t('common.uncertainRequest') }}</p><div class="form-actions ui-form-actions"><button v-write-guard="deleteMemberBusy" class="button button-danger" :disabled="deleteMemberBusy" @click="withGlobalLoading(submitMemberDelete)">{{ deleteMemberBusy ? lang.loading : deleteMemberUnknown ? t('common.retryMemberDelete') : lang.deleteMember }}</button></div></DetailModal>
+    <DetailModal v-if="deleteMemberTarget" class="confirmation-dialog member-delete-dialog" :title="lang.deleteMember" :close-label="lang.close" :close-disabled="deleteMemberBusy || deleteMemberUnknown" @close="!deleteMemberBusy && !deleteMemberUnknown && (deleteMemberTarget = null)"><dl class="confirm-list"><div><dt>{{ lang.username }}</dt><dd>{{ deleteMemberTarget.username || deleteMemberTarget.phone || t('association.unnamed') }}</dd></div><div><dt>{{ lang.displayName }}</dt><dd>{{ deleteMemberTarget.display_name || '—' }}</dd></div></dl><p v-if="deleteMemberUnknown && !deleteMemberBusy" class="message" role="status">{{ t('common.uncertainRequest') }}</p><div class="form-actions ui-form-actions"><button v-write-guard="deleteMemberBusy" class="button button-danger" :disabled="deleteMemberBusy" @click="withGlobalLoading(submitMemberDelete)">{{ deleteMemberBusy ? lang.loading : deleteMemberUnknown ? t('common.retryMemberDelete') : lang.deleteMember }}</button></div></DetailModal>
   </div>
 <OperationToastHost :locale="locale" />
 </template>

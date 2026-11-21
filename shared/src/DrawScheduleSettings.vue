@@ -38,7 +38,7 @@ onUnmounted(()=>{alive=false;generation++})
  <label>{{t('openBefore')}}<input v-model.number="form.open_before_hours" type="number" min="0.001" max="8760" step="any" required /></label>
  <label>{{t('closeBefore')}}<input v-model.number="form.close_before_seconds" type="number" min="0" :max="form.open_before_hours*3600-1" step="1" required /></label>
  <label>{{t('collectAfter')}}<input v-model.number="form.collect_after_seconds" type="number" min="0" max="86400" step="1" required /></label></div></fieldset>
- <p v-if="pending" role="status">{{t('pending')}}</p><button v-if="canWrite" class="button button-primary" type="submit" :disabled="busy">{{t(pending?'retry':'save')}}</button>
+ <p v-if="pending&&!busy" role="status">{{t('pending')}}</p><button v-if="canWrite" class="button button-primary" type="submit" :disabled="busy">{{t(pending&&!busy?'retry':'save')}}</button>
  </form><button v-if="failed&&!pending" class="button button-secondary" @click="withGlobalLoading(load)">{{t('reload')}}</button>
 </section>
 </template>

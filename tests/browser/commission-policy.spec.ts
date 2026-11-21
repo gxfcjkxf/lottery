@@ -61,11 +61,11 @@ test('real commission financial policy retains the original unknown receipt with
     });
     await panel.getByRole('button',{name:'保存',exact:true}).click();
     await panel.getByRole('button',{name:'提交',exact:true}).click();
-    await expect(panel.getByRole('button',{name:'使用原请求重试',exact:true})).toBeVisible();
+    await expect(panel.getByRole('button',{name:'重试',exact:true})).toBeVisible();
     const afterLostReceipt=await call<Policy>('/commission-policy','GET');
     expect(afterLostReceipt.version).toBe(original.version+1);
-    await panel.getByRole('button',{name:'使用原请求重试',exact:true}).click();
-    await expect(panel.getByRole('button',{name:'使用原请求重试',exact:true})).toHaveCount(0);
+    await panel.getByRole('button',{name:'重试',exact:true}).click();
+    await expect(panel.getByRole('button',{name:'重试',exact:true})).toHaveCount(0);
     expect(writes).toHaveLength(2);expect(writes[1]).toEqual(writes[0]);
     const saved=await call<Policy>('/commission-policy','GET');
     expect(saved).toEqual(afterLostReceipt);

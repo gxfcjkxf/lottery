@@ -129,7 +129,7 @@ html, body { background: var(--canvas); color: var(--ink); }
   gap: 4px;
 }
 
-.side-nav :is(a, .workspace-signout) {
+.side-nav :is(a, .workspace-signout, .workspace-menu-action) {
   position: relative;
   display: flex;
   align-items: center;
@@ -143,12 +143,12 @@ html, body { background: var(--canvas); color: var(--ink); }
   transition: background-color 0.16s ease, color 0.16s ease;
 }
 
-.side-nav :is(a, .workspace-signout):not(:disabled):hover {
+.side-nav :is(a, .workspace-signout, .workspace-menu-action):not(:disabled):hover {
   background: var(--line-subtle);
   color: var(--ink);
 }
 
-.side-nav :is(a, .workspace-signout):focus-visible {
+.side-nav :is(a, .workspace-signout, .workspace-menu-action):focus-visible {
   outline: 2px solid var(--brand-primary);
   outline-offset: -2px;
 }
@@ -2643,7 +2643,7 @@ th:last-child, td:last-child { position: sticky; right: 0; z-index: 1; backgroun
 
 /* Desktop content lists follow the same compact rhythm as management tables. */
 @media (min-width: 901px) and (pointer: fine) {
-  #app :is(.side-nav a, .side-nav .workspace-signout, .account-tools a) { min-height: var(--control-height); padding-block: 4px; line-height: 22px; }
+  #app :is(.side-nav a, .side-nav .workspace-signout, .side-nav .workspace-menu-action, .account-tools a) { min-height: var(--control-height); padding-block: 4px; line-height: 22px; }
   #app :is(.order-row, .ledger-row) { min-height: 0; padding: 8px 12px; gap: 12px; }
   #app :is(.detail-list, .account-details) > div { padding-block: 6px; }
 }

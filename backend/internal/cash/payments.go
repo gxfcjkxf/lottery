@@ -78,7 +78,7 @@ func allocate(ctx context.Context, tx pgx.Tx, brand string, r Rule, amount int64
 			c.amount = 0
 			c.epoch++
 		}
-		if r.Mode == "count" && c.count >= countThreshold || r.Mode == "amount" && (amount > amountThreshold || c.amount > amountThreshold-amount) {
+		if r.Mode == "count" && c.count >= countThreshold || r.Mode == "amount" && !reset && c.count > 0 && c.amount > amountThreshold-amount {
 			continue
 		}
 		_, e = tx.Exec(ctx, `UPDATE cash_destinations SET assigned_count=$2,assigned_amount=$3,rotation_epoch=$4 WHERE id=$1`, c.d.ID, c.count+1, c.amount+amount, c.epoch)
@@ -200,11 +200,11 @@ func (s Service) Withdraw(ctx context.Context, tx pgx.Tx, brand, member string, 
 	if e != nil || n <= 0 {
 		return o, ErrInvalid
 	}
-	f, e := Parse(b.Fee, in.Currency)
+	f, e := WithdrawalFee(b.Fee, in.Amount, in.Currency)
 	if e != nil || f >= n {
 		return o, ErrInvalid
 	}
-	maxFee, _ := Parse(p.Fee, in.Currency)
+	maxFee, _ := WithdrawalFee(p.Fee, in.Amount, in.Currency)
 	if f > maxFee {
 		return o, ErrLimit
 	}
@@ -215,7 +215,7 @@ func (s Service) Withdraw(ctx context.Context, tx pgx.Tx, brand, member string, 
 	if expectedFee != f {
 		return o, ErrConflict
 	}
-	o.Fee = b.Fee
+	o.Fee = Format(f)
 	if e = memberLock(ctx, tx, brand, member); e != nil {
 		return o, e
 	}
