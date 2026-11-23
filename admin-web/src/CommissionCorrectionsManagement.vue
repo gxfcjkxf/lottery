@@ -2,6 +2,7 @@
 import MemberActionsMenu from "@lottery/shared/MemberActionsMenu.vue"
 import ManagementList from "@lottery/shared/ManagementList.vue"
 import TablePagination from "@lottery/shared/TablePagination.vue"
+import SelectControl from "@lottery/shared/SelectControl.vue"
 const agentDraftSearchPending = ref(false);
 const accountSearchReset = ref(0);
 import FilterAssociationSearch from "@lottery/shared/FilterAssociationSearch.vue";
@@ -26,7 +27,7 @@ import { vRefreshButton } from '@lottery/shared';
 import { formatDisplayDateTime } from "@lottery/shared";
 const displayLocale = useAdminI18n().locale;
 import DetailModal from "@lottery/shared/DetailModal.vue"
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import { adminKey, useAdminI18n } from "./i18n";
 import { createCommissionPaymentsApi } from "./commissionPayments-api";
@@ -48,8 +49,8 @@ const executionPageSize = ref(100)
 const planPageSize = ref(100)
 
 
-const props = defineProps<{ account: AdminAccount; brandId: string; brandStatus?: string; cycleId?: string }>();
-const emit = defineEmits<{ (event: "session-invalid"): void; (event: "writing-change", value: boolean): void }>();
+const props = defineProps<{ account: AdminAccount; brandId: string; brandStatus?: string; cycleId?: string; settingsOnly?: boolean }>();
+const emit = defineEmits<{ (event: "session-invalid"): void; (event: "writing-change", value: boolean): void; (event: "close-settings"): void }>();
 const { t, locale } = useAdminI18n();
 const operationLabel = (operation: CommissionCorrectionOperation) => t({ policy: 'admin.copy.3a0deb6f', plan_retry: 'admin.copy.18acbe2a', approve: 'admin.copy.028518f0', continue: 'admin.copy.cdb10f42', execute_retry: 'admin.copy.50dae2bb' }[operation] as Parameters<typeof t>[0]);
 const api = computed(() => createCommissionCorrectionsApi(fetch, props.account.id));
@@ -59,12 +60,38 @@ const PAGE_SIZE = ref(20);
 const casePage=ref<CorrectionCasePage|null>(null),caseOffset=ref(0),caseLoading=ref(false);
 const queue=ref('pending'),fromDraft=ref(''),toDraft=ref(''),cycleDraft=ref(''),agentDraft=ref('');
 const caseFilter=ref<CommissionListQuery>({state:'pending'}), searched=ref(true),showPolicy=ref(false),detailOpen=ref(false);
-const detailTab=ref<'calculationChange'|'planDetails'|'execution'>('calculationChange');
+const queues = computed(() => [
+  {value:'', label:t('admin.commission.ui.all')},
+  {value:'pending', label:t('admin.commission.ui.correctionPending')},
+  {value:'processing', label:t('admin.commission.ui.correctionProcessing')},
+  {value:'history', label:t('admin.commission.ui.correctionHistory')},
+]);
+const caseHeading = ref<HTMLElement | null>(null);
+let caseEntry: HTMLButtonElement | undefined;
+let listScrollTop = 0;
+let selectedCase: CorrectionCase | undefined;
+async function viewCase(row: CorrectionCase, event?: MouseEvent) {
+  const trigger = event?.currentTarget as HTMLButtonElement | undefined;
+  caseEntry = trigger?.closest('tr')?.querySelector<HTMLButtonElement>('[data-case-id]') ?? trigger;
+  listScrollTop = caseEntry?.closest('.detail-modal-content')?.scrollTop ?? 0;
+  const request = openCase(row);
+  await nextTick();
+  caseHeading.value?.focus();
+  await request;
+}
+async function returnToCases() {
+  closeCase();
+  await nextTick();
+  caseEntry?.focus();
+  const scrollArea = caseEntry?.closest('.detail-modal-content');
+  if (scrollArea) scrollArea.scrollTop = listScrollTop;
+  caseEntry = undefined;
+}
 let caseTicket=0,caseOpenTicket=0;
-const caseColumns=computed(()=>[{key:'cycle',label:t('admin.commission.ui.cycle')},{key:'state',label:t('admin.commission.ui.state')},
+const caseColumns=computed(()=>[{key:'cycle',label:t(props.cycleId ? 'admin.commission.ui.correctionTime' : 'admin.commission.ui.cycle')},{key:'state',label:t('admin.commission.ui.state')},
  {key:'before',label:t('admin.commission.ui.originalPoints'),cellClass:'numeric'}, {key:'after',label:t('admin.commission.ui.newPoints'),cellClass:'numeric'},
  {key:'credit',label:t('admin.commission.ui.creditPoints'),cellClass:'numeric'},{key:'debit',label:t('admin.commission.ui.debitPoints'),cellClass:'numeric'},
- {key:'updated',label:t('admin.commission.ui.updated')},{key:'actions',label:t('admin.commission.ui.actions')}]);
+{key:'actions',label:t('admin.commission.ui.actions')}]);
 const planColumns=computed(()=>[{key:'agent',label:t('admin.commission.ui.agent')},{key:'before',label:t('admin.commission.ui.originalPoints')},{key:'after',label:t('admin.commission.ui.newPoints')},{key:'delta',label:t('admin.commission.ui.deltaPoints')}]);
 const executionColumns=computed(()=>[...planColumns.value,{key:'state',label:t('admin.commission.ui.state')}]);
 function caseState(row:CorrectionCase){return row.plan.state==='stale'?planState(row.plan.state):row.execution_state?executionState(row.execution_state):row.plan.state==='ready'?t('admin.commission.ui.readyWaiting'):planState(row.plan.state)}
@@ -87,7 +114,8 @@ function dirtyCases(){caseTicket++;casePage.value=null;caseLoading.value=false;s
 function closeCase(){caseOpenTicket++;detailTicket++;targetsTicket++;detailOpen.value=false;selectedPlanId.value=selectedExecutionId.value='';plan.value=null;execution.value=null;planTargets.value=[];executionTargets.value=[];loadingTargets.value=false;invalidateActionReview()}
 async function openCase(row:CorrectionCase){
  const ticket=++caseOpenTicket,captured=scopeStamp.value,session=commissionCorrectionSessionGeneration();
- detailOpen.value=true;detailTab.value='calculationChange';selectedExecutionId.value='';execution.value=null;executionTargets.value=[];
+ selectedCase = row;
+ detailOpen.value=true;selectedExecutionId.value='';execution.value=null;executionTargets.value=[];
  await selectPlan(row.id);
  if(!alive||ticket!==caseOpenTicket||captured!==scopeStamp.value||session!==commissionCorrectionSessionGeneration()||!plan.value||plan.value.id!==row.id)return;
  if(row.execution_id)await selectExecution(row.execution_id);
@@ -140,7 +168,7 @@ function current(ticket: number, lane: string, captured: string, session: number
 }
 function currentWrite(ticket: number, captured: string, session: number): boolean { return alive && ticket === writeTicket && captured === scopeStamp.value && session === commissionCorrectionSessionGeneration(); }
 function clearVisible() {
-  caseTicket++;caseOpenTicket++;casePage.value=null;caseOffset.value=0;caseLoading.value=false;detailOpen.value=false;showPolicy.value=false;
+  caseTicket++;caseOpenTicket++;casePage.value=null;caseOffset.value=0;caseLoading.value=false;detailOpen.value=false;showPolicy.value=Boolean(props.settingsOnly);
   policy.value = null; planPage.value = null; executionPage.value = null; plan.value = null; execution.value = null;
   planTargets.value = []; executionTargets.value = []; planTargetsTotal.value = executionTargetsTotal.value = "0"; planTargetsOffset.value = executionTargetsOffset.value = 0; failedPlanOffset.value = failedExecutionOffset.value = null; selectedPlanId.value = ""; selectedExecutionId.value = ""; paymentGate.value = null;
   receipt.value = null; reason.value = ""; dialog.value = null; confirmed.value = false;
@@ -151,7 +179,8 @@ function resetScope(_next?: string, previous?: string) {
   if (previous) { try { const old = JSON.parse(previous) as unknown[]; hideCommissionCorrectionIntentsForScope(String(old[0]), String(old[6])); } catch { /* Old scope cannot reveal an intent. */ } }
   policyTicket++; paymentGateTicket++; plansTicket++; executionsTicket++; detailTicket++; targetsTicket++; writeTicket++; conflictTicket++;
   clearVisible();
-  const pending = listPendingCommissionCorrectionIntents(props.account.id, props.brandId);
+  const pending = listPendingCommissionCorrectionIntents(props.account.id, props.brandId)
+    .filter(intent => (!props.cycleId || intent.cycleId === props.cycleId) && (!props.settingsOnly || intent.operation === "policy"));
   const conflictPending = pending.find(isCommissionCorrectionIntentConflict);
   conflictIntent.value = conflictPending ?? null; conflict.value = Boolean(conflictPending);
   unknownIntent.value = conflictPending ? null : pending[0] ?? null;
@@ -245,7 +274,9 @@ async function loadExecutionTargetPage(offset: number) {
   finally { if (alive && ticket === targetsTicket && captured === scopeStamp.value) loadingTargets.value = false; }
 }
 async function reloadAll(preserve = false) {
-  if (!rights.value.view) return; loading.value = true;
+  if (!rights.value.view) return;
+  if (props.settingsOnly) { await loadPolicy(preserve); return; }
+  loading.value = true;
   await Promise.all([loadPolicy(preserve), loadPaymentGate(), loadCases(caseOffset.value, preserve)]);
   if (selectedPlanId.value) await selectPlan(selectedPlanId.value, preserve);
   if (selectedExecutionId.value) await selectExecution(selectedExecutionId.value, preserve);
@@ -263,10 +294,20 @@ function buildIntent(operation: CommissionCorrectionOperation): PendingCommissio
   if (!target || target.version >= Number.MAX_SAFE_INTEGER || !validReason(reason.value)) return null;
   const allowed = operation === "plan_retry" ? canPlanRetry.value : operation === "approve" ? canApprove.value : operation === "continue" ? canContinue.value : canRetry.value;
   if (!allowed) return null;
-  const scope = scopeFor(operation, target.id);
+  const scope = { ...scopeFor(operation, target.id), ...(props.cycleId ? { cycleId: props.cycleId } : {}) };
   return createCommissionCorrectionIntent(scope, freezeCommissionCorrectionBody(scope, { version: target.version, reason: reason.value }), createIdempotencyKey());
 }
-function openReview(operation: CommissionCorrectionOperation) {
+function saveSettings() {
+  if (!canPolicy.value) return;
+  const intent = buildIntent("policy");
+  if (intent) return submit(intent);
+}
+function closeSettings() {
+  if (writing.value || (props.settingsOnly && canResolveUnknown.value)) return;
+  if (props.settingsOnly) emit("close-settings");
+  else showPolicy.value = false;
+}
+function openReview(operation: Exclude<CommissionCorrectionOperation, "policy">) {
   if (unknownIntent.value || conflict.value) return;
   const intent = buildIntent(operation); if (!intent) return;
   dialog.value = intent; confirmed.value = false; writeError.value = "";
@@ -274,7 +315,8 @@ function openReview(operation: CommissionCorrectionOperation) {
 async function retryUnknown() {
   const intent = unknownIntent.value;
   if (!intent || !canResolveUnknown.value) return;
-  if (props.cycleId && intent.operation !== "policy") {
+  if (intent.operation === "policy") { await submit(intent); return; }
+  if (props.cycleId) {
     if (intent.operation === "plan_retry") await selectPlan(intent.targetId!, true);
     else await selectExecution(intent.targetId!, true);
     const target = intent.operation === "plan_retry" ? plan.value : execution.value;
@@ -287,7 +329,7 @@ async function submit(intent: PendingCommissionCorrectionIntent) {
   const recovery = Boolean(unknownIntent.value && unknownIntent.value.key === intent.key);
   const cycleTarget = intent.operation === "plan_retry" ? plan.value : execution.value;
   if (props.cycleId && intent.operation !== "policy" && (!cycleTarget || cycleTarget.id !== intent.targetId || cycleTarget.cycle_id !== props.cycleId)) return;
-  if (writing.value || busyRead.value || loadingTargets.value || !confirmed.value || !rights.value.view || props.brandStatus === "disabled" || !validIntentScope(intent)) return;
+  if (writing.value || busyRead.value || loadingTargets.value || (intent.operation !== "policy" && !confirmed.value) || !rights.value.view || props.brandStatus === "disabled" || !validIntentScope(intent)) return;
   if (!recovery && (unknownIntent.value || conflict.value)) return;
   if ((intent.operation === "policy" && !rights.value.policyWrite) || (intent.operation === "plan_retry" && !rights.value.planRetry) || (intent.operation === "approve" && !rights.value.approve) || (intent.operation === "continue" && !rights.value.continue) || (intent.operation === "execute_retry" && !rights.value.retry)) return;
   if (!recovery && intent.operation !== "policy") {
@@ -311,6 +353,10 @@ async function submit(intent: PendingCommissionCorrectionIntent) {
     notice.value = "confirmed";
     plan.value = null; execution.value = null; planTargets.value = []; executionTargets.value = [];
     await reloadAll();
+    if (intent.operation === "policy" && currentWrite(ticket, captured, session)) {
+      writing.value = false;
+      closeSettings();
+    }
   } catch (cause) {
     const status = cause instanceof AdminApiError ? cause.status : 0, outcome = classifyCommissionCorrectionWriteFailure(status);
     if (status === 401) {
@@ -347,11 +393,12 @@ async function refreshConflict() {
   const planToRefresh = selectedPlanId.value || (intent.operation === "plan_retry" ? intent.targetId ?? "" : "");
   const executionToRefresh = selectedExecutionId.value || (intent.operation !== "policy" && intent.operation !== "plan_retry" ? intent.targetId ?? "" : "");
   conflictReloading.value = true; errors.value = {};
-  const results = await Promise.allSettled([loadPolicy(true), loadPaymentGate(), loadPlans(planOffset.value, true), loadExecutions(executionOffset.value, true)]);
+  const results = await Promise.allSettled(props.settingsOnly ? [loadPolicy(true)] :
+    [loadPolicy(true), loadPaymentGate(), loadPlans(planOffset.value, true), loadExecutions(executionOffset.value, true)]);
   if (planToRefresh) await selectPlan(planToRefresh, true);
   if (executionToRefresh) await selectExecution(executionToRefresh, true);
   const planRequired = Boolean(planToRefresh), executionRequired = Boolean(executionToRefresh);
-  if (alive && ticket === conflictTicket && captured === scopeStamp.value && rights.value.view && results.every((result) => result.status === "fulfilled") && Object.keys(errors.value).length === 0 && (!planRequired || plan.value?.id === planToRefresh) && (!executionRequired || execution.value?.id === executionToRefresh) && Boolean(policy.value && paymentGate.value !== null && planPage.value && executionPage.value)) {
+  if (alive && ticket === conflictTicket && captured === scopeStamp.value && rights.value.view && results.every((result) => result.status === "fulfilled") && Object.keys(errors.value).length === 0 && (!planRequired || plan.value?.id === planToRefresh) && (!executionRequired || execution.value?.id === executionToRefresh) && Boolean(policy.value && (props.settingsOnly || (paymentGate.value !== null && planPage.value && executionPage.value)))) {
     conflictRefreshed.value = true; discardReviewed.value = false;
     writeError.value = t('admin.copy.e58d7d85');
   }
@@ -369,7 +416,8 @@ function formatDate(value: string): string{ return formatDisplayDateTime(value, 
 function receiptText(): string { return receipt.value ? operationLabel(receipt.value.operation) : ""; }
 
 watch([fromDraft,toDraft,cycleDraft,agentDraft],dirtyCases,{flush:'sync'});
-watch(writing, value => emit("writing-change", value), { flush: "sync" });
+const navigationLocked = computed(() => writing.value || Boolean(props.cycleId && canResolveUnknown.value));
+watch(navigationLocked, value => emit("writing-change", value), { flush: "sync" });
 watch(scopeStamp, resetScope, { immediate: true });
 onUnmounted(() => { alive = false; caseTicket++;caseOpenTicket++; policyTicket++; paymentGateTicket++; plansTicket++; executionsTicket++; detailTicket++; targetsTicket++; writeTicket++; conflictTicket++; });
 
@@ -385,53 +433,88 @@ useOperationToast(() => errors.value.executions, value => displayPublicError(val
 </script>
 
 <template>
- <article class="commission-workspace correction-admin">
-  <header class="console-page-heading commission-heading"><h1 v-if="!cycleId" class="console-page-title">{{ t('admin.commission.ui.corrections') }}</h1></header>
+ <component :is="settingsOnly ? DetailModal : 'article'" class="commission-workspace correction-admin"
+   v-bind="settingsOnly ? { title: t('admin.commission.ui.settings'), closeLabel: t('association.close'), closeDisabled: writing || canResolveUnknown } : {}"
+   @close="closeSettings">
+  <header v-if="!cycleId && !settingsOnly" class="console-page-heading commission-heading"><h1 class="console-page-title">{{ t('admin.commission.ui.corrections') }}</h1></header>
   <p v-if="!rights.view" class="empty-state">{{ t('admin.copy.cdaf5831') }}</p>
   <template v-else>
    <p v-if="brandStatus==='disabled'" class="commission-warning">{{ t('admin.commission.ui.disabled') }}</p>
-    <ManagementList><template #tabs><nav class="commission-tabs" role="tablist"><button v-for="tab in [{value:'pending',label:'correctionPending'},{value:'processing',label:'correctionProcessing'},{value:'history',label:'correctionHistory'},{value:'',label:'all'}]" :key="tab.value" role="tab" class="button" :aria-selected="queue===tab.value" :disabled="caseLoading" @click="withGlobalLoading(chooseQueue,tab.value)">{{ t(adminKey('admin.commission.ui.'+tab.label)) }}</button></nav></template><template #actions><button v-if="rights.view" class="button" @click="showPolicy=true">{{ t('admin.commission.ui.settings') }}</button></template><template #filters><form v-inline-validation novalidate class="commission-toolbar ui-filter-bar" @submit.prevent="withGlobalLoading(applyCaseFilters)"><label><PlatformTemporalInput :label="t('admin.commission.ui.from')" :placeholder="t('admin.commission.ui.from')" v-model="fromDraft" type="date" :locale="locale" /></label><label><PlatformTemporalInput :label="t('admin.commission.ui.to')" :placeholder="t('admin.commission.ui.to')" v-model="toDraft" type="date" :locale="locale" /></label><label v-if="!cycleId"><FilterAssociationSelect v-model="cycleDraft" :brand-id="brandId" surface="admin" resource="commission" kind="cycle" :label="t('admin.commission.ui.cycle')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" /></label><label><FilterAssociationSearch v-model="agentDraft" v-model:pending="agentDraftSearchPending" :reset-key="accountSearchReset" :brand-id="brandId" surface="admin" resource="commission" kind="agent" :label="t('admin.commission.ui.agent')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" /></label><div class="commission-actions ui-form-actions"><button class="button button-primary" type="submit" :disabled="agentDraftSearchPending || caseLoading">{{ t('admin.commission.ui.query') }}</button></div></form></template>
+   <div v-if="!settingsOnly" v-show="!cycleId || !detailOpen" class="commission-detail">
+    <h3 v-if="cycleId">{{ t('admin.commission.ui.thisCorrection') }}</h3>
+    <ManagementList :embedded="Boolean(cycleId)">
+     <template v-if="!cycleId" #actions><button type="button" class="button" @click="showPolicy=true">{{ t('admin.commission.ui.settings') }}</button></template>
+     <template #filters><form v-inline-validation novalidate class="commission-toolbar ui-filter-bar" @submit.prevent="withGlobalLoading(applyCaseFilters)">
+      <label><SelectControl :model-value="queue" :label="t('admin.commission.ui.state')" :options="queues" :disabled="caseLoading" @update:model-value="withGlobalLoading(chooseQueue,$event)" /></label>
+      <label v-if="!cycleId"><PlatformTemporalInput :label="t('admin.commission.ui.from')" :placeholder="t('admin.commission.ui.from')" v-model="fromDraft" type="date" :locale="locale" /></label><label v-if="!cycleId"><PlatformTemporalInput :label="t('admin.commission.ui.to')" :placeholder="t('admin.commission.ui.to')" v-model="toDraft" type="date" :locale="locale" /></label><label v-if="!cycleId"><FilterAssociationSelect v-model="cycleDraft" :brand-id="brandId" surface="admin" resource="commission" kind="cycle" :label="t('admin.commission.ui.cycle')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" /></label><label><FilterAssociationSearch v-model="agentDraft" v-model:pending="agentDraftSearchPending" :reset-key="accountSearchReset" :brand-id="brandId" surface="admin" resource="commission" kind="agent" :label="t('admin.commission.ui.agent')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" /></label><div class="commission-actions ui-form-actions"><button class="button button-primary" type="submit" :disabled="agentDraftSearchPending || caseLoading">{{ t('admin.commission.ui.query') }}</button></div></form></template>
     <p v-if="!searched" class="commission-note">{{ t('admin.commission.ui.filtersChanged') }}</p>
     <p v-if="errors.cases" class="commission-warning" role="alert">{{ displayPublicError(errors.cases) }} <button :disabled="agentDraftSearchPending" v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(applyCaseFilters)">{{ t('admin.commission.ui.retryRead') }}</button></p>
     <p v-if="caseLoading" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
-    <ManagementTable :entries="casePage?.items??[]" :columns="caseColumns" :empty="!!casePage && !casePage.items.length" :empty-label="t('admin.commission.ui.empty')">
-     <template #cycle="{entry}"><button class="text-button commission-link" :data-case-id="entry.id" @click="withGlobalLoading(openCase,entry)"><AssociationName :record="entry.plan" kind="cycle" :id="entry.plan.cycle_id" :locale="locale" /></button></template>
+    <ManagementTable :entries="casePage?.items??[]" :columns="caseColumns" :empty="!!casePage && !casePage.items.length" :empty-label="t(cycleId && !caseFilter.agent_id && !caseFilter.state ? 'admin.commission.ui.noCorrectionRecords' : 'admin.commission.ui.empty')">
+     <template #cycle="{entry}"><button class="text-button commission-link" :data-case-id="entry.id" @click="withGlobalLoading(viewCase,entry,$event)"><span v-if="cycleId">{{ formatDate(entry.plan.created_at) }}</span><AssociationName v-else :record="entry.plan" kind="cycle" :id="entry.plan.cycle_id" :locale="locale" /></button></template>
      <template #state="{entry}"><span class="commission-status" :class="entry.plan.state==='stale'?entry.plan.state:entry.execution_state??entry.plan.state">{{ caseState(entry) }}</span></template>
      <template #before="{entry}">{{ hasCompletePlan(entry)?entry.plan.before_points:t('admin.commission.ui.incomplete') }}</template><template #after="{entry}">{{ hasCompletePlan(entry)?entry.plan.calculated_points:t('admin.commission.ui.incomplete') }}</template><template #credit="{entry}">{{ hasCompletePlan(entry)?entry.plan.credit_points:'—' }}</template><template #debit="{entry}">{{ hasCompletePlan(entry)?entry.plan.debit_points:'—' }}</template>
-     <template #updated="{entry}">{{ formatDate(entry.plan.updated_at) }}</template><template #actions="{entry}"><MemberActionsMenu :id="'CommissionCorrectionsManagement-'+entry.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" class="button" @click="withGlobalLoading(openCase,entry)">{{ t('admin.commission.ui.view') }}</button></MemberActionsMenu></template>
+     <template #actions="{entry}"><MemberActionsMenu :id="'CommissionCorrectionsManagement-'+entry.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" class="button" @click="withGlobalLoading(viewCase,entry,$event)">{{ t('admin.commission.ui.viewCorrection') }}</button></MemberActionsMenu></template>
     </ManagementTable>
     <template #pagination><TablePagination v-if="casePage" class="commission-pager" :total="casePage.total_count" :page="Math.floor(casePage.offset / PAGE_SIZE + 1)" :count="casePage.items.length" :locale="locale" :page-size="PAGE_SIZE" :previous-disabled="caseLoading||caseOffset===0" :next-disabled="caseLoading||BigInt(caseOffset+PAGE_SIZE)>=BigInt(casePage.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadCases((target - 1) * PAGE_SIZE)" :change-page-size="async (size: number) => { PAGE_SIZE = size; await loadCases(0) }" :busy="caseLoading" /></template></ManagementList>
-   <DetailModal data-testid="correction-detail-dialog" v-if="detailOpen" :open="!dialog && !showPolicy" :title="t('admin.commission.ui.corrections')" :close-label="t('association.close')" :close-disabled="writing" @close="closeCase">
+   </div>
+   <component :is="cycleId ? 'section' : DetailModal" data-testid="correction-detail-dialog" v-if="detailOpen"
+     v-bind="cycleId ? {} : { open: !dialog && !showPolicy, title: t('admin.commission.ui.corrections'), closeLabel: t('association.close'), closeDisabled: writing }"
+     @close="closeCase">
    <section class="commission-detail">
+    <div v-if="cycleId" class="commission-heading">
+     <h3 ref="caseHeading" tabindex="-1">{{ t('admin.commission.ui.correctionDetail') }}</h3>
+     <button type="button" class="text-button" :disabled="navigationLocked" @click="returnToCases">{{ t('admin.commission.ui.backToCorrections') }}</button>
+    </div>
     <p v-if="loadingTargets" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
-    <p v-if="errors.plan || errors.execution" class="commission-warning" role="alert">{{ displayPublicError(errors.plan ?? errors.execution) }}</p>
+    <p v-if="errors.plan || errors.execution" class="commission-warning" role="alert">{{ displayPublicError(errors.plan ?? errors.execution) }}
+     <button v-if="selectedCase" type="button" class="button" v-refresh-button="t('admin.commission.ui.retryRead')" @click="withGlobalLoading(openCase,selectedCase)">{{ t('admin.commission.ui.retryRead') }}</button>
+    </p>
     <template v-if="plan">
-     <div class="commission-heading"><b><AssociationName :record="plan" kind="cycle" :id="plan.cycle_id" :locale="locale" /></b><span class="commission-status" :class="plan.state==='stale'?plan.state:execution?.state??plan.state">{{ plan.state==='stale'?planState(plan.state):execution?executionState(execution.state):plan.state==='ready'?t('admin.commission.ui.readyWaiting'):planState(plan.state) }}</span></div>
+     <div class="commission-heading"><b v-if="!cycleId"><AssociationName :record="plan" kind="cycle" :id="plan.cycle_id" :locale="locale" /></b><span class="commission-status" :class="plan.state==='stale'?plan.state:execution?.state??plan.state">{{ plan.state==='stale'?planState(plan.state):execution?executionState(execution.state):plan.state==='ready'?t('admin.commission.ui.readyWaiting'):planState(plan.state) }}</span></div>
      <p v-if="plan.state==='failed'" class="commission-warning">{{ t('admin.commission.ui.planFailed') }} {{ plan.last_error_code?displayPublicError(publicErrorMessage({code:plan.last_error_code})):'' }}</p>
      <p v-if="execution?.state==='paused'" class="commission-warning">{{ t('admin.commission.ui.executionPaused') }}</p><p v-if="execution?.state==='failed'" class="commission-warning">{{ t('admin.commission.ui.executionFailed') }} {{ execution.last_error_code?displayPublicError(publicErrorMessage({code:execution.last_error_code})):'' }}</p><p v-if="plan.state==='stale'||execution?.state==='stale'" class="commission-warning">{{ t('admin.commission.ui.correctionStale') }}</p>
      <p v-if="paymentGate === false" class="commission-warning">{{ t('admin.commission.ui.policyOff') }}</p>
      <p v-if="policy && !policy.enabled" class="commission-warning">{{ t('admin.copy.f81cb486') }}</p>
      <p v-if="errors.policy || errors.paymentGate" class="commission-warning" role="alert">{{ displayPublicError(errors.policy ?? errors.paymentGate) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(reloadAll)">{{ t('admin.commission.ui.retryRead') }}</button></p>
      <div class="commission-actions ui-form-actions"><button v-if="plan.state==='failed' && rights.planRetry" class="button button-primary" data-testid="cc-plan-retry" :disabled="!canPlanRetry" @click="openReview('plan_retry')">{{ t('admin.copy.18acbe2a') }}</button><button v-if="execution?.state==='awaiting_approval' && rights.approve" class="button button-primary" data-testid="cc-approve" :disabled="!canApprove" @click="openReview('approve')">{{ t('admin.copy.028518f0') }}</button><button v-if="execution?.state==='paused' && rights.continue" class="button button-primary" data-testid="cc-continue" :disabled="!canContinue" @click="openReview('continue')">{{ t('admin.copy.cdb10f42') }}</button><button v-if="execution?.state==='failed' && rights.retry" class="button button-primary" data-testid="cc-execute-retry" :disabled="!canRetry" @click="openReview('execute_retry')">{{ t('admin.copy.50dae2bb') }}</button></div>
-     <nav class="commission-tabs" role="tablist"><button v-for="tab in (['calculationChange','planDetails','execution'] as const)" :key="tab" class="button" role="tab" :aria-selected="detailTab===tab" @click="detailTab=tab">{{ t(adminKey('admin.commission.ui.'+tab)) }}</button></nav>
-     <section v-if="detailTab==='calculationChange'" class="commission-detail" data-testid="cc-plan-detail">
-      <dl class="commission-metrics"><div><dt>{{ t('admin.commission.ui.originalPoints') }}</dt><dd>{{ plan.state==='ready'||execution?plan.before_points:t('admin.commission.ui.incomplete') }}</dd></div><div><dt>{{ t('admin.commission.ui.newPoints') }}</dt><dd>{{ plan.state==='ready'||execution?plan.calculated_points:t('admin.commission.ui.incomplete') }}</dd></div><div><dt>{{ t('admin.commission.ui.creditPoints') }}</dt><dd>{{ plan.state==='ready'||execution?plan.credit_points:'—' }}</dd></div><div><dt>{{ t('admin.commission.ui.debitPoints') }}</dt><dd>{{ plan.state==='ready'||execution?plan.debit_points:'—' }}</dd></div></dl>
-      <p class="commission-note">{{ t('admin.commission.ui.amountDifference') }} {{ t('admin.copy.abf96c9b') }}</p><p v-if="!execution" class="commission-note">{{ t('admin.commission.ui.noExecution') }}</p>
+     <section class="commission-detail" data-testid="cc-plan-detail">
+      <dl class="commission-metrics report-summary-tags"><div><dt>{{ t('admin.commission.ui.originalPoints') }}</dt><dd>{{ plan.state==='ready'||execution?plan.before_points:t('admin.commission.ui.incomplete') }}</dd></div><div><dt>{{ t('admin.commission.ui.newPoints') }}</dt><dd>{{ plan.state==='ready'||execution?plan.calculated_points:t('admin.commission.ui.incomplete') }}</dd></div><div><dt>{{ t('admin.commission.ui.creditPoints') }}</dt><dd>{{ plan.state==='ready'||execution?plan.credit_points:'—' }}</dd></div><div><dt>{{ t('admin.commission.ui.debitPoints') }}</dt><dd>{{ plan.state==='ready'||execution?plan.debit_points:'—' }}</dd></div></dl>
+<p v-if="!execution" class="commission-note">{{ t('admin.commission.ui.noExecution') }}</p>
       <dl v-else class="commission-facts"><dt>{{ t('admin.commission.ui.progress') }}</dt><dd>{{ execution.applied_count }} / {{ execution.target_count }}</dd><dt>{{ t('admin.commission.ui.appliedPoints') }}</dt><dd>{{ execution.applied_credit_points }} / {{ execution.applied_debit_points }}</dd></dl>
      </section>
-     <ManagementList embedded v-if="detailTab==='planDetails'" class="commission-detail"><p v-if="errors.planTargets" class="commission-warning" role="alert">{{ displayPublicError(errors.planTargets) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadPlanTargetPage,failedPlanOffset ?? planTargetsOffset)">{{ t('admin.commission.ui.retryRead') }}</button></p><ManagementTable :entries="planTargets" :columns="planColumns" :empty="!loadingTargets&&!planTargets.length" :empty-label="t('admin.commission.ui.empty')"><template #agent="{entry}"><AssociationName :record="entry" kind="agent" :id="entry.agent_id" :locale="locale" /></template><template #before="{entry}">{{ entry.points_before }}</template><template #after="{entry}">{{ entry.points_after }}</template><template #delta="{entry}">{{ entry.delta_points }}</template></ManagementTable><template #pagination><TablePagination class="commission-pager" :total="planTargetsTotal" :page="Math.floor(planTargetsOffset / planPageSize + 1)" :count="planTargets.length" :locale="locale" :page-size="planPageSize" :previous-disabled="loadingTargets||planTargetsOffset===0" :next-disabled="loadingTargets||BigInt(planTargetsOffset+planPageSize)>=BigInt(planTargetsTotal)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadPlanTargetPage((target - 1) * planPageSize)" :change-page-size="async (size: number) => { planPageSize = size; await loadPlanTargetPage(0) }" /></template></ManagementList>
-     <ManagementList embedded v-if="detailTab==='execution'" class="commission-detail" data-testid="cc-execution-detail"><p v-if="!execution" class="commission-note">{{ t('admin.commission.ui.noExecution') }}</p><template v-else><p v-if="errors.executionTargets" class="commission-warning" role="alert">{{ displayPublicError(errors.executionTargets) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadExecutionTargetPage,failedExecutionOffset ?? executionTargetsOffset)">{{ t('admin.commission.ui.retryRead') }}</button></p><dl class="commission-metrics"><div><dt>{{ t('admin.commission.ui.progress') }}</dt><dd>{{ execution.applied_count }} / {{ execution.target_count }}</dd></div><div><dt>{{ t('admin.commission.ui.creditPoints') }}</dt><dd>{{ execution.applied_credit_points }} / {{ execution.credit_points }}</dd></div><div><dt>{{ t('admin.commission.ui.debitPoints') }}</dt><dd>{{ execution.applied_debit_points }} / {{ execution.debit_points }}</dd></div></dl><ManagementTable :entries="executionTargets" :columns="executionColumns" :empty="!loadingTargets&&!executionTargets.length" :empty-label="t('admin.commission.ui.empty')"><template #agent="{entry}"><AssociationName :record="entry" kind="agent" :id="entry.agent_id" :locale="locale" /></template><template #before="{entry}">{{ entry.points_before }}</template><template #after="{entry}">{{ entry.points_after }}</template><template #delta="{entry}">{{ entry.delta_points }}</template><template #state="{entry}">{{ entry.state==='applied' && entry.delta_points==='0'?t('admin.copy.a1cb3520'):entry.state==='applied'?t('admin.commission.targetApplied'):t('admin.commission.targetPending') }}</template></ManagementTable></template><template #pagination><TablePagination class="commission-pager" :total="executionTargetsTotal" :page="Math.floor(executionTargetsOffset / executionPageSize + 1)" :count="executionTargets.length" :locale="locale" :page-size="executionPageSize" :previous-disabled="loadingTargets||executionTargetsOffset===0" :next-disabled="loadingTargets||BigInt(executionTargetsOffset+executionPageSize)>=BigInt(executionTargetsTotal)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadExecutionTargetPage((target - 1) * executionPageSize)" :change-page-size="async (size: number) => { executionPageSize = size; await loadExecutionTargetPage(0) }" /></template></ManagementList>
+     <details class="commission-technical">
+      <summary>{{ t('admin.commission.ui.planDetails') }}</summary>
+      <ManagementList embedded class="commission-detail"><p v-if="errors.planTargets" class="commission-warning" role="alert">{{ displayPublicError(errors.planTargets) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadPlanTargetPage,failedPlanOffset ?? planTargetsOffset)">{{ t('admin.commission.ui.retryRead') }}</button></p><ManagementTable :entries="planTargets" :columns="planColumns" :empty="!loadingTargets&&!planTargets.length" :empty-label="t('admin.commission.ui.empty')"><template #agent="{entry}"><AssociationName :record="entry" kind="agent" :id="entry.agent_id" :locale="locale" /></template><template #before="{entry}">{{ entry.points_before }}</template><template #after="{entry}">{{ entry.points_after }}</template><template #delta="{entry}">{{ entry.delta_points }}</template></ManagementTable><template #pagination><TablePagination class="commission-pager" :total="planTargetsTotal" :page="Math.floor(planTargetsOffset / planPageSize + 1)" :count="planTargets.length" :locale="locale" :page-size="planPageSize" :previous-disabled="loadingTargets||planTargetsOffset===0" :next-disabled="loadingTargets||BigInt(planTargetsOffset+planPageSize)>=BigInt(planTargetsTotal)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadPlanTargetPage((target - 1) * planPageSize)" :change-page-size="async (size: number) => { planPageSize = size; await loadPlanTargetPage(0) }" /></template></ManagementList>
+     </details>
+     <details class="commission-technical">
+      <summary>{{ t('admin.commission.ui.execution') }}</summary>
+      <ManagementList embedded class="commission-detail" data-testid="cc-execution-detail"><p v-if="!execution" class="commission-note">{{ t('admin.commission.ui.noExecution') }}</p><template v-else><p v-if="errors.executionTargets" class="commission-warning" role="alert">{{ displayPublicError(errors.executionTargets) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadExecutionTargetPage,failedExecutionOffset ?? executionTargetsOffset)">{{ t('admin.commission.ui.retryRead') }}</button></p><dl class="commission-metrics report-summary-tags"><div><dt>{{ t('admin.commission.ui.progress') }}</dt><dd>{{ execution.applied_count }} / {{ execution.target_count }}</dd></div><div><dt>{{ t('admin.commission.ui.creditPoints') }}</dt><dd>{{ execution.applied_credit_points }} / {{ execution.credit_points }}</dd></div><div><dt>{{ t('admin.commission.ui.debitPoints') }}</dt><dd>{{ execution.applied_debit_points }} / {{ execution.debit_points }}</dd></div></dl><ManagementTable :entries="executionTargets" :columns="executionColumns" :empty="!loadingTargets&&!executionTargets.length" :empty-label="t('admin.commission.ui.empty')"><template #agent="{entry}"><AssociationName :record="entry" kind="agent" :id="entry.agent_id" :locale="locale" /></template><template #before="{entry}">{{ entry.points_before }}</template><template #after="{entry}">{{ entry.points_after }}</template><template #delta="{entry}">{{ entry.delta_points }}</template><template #state="{entry}">{{ entry.state==='applied' && entry.delta_points==='0'?t('admin.copy.a1cb3520'):entry.state==='applied'?t('admin.commission.targetApplied'):t('admin.commission.targetPending') }}</template></ManagementTable></template><template #pagination><TablePagination class="commission-pager" :total="executionTargetsTotal" :page="Math.floor(executionTargetsOffset / executionPageSize + 1)" :count="executionTargets.length" :locale="locale" :page-size="executionPageSize" :previous-disabled="loadingTargets||executionTargetsOffset===0" :next-disabled="loadingTargets||BigInt(executionTargetsOffset+executionPageSize)>=BigInt(executionTargetsTotal)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadExecutionTargetPage((target - 1) * executionPageSize)" :change-page-size="async (size: number) => { executionPageSize = size; await loadExecutionTargetPage(0) }" /></template></ManagementList>
+     </details>
 
     </template>
    </section>
-   </DetailModal>
-   <DetailModal v-if="showPolicy" :open="!dialog" :title="t('admin.commission.ui.settings')" :close-label="t('association.close')" @close="showPolicy=false"><div class="commission-detail" data-testid="cc-policy"><p v-if="errors.policy" class="commission-warning" role="alert">{{ displayPublicError(errors.policy) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadPolicy)">{{ t('admin.commission.ui.retryRead') }}</button></p><label v-if="policy"><input data-testid="cc-policy-toggle" type="checkbox" v-model="policyEnabled" :disabled="!rights.policyWrite || account.super_admin || brandStatus==='disabled' || !policy || busyRead || writing || Boolean(unknownIntent) || conflict" /> {{ policy?.enabled?t('admin.copy.e1cc5fdc'):t('admin.copy.f81cb486') }}</label><div class="ui-form-actions"><button class="button button-primary" data-testid="cc-policy-review" :disabled="!canPolicy" @click="openReview('policy')">{{ t('admin.copy.3a0deb6f') }}</button></div></div></DetailModal>
+   </component>
+   <component :is="settingsOnly ? 'div' : DetailModal" v-if="showPolicy"
+     v-bind="settingsOnly ? {} : { title: t('admin.commission.ui.settings'), closeLabel: t('association.close'), closeDisabled: writing }"
+     @close="closeSettings">
+    <form class="commission-detail ui-form" data-testid="cc-policy" @submit.prevent="withGlobalLoading(saveSettings)">
+     <p v-if="loadingPolicy" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
+     <p v-if="errors.policy" class="commission-warning" role="alert">{{ displayPublicError(errors.policy) }}
+      <button type="button" v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadPolicy)">{{ t('admin.commission.ui.retryRead') }}</button>
+     </p>
+     <label v-if="policy"><input data-testid="cc-policy-toggle" type="checkbox" v-model="policyEnabled"
+       :disabled="!rights.policyWrite || account.super_admin || brandStatus==='disabled' || busyRead || writing || Boolean(unknownIntent) || conflict" /> {{ t('admin.commission.ui.enableCorrections') }}</label>
+     <div v-if="rights.policyWrite" class="ui-form-actions"><button type="submit" class="button button-primary" v-write-guard="writing" data-testid="cc-policy-save"
+       :disabled="!canPolicy">{{ t('admin.commission.ui.saveSettings') }}</button></div>
+    </form>
+   </component>
       <div v-if="unknownIntent" v-show="!writing" class="cc-error" data-testid="cc-unknown"><span>{{ t('admin.copy.48cb0926') }} · {{ operationLabel(unknownIntent.operation) }} · </span><button v-write-guard="writing" class="button" type="button" :disabled="writing || !canResolveUnknown" @click="withGlobalLoading(retryUnknown)">{{ t('admin.copy.3ef3c644') }}</button></div>
       <div v-if="conflict" class="cc-review-card" data-testid="cc-conflict"><p>{{ t('admin.copy.af8f1d76') }}</p><button v-refresh-button="t('admin.copy.9fd90523')" class="button" type="button" :disabled="conflictReloading" @click="withGlobalLoading(refreshConflict)">{{ t('admin.copy.9fd90523') }}</button><label class="cc-confirm"><input type="checkbox" :disabled="!conflictRefreshed || conflictReloading" :checked="discardReviewed" @change="discardReviewed=($event.target as HTMLInputElement).checked" />{{ t('admin.copy.8d9b3d75') }}</label><button class="button" type="button" :disabled="!conflictRefreshed || !discardReviewed || conflictReloading" @click="discardConflict">{{ t('admin.copy.5079f563') }}</button></div>
       <section v-if="receipt" class="cc-receipt" data-testid="cc-receipt"><strong>{{ t('admin.copy.ff2e9c8f') }}</strong><code>{{ receiptText() }}</code><p>{{ t('admin.copy.6fa8b32f') }}</p><div v-if="Object.keys(errors).length" role="alert" class="cc-error">{{ Object.values(errors).map(displayPublicError).join(" · ") }}</div></section>
       <DetailModal v-if="dialog" class="cc-review-card" :title="t('admin.copy.1803550d')" :close-label="t('association.close')" :close-disabled="writing" @close="if (!writing) {dialog=null;confirmed=false}" data-testid="cc-review"><h2>{{ operationLabel(dialog.operation) }}</h2><dl class="cc-facts"><dt>{{ t('admin.copy.e5cf0427') }}</dt><dd><AssociationName :record="plan ?? policy" kind="brand" :id="dialog.brandId" :locale="associationLocale" /> {{ operationLabel(dialog.operation) }}</dd><template v-if="dialog.targetId && ((dialog.operation==='plan_retry' && plan?.id===dialog.targetId && plan.version===dialog.body.version) || (dialog.operation!=='plan_retry' && execution?.id===dialog.targetId && execution.version===dialog.body.version))"><dt>{{ t('admin.commission.ui.cycle') }}</dt><dd><AssociationName :record="plan ?? execution" kind="cycle" :id="plan?.cycle_id ?? execution?.cycle_id ?? ''" :locale="locale" /></dd><dt>{{ t('admin.commission.ui.creditPoints') }}</dt><dd>{{ execution?.credit_points ?? plan?.credit_points ?? '—' }}</dd><dt>{{ t('admin.commission.ui.debitPoints') }}</dt><dd>{{ execution?.debit_points ?? plan?.debit_points ?? '—' }}</dd></template><dt v-if="dialog.body.reason">{{ t('admin.copy.5ec7c8ba') }}</dt><dd v-if="dialog.body.reason">{{ dialog.body.reason }}</dd></dl><label class="cc-confirm"><input data-testid="cc-confirm-check" type="checkbox" :checked="confirmed" :disabled="busyRead" @change="confirmed=($event.target as HTMLInputElement).checked" />{{ t('admin.copy.41a04f7e') }}</label><div class="cc-actions ui-form-actions"><button v-write-guard="writing" class="button button-primary" data-testid="cc-submit" type="button" :disabled="writing || busyRead || !confirmed" @click="withGlobalLoading(submit, dialog)">{{ writing ? t('admin.copy.46511dc0') : unknownIntent ? t('admin.copy.59c708d8') : t('admin.copy.3135aeca') }}</button></div></DetailModal>
   </template>
- </article>
+ </component>
 </template>
 <style scoped>
 .cc-review-card dl {display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px}.cc-review-card dd {margin:0;overflow-wrap:anywhere}.cc-confirm {display:flex;align-items:center;gap:8px;min-height:44px}.cc-actions {display:flex;gap:8px;flex-wrap:wrap}.cc-error,.cc-receipt {padding:12px;border:1px solid var(--line);border-radius:10px;overflow-wrap:anywhere}.cc-receipt {border-color:var(--success)}

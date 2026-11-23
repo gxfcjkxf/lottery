@@ -10,6 +10,12 @@ export function isRecoveryRead(label, conditions, path = '') {
   if (['shared/src/DrawScheduleSettings.vue','shared/src/AutomationTimeSettings.vue'].includes(path) && /t\(['"]reload['"]\)/.test(label)
     && conditions.some(condition => /^failed\s*&&\s*!pending$/.test(condition))) return true;
   if (path === 'shared/src/AnnouncementsManagement.vue' && /t\(['"]reset['"]\)/.test(label) && conditions.includes('conflict')) return true;
+  if (path === 'admin-web/src/AgentManagement.vue' && /t\(['"]admin\.copy\.3dc463ff['"]\)/.test(label)
+    && conditions.some(condition => /^policyReloadRequired\s*&&/.test(condition))) return true;
+  if (path === 'platform-web/src/NotificationTemplatesPanel.vue' && /t\(['"]templates\.reload['"]\)/.test(label)
+    && conditions.includes('conflict')) return true;
+  if (path === 'shared/src/ConfiguredPublishing.vue' && /t\(['"]reloadConfiguration['"]\)/.test(label)
+    && conditions.some(condition => /^error\s*&&\s*!ready$/.test(condition))) return true;
   return /['"](?:admin\.settings\.readAgain|security\.reread|brandOperation\.readLatest|cash\.reload)['"]/.test(label)
     && conditions.some(condition => /(?:^|&&|\|\||\()\s*(?:(?:error|readFailed|needsRead|candidatesFailed|conflict|conflictedWrite)\s*(?=$|&&|\|\||\))|[\w.]+\.phase\s*===\s*['"]conflict['"])/.test(condition));
 }

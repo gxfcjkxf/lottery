@@ -45,6 +45,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await expect(dialog.locator('.bet-review-table tbody tr')).toHaveCount(5)
     await expect(dialog.locator('.bet-review-table td').first()).toHaveCSS('padding-left','8px')
     await expect(dialog.locator('.bet-review-table td').last()).toHaveCSS('padding-right','8px')
+    await expect(dialog.locator('.bet-review-table td').last().locator('span')).toHaveCSS('color', 'rgb(3, 105, 161)')
+    await expect(dialog.locator('.notification-bet-summary dd span')).toHaveCSS('color', 'rgb(3, 105, 161)')
     await expect(dialog.locator('.bet-review-table tbody tr').first()).toContainText(ticketLabel(snapshot, lines[0], locale))
     await expect(dialog.locator('.bet-review-table tbody tr').first()).toContainText('48.99')
     const preset = page.viewportSize()!

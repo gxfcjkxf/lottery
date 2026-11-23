@@ -54,6 +54,11 @@ type ConfiguredSalesInput struct {
 	Availability *ConfiguredAvailabilityScope `json:"availability,omitempty"`
 }
 
+var (
+	ErrConfiguredSalesOdds   = errors.New("invalid configured sales odds")
+	ErrConfiguredSalesLimits = errors.New("invalid configured sales limits")
+)
+
 const configuredVersionFields = `id::text,game_id::text,revision,snapshot,snapshot_hash,cases,status,validation`
 
 func scanConfiguredVersion(row pgx.Row) (v ConfiguredVersion, err error) {
@@ -161,12 +166,8 @@ func ConfiguredSalesEngine(v ConfiguredVersion, sales ConfiguredSales) (*rules.C
 	if json.Unmarshal(v.Snapshot, &snapshot) != nil {
 		return nil, ErrInvalid
 	}
-	ceiling := snapshot.Prices
 	engine, err := rules.NewConfiguredEngine(snapshot.Catalog, snapshot.Bindings, sales.Prices)
 	if err != nil {
-		return nil, ErrInvalid
-	}
-	if engine.CheckPriceCeilings(ceiling) != nil {
 		return nil, ErrInvalid
 	}
 	return engine, nil
@@ -189,10 +190,13 @@ func (s Service) WriteConfiguredSales(ctx context.Context, tx pgx.Tx, a access.A
 		return in, e
 	}
 	if _, e = ConfiguredSalesEngine(v, in); e != nil {
+		if errors.Is(e, ErrInvalid) {
+			return in, ErrConfiguredSalesOdds
+		}
 		return in, e
 	}
 	if in.MinPoints < 1 || in.MaxPoints < in.MinPoints || in.MaxUserPeriodPoints < in.MaxPoints || in.MaxPeriodPoints < in.MaxPoints {
-		return in, ErrInvalid
+		return in, ErrConfiguredSalesLimits
 	}
 	current, e := ReadConfiguredSales(ctx, tx, brand, game, true)
 	if e != nil && !errors.Is(e, ErrNotFound) {

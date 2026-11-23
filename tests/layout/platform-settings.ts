@@ -1,4 +1,3 @@
-import { expectDialogFieldColumns } from './dialog-form-columns'
 import { selectControl } from '../select-control'
 import { expect, test } from '@playwright/test'
 import {installConsoleSession,openPlatformPage} from './real-console-session'
@@ -7,8 +6,8 @@ import { origins, expectInsideViewport } from './fixture'
 
 export function registerPlatformSettingsEditorTests(reflow = false) {
  for (const locale of ['en', 'zh-CN'] as const) {
-  test(`platform settings edit in a modal (${locale})`, async ({ page }, info) => {
-   const zh = locale === 'zh-CN', errors: string[] = [], writes: unknown[] = []
+  test(`platform general settings save inline (${locale})`, async ({ page }, info) => {
+   const zh = locale === 'zh-CN', errors: string[] = [], writes: { body: unknown; key: string | undefined }[] = []
    page.on('pageerror', error => errors.push(error.message))
    const initial = {theme:'jade',version: 3, display_name: 'Platform', logo_text: 'P', logo_url: '', timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss', updated_at: '2026-10-21T00:00:00Z'}
    await page.route('**/api/**', async route => {
@@ -26,7 +25,8 @@ export function registerPlatformSettingsEditorTests(reflow = false) {
     expect(body.timezone).toBe('UTC')
     expect(body.date_format).toBe('DD/MM/YYYY')
     expect(body.time_format).toBe('hh:mm:ss A')
-    writes.push(body)
+    writes.push({ body, key: request.headers()['idempotency-key'] })
+    if (writes.length === 1) return route.abort('failed')
     return route.fulfill({json: {success: true, data: {...initial, ...body, version: 4}}})
    })
    await installConsoleSession(page,'platform',locale,'aaaaaaaa-aaaa-4aaa-8aaa-000000000001',['platform_settings.view.platform','platform_settings.write.platform'],'22222222-2222-4222-8222-222222222222',initial)
@@ -34,60 +34,54 @@ export function registerPlatformSettingsEditorTests(reflow = false) {
    const tabs = page.locator('.platform-settings-tabs')
    await expect(tabs.getByRole('button')).toHaveCount(4)
    await expect(tabs.getByRole('button', {name: zh ? '基础' : 'General', exact:true})).toHaveAttribute('aria-pressed', 'true')
-   const edit = page.getByRole('button', {name: zh ? '编辑设置' : 'Edit settings', exact: true})
-   const dialog = page.getByRole('dialog', {name: zh ? '设置' : 'Settings', exact: true})
-   await expect(page.locator('.platform-settings-form')).toHaveCount(0)
-   await edit.click()
-   const name = dialog.getByLabel(zh ? '平台名称' : 'Platform name', {exact: true})
-   await name.fill('Cancelled platform')
-   await page.keyboard.press('Escape')
-   await expect(dialog).toHaveCount(0)
-   expect(writes).toHaveLength(0)
-   await edit.click()
+   const form = page.locator('.platform-settings-form')
+   const name = form.getByLabel(zh ? '平台名称' : 'Platform name', {exact: true})
+   const save = form.getByRole('button', {name: zh ? '保存设置' : 'Save settings', exact: true})
    await expect(name).toHaveValue('Platform')
+   await expect(page.getByRole('dialog')).toHaveCount(0)
    const preset = page.viewportSize()!
    for (const width of reflow ? [320, 640, 900, 1440] : [preset.width]) {
     if (reflow) await page.setViewportSize({width, height: preset.height})
-    await expectDialogFieldColumns(dialog)
-    await expectInsideViewport(dialog)
     await expectListLayout(page)
+    await page.screenshot({path: info.outputPath(`platform-general-${locale}-${width}.png`)})
    }
-   await page.screenshot({path: info.outputPath(`platform-settings-editor-${locale}.png`)})
    await name.fill('Updated platform')
-   const selectors = dialog.locator('.form-row .select-control-trigger')
-   await selectors.nth(0).click()
+   const selectors = form.locator('.select-control-trigger')
+   await selectors.nth(1).click()
    const popup = page.getByRole('listbox').filter({visible:true})
    await expectInsideViewport(popup)
    await page.screenshot({path: info.outputPath(`platform-settings-timezone-${locale}.png`)})
    await popup.locator('[data-value="UTC"]').click()
-   await selectControl(selectors.nth(1), 'DD/MM/YYYY')
-   await selectControl(selectors.nth(2), 'hh:mm:ss A')
-   await dialog.locator('button[type=submit], button:not([type])').last().click()
-   await expect(dialog).toHaveCount(0)
-   await expect(page.locator('.confirm-list')).toContainText('Updated platform')
+   await selectControl(selectors.nth(2), 'DD/MM/YYYY')
+   await selectControl(selectors.nth(3), 'hh:mm:ss A')
+   await save.click()
+   const retry = form.getByRole('button', {name: zh ? '重试' : 'Retry', exact: true})
+   await expect(retry).toBeEnabled()
+   await expect(name).toBeDisabled()
    expect(writes).toHaveLength(1)
-   await edit.click()
+   await retry.click()
+   await expect(save).toBeEnabled()
    await expect(name).toHaveValue('Updated platform')
-   await dialog.locator('.detail-modal-close').click()
-   await expect(dialog).toHaveCount(0)
+   expect(writes).toHaveLength(2)
+   expect(writes[1]).toEqual(writes[0])
+   await expect(page.getByRole('dialog')).toHaveCount(0)
    await tabs.getByRole('button', {name: zh ? '佣金结算' : 'Commission settlement', exact:true}).click()
    await expect(page.locator('.commission-fields')).toBeVisible()
-   await expect(page.locator('.confirm-list')).not.toBeVisible()
+   await expect(form).not.toBeVisible()
    await expectListLayout(page)
-   await page.screenshot({path: info.outputPath(`platform-settings-commission-${locale}.png`)})
    await tabs.getByRole('button', {name: zh ? '基础' : 'General', exact:true}).click()
-   await expect(page.locator('.confirm-list')).toContainText('Updated platform')
+   await expect(name).toHaveValue('Updated platform')
    expect(errors).toEqual([])
   })
  }
 }
 
 export function registerTemplateEditorTests(reflow = false) {
- for (const locale of ['en', 'zh-CN'] as const) test(`platform template editor aligns actions (${locale})`, async ({page}, info) => {
+ for (const locale of ['en', 'zh-CN'] as const) test(`platform template editor saves inline (${locale})`, async ({page}, info) => {
   const id='aaaaaaaa-aaaa-4aaa-8aaa-000000000001', at='2026-10-21T00:00:00Z'
   const errors:string[]=[];page.on('pageerror',cause=>errors.push(cause.message))
-  let writes=0
-  const item={key:'member.joined',version:1,content:{en:{title:'Welcome',body:'Hello'},'zh-CN':{title:'欢迎',body:'你好'}},updated_at:at,audit_log_id:id}
+  const writes: { key: string | undefined; body: string | null }[] = []
+  let item={key:'member.joined',version:1,content:{en:{title:'Welcome',body:'Hello'},'zh-CN':{title:'欢迎',body:'你好'}},updated_at:at,audit_log_id:id}
   await page.route('**/api/**',route=>{
    const req=route.request(),path=new URL(req.url()).pathname
    if(req.method()==='GET'){
@@ -95,24 +89,58 @@ export function registerTemplateEditorTests(reflow = false) {
     return route.fulfill({json:{success:true,data:{items:[item]}}})
    }
    expect(req.method()).toBe('PUT');expect(path).toBe('/api/v1/platform/notification-templates/member.joined')
-   expect(req.headers()['idempotency-key']).toBeTruthy();expect(req.postDataJSON().version).toBe(1)
-   writes++
-   return route.fulfill({json:{success:true,data:{...item,content:req.postDataJSON().content,version:2}}})
+   expect(req.headers()['x-brand-id']).toBeUndefined()
+   const key=req.headers()['idempotency-key']
+   expect(key).toBeTruthy();expect(req.postDataJSON().version).toBe(1)
+   writes.push({ key, body: req.postData() })
+   if (writes.length === 1) {
+    item = {...item,content:req.postDataJSON().content,version:2}
+    return route.abort('failed')
+   }
+   return route.fulfill({json:{success:true,data:item}})
   })
   await installConsoleSession(page,'platform',locale,id,['notification_template.view.platform','notification_template.write.platform'],id)
   await page.goto(origins.platform);await expect(page.locator('.management-console')).toBeVisible()
-  await openPlatformPage(page,locale==='en'?'Operations':'运营');await openPlatformPage(page,locale==='en'?'Notification templates':'通知模板');await expectRealEntry(page,'platform')
-  await page.locator('.template-table .row-action').click()
-  const dialog=page.getByRole('dialog'),submit=dialog.locator('button[type=submit]'),preset=page.viewportSize()!
+  const openTemplates = async () => {
+   await openPlatformPage(page,locale==='en'?'Operations':'运营')
+   await openPlatformPage(page,locale==='en'?'Notification templates':'通知模板')
+  }
+  await openTemplates();await expectRealEntry(page,'platform')
+  const row=page.locator('.template-table .row-action')
+  await row.click()
+  const editor=page.getByTestId('platform-template-detail')
+  const submit=editor.locator('button[type=submit]'),preset=page.viewportSize()!
+  await expect(row).toHaveAttribute('aria-pressed','true')
+  await expect(editor.getByRole('heading',{level:2})).toBeFocused()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   for(const width of reflow?[320,640,900,1440]:[preset.width]){
    if(reflow)await page.setViewportSize({width,height:preset.height})
-   await submit.scrollIntoViewIfNeeded();await expect(submit).toBeInViewport()
-   for(const group of await dialog.locator('.template-language').all())await expectDialogFieldColumns(group)
-   await expectInsideViewport(dialog);await expectListLayout(page)
+   await expectListLayout(page)
+   const body = await editor.locator('textarea').first().evaluate(el => ({
+    height: el.getBoundingClientRect().height,
+    lineHeight: parseFloat(getComputedStyle(el).lineHeight),
+   }))
+   expect(body.height).toBeGreaterThanOrEqual(body.lineHeight * 3)
    await page.screenshot({path:info.outputPath(`template-actions-${locale}-${width}.png`)})
+   await submit.scrollIntoViewIfNeeded();await expect(submit).toBeInViewport()
   }
-  await dialog.locator('input').last().fill('Updated welcome')
-  await submit.click();await expect.poll(()=>writes).toBe(1)
-  await expect(dialog).toHaveCount(0);expect(errors).toEqual([])
+  const title=editor.locator('input').last()
+  await title.fill('Updated welcome')
+  await submit.click()
+  const retry = editor.getByRole('button',{name:locale==='en'?'Retry':'重试',exact:true})
+  await expect(retry).toBeEnabled()
+  await expect(title).toBeDisabled()
+  await expect(row).toBeDisabled()
+  expect(writes).toHaveLength(1)
+  await openPlatformPage(page,locale==='en'?'Home':'首页')
+  await openTemplates()
+  await expect(title).toHaveValue('Updated welcome')
+  await retry.click()
+  await expect(title).toBeEnabled()
+  await expect(row).toHaveAttribute('aria-pressed','true')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  expect(writes).toHaveLength(2)
+  expect(writes[1]).toEqual(writes[0])
+  expect(errors).toEqual([])
  })
 }

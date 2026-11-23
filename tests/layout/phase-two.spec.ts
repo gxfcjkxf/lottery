@@ -49,7 +49,7 @@ for(const locale of ['en','zh-CN'] as const) {
   await page.reload()
   await expect(input).toHaveValue('Final name');expect(writes).toBe(2);await expect(page.getByRole('dialog')).toHaveCount(0)
  })
- test(`phase two template rereads current version and keeps the editable draft (${locale})`,async({page},info)=>{
+ test(`phase two template conflict reloads the version and keeps the editable draft (${locale})`,async({page},info)=>{
   let version=1,writes=0,content={en:{title:'Welcome',body:'Hello'},'zh-CN':{title:'欢迎',body:'你好'}}
   await page.route('**/api/**',route=>{
    const path=new URL(route.request().url()).pathname
@@ -57,20 +57,24 @@ for(const locale of ['en','zh-CN'] as const) {
    const reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
    if(route.request().method()==='PUT'){
     expect(path).toBe('/api/v1/platform/notification-templates/member.joined')
-    const body=route.request().postDataJSON();expect(body.version).toBe(version);content=body.content;version++;writes++
-    if(writes===1)return route.fulfill({status:503,json:{success:false,error:{code:'SERVICE_UNAVAILABLE',message:'Synthetic lost receipt'}}})
+    const body=route.request().postDataJSON();expect(body.version).toBe(version);version++;writes++
+    if(writes===1){
+     content={...content,'zh-CN':{...content['zh-CN'],title:'另一位编辑者'}}
+     return route.fulfill({status:409,json:{success:false,error:{code:'TEMPLATE_VERSION_CONFLICT',message:'Template changed'}}})
+    }
+    content=body.content
     return reply(template())
    }
    expect(route.request().method()).toBe('GET');expect(path).toBe('/api/v1/platform/notification-templates');return reply({items:[template()]})
   })
   await open(page,locale,'templates');await page.locator('.template-table .row-action').click()
-  const dialog=page.getByRole('dialog'),input=dialog.locator('input').first(),save=dialog.locator('button[type=submit]')
+  const editor=page.getByTestId('platform-template-detail'),input=editor.locator('input').first(),save=editor.locator('button[type=submit]')
   await input.fill('Draft template');await save.click();await expect.poll(()=>writes).toBe(1)
-  await expect(input).toBeDisabled();await dialog.getByRole('button',{name:locale==='en'?'Reload current template':'重新读取当前模板',exact:true}).click()
+  await expect(input).toBeDisabled();await editor.getByRole('button',{name:locale==='en'?'Reload current template':'重新读取当前模板',exact:true}).click()
   await expect(input).toHaveValue('Draft template');await expect(input).toBeEnabled()
   await expect(save.locator('xpath=ancestor::form[1]')).not.toHaveAttribute('data-write-locked','true')
   await input.fill('Final template');await save.click();await expect.poll(()=>writes).toBe(2)
-  await expect(dialog).toHaveCount(0)
-  await page.locator('.template-table .row-action').click();await expect(input).toHaveValue('Final template');await review(page,info,`template-${locale}`)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(input).toHaveValue('Final template');await review(page,info,`template-${locale}`)
  })
 }

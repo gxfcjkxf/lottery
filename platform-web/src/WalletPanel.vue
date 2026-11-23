@@ -122,13 +122,13 @@ useOperationToast(error, value => displayPublicError(value), 'error');
       <section class="detail-section" data-testid="platform-wallet-balances">
         <div class="panel-heading"><h2>{{ ui('common.points') }}</h2><button v-if="!error" v-refresh-button="copy.refresh" type="button" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load, activeMember)">{{ copy.refresh }}</button></div>
         <dl class="confirm-list reward-fields">
-          <div><dt>{{ copy.display }}</dt><dd>{{ wallet.display_points }}</dd></div>
-          <div><dt>{{ copy.available }}</dt><dd>{{ wallet.available_points }}</dd></div>
-          <div><dt>{{ copy.frozen }}</dt><dd>{{ wallet.frozen_points }}</dd></div>
-          <div><dt>{{ copy.withdrawal }}</dt><dd>{{ wallet.withdrawal_points }}</dd></div>
+          <div><dt>{{ copy.display }}</dt><dd><span data-wallet-amount="total">{{ wallet.display_points }}</span></dd></div>
+          <div><dt>{{ copy.available }}</dt><dd><span data-wallet-amount="available">{{ wallet.available_points }}</span></dd></div>
+          <div><dt>{{ copy.frozen }}</dt><dd><span data-wallet-amount="frozen">{{ wallet.frozen_points }}</span></dd></div>
+          <div><dt>{{ copy.withdrawal }}</dt><dd><span data-wallet-amount="withdrawal">{{ wallet.withdrawal_points }}</span></dd></div>
         </dl>
         <div class="table-wrap"><table class="console-table console-responsive-table wallet-source-table"><thead><tr><th>{{ copy.source }}</th><th v-for="state in WALLET_STATES" :key="state">{{ copy[state] }}</th></tr></thead><tbody>
-          <tr v-for="source in WALLET_SOURCES" :key="source"><td :data-label="String(copy.source)">{{ copy[source] }}</td><td :data-label="String(copy[state])" v-for="state in WALLET_STATES" :key="state">{{ wallet.by_source[source][state] }}</td></tr>
+          <tr v-for="source in WALLET_SOURCES" :key="source"><td :data-label="String(copy.source)">{{ copy[source] }}</td><td :data-label="String(copy[state])" v-for="state in WALLET_STATES" :key="state"><span :data-wallet-amount="state">{{ wallet.by_source[source][state] }}</span></td></tr>
         </tbody></table></div>
       </section>
     </template>

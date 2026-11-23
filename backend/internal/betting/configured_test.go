@@ -154,27 +154,32 @@ func TestConfiguredLiveWorkflowFrozenSnapshotAndIsolation(t *testing.T) {
 	if !errors.Is(e, platformlottery.ErrDenied) {
 		t.Fatal("brand rewrote platform rule", e)
 	}
-	sale, _ := platformlottery.ReadConfiguredSales(ctx, f.db, f.brand, c.g.ID, false)
-	sale.Prices.Plates["A"]["lucky_price"] = "2.6"
-	tx, _ = f.db.Begin(ctx)
-	_, e = c.s.WriteConfiguredSales(ctx, tx, c.b, f.brand, c.g.ID, sale, points.Metadata{})
-	tx.Rollback(ctx)
-	if !errors.Is(e, platformlottery.ErrInvalid) {
-		t.Fatal("price ceiling", e)
-	}
-
 	var snap rules.ConfiguredSnapshot
 	json.Unmarshal(c.v.Snapshot, &snap)
 	snap.Prices.Plates["A"]["lucky_price"] = "2"
 	snap.Catalog.Domains["lucky"].Options[0].Mapping.Numbers = []int{8}
 	raw, _ := json.Marshal(snap)
+	var nextRule platformlottery.ConfiguredVersion
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
-		_, e := c.s.SaveConfiguredRules(ctx, tx, c.a, c.g.ID, platformlottery.ConfiguredRulesInput{ID: c.v.ID, Revision: c.v.Revision, Snapshot: raw}, points.Metadata{})
+		var e error
+		nextRule, e = c.s.SaveConfiguredRules(ctx, tx, c.a, c.g.ID, platformlottery.ConfiguredRulesInput{ID: c.v.ID, Revision: c.v.Revision, Snapshot: raw}, points.Metadata{})
 		return e
 	})
 	if _, e = configuredPlace(t, c, "configured-stale", c.input); !errors.Is(e, ErrVersion) {
 		t.Fatal("stale admission", e)
 	}
+	sale, e := platformlottery.ReadConfiguredSales(ctx, f.db, f.brand, c.g.ID, false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	sale.RuleID = nextRule.ID
+	bettingTx(t, f.db, func(tx pgx.Tx) error {
+		updated, e := c.s.WriteConfiguredSales(ctx, tx, c.b, f.brand, c.g.ID, sale, points.Metadata{})
+		if e == nil && updated.Prices.Plates["A"]["lucky_price"] != "2.5" {
+			t.Fatal("rebinding must keep brand odds when platform odds decrease", updated)
+		}
+		return e
+	})
 	var placed ConfiguredOrder
 	json.Unmarshal(first.Data, &placed)
 	tx, _ = f.db.Begin(ctx)

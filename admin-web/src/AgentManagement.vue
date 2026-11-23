@@ -17,7 +17,6 @@ import { useAdminI18n as usePublicErrorI18n } from "./i18n";
 const publicErrorI18n = usePublicErrorI18n();
 const publicErrorMessage = publicErrorI18n.errorMessage;
 import { withGlobalLoading } from '@lottery/shared';
-import { vRefreshButton } from '@lottery/shared';
 import { vGlobalLoading } from "@lottery/shared";
 const displayDate = (value: string | null | undefined) => formatDisplayDateTime(value, displayLocale.value);
 import { formatDisplayDateTime } from "@lottery/shared";
@@ -58,6 +57,7 @@ const permissionSignature = computed(() => JSON.stringify({
   platformPermissions: [...(props.account.platform_permissions ?? [])].sort(),
 }));
 const policy = ref<AgentPolicy | null>(null);
+const policyLoading = ref(false), policyReloadRequired = ref(false);
 const policyDraft = ref<PolicyConfig>({ enabled: true, max_depth: 5, loss_ratio_cap: "0", turnover_ratio_cap: "0", mode: "loss", cycle: "monthly" });
 const policyLossPercentage = ref("0"), policyTurnoverPercentage = ref("0");
 const nodes = ref<AgentNode[]>([]);
@@ -88,9 +88,9 @@ const loading = ref(false);
 const writing = ref(false);
 const error = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const notice = ref<string | import("@lottery/shared").LocalizedMessage>("");
-const createOpen = ref(false), policyEditorOpen = ref(false);
-function editPolicy() { if (!policy.value || !canWritePolicy.value) return; policyDraft.value = { ...policy.value.config }; policyLossPercentage.value = agentRatioToPercentage(policy.value.config.loss_ratio_cap); policyTurnoverPercentage.value = agentRatioToPercentage(policy.value.config.turnover_ratio_cap); policyEditorOpen.value = true; }
+const createOpen = ref(false);
 const pending = ref<PendingAgentWrite | null>(null);
+const pendingPolicy = computed(() => pending.value?.operation === 'policy' ? pending.value.body as SaveAgentPolicyBody : null);
 let generation = 0;
 let writeGeneration = 0;
 let disposed = false;
@@ -128,19 +128,34 @@ function currentWrite(ticket: number, accountId: string, brandId: string, permis
     permissionSignature.value === permissions && (operation === "policy" ? canWritePolicy.value : canWriteAgents.value);
 }
 
-function restoreIntent() { pending.value = getPendingAgentWrite({ accountId: props.account.id, brandId: props.brandId }); }
+function setPolicyDraft(config: PolicyConfig) {
+  policyDraft.value = { ...config };
+  policyLossPercentage.value = agentRatioToPercentage(config.loss_ratio_cap);
+  policyTurnoverPercentage.value = agentRatioToPercentage(config.turnover_ratio_cap);
+}
+function restoreIntent() {
+  pending.value = getPendingAgentWrite({ accountId: props.account.id, brandId: props.brandId });
+  if (pendingPolicy.value) setPolicyDraft(pendingPolicy.value.config);
+}
 function handleError(cause: unknown) {
   if (cause instanceof AdminApiError && cause.status === 401) { clearAllPendingAgentWrites(); pending.value = null; emit("session-invalid"); }
   error.value = publicErrorMessage(cause);
 }
 async function loadPolicy(g = ++generation, brand = props.brandId, account = props.account.id) {
   if (!canViewPolicy.value || !brand) { policy.value = null; return; }
+  policyLoading.value = true;
   try {
     const result = await api.policy(brand);
     if (!sameScope(g, brand, account)) return;
     if (result.brand_id !== brand) throw new AdminApiError('', 502, 'INVALID_RESPONSE');
-    policy.value = result; policyDraft.value = { ...result.config }; policyLossPercentage.value = agentRatioToPercentage(result.config.loss_ratio_cap); policyTurnoverPercentage.value = agentRatioToPercentage(result.config.turnover_ratio_cap);
-  } catch (cause) { if (sameScope(g, brand, account)) handleError(cause); }
+    policy.value = result;
+    setPolicyDraft(pendingPolicy.value?.config ?? result.config);
+    policyReloadRequired.value = false;
+  } catch (cause) {
+    if (sameScope(g, brand, account)) { policyReloadRequired.value = true; handleError(cause); }
+  } finally {
+    if (sameScope(g, brand, account)) policyLoading.value = false;
+  }
 }
 async function loadTree(g = ++generation, brand = props.brandId, account = props.account.id, requestedOffset = offset.value, requestedQuery = query.value, requestedOnline = onlineQuery.value, requestedView = viewMode.value, requestedParent = parentId.value) {
   if (!canViewAgents.value || !brand) { nodes.value = []; return; }
@@ -212,8 +227,9 @@ function freeze(operation: AgentWriteOperation, resourceId: string | null, body:
   return true;
 }
 async function preparePolicy() {
-  if (writing.value || pending.value) return;
-  if (!policy.value || !canWritePolicy.value || !policyRatioValid.value || !Number.isInteger(policyDraft.value.max_depth) || policyDraft.value.max_depth < 1 || policyDraft.value.max_depth > 32) return;
+  if (!canViewPolicy.value || !canWritePolicy.value || writing.value || policyLoading.value) return;
+  if (pendingPolicy.value) { await retryFrozen(); return; }
+  if (pending.value || policyReloadRequired.value || !policy.value || !policyRatioValid.value || !Number.isInteger(policyDraft.value.max_depth) || policyDraft.value.max_depth < 1 || policyDraft.value.max_depth > 32) return;
   const body: SaveAgentPolicyBody = { version: policy.value.version, config: { ...policyDraft.value, enabled: true, loss_ratio_cap: agentPercentageToRatio(policyLossPercentage.value), turnover_ratio_cap: agentPercentageToRatio(policyTurnoverPercentage.value) } };
   if (freeze("policy", null, body)) await confirmWrite();
 }
@@ -267,7 +283,11 @@ async function confirmWrite() {
     detailOpen.value = false;
     notice.value = i.operation === "create" ? message('admin.agents.created') : message('admin.copy.6a656cc2');
     if (i.operation === "create") { agentPassword.value = ""; createOpen.value = false; }
-    if (i.operation === "policy") { policyEditorOpen.value = false; await loadPolicy(); }
+    if (i.operation === "policy") {
+      policy.value = receipt as AgentPolicy;
+      setPolicyDraft(policy.value.config);
+      await loadPolicy();
+    }
     else if (i.operation === "create") await loadTree();
     else if (i.operation === 'mode-change') { const root = await api.node(i.brandId,i.resourceId!); await selectNode(root, false); if (!isCurrentWrite()) return; await loadTree(); }
     else { await selectNode(receipt as AgentNode, false); if (!isCurrentWrite()) return; await loadTree(); }
@@ -282,11 +302,14 @@ async function confirmWrite() {
     }
     if (classifyAgentFailure(status) === "uncertain") {
       pending.value = getPendingAgentWrite(sharedScope);
-      notice.value = i.operation === "create" ? message('admin.agents.createUnknown') : message('admin.copy.bad148c4');
+      if (i.operation !== "policy" || props.mode !== "settings") notice.value = i.operation === "create" ? message('admin.agents.createUnknown') : message('admin.copy.bad148c4');
       error.value = publicErrorMessage(cause);
     } else {
       clearPendingAgentWrite(sharedScope, i.key);
       pending.value = getPendingAgentWrite(sharedScope);
+      if (i.operation === 'policy' && cause instanceof AdminApiError && cause.code === 'AGENT_VERSION_CONFLICT') {
+        policyReloadRequired.value = true;
+      }
       error.value = publicErrorMessage(cause);
     }
   } finally { if (isCurrentWrite()) writing.value = false; }
@@ -305,7 +328,7 @@ watch(() => [props.brandId, props.account.id, permissionSignature.value, props.m
   modeScopeGeneration++; modeScopeLoading.value = false; modeLine.value = []; modeRatios.value = {};
   viewMode.value = 'list';
   search.value = ''; query.value = ''; onlineFilter.value = ''; onlineQuery.value = ''; directoryNodes.value = []; listLoaded.value = false;
-  generation++; writeGeneration++; policy.value = null; policyEditorOpen.value = false; nodes.value = []; createOpen.value = false; selected.value = null; detailOpen.value = false; parentId.value = null; parentNode.value = null; createParent.value = null; hierarchyPage.value = null; treeRevision.value++; offset.value = 0; error.value = ""; notice.value = ""; loading.value = false; writing.value = false; restoreIntent(); if (canView.value) void loadAll();
+  generation++; writeGeneration++; policy.value = null; policyLoading.value = false; policyReloadRequired.value = false; nodes.value = []; createOpen.value = false; selected.value = null; detailOpen.value = false; parentId.value = null; parentNode.value = null; createParent.value = null; hierarchyPage.value = null; treeRevision.value++; offset.value = 0; error.value = ""; notice.value = ""; loading.value = false; writing.value = false; restoreIntent(); if (canView.value) void loadAll();
 }, { flush: "sync" });
 
 useOperationToast(() => error.value, value => display(value), 'error');
@@ -314,24 +337,35 @@ useOperationToast(() => notice.value, value => display(value), 'info');
 
 <template>
   <section class="agent-management" :class="{ 'brand-settings-panel': mode === 'settings' }">
-    <header v-if="mode !== 'settings' || !policy" class="console-page-heading am-head"><div><h2 class="console-page-title">{{ t(mode === 'settings' ? 'admin.agents.rules' : 'admin.nav.agentList') }}</h2></div></header>
+    <header v-if="mode !== 'settings'" class="console-page-heading am-head"><div><h2 class="console-page-title">{{ t('admin.nav.agentList') }}</h2></div></header>
 
     <p v-if="!canView" class="am-note">{{ t('admin.copy.07a2166b') }}</p>
     <template v-else>
-      <section v-if="mode === 'settings' && policy" class="agent-settings-policy"><div class="am-card-head"><div><h2>{{ t('admin.agents.rules') }}</h2></div><button v-if="error" v-refresh-button="t('admin.copy.1935ecf7')" type="button" class="am-secondary button button-secondary" @click="withGlobalLoading(loadAll)">{{ t('admin.copy.1935ecf7') }}</button></div>
-        <dl class="am-facts"><div><dt>{{ t('admin.copy.eae52028') }}</dt><dd>{{ policy.config.max_depth }}</dd></div><div><dt>{{ t('admin.agents.lossRatioCap') }}</dt><dd>{{ agentRatioToPercentage(policy.config.loss_ratio_cap) }}%</dd></div><div><dt>{{ t('admin.agents.turnoverRatioCap') }}</dt><dd>{{ agentRatioToPercentage(policy.config.turnover_ratio_cap) }}%</dd></div><div><dt>{{ t('admin.copy.60850269') }}</dt><dd>{{ policy.config.mode === "loss" ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d') }}</dd></div></dl>
-        <div class="am-actions ui-form-actions"><button v-if="mode === 'settings' && canWritePolicy && policy" class="button button-secondary" type="button" :disabled="writing || !!pending" @click="editPolicy">{{ t('admin.copy.24dfbf6c') }}</button></div>
+      <section v-if="mode === 'settings'" class="agent-settings-policy">
+        <h2>{{ t('admin.agents.rules') }}</h2>
+        <form v-if="canWritePolicy && (policy || pendingPolicy)" v-write-guard="writing" novalidate v-inline-validation class="am-form ui-form" @submit.prevent="withGlobalLoading(preparePolicy)">
+          <fieldset class="agent-policy-fields" :disabled="writing || policyLoading || policyReloadRequired || !!pending">
+            <label>{{ t('admin.copy.96b469dc') }}<input v-model.number="policyDraft.max_depth" type="number" min="1" max="32" step="1" required></label>
+            <label>{{ t('admin.copy.60850269') }}<SelectControl v-model="policyDraft.mode" :label="t('admin.copy.60850269')" :options="[{ value: 'loss', label: t('admin.copy.a13e79ef') }, { value: 'turnover', label: t('admin.copy.89fd862d') }]" /></label>
+            <label>{{ t('admin.agents.lossRatioCap') }}<span class="am-ratio-input"><input v-model.trim="policyLossPercentage" inputmode="decimal" autocomplete="off" :aria-label="t('admin.agents.lossRatioCap')"><span aria-hidden="true">%</span></span></label>
+            <label>{{ t('admin.agents.turnoverRatioCap') }}<span class="am-ratio-input"><input v-model.trim="policyTurnoverPercentage" inputmode="decimal" autocomplete="off" :aria-label="t('admin.agents.turnoverRatioCap')"><span aria-hidden="true">%</span></span></label>
+          </fieldset>
+          <p v-if="!policyRatioValid" class="am-field-error" role="alert">{{ t('admin.copy.379b3171') }}</p>
+          <p v-if="pendingPolicy && !writing" class="agent-policy-status" role="status">{{ t('admin.settings.unknown') }}</p>
+          <div class="ui-form-actions">
+            <button v-if="policyReloadRequired && !pendingPolicy" class="button button-secondary" type="button" :disabled="writing || policyLoading" @click="withGlobalLoading(loadPolicy)">{{ t('admin.copy.3dc463ff') }}</button>
+            <button v-else class="button button-primary" type="submit" :disabled="writing || policyLoading || (!pendingPolicy && (!!pending || !policyRatioValid))">{{ t(writing ? 'admin.copy.2462134b' : pendingPolicy ? 'admin.settings.retryOperation' : 'admin.copy.ea2d7203') }}</button>
+          </div>
+        </form>
+        <dl v-else-if="policy" class="am-facts">
+          <div><dt>{{ t('admin.copy.eae52028') }}</dt><dd>{{ policy.config.max_depth }}</dd></div>
+          <div><dt>{{ t('admin.agents.lossRatioCap') }}</dt><dd>{{ agentRatioToPercentage(policy.config.loss_ratio_cap) }}%</dd></div>
+          <div><dt>{{ t('admin.agents.turnoverRatioCap') }}</dt><dd>{{ agentRatioToPercentage(policy.config.turnover_ratio_cap) }}%</dd></div>
+          <div><dt>{{ t('admin.copy.60850269') }}</dt><dd>{{ modeLabel(policy.config.mode) }}</dd></div>
+        </dl>
+        <p v-else-if="policyLoading" v-global-loading role="status">{{ t('admin.copy.efd6ec13') }}</p>
+        <button v-if="policyReloadRequired && (!canWritePolicy || (!policy && !pendingPolicy))" class="button button-secondary" type="button" :disabled="policyLoading" @click="withGlobalLoading(loadPolicy)">{{ t('admin.copy.3dc463ff') }}</button>
       </section>
-      <DetailModal class="agent-dialog ui-form-dialog" v-if="mode === 'settings' && canWritePolicy && policy && policyEditorOpen" :open="!pending" :title="t('admin.nav.agentSettings')" :close-label="t('association.close')" :close-disabled="writing" @close="!writing && (policyEditorOpen = false)">
-
-      <section v-if="canWritePolicy && policy" class="am-card"><form v-write-guard="writing" novalidate v-inline-validation class="am-form ui-form" @submit.prevent="withGlobalLoading(preparePolicy)">
-        <label>{{ t('admin.copy.96b469dc') }}<input v-model.number="policyDraft.max_depth" type="number" min="1" max="32" step="1" :aria-label="t('admin.copy.96b469dc')"></label>
-        <label>{{ t('admin.agents.lossRatioCap') }}<span class="am-ratio-input"><input v-model.trim="policyLossPercentage" inputmode="decimal" autocomplete="off" :aria-label="t('admin.agents.lossRatioCap')"><span aria-hidden="true">%</span></span></label>
-        <label>{{ t('admin.agents.turnoverRatioCap') }}<span class="am-ratio-input"><input v-model.trim="policyTurnoverPercentage" inputmode="decimal" autocomplete="off" :aria-label="t('admin.agents.turnoverRatioCap')"><span aria-hidden="true">%</span></span></label>
-        <label>{{ t('admin.copy.60850269') }}<SelectControl v-model="policyDraft.mode" :label="t('admin.copy.60850269')" :options="[{ value: 'loss', label: (String(t('admin.copy.a13e79ef'))).trim() }, { value: 'turnover', label: (String(t('admin.copy.89fd862d'))).trim() }]" /></label>
-        <p v-if="!policyRatioValid" class="am-field-error">{{ t('admin.copy.379b3171') }}</p><div class="am-actions ui-form-actions"><button class="am-primary button button-primary" type="submit" :disabled="writing || !policyRatioValid">{{ t('admin.copy.ea2d7203') }}</button></div>
-      </form></section>
-      </DetailModal>
       <ManagementList v-if="mode !== 'settings' && canViewAgents" :busy="loading" actions-with-tabs><template #tabs><ConsoleTabs  class="am-view-switch" :items="[{id:'list',label:t('admin.agents.allLevels')},{id:'hierarchy',label:t('admin.agents.byHierarchy')}]" :value="viewMode" :disabled="loading || writing" :select="switchView" /></template><template v-if="(canWriteAgents && policy) || (viewMode === 'hierarchy' && parentId)" #actions><button v-if="viewMode === 'hierarchy' && parentId" type="button" class="am-secondary button button-secondary" :disabled="loading" @click="withGlobalLoading(goBack)">{{ t('admin.copy.2fbcdb10') }}</button><button v-if="canWriteAgents && policy" type="button" class="am-secondary button button-secondary" :disabled="writing || !!pending" @click="startCreate()">{{ t('admin.copy.b8713ea7') }}</button></template>
         <template v-if="viewMode==='list'" #filters><DirectorySearch :locale="associationLocale" v-model="search" :label="t('admin.members.search')" :query-label="t('admin.members.query')" :busy="loading" :search="searchAgents"><SelectControl v-model="onlineFilter" :label="t('admin.members.onlineStatus')" :options="[{ value: '', label: (String(t('admin.members.allOnline'))).trim() }, { value: 'true', label: (String(t('admin.members.online'))).trim() }, { value: 'false', label: (String(t('admin.members.offline'))).trim() }]" /></DirectorySearch></template>
         <div v-if="viewMode === 'list'" class="table-wrap"><table class="agent-directory-table console-table console-responsive-table"><thead><tr><th>{{ t('admin.copy.851c6121') }}</th><th>{{ t('admin.members.onlineStatus') }}</th><th>{{ t('admin.members.points') }}</th><th>{{ t('admin.copy.ac22afab') }}</th><th>{{ t('admin.copy.4f39e60b') }}</th><th>{{ t('admin.copy.602b68c2') }}</th><th>{{ t('admin.copy.cf6d9c6d') }}</th><th>{{ t('admin.copy.d21fcbef') }}</th></tr></thead><tbody><tr v-for="node in directoryNodes" :key="node.id"><td :data-label="t('admin.copy.851c6121')"><button class="text-button member-account" type="button" @click="withGlobalLoading(selectNode, node)">{{ node.username || t('association.unnamed') }}</button></td><td :data-label="t('admin.members.onlineStatus')"><span class="member-presence" :class="{ 'is-online': node.online }"><i aria-hidden="true" />{{ t(node.online ? 'admin.members.online' : 'admin.members.offline') }}</span></td><td class="member-points" :data-label="t('admin.members.points')">{{ node.display_points === null ? t('admin.members.pointsRestricted') : node.display_points }}</td><td :data-label="t('admin.copy.ac22afab')">{{ node.depth }}</td><td :data-label="t('admin.copy.4f39e60b')">{{ agentRatioToPercentage(node.config.ratio) }}%</td><td :data-label="t('admin.copy.602b68c2')">{{ modeLabel(node.effective_mode) }}</td><td :data-label="t('admin.copy.cf6d9c6d')">{{ t(node.config.status === 'active' ? 'admin.copy.5eb01613' : 'admin.copy.5e3326db') }}</td><td :data-label="t('admin.copy.d21fcbef')"><MemberActionsMenu :id="`agent-actions-${node.id}`" :label="t('admin.agents.actions', { account: node.username })"><button role="menuitem" type="button" @click="withGlobalLoading(selectNode, node)">{{ t('admin.copy.01db40da') }}</button><button role="menuitem" type="button" @click="withGlobalLoading(openChildren, node)">{{ t('admin.copy.2e035a42') }}</button></MemberActionsMenu></td></tr><tr v-if="listLoaded && !loading && !error && !directoryNodes.length"><td colspan="8" class="empty-state">{{ t('admin.copy.a59f8381') }}</td></tr></tbody></table></div>
@@ -353,7 +387,7 @@ useOperationToast(() => notice.value, value => display(value), 'info');
       </DetailModal>
       <DetailModal class="agent-dialog ui-form-dialog" v-if="canViewAgents && !!selected && detailOpen" :title="t('admin.copy.01db40da')" :close-label="t('admin.copy.2bb2cb1d')" @close="closeDetail()">
 
-<section v-if="canViewAgents && selected" class="am-card agent-detail">
+<section v-if="canViewAgents && selected" class="agent-detail">
         <dl class="agent-detail-facts">
           <div><dt>{{ t('admin.copy.61c7d845') }}</dt><dd><AssociationName :record="selected" kind="agent" :id="selected.id" :locale="associationLocale" /></dd></div>
           <div><dt>{{ t('admin.nav.agentHierarchy') }}</dt><dd>{{ t('admin.agents.levelNames').split(',')[selected.depth - 1] }}</dd></div>
@@ -362,9 +396,9 @@ useOperationToast(() => notice.value, value => display(value), 'info');
         <p v-if="selected.parent_id && !selectedParentReady" class="am-message is-error" role="status">{{ t('admin.copy.c202b758') }}</p>
         <dl v-if="!canWriteAgents" class="agent-detail-facts"><div><dt>{{ t('admin.copy.94fca494') }}</dt><dd>{{ modeLabel(selected.parent_id ? selected.config.mode : selected.effective_mode) }}</dd></div><div><dt>{{ t(selected.effective_mode === 'loss' ? 'admin.agents.lossRatio' : 'admin.agents.turnoverRatio') }}</dt><dd>{{ agentRatioToPercentage(selected.config.ratio) }}%</dd></div><div><dt>{{ t('admin.copy.054393be') }}</dt><dd>{{ selected.config.status === "active" ? t('admin.copy.98d24810') : t('admin.copy.5e3326db') }}</dd></div><div><dt>{{ t('admin.copy.59e9ba82') }}</dt><dd>{{ selected.config.can_create_children ? t('admin.copy.1a264f45') : t('admin.copy.b92bb6e0') }}</dd></div></dl>
         <p v-if="selected.pending_change" class="am-note" role="status">{{ t('admin.agents.scheduled', { mode: modeLabel(selected.pending_change.mode), ratio: agentRatioToPercentage(selected.pending_change.ratio) + "%", time: displayDate(selected.pending_change.effective_at) }) }}</p>
-        <form v-write-guard="writing" novalidate v-inline-validation v-if="canWriteAgents" class="am-form ui-form agent-detail-form" @submit.prevent="withGlobalLoading(prepareNode)"><fieldset :disabled="writing || !!pending || Boolean(selected.pending_change)" class="am-form am-edit-fields agent-detail-fields">
-          <label>{{ t('admin.copy.94fca494') }}<SelectControl v-model="form.mode" :label="t('admin.copy.94fca494')" :required="isFirstLevel" :options="[{ value: '', label: (String(isFirstLevel ? t('admin.agents.selectMode') : t('admin.copy.b8bd227c'))).trim(), disabled: isFirstLevel }, ...((allowedModes).map((mode) => ({ value: mode, label: (String(mode === 'loss' ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d'))).trim() }))), ...((form.mode && !allowedModes.includes(form.mode)) ? [{ value: form.mode, label: (String(t('admin.copy.7a1e57b8')) + String(form.mode === 'loss' ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d'))).trim(), disabled: true }] : [])]" /></label><AgentRatioField v-if="draftMode==='loss'" v-model="form.loss_ratio" :label="t('admin.agents.lossRatio')" />
-        <AgentRatioField v-if="draftMode==='turnover'" v-model="form.turnover_ratio" :label="t('admin.agents.turnoverRatio')" /><label>{{ t('admin.copy.054393be') }}<SelectControl v-model="form.status" :disabled="changingMode" :label="t('admin.copy.054393be')" :options="[{ value: 'active', label: (String(t('admin.copy.5eb01613'))).trim() }, { value: 'disabled', label: (String(t('admin.copy.5e3326db'))).trim() }]" /></label><label class="am-check"><span>{{ t('admin.copy.a78c6c73') }}</span><input v-model="form.can_create_children" :disabled="changingMode" type="checkbox" :aria-label="t('admin.copy.a78c6c73')"></label>
+        <form v-write-guard="writing" novalidate v-inline-validation v-if="canWriteAgents" class="am-form ui-form ui-facts-form" @submit.prevent="withGlobalLoading(prepareNode)"><fieldset :disabled="writing || !!pending || Boolean(selected.pending_change)" class="am-form am-edit-fields">
+          <label class="ui-field-row"><span>{{ t('admin.copy.94fca494') }}</span><SelectControl v-model="form.mode" :label="t('admin.copy.94fca494')" :required="isFirstLevel" :options="[{ value: '', label: (String(isFirstLevel ? t('admin.agents.selectMode') : t('admin.copy.b8bd227c'))).trim(), disabled: isFirstLevel }, ...((allowedModes).map((mode) => ({ value: mode, label: (String(mode === 'loss' ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d'))).trim() }))), ...((form.mode && !allowedModes.includes(form.mode)) ? [{ value: form.mode, label: (String(t('admin.copy.7a1e57b8')) + String(form.mode === 'loss' ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d'))).trim(), disabled: true }] : [])]" /></label><AgentRatioField class="ui-field-row" v-if="draftMode==='loss'" v-model="form.loss_ratio" :label="t('admin.agents.lossRatio')" />
+        <AgentRatioField class="ui-field-row" v-if="draftMode==='turnover'" v-model="form.turnover_ratio" :label="t('admin.agents.turnoverRatio')" /><label class="ui-field-row"><span>{{ t('admin.copy.054393be') }}</span><SelectControl v-model="form.status" :disabled="changingMode" :label="t('admin.copy.054393be')" :options="[{ value: 'active', label: (String(t('admin.copy.5eb01613'))).trim() }, { value: 'disabled', label: (String(t('admin.copy.5e3326db'))).trim() }]" /></label><label class="am-check ui-field-row"><span>{{ t('admin.copy.a78c6c73') }}</span><input v-model="form.can_create_children" :disabled="changingMode" type="checkbox" :aria-label="t('admin.copy.a78c6c73')"></label>
           <section v-if="changingMode" class="am-mode-line">
             <ul class="am-note am-mode-notes">
               <li>{{ t('admin.agents.changeHelp') }}</li>
@@ -385,7 +419,7 @@ useOperationToast(() => notice.value, value => display(value), 'info');
       </section>
 </DetailModal>
       <div v-if="pending?.operation === 'create' && !createOpen" v-show="!writing" class="am-actions ui-form-actions"><button v-write-guard="writing" class="button button-primary" type="button" :disabled="writing || !canWriteAgents" @click="withGlobalLoading(retryFrozen)">{{ t('admin.agents.retryCreate') }}</button></div>
-      <div v-if="pending?.operation === 'policy'" v-show="!writing" class="am-actions ui-form-actions"><button v-write-guard="writing" class="button button-primary" type="button" :disabled="writing || !canWritePolicy" @click="withGlobalLoading(retryFrozen)">{{ t('admin.settings.retryOperation') }}</button></div>
+      <div v-if="mode !== 'settings' && pendingPolicy" v-show="!writing" class="am-actions ui-form-actions"><button v-write-guard="writing" class="button button-primary" type="button" :disabled="writing || !canWritePolicy" @click="withGlobalLoading(retryFrozen)">{{ t('admin.settings.retryOperation') }}</button></div>
       <div v-if="pending && (pending.operation === 'update' || pending.operation === 'mode-change') && !detailOpen" v-show="!writing" class="am-actions ui-form-actions"><button v-write-guard="writing" class="button button-primary" type="button" :disabled="writing || !canWriteAgents" @click="withGlobalLoading(retryFrozen)">{{ t('admin.settings.retryOperation') }}</button></div>
     </template>
   </section>
@@ -395,6 +429,14 @@ useOperationToast(() => notice.value, value => display(value), 'info');
 .agent-management{width:100%;min-width:0;color:var(--ink)}.am-head,.am-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.am-head{margin:4px 0 16px}.am-head h2{font-size:20px;margin:3px 0 5px}.am-head p,.am-card-head p{margin:0;color:var(--muted);font-size:var(--body-font-size);line-height:1.55;overflow-wrap:anywhere}.am-eyebrow{font-size:var(--body-font-size)!important;letter-spacing:1.1px;color:var(--muted-light)!important;font-weight:700}.am-brand,.am-pending{border-radius:20px;background:var(--canvas);padding:8px 12px;color:var(--muted);font-size:var(--body-font-size);white-space:nowrap}.am-note,.am-message{border-radius:8px;background:var(--canvas);color:var(--muted);padding:11px 13px;font-size:var(--body-font-size);line-height:1.6;overflow-wrap:anywhere;margin:12px 0}.am-message.is-error{background:var(--danger-bg);color:var(--danger)}.am-message.is-ok{background:var(--primary-light);color:var(--primary-dark)}.am-card{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:16px;min-width:0;box-shadow:var(--shadow-sm);margin:13px 0}.am-card h3{font-size:16px;margin:0 0 12px}.am-card-head{margin-bottom:14px}.am-card-head h3{margin:0 0 4px}.am-card-head h2{margin:0 0 4px}.am-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin:0}.am-facts div{border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0}.am-facts dt{font-size:var(--body-font-size);color:var(--muted)}.am-facts + .am-actions{margin-top:12px}.am-ratio-input{display:flex;align-items:center;gap:8px;min-width:0}.am-ratio-input input{flex:1 1 0;min-width:0}.am-ratio-input > span{flex:none;color:var(--muted)}.am-facts dd{font-size:16px;font-weight:700;margin:6px 0 0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.am-meta{font-size:var(--body-font-size);color:var(--muted);overflow-wrap:anywhere}.am-form{display:grid;grid-template-columns:minmax(0,1fr);gap:13px}.am-form label{display:grid;gap:6px;font-size:var(--body-font-size);font-weight:600;min-width:0}.am-form input:not([type=checkbox]), .am-form textarea{box-sizing:border-box;min-width:0}.am-form textarea{width:100%}.am-form small{font-size:var(--body-font-size);font-weight:400;color:var(--muted);line-height:1.5}.am-form .am-check,.am-check{display:flex;align-items:center;gap:9px;min-height:44px;font-size:14px}.am-check input{width:18px;height:18px;flex:none}.am-form textarea{resize:vertical}.am-field-error{grid-column:1/-1;color:var(--danger);font-size:var(--body-font-size);margin:0}.am-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.am-node-list{display:grid;gap:9px}.am-node{display:flex;justify-content:space-between;gap:12px;border:1px solid var(--line);border-radius:9px;padding:12px;min-width:0}.am-node-main{display:grid;gap:4px;min-width:0}.am-node-main strong{font-size:15px;overflow-wrap:anywhere}.am-node-main span,.am-node-main small{font-size:var(--body-font-size);color:var(--muted);overflow-wrap:anywhere}.am-node code,.am-card code,.am-meta code{overflow-wrap:anywhere;word-break:break-word}.am-review{border-color:var(--primary)}.am-json{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-height:320px;overflow:auto;background:var(--canvas);border-radius:8px;padding:12px;font-size:var(--body-font-size);line-height:1.5}.am-confirm{margin:12px 0;font-size:14px}
 @media(max-width:640px){.am-head,.am-card-head,.am-node{flex-direction:column}.am-form{grid-template-columns:minmax(0,1fr)}.am-brand{white-space:normal}.am-actions{width:100%}.am-actions button{flex:1}.am-card{padding:14px}.am-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
+.agent-settings-policy { display: grid; gap: 12px; min-width: 0; }
+.agent-settings-policy h2 { margin: 0; font-size: var(--body-font-size); }
+.agent-settings-policy > button { justify-self: start; }
+.agent-policy-status { margin: 0; color: var(--muted); }
+.agent-policy-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.agent-policy-fields .am-ratio-input { max-width: 240px; }
+@media (max-width: 640px) { .agent-policy-fields { grid-template-columns: minmax(0, 1fr); } }
+
 .agent-management .agent-dialog { width:min(520px,calc(100vw - 24px)); }
 .am-mode-notes{padding-inline-start:30px}.am-mode-notes li + li{margin-top:4px}
 .am-edit-fields{border:0;padding:0;margin:0;min-width:0}.am-mode-line{display:grid;gap:12px;min-width:0}
@@ -403,19 +445,13 @@ useOperationToast(() => notice.value, value => display(value), 'info');
 .agent-dialog .am-card { margin:0; padding:0; border:0; box-shadow:none; }
 @media(max-width:900px),(pointer:coarse){.am-form input:not([type=checkbox]){width:100%}}
 
-.agent-detail{--agent-detail-label-width:112px;display:grid;gap:12px}
-.agent-detail-facts{display:grid;gap:12px;margin:0}
-#app .agent-detail :deep(dl > div:has(> dt + dd)){grid-template-columns:var(--agent-detail-label-width) minmax(0,1fr)!important;gap:12px!important;padding:0;border:0;background:transparent}
-#app .agent-detail :deep(dt){color:var(--ink-secondary);font-weight:600}
-#app .agent-detail :deep(dd){text-align:start;font-weight:400;font-size:var(--body-font-size)}
-#app .agent-detail :deep(.owner-join-code){margin:0;padding:0;border:0}
-#app .agent-detail .agent-detail-fields > label:not(.am-check){grid-template-columns:var(--agent-detail-label-width) minmax(0,1fr);align-items:center;gap:12px}
-#app .agent-detail .agent-detail-fields > label :deep(:is(.select-control,.am-ratio-input)){width:100%;min-width:0}
-#app .agent-detail .agent-detail-fields > label :deep(.am-ratio-input){max-width:160px}
-#app .agent-detail .agent-detail-fields > .am-check{display:grid;grid-template-columns:var(--agent-detail-label-width) minmax(0,1fr);gap:12px!important;min-height:var(--control-height)}
-#app .agent-detail .agent-detail-fields > .am-check input{margin:0}
-#app .agent-detail .agent-detail-form{gap:12px}
-#app .agent-detail .ui-form-actions{margin-top:0}
+.agent-detail { display: grid; gap: 12px; }
+.agent-detail-facts { display: grid; gap: 12px; margin: 0; }
+#app .agent-detail :deep(dt) { color: var(--muted); font-weight: 400; }
+#app .agent-detail :deep(dd) { font-size: var(--body-font-size); font-weight: 400; }
+#app .agent-detail :deep(.owner-join-code) { margin: 0; padding: 0; border: 0; }
+#app .agent-detail :deep(.owner-join-code > div) { padding: 0; border: 0; background: transparent; }
+#app .agent-detail .am-check { min-height: var(--control-height); }
 .agent-tree { padding: 12px; min-width: 0; }
 
 </style>

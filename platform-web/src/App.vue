@@ -46,7 +46,7 @@ import DetailModal from '@lottery/shared/DetailModal.vue'
 import TablePagination from '@lottery/shared/TablePagination.vue'
 import { nativeLocaleName, useSessionReplacement } from '@lottery/shared'
 import { computed, onMounted, onBeforeUnmount, nextTick, ref, shallowRef, watch, watchEffect } from 'vue'
-import { createPlatformApi, freezeBrandCreateRequest, PlatformApiError, type BrandCreateInput, type FrozenBrandCreateRequest, type PlatformAudit, type PlatformBrand, type PlatformMember, type PlatformAccount, type PlatformSettings, type PlatformPresentation } from './platform-api'
+import { createPlatformApi, freezeBrandCreateRequest, PlatformApiError, type BrandCreateInput, type FrozenBrandCreateRequest, type PlatformAudit, type PlatformBrand, type PlatformMember, type PlatformAccount, type PlatformSettings, type PlatformSettingsRequest, type PlatformPresentation } from './platform-api'
 import { useBrandGames } from './use-brand-games'
 import { platformErrorMessage } from './platform-error-message'
 import { usePlatformI18n } from './i18n'
@@ -63,6 +63,7 @@ import WithdrawalsPanel from './WithdrawalsPanel.vue'
 import CommissionPanel from './CommissionPanel.vue'
 import DataRetentionPanel from './DataRetentionPanel.vue'
 import NotificationsPanel from './NotificationsPanel.vue'
+import type { TemplateWrite } from './notifications-api'
 import {clearRetentionIntents} from './data-retention-api'
 import AccessPanel from './AccessPanel.vue'
 import BrandOperationPanel from './BrandOperationPanel.vue'
@@ -99,6 +100,8 @@ function closeMobileNavigation(event: MouseEvent) {
 }
 const account = ref<PlatformAccount | null>(null)
 const platformSettings = ref<PlatformSettings | null>(null)
+const pendingTemplateWrite = ref<TemplateWrite | null>(null)
+const pendingGeneralSettings = ref<PlatformSettingsRequest | null>(null)
 const platformPresentation = ref<PlatformPresentation | null>(null)
 const displaySettings = computed<PlatformDisplaySettings>(() => platformDisplaySettings.value!)
 watch(platformSettings, value => { if (value) { setPlatformDisplaySettings(value); platformPresentation.value = { display_name: value.display_name, logo_text: value.logo_text, logo_url: value.logo_url } } })
@@ -310,7 +313,7 @@ function clearPrivateState() {
   walletsExpanded.value = false
   memberFinance.value = null
   resetMemberFilters()
-  clearRetentionIntents(); account.value = null; platformSettings.value = null; brands.value = []; members.value = []; [auditRows.value,auditTotal.value]=[[],'0']; selectedBrand.value = ''
+  clearRetentionIntents(); account.value = null; platformSettings.value = null; pendingGeneralSettings.value = null; pendingTemplateWrite.value = null; brands.value = []; members.value = []; [auditRows.value,auditTotal.value]=[[],'0']; selectedBrand.value = ''
   retryPayload.value = null; modal.value = false
   deleteBrandTarget.value = null; deleteError.value = ''; deleteBusy.value = false
   deleteMemberTarget.value = null; deleteMemberError.value = ''; deleteMemberBusy.value = false
@@ -787,7 +790,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
           </section>
           <DataRetentionPanel :can-view="account.platform_permissions.includes('platform_settings.view.platform')" @view-change="retentionPolicyVisible=$event==='policy'" v-else-if="auditView === 'archives'" :brand-id="selectedBrand" :account-id="account.id" :can-manage="account.platform_permissions.includes('platform_settings.write.platform')" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
           <AnnouncementsManagement v-else-if="auditView === 'announcements'" platform base-path="/api/v1/platform" :key="`announcements:${account.id}`" :actor-id="account.id" :locale="locale" :permissions="account.platform_permissions" @failure="handleFailure" />
-          <NotificationsPanel :can-view-templates="account.platform_permissions.includes('notification_template.view.platform')" v-else-if="auditView === 'notifications' || (auditView === 'deliveries' && selectedBrand)" :key="auditView === 'deliveries' ? readScope + auditView : account.id + auditView" :view="auditView === 'deliveries' ? 'deliveries' : 'templates'" :account-id="account.id" :can-manage="account.platform_permissions.includes('notification_template.write.platform')" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
+          <NotificationsPanel v-model:pending-write="pendingTemplateWrite" :can-view-templates="account.platform_permissions.includes('notification_template.view.platform')" v-else-if="auditView === 'notifications' || (auditView === 'deliveries' && selectedBrand)" :key="auditView === 'deliveries' ? readScope + auditView : account.id + auditView" :view="auditView === 'deliveries' ? 'deliveries' : 'templates'" :account-id="account.id" :can-manage="account.platform_permissions.includes('notification_template.write.platform')" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
           <template v-else-if="auditView === 'audit'">
           <ManagementList v-if="selectedBrand" :busy="loading">
           <template #filters><AuditFiltersForm :locale="locale" :busy="loading" @apply="applyAuditFilters" /></template>
@@ -830,7 +833,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
               </div>
             </template>
             <template v-if="!betFrequencyVisible && selectedBrand" #filters>
-              <form class="ui-filter-bar" @submit.prevent>
+              <form novalidate v-inline-validation class="ui-filter-bar" @submit.prevent>
                 <SelectControl v-model="selectedGameId" :label="gamesLabel" :disabled="gamesLoading" :options="[{ value: '', label: t('common.allGames') }, ...brandGames.map(game => ({ value: game.id, label: game.name }))]" />
               </form>
             </template>
@@ -848,7 +851,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
           <CommissionPanel :key="readScope" v-if="selectedBrand" :brand-id="selectedBrand" :locale="locale" :initial-tab="commissionTab" :display-settings="displaySettings" @failure="handleFailure" />
         </template>
         <template v-else-if="section === 'settings'">
-          <PlatformSettingsPanel :key="account.id" v-if="platformSettings" v-model:tab="settingsTab" :account="account" :brand-id="selectedBrand" :brand-status="selected?.status || ''" :initial="platformSettings" :locale="locale" :can-manage="account.platform_permissions.includes('platform_settings.write.platform')" @completed="withGlobalLoading(finishSettings)" @saved="platformSettings = $event; notice = message('common.settingsSaved')" @failure="handleFailure" />
+          <PlatformSettingsPanel :key="account.id" v-if="platformSettings" v-model:tab="settingsTab" v-model:pending-general="pendingGeneralSettings" :account="account" :brand-id="selectedBrand" :brand-status="selected?.status || ''" :initial="platformSettings" :locale="locale" :can-manage="account.platform_permissions.includes('platform_settings.write.platform')" @completed="withGlobalLoading(finishSettings)" @reloaded="platformSettings = $event" @saved="platformSettings = $event; notice = message('common.settingsSaved')" @failure="handleFailure" />
         </template>
         <template v-else>
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ withdrawalLabel }}</h1></div>

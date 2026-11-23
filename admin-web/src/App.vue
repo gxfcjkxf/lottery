@@ -67,6 +67,7 @@ import WithdrawalManagement from "./WithdrawalManagement.vue";
 
 import BetOrderManagement from "./BetOrderManagement.vue";
 import BetPolicySettings from "./BetPolicySettings.vue";
+import type { BetLimitsWrite } from "./bet-limits-api";
 import OverviewPanel from "./OverviewPanel.vue";
 import ReportsManagement from "./ReportsManagement.vue";
 import AuditManagement from "./AuditManagement.vue";
@@ -404,6 +405,7 @@ const statusClass = (status: MemberStatus) =>
       : "badge-neutral";
 const apiErrorText = (error: unknown) =>
   error instanceof Error ? publicErrorMessage(error) : display(message('admin.copy.5dabb92e'));
+const pendingBetLimits = ref<BetLimitsWrite | null>(null);
 const clearAdminData = () => {
   settingsReturnPage.value = "首页";
   dismissOperationToast();
@@ -421,6 +423,7 @@ const clearAdminData = () => {
 	presentationReadGeneration+=1;presentationSkin.value=null;
   adminBrandLoadGeneration += 1;
   clearAllPendingAgentWrites();
+  pendingBetLimits.value = null;
   clearAllPendingJoinCodeWrites();
 
   clearAllPendingBrandOperationWrites();
@@ -805,7 +808,7 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
           <div v-if="brandSettingsView === 'withdrawal'" class="console-stack">
             <WithdrawalPolicySettings :key="`withdrawal-policy:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @saved="go(settingsReturnPage, false)" @session-invalid="clearAdminData" />
           </div>
-          <BetPolicySettings v-if="brandSettingsView === 'betting'" embedded :key="`bet-policy:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+          <BetPolicySettings v-if="brandSettingsView === 'betting'" v-model:pending-write="pendingBetLimits" embedded :key="`bet-policy:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
           <div v-if="brandSettingsView === 'agents'" class="console-stack">
             <AgentManagement :key="`agent-settings:${account.id}:${selectedBrandId}`" mode="settings" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
             <CommissionPolicySettings :key="`commission-policy:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />

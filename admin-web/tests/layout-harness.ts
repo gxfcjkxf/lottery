@@ -3,6 +3,7 @@ import ConfiguredRuleWorkbench from '../../shared/src/ConfiguredRuleWorkbench.vu
 import PlatformLottery from '../../shared/src/PlatformLottery.vue'
 import ConfiguredPublishing from '../../shared/src/ConfiguredPublishing.vue'
 import ConfiguredOrdersPanel from '../../shared/src/ConfiguredOrdersPanel.vue'
+import OperationToastHost from '../../shared/src/OperationToastHost.vue'
 import {setPlatformDisplaySettings} from '@lottery/shared'
 setPlatformDisplaySettings({timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'})
 import AccessManagement from '../src/AccessManagement.vue'
@@ -16,8 +17,13 @@ import '../../shared/src/refresh-button.css'
 import '../../shared/src/management.css'
 import '../../shared/src/key-value.css'
 
-const { component, props, locale } = JSON.parse(document.getElementById('harness-data')!.textContent!)
+const { component, props, locale, operationToasts } = JSON.parse(document.getElementById('harness-data')!.textContent!)
 const components = { ConfiguredRuleWorkbench, PlatformLottery, ConfiguredPublishing, ConfiguredOrdersPanel, AccessManagement, AgentManagement, JoinCodeManagement }
 const i18n = createAdminI18n()
 i18n.setLocale(locale)
-createApp({ render: () => h('main', { class: 'management-console' }, h(components[component as keyof typeof components], props)) }).provide(adminI18nKey, i18n).mount('#app')
+createApp({
+  render: () => h('main', { class: 'management-console' }, [
+    h(components[component as keyof typeof components], props),
+    operationToasts ? h(OperationToastHost, { locale }) : null,
+  ]),
+}).provide(adminI18nKey, i18n).mount('#app')

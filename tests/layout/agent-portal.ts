@@ -63,6 +63,15 @@ export function registerAgentPortalTests(reflow=false){
   for(const label of labels)await expect(visibleNav.getByRole('link',{name:label,exact:true})).toBeVisible()
   if(!mobileNavigation)await expect(page.locator('.sidebar')).toBeVisible();else await expect(page.locator('.sidebar')).toBeHidden()
   await expect(page.locator('.member-directory')).toContainText('member_a');await expect(page.locator('.member-directory table.console-table')).toHaveCount(1);expect(reads.some(p=>p.endsWith('/commission')||p.endsWith('/wallet')||p.endsWith('/children')||p.endsWith('/bets'))).toBe(false)
+  const memberStats = page.locator('.member-directory .report-summary-tags > div')
+  await expect(memberStats).toHaveCount(6)
+  const widths = reflow ? [320, 1440] : [preset.width]
+  for (const width of widths) {
+   if (reflow) await page.setViewportSize({ width, height: preset.height })
+   await expectNoPageOverflow(page)
+   if (width === 1440) expect(await memberStats.evaluateAll(items => new Set(items.map(item => item.getBoundingClientRect().top)).size)).toBe(1)
+  }
+  if (reflow) await page.setViewportSize(preset)
   await page.screenshot({path:info.outputPath(`agent-members-${locale}.png`)})
   await navigate('children');await expect(page.locator('.children-directory')).toBeVisible();await expect(page.locator('.children-directory td.empty-state')).toHaveAttribute('colspan','3');await expect(page.locator('.children-directory td.empty-state')).toHaveCSS('display','table-cell');await expect(page.locator('.member-directory')).toHaveCount(0)
   await expect(visibleNav.locator('a[href="#/bets"]')).toHaveCount(0);await navigate('members');await page.locator('.member-directory .member-menu-trigger').first().click();await page.getByRole('menuitem',{name:zh?'查看注单':'View bets',exact:true}).click();await expect(page).toHaveURL(new RegExp('member='+memberId));await expect(page.locator('.member-bets')).toContainText('Game A');await expect(page.locator('.member-bets .history-table tbody tr').first()).toContainText(zh?'已结算':'Settled');await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`agent-bets-${locale}.png`)});await expect(page.locator('.children-directory')).toHaveCount(0)
@@ -105,7 +114,7 @@ export function registerAgentPortalTests(reflow=false){
   const retry=dialog.getByRole('button',{name:zh?'重试':'Retry',exact:true});await expect(dialog.locator('form')).not.toHaveAttribute('data-write-locked','true');await retry.click();await expect.poll(()=>writes.length).toBe(2)
   try{
    await dialog.locator('form').evaluate((form:HTMLFormElement)=>form.requestSubmit());expect(writes).toHaveLength(2)
-   await expect(retry).toBeDisabled();expect(writes[0]).toEqual(writes[1]);expect(JSON.parse(writes[0].body!)).toEqual({current_password:'agent123',new_password:'changed456'})
+   await expect(dialog.locator('button[type="submit"]')).toBeDisabled();expect(writes[0]).toEqual(writes[1]);expect(JSON.parse(writes[0].body!)).toEqual({current_password:'agent123',new_password:'changed456'})
    await page.screenshot({path:info.outputPath(`agent-password-${locale}.png`)})
   }finally{release()}
   await expect(dialog).toHaveCount(0);await expect(page.locator('.login-entry')).toBeVisible();await expect(page.getByRole('status').filter({hasText:zh?'密码已修改':'Password changed'})).toBeVisible();expect(errors).toEqual([])

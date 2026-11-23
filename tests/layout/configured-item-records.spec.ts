@@ -139,6 +139,7 @@ for(const surface of ['user','agent','brand','platform'] as const)for(const loca
   const refund=zh?'退本积分':'Refund points', release=zh?'风险解冻积分':'Released risk points'
   // Zero refunds stay absent and pending prizes remain unconfirmed.
   await expect(rows.nth(0).locator(`td[data-label="${prize}"]`)).toHaveText('—')
+  await expect(rows.nth(0).locator(`td[data-label="${prize}"] [data-numeric-tone]`)).toHaveCount(0)
   await expect(rows.nth(1).locator(`td[data-label="${prize}"]`)).toHaveText('0')
   await expect(page.locator('.history-table')).not.toContainText(refund)
   const preset=page.viewportSize()!
@@ -160,6 +161,11 @@ for(const surface of ['user','agent','brand','platform'] as const)for(const loca
     const prizeCell=rows.first().locator(`td[data-label="${prize}"]`)
     await expect(prizeCell).toContainText('48.99')
     await expect(prizeCell).toHaveText('48.99')
+    const amountColor = (label:string) => rows.first().locator(`td[data-label="${label}"] .history-value`)
+    await expect(amountColor(stake)).toHaveCSS('color', 'rgb(3, 105, 161)')
+    await expect(amountColor(prize)).toHaveCSS('color', 'rgb(4, 120, 87)')
+    await expect(amountColor(zh?'风险冻结积分':'Reserved risk points')).toHaveCSS('color', 'rgb(180, 83, 9)')
+    await expect(amountColor(zh?'实际亏损积分':'Actual loss points')).toHaveCSS('color', 'rgb(190, 18, 60)')
     await expect(rows.first().locator(`td[data-label="${funding==='reserve'?release:refund}"]`)).toHaveText('0.01')
     await expectNoPageOverflow(page)
     await page.screenshot({path:info.outputPath(`${surface}-${locale}-${funding}-${width}.png`),fullPage:true})

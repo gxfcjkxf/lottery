@@ -6,6 +6,7 @@ import { formatDisplayDateTime } from './display-settings'
 export type AssociationKind = 'brand' | 'role' | 'member' | 'user' | 'admin' | 'agent' | 'game' | 'period' | 'play' | 'actor' | 'cycle'
 type Name = Readonly<{ name: string; built_in?: boolean; from?: string; to?: string }>
 type Names = Readonly<Record<string, Name>>
+type CycleWindowFormatter = (from: string, to: string) => string
 // Exact response-object ownership prevents names leaking between brands,
 // sessions or stale reads. No browser storage or global identifier cache.
 const namesByRecord = new WeakMap<object, { names: Names; failed: boolean }>()
@@ -48,7 +49,9 @@ export async function readApiJson(response: Pick<Response, 'json'>): Promise<any
  return value
 }
 
-export function associationLabel(record: object | null | undefined, kind: AssociationKind, id: string | null | undefined, locale: LocaleCode): string {
+export function associationLabel(record: object | null | undefined, kind: AssociationKind, id: string | null | undefined, locale: LocaleCode,
+ formatCycleWindow: CycleWindowFormatter = (from, to) => `${formatDisplayDateTime(from, locale)} – ${formatDisplayDateTime(to, locale)}`,
+): string {
  if (!id) return '—'
  const text = associationCatalog[locale]
  const entity = record as Record<string, unknown> | null | undefined
@@ -62,7 +65,7 @@ export function associationLabel(record: object | null | undefined, kind: Associ
  if (!metadata || metadata.failed) return text['association.unavailable']
  const entry = metadata.names[`${kind}:${id}`]
  if (!entry) return text['association.missing']
- if (kind === 'cycle' && entry.from && entry.to) return `${formatDisplayDateTime(entry.from, locale)} – ${formatDisplayDateTime(entry.to, locale)}`
+ if (kind === 'cycle' && entry.from && entry.to) return formatCycleWindow(entry.from, entry.to)
  if (kind === 'role' && entry.built_in) return text['association.bootstrap']
  return entry.name || text['association.unnamed']
 }
@@ -82,9 +85,10 @@ export const AssociationName = defineComponent({
   kind: { type: String as PropType<AssociationKind>, required: true },
   id: { type: String, default: '' },
   locale: { type: String as PropType<LocaleCode | 'zh'>, required: true },
+  formatCycleWindow: Function as PropType<CycleWindowFormatter>,
  },
  setup: props => {
   const context = inject(associationContextKey, null)
-  return () => h('span', { class: 'association-name' }, associationLabel(props.record ?? context?.value, props.kind, props.id, props.locale === 'zh' ? 'zh-CN' : props.locale))
+  return () => h('span', { class: 'association-name' }, associationLabel(props.record ?? context?.value, props.kind, props.id, props.locale === 'zh' ? 'zh-CN' : props.locale, props.formatCycleWindow))
  },
 })

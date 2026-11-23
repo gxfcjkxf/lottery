@@ -130,6 +130,7 @@ export function createPlatformNotificationsApi(fetcher: typeof fetch = fetch) {
 
 
 export interface TemplateUpdate { version: number; content: TemplateContent; reason: string }
+export interface TemplateWrite { accountId: string; event: NotificationTemplateKey; body: TemplateUpdate; key: string }
 function characters(value: string): number { return Array.from(value).length; }
 function safeText(value: unknown, maxCharacters: number, title: boolean): value is string {
   return typeof value === "string" && value.trim() === value && value.trim().length > 0 && characters(value) <= maxCharacters &&

@@ -19,6 +19,12 @@ type platformRole struct {
 	Permissions []string
 }
 
+const DefaultPlatformAdminUsername = "admin"
+
+const platformAdminVisibility = `a.is_super_admin AND a.status <> 'deleted'
+	AND NOT EXISTS(SELECT 1 FROM admin_brand_scopes s WHERE s.account_id=a.id)
+	AND (a.username <> $1 OR a.id = $2)`
+
 func (s Store) ListPlatformAdmins(ctx context.Context, actor access.Account, limit, offset int) ([]AdminRecord, error) {
 	if !validPage(limit, offset) {
 		return nil, ErrInvalid
@@ -33,8 +39,8 @@ func (s Store) ListPlatformAdmins(ctx context.Context, actor access.Account, lim
 		FROM admin_accounts a
 		LEFT JOIN admin_account_roles ar ON ar.account_id=a.id
 		LEFT JOIN roles r ON r.id=ar.role_id AND r.brand_id IS NULL
-		WHERE a.is_super_admin AND a.status <> 'deleted' AND NOT EXISTS(SELECT 1 FROM admin_brand_scopes s WHERE s.account_id=a.id)
-		GROUP BY a.id ORDER BY a.username,a.id LIMIT $1 OFFSET $2`, limit, offset)
+		WHERE `+platformAdminVisibility+`
+		GROUP BY a.id ORDER BY a.username,a.id LIMIT $3 OFFSET $4`, DefaultPlatformAdminUsername, actor.ID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -48,6 +54,15 @@ func (s Store) ListPlatformAdmins(ctx context.Context, actor access.Account, lim
 		result = append(result, record)
 	}
 	return result, rows.Err()
+}
+
+func (s Store) CountPlatformAdmins(ctx context.Context, actor access.Account) (string, error) {
+	if !platformManagementAllowed(actor, "admin", "view") {
+		return "", ErrDenied
+	}
+	var total string
+	err := s.DB.QueryRow(ctx, `SELECT count(*)::text FROM admin_accounts a WHERE `+platformAdminVisibility, DefaultPlatformAdminUsername, actor.ID).Scan(&total)
+	return total, err
 }
 
 func (s Store) ListPlatformRoles(ctx context.Context, actor access.Account, limit, offset int) ([]RoleRecord, error) {
@@ -249,6 +264,9 @@ func (s Store) CreatePlatformAdmin(ctx context.Context, tx pgx.Tx, actor access.
 	username := strings.ToLower(strings.TrimSpace(in.Username))
 	if !adminNamePattern.MatchString(username) || !validAdminStatus(in.Status) {
 		return AdminRecord{}, ErrInvalid
+	}
+	if username == DefaultPlatformAdminUsername {
+		return AdminRecord{}, ErrConflict
 	}
 	roleIDs, err := cleanRoleIDs(in.RoleIDs)
 	if err != nil || len(roleIDs) == 0 {
@@ -459,6 +477,18 @@ func actorHasPlatformRolePermissions(actor access.Account, roles []platformRole)
 	return true
 }
 
+// Check before replaying older account management receipts as well as before new writes.
+func ProtectDefaultPlatformAdmin(ctx context.Context, tx pgx.Tx, id string) error {
+	var protected bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM admin_accounts WHERE id=$1 AND username=$2 AND is_super_admin)`, id, DefaultPlatformAdminUsername).Scan(&protected); err != nil {
+		return err
+	}
+	if protected {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func lockPlatformAdmin(ctx context.Context, tx pgx.Tx, id string) (AdminRecord, []platformRole, error) {
 	var record AdminRecord
 	err := tx.QueryRow(ctx, `SELECT id::text,username,status,version,is_super_admin FROM admin_accounts WHERE id=$1 AND status <> 'deleted' FOR UPDATE`, id).
@@ -471,6 +501,9 @@ func lockPlatformAdmin(ctx context.Context, tx pgx.Tx, id string) (AdminRecord, 
 	}
 	if !record.SuperAdmin {
 		return AdminRecord{}, nil, ErrDenied
+	}
+	if record.Username == DefaultPlatformAdminUsername {
+		return AdminRecord{}, nil, ErrNotFound
 	}
 	brands, err := accountBrands(ctx, tx, id)
 	if err != nil {

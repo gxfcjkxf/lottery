@@ -37,3 +37,29 @@ dl dd:has(> :is(p, pre, ul, ol, table)),
   grid-column: 1 / -1;
   text-align: start;
 }
+
+/* Statistics flow by the width of their actual label and value. */
+.stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+}
+.stat-pair,
+#app :is(dl.stat-strip, dl.report-summary-tags) > div {
+  display: inline-flex !important;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px !important;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+:is(.stat-pair, .stat-strip > div, .report-summary-tags > div) > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}

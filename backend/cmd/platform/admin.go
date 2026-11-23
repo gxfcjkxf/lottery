@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
@@ -54,7 +55,7 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 	if _, err = tx.Exec(ctx, "INSERT INTO admin_accounts(id,username,password_hash,is_super_admin) VALUES($1,$2,$3,$4)", admin, *username, hash, *super); err != nil {
 		return errors.New("cannot create admin; account may already exist")
 	}
-	if err := grantBootstrapAdmin(ctx, tx, admin, brandID, *super, *super && *username == "admin", "explicit server-owner bootstrap"); err != nil {
+	if err := grantBootstrapAdmin(ctx, tx, admin, brandID, *super, *super && *username == adminsys.DefaultPlatformAdminUsername, "explicit server-owner bootstrap"); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

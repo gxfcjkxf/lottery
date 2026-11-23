@@ -7,6 +7,8 @@ export interface BetLimits {
   brand_id: string; game_id: string; version: number
   min_points: string; max_points: string; max_period_points: string; max_user_period_points: string
 }
+export interface BetLimitsWrite { accountId: string; body: BetLimits; key: string }
+
 export const limitFields = ['min_points', 'max_points', 'max_period_points', 'max_user_period_points'] as const
 export function validBetLimits(value: unknown): value is BetLimits {
   if (!value || typeof value !== 'object') return false

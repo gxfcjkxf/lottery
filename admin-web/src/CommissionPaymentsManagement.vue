@@ -2,6 +2,7 @@
 import MemberActionsMenu from "@lottery/shared/MemberActionsMenu.vue"
 import ManagementList from "@lottery/shared/ManagementList.vue"
 import TablePagination from "@lottery/shared/TablePagination.vue"
+import SelectControl from "@lottery/shared/SelectControl.vue"
 const agentDraftSearchPending = ref(false);
 const accountSearchReset = ref(0);
 import FilterAssociationSearch from "@lottery/shared/FilterAssociationSearch.vue";
@@ -27,7 +28,7 @@ import { vGlobalLoading } from "@lottery/shared";
 import { formatDisplayDateTime } from "@lottery/shared";
 const displayLocale = useAdminI18n().locale;
 import DetailModal from "@lottery/shared/DetailModal.vue"
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import { adminKey, useAdminI18n } from "./i18n";
 import CommissionAdjustmentsManagement from "./CommissionAdjustmentsManagement.vue";
@@ -47,14 +48,49 @@ const orderPageSize = ref(20)
 
 
 const props = defineProps<{ account: AdminAccount; brandId: string; brandStatus?: string; initialCycleId?: string; cycleId?: string }>();
-const emit = defineEmits<{ (event: "session-invalid"): void; (event: "writing-change", value: boolean): void; (event: "open-cycle", cycleId: string): void }>();
+const emit = defineEmits<{ (event: "session-invalid"): void; (event: "writing-change", value: boolean): void }>();
 const { t, message, locale } = useAdminI18n();
 const operationLabel = (operation: PendingCommissionPaymentIntent['operation']) => t({ policy: 'admin.copy.2288349a', approve: 'admin.copy.c176586a', retry: 'admin.copy.ce7fd4f3' }[operation] as Parameters<typeof t>[0]);
 const api = createCommissionPaymentsApi(fetch, props.account.id);
 
 const fromDraft=ref(''), toDraft=ref(''), agentDraft=ref(''), cycleDraft=ref(''), queue=ref('');
 const committedFilter=ref<CommissionListQuery>({});
-const searched=ref(true), detailTab=ref<'summary'|'targets'|'adjustments'|'paymentHistory'>('summary');
+const searched = ref(true);
+const queues = computed(() => [
+  {value:'', label:t('admin.commission.ui.all')},
+  {value:'awaiting_approval', label:t('admin.commission.ui.pending')},
+  {value:'paying', label:t('admin.commission.ui.processing')},
+  {value:'needs_attention', label:t('admin.commission.ui.attention')},
+]);
+const detailHeading = ref<HTMLElement | null>(null);
+let detailEntry: HTMLButtonElement | undefined;
+let listScrollTop = 0;
+let detailId = '';
+const showTargets = ref(false), showAdjustments = ref(false), adjustmentLocked = ref(false);
+function toggleTargets(event: Event) { showTargets.value ||= (event.currentTarget as HTMLDetailsElement).open; }
+function toggleAdjustments(event: Event) { showAdjustments.value ||= (event.currentTarget as HTMLDetailsElement).open; }
+function toggleHistory(event: Event) {
+  if ((event.currentTarget as HTMLDetailsElement).open && !historyBusy.value) {
+    void withGlobalLoading(loadHistory, historyPage.value?.offset ?? 0);
+  }
+}
+async function openPayment(id: string, event?: MouseEvent) {
+  const trigger = event?.currentTarget as HTMLButtonElement | undefined;
+  detailEntry = trigger?.closest('tr')?.querySelector<HTMLButtonElement>('[data-payment-id]') ?? trigger;
+  listScrollTop = detailEntry?.closest('.detail-modal-content')?.scrollTop ?? 0;
+  const request = loadDetail(id);
+  await nextTick();
+  detailHeading.value?.focus();
+  await request;
+}
+async function returnToPayments() {
+  closeDetails();
+  await nextTick();
+  detailEntry?.focus();
+  const scrollArea = detailEntry?.closest('.detail-modal-content');
+  if (scrollArea) scrollArea.scrollTop = listScrollTop;
+  detailEntry = undefined;
+}
 const historyPage=ref<CommissionPaymentHistoryPage|null>(null), historyBusy=ref(false), historyError=ref<string|import('@lottery/shared').LocalizedMessage>('');
 let historyTicket=0;
 const historyColumns=computed(()=>[{key:'operation',label:t('admin.commission.ui.actions')},{key:'actor',label:t('admin.commission.ui.actor')},{key:'state',label:t('admin.commission.ui.state')},{key:'time',label:t('admin.commission.ui.updated')}]);
@@ -65,13 +101,12 @@ async function loadHistory(offset=0){
  catch(cause){if(alive&&ticket===historyTicket&&captured===scopeStamp.value&&detail.value?.id===row.id){sessionExpired(cause,captured,session);historyError.value=readFailure(cause)}}
  finally{if(ticket===historyTicket)historyBusy.value=false}
 }
-async function openDetailTab(tab:typeof detailTab.value){detailTab.value=tab;if(tab==='paymentHistory')await loadHistory()}
 const reviewSummary=ref<{cycleId:string;points:string;count:string}|null>(null);
 const columns=computed(()=>[
- {key:'cycle',label:t('admin.commission.ui.cycle')}, {key:'state',label:t('admin.commission.ui.state')},
+ {key:'cycle',label:t(props.cycleId ? 'admin.commission.ui.paymentTime' : 'admin.commission.ui.cycle')}, {key:'state',label:t('admin.commission.ui.state')},
  {key:'mode',label:t('admin.commission.ui.mode')}, {key:'planned',label:t('admin.commission.ui.planned'),cellClass:'numeric'},
  {key:'paid',label:t('admin.commission.ui.paid'),cellClass:'numeric'}, {key:'progress',label:t('admin.commission.ui.progress')},
- {key:'updated',label:t('admin.commission.ui.updated')}, {key:'actions',label:t('admin.commission.ui.actions')},
+ {key:'actions',label:t('admin.commission.ui.actions')},
 ]);
 async function applyFilters() {
   if (agentDraftSearchPending.value) return;
@@ -123,7 +158,7 @@ function currentWrite(ticket: number, captured: string, session: number): boolea
 function clearVisible() {
   historyTicket++;historyPage.value=null;historyBusy.value=false;historyError.value='';
   policy.value = null; page.value = null; selected.value = null; detail.value = null; receipt.value = null;
-  reason.value = ""; detailTab.value="summary"; reviewSummary.value=null; dialog.value = null; confirmed.value = false; unknownIntent.value = null; conflictIntent.value = null;
+  reason.value = ""; showTargets.value = showAdjustments.value = adjustmentLocked.value = false; reviewSummary.value=null; dialog.value = null; confirmed.value = false; unknownIntent.value = null; conflictIntent.value = null;
   conflict.value = false; conflictRefreshed.value = false; discardReviewed.value = false;
   policyError.value = listError.value = detailError.value = writeError.value = notice.value = "";
   loadingPolicy.value = loadingList.value = loadingDetail.value = writing.value = false;
@@ -138,7 +173,8 @@ function resetScope(_next?: string, previous?: string) {
   fromDraft.value=toDraft.value=agentDraft.value=''; cycleDraft.value=props.cycleId ?? props.initialCycleId ?? '';
   queue.value=(props.cycleId || props.initialCycleId)?'':rights.value.approve?'awaiting_approval':'';
   committedFilter.value={...(queue.value?{state:queue.value}:{}),...((props.cycleId || cycleDraft.value)?{cycle_id:props.cycleId || cycleDraft.value}:{})};searched.value=true;
-  const pending = listPendingCommissionPaymentIntents(props.account.id, props.brandId);
+  const pending = listPendingCommissionPaymentIntents(props.account.id, props.brandId)
+    .filter(intent => !props.cycleId || intent.cycleId === props.cycleId);
   const conflictedIntent = pending.find(isCommissionPaymentIntentConflict);
   conflictIntent.value = conflictedIntent ?? null; conflict.value = Boolean(conflictedIntent);
   unknownIntent.value = conflictedIntent ? null : pending[0] ?? null;
@@ -197,9 +233,10 @@ async function loadDetail(id: string, preserveConflictReview = false) {
   if (!preserveConflictReview) cancelConflictReview();
   const readTicket = ++paymentReadTicket;
   const ticket = ++detailTicket, captured = scopeStamp.value, session = commissionPaymentSessionGeneration();
+  detailId = id;
   loadingDetail.value = true; detailError.value = "";
   selected.value = page.value?.items.find((item) => item.id === id) ?? selected.value;
-  if (detail.value?.id !== id) { reason.value = ""; detail.value = null; detailTab.value="summary"; }
+  if (detail.value?.id !== id) { reason.value = ""; detail.value = null; showTargets.value = showAdjustments.value = false; }
   try {
     const fresh = await api.read(props.brandId, id);
     if (!current(ticket, "detail", captured, session, readTicket) || fresh.id !== id) return;
@@ -223,7 +260,7 @@ function intentFor(operation: CommissionPaymentIntentScope["operation"], targetI
     if (operation === "retry" && !canRetry.value) return null;
     body = freezeCommissionPaymentBody(operation, { version: row.version, reason: reason.value });
   }
-  return createCommissionPaymentIntent(scope, body, createIdempotencyKey());
+  return createCommissionPaymentIntent({ ...scope, ...(props.cycleId ? { cycleId: props.cycleId } : {}) }, body, createIdempotencyKey());
 }
 function openReview(operation: CommissionPaymentIntentScope["operation"]) {
   if (conflict.value || unknownIntent.value) return;
@@ -312,10 +349,14 @@ function modeLabel(mode: CommissionPayment["payout_mode"]): string {
 function displayReceipt(): string { return receipt.value?.policy ? t('admin.versionDisplay.policySaved') : receipt.value?.payment ? stateLabel(receipt.value.payment.state) : ""; }
 
 watch([fromDraft,toDraft,agentDraft,cycleDraft],dirtyFilters,{flush:'sync'});
-watch(writing, value => emit("writing-change", value), { flush: "sync" });
+const navigationLocked = computed(() => writing.value || adjustmentLocked.value ||
+  Boolean(props.cycleId && unknownIntent.value && rights.value.view && props.brandStatus !== "disabled" &&
+    (unknownIntent.value.operation === "approve" ? rights.value.approve : rights.value.retry)));
+watch(navigationLocked, value => emit("writing-change", value), { flush: "sync" });
 watch(scopeStamp, resetScope, { immediate: true });
 onUnmounted(() => { alive = false; generation++; policyTicket++; listTicket++; detailTicket++; writeTicket++; conflictTicket++; });
 function closeDetails() {
+  detailId = ''; showTargets.value = showAdjustments.value = false;
   detailTicket++; paymentReadTicket++; historyTicket++;historyPage.value=null;historyBusy.value=false;historyError.value=''; selected.value = null; detail.value = null; loadingDetail.value = false; detailError.value = '';
 }
 
@@ -329,14 +370,15 @@ useOperationToast(() => writeError.value, value => displayPublicError(value), 'e
 
 <template>
  <article class="commission-workspace commission-payments">
-  <header v-if="!selected && !detail && !loadingDetail && !detailError" class="console-page-heading commission-heading"><h1 v-if="!cycleId" class="console-page-title">{{ t('admin.copy.61a05916') }}</h1><div class="commission-actions console-page-actions"><span v-if="policy" class="commission-status" :class="policyEnabled?'ready':'stale'" data-testid="commission-payment-policy">{{ policyEnabled?t('admin.commission.ui.policyOn'):t('admin.commission.ui.policyOff') }}</span></div></header>
+  <header v-if="!cycleId && !selected && !detail && !loadingDetail && !detailError" class="console-page-heading commission-heading"><h1 class="console-page-title">{{ t('admin.copy.61a05916') }}</h1><div class="commission-actions console-page-actions"><span v-if="policy" class="commission-status" :class="policyEnabled?'ready':'stale'" data-testid="commission-payment-policy">{{ policyEnabled?t('admin.commission.ui.policyOn'):t('admin.commission.ui.policyOff') }}</span></div></header>
   <p v-if="!rights.view" class="empty-state">{{ t('admin.copy.cdaf5831') }}</p>
   <template v-else>
    <p v-if="brandStatus==='disabled'" class="commission-warning">{{ t('admin.commission.ui.disabled') }}</p>
-   <template v-if="!selected && !detail && !loadingDetail && !detailError">
-    <nav class="commission-tabs" role="tablist"><button v-for="tab in [{value:'awaiting_approval',label:'pending'},{value:'paying',label:'processing'},{value:'needs_attention',label:'attention'},{value:'',label:'all'}]" :key="tab.value" class="button" role="tab" :aria-selected="queue===tab.value" :disabled="loadingList" @click="withGlobalLoading(chooseQueue,tab.value)">{{ t(adminKey('admin.commission.ui.'+tab.label)) }}</button></nav>
-    <ManagementList><template #filters><form v-inline-validation novalidate class="commission-toolbar ui-filter-bar" @submit.prevent="withGlobalLoading(applyFilters)">
-     <label><PlatformTemporalInput :label="t('admin.commission.ui.from')" :placeholder="t('admin.commission.ui.from')" v-model="fromDraft" type="date" :locale="locale" /></label><label><PlatformTemporalInput :label="t('admin.commission.ui.to')" :placeholder="t('admin.commission.ui.to')" v-model="toDraft" type="date" :locale="locale" /></label>
+   <div v-show="!selected && !detail && !loadingDetail && !detailError" class="commission-detail">
+    <h3 v-if="cycleId">{{ t('admin.commission.ui.thisPayment') }}</h3>
+    <ManagementList :embedded="Boolean(cycleId)"><template #filters><form v-inline-validation novalidate class="commission-toolbar ui-filter-bar" @submit.prevent="withGlobalLoading(applyFilters)">
+     <label><SelectControl :model-value="queue" :label="t('admin.commission.ui.state')" :options="queues" :disabled="loadingList" @update:model-value="withGlobalLoading(chooseQueue,$event)" /></label>
+     <label v-if="!cycleId"><PlatformTemporalInput :label="t('admin.commission.ui.from')" :placeholder="t('admin.commission.ui.from')" v-model="fromDraft" type="date" :locale="locale" /></label><label v-if="!cycleId"><PlatformTemporalInput :label="t('admin.commission.ui.to')" :placeholder="t('admin.commission.ui.to')" v-model="toDraft" type="date" :locale="locale" /></label>
      <label v-if="!cycleId"><FilterAssociationSelect v-model="cycleDraft" :brand-id="brandId" surface="admin" resource="commission" kind="cycle" :label="t('admin.commission.ui.cycle')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" /></label>
      <label><FilterAssociationSearch v-model="agentDraft" v-model:pending="agentDraftSearchPending" :reset-key="accountSearchReset" :brand-id="brandId" surface="admin" resource="commission" kind="agent" :label="t('admin.commission.ui.agent')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" /></label>
      <div class="commission-actions ui-form-actions"><button class="button button-primary" type="submit" :disabled="agentDraftSearchPending || loadingList">{{ t('admin.commission.ui.query') }}</button></div>
@@ -344,36 +386,51 @@ useOperationToast(() => writeError.value, value => displayPublicError(value), 'e
     <p v-if="!searched" class="commission-note">{{ t('admin.commission.ui.filtersChanged') }}</p>
     <p v-if="listError" class="commission-warning" role="alert">{{ t('admin.commission.ui.readFailed') }} <button :disabled="agentDraftSearchPending" v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(applyFilters)">{{ t('admin.commission.ui.retryRead') }}</button></p>
     <p v-if="loadingList" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
-    <ManagementTable :entries="page?.items??[]" :columns="columns" :empty="!!page && !page.items.length" :empty-label="t('admin.commission.ui.empty')" data-testid="commission-payments-jobs">
-     <template #cycle="{entry}"><button class="text-button commission-link" :data-payment-id="entry.id" @click="withGlobalLoading(loadDetail,entry.id)"><AssociationName :record="entry" kind="cycle" :id="entry.cycle_id" :locale="locale" /></button></template>
+    <ManagementTable :entries="page?.items??[]" :columns="columns" :empty="!!page && !page.items.length" :empty-label="t(cycleId && !committedFilter.agent_id && !committedFilter.state ? 'admin.commission.ui.noPayoutRecords' : 'admin.commission.ui.empty')" data-testid="commission-payments-jobs">
+     <template #cycle="{entry}"><button class="text-button commission-link" :data-payment-id="entry.id" @click="withGlobalLoading(openPayment,entry.id,$event)"><span v-if="cycleId">{{ formatDate(entry.created_at) }}</span><AssociationName v-else :record="entry" kind="cycle" :id="entry.cycle_id" :locale="locale" /></button></template>
      <template #state="{entry}"><span class="commission-status" :class="entry.state">{{ stateLabel(entry.state) }}</span></template>
-     <template #mode="{entry}">{{ modeLabel(entry.payout_mode) }}</template><template #planned="{entry}">{{ entry.total_points }}</template><template #paid="{entry}">{{ entry.paid_points }}</template><template #progress="{entry}">{{ entry.paid_count }} / {{ entry.target_count }}</template><template #updated="{entry}">{{ formatDate(entry.updated_at) }}</template>
-     <template #actions="{entry}"><MemberActionsMenu :id="'CommissionPaymentsManagement-'+entry.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" class="button" @click="withGlobalLoading(loadDetail,entry.id)">{{ t('admin.commission.ui.view') }}</button></MemberActionsMenu></template>
+     <template #mode="{entry}">{{ modeLabel(entry.payout_mode) }}</template><template #planned="{entry}">{{ entry.total_points }}</template><template #paid="{entry}">{{ entry.paid_points }}</template><template #progress="{entry}">{{ entry.paid_count }} / {{ entry.target_count }}</template>
+     <template #actions="{entry}"><MemberActionsMenu :id="'CommissionPaymentsManagement-'+entry.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" class="button" @click="withGlobalLoading(openPayment,entry.id,$event)">{{ t('admin.commission.ui.viewPayment') }}</button></MemberActionsMenu></template>
     </ManagementTable>
     <template #pagination><TablePagination v-if="page" class="commission-pager" :total="page.total_count" :page="Math.floor(page.offset / orderPageSize + 1)" :count="page.items.length" :locale="associationLocale" :page-size="orderPageSize" :previous-disabled="loadingList || !hasPrevious" :next-disabled="loadingList || !hasNext" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadList((target - 1) * orderPageSize)" :change-page-size="async (size: number) => { orderPageSize = size; await loadList(0) }" /></template></ManagementList>
-   </template>
+   </div>
    <section v-if="selected || detail || loadingDetail || detailError" class="commission-detail">
-    <header class="console-page-heading commission-heading"><div class="commission-actions"><button class="button" @click="closeDetails">{{ t('admin.commission.ui.back') }}</button><h1 v-if="!cycleId" class="console-page-title">{{ t('admin.copy.61a05916') }}</h1></div><button v-if="detail" class="button" @click="emit('open-cycle',detail.cycle_id)">{{ t('admin.commission.ui.openCycle') }}</button></header>
+    <div class="commission-heading">
+     <h3 ref="detailHeading" tabindex="-1">{{ t('admin.commission.ui.paymentDetail') }}</h3>
+     <button type="button" class="text-button" :disabled="navigationLocked" @click="returnToPayments">{{ t(cycleId ? 'admin.commission.ui.backToPayments' : 'admin.commission.ui.back') }}</button>
+    </div>
     <p v-if="loadingDetail" v-global-loading>{{ t('admin.copy.b6d0df6c') }}</p>
-    <p v-if="detailError" class="commission-warning" role="alert">{{ displayPublicError(detailError) }}</p>
+    <p v-if="detailError" class="commission-warning" role="alert">{{ displayPublicError(detailError) }}
+     <button type="button" class="button" v-refresh-button="t('admin.commission.ui.retryRead')" @click="withGlobalLoading(loadDetail,detailId)">{{ t('admin.commission.ui.retryRead') }}</button>
+    </p>
     <template v-if="detail && !loadingDetail && !detailError">
-     <div class="commission-heading"><b><AssociationName :record="detail" kind="cycle" :id="detail.cycle_id" :locale="locale" /></b><span class="commission-status" :class="detail.state">{{ stateLabel(detail.state) }}</span></div>
+     <div class="commission-heading"><b v-if="!cycleId"><AssociationName :record="detail" kind="cycle" :id="detail.cycle_id" :locale="locale" /></b><span class="commission-status" :class="detail.state">{{ stateLabel(detail.state) }}</span></div>
      <p v-if="detail.last_error_code" class="commission-warning">{{ displayPublicError(publicErrorMessage({code:detail.last_error_code})) }}</p>
      <p v-if="policy && !policy.enabled" class="commission-warning">{{ t('admin.commission.ui.policyOff') }}</p>
      <p v-if="policyError" class="commission-warning" role="alert">{{ displayPublicError(policyError) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadPolicy)">{{ t('admin.commission.ui.retryRead') }}</button></p>
      <header class="console-page-heading"><div class="commission-actions console-page-actions"><button v-if="detail.state==='awaiting_approval' && rights.approve" data-testid="commission-payment-approve" class="button button-primary" :disabled="!canApprove" @click="openReview('approve')">{{ t('admin.copy.c176586a') }}</button><button v-if="detail.state==='failed' && rights.retry" data-testid="commission-payment-retry" class="button button-primary" :disabled="!canRetry" @click="openReview('retry')">{{ t('admin.copy.ce7fd4f3') }}</button><button v-if="detailError || ['awaiting_approval','paying'].includes(detail.state)" v-refresh-button="t('admin.copy.894e2a7d')" class="button" :disabled="loadingDetail" @click="withGlobalLoading(loadDetail,detail.id)">{{ t('admin.copy.894e2a7d') }}</button></div></header>
-     <nav class="commission-tabs" role="tablist"><button v-for="tab in (['summary','targets','adjustments','paymentHistory'] as const)" :key="tab" class="button" role="tab" :aria-selected="detailTab===tab" @click="withGlobalLoading(openDetailTab,tab)">{{ t(adminKey('admin.commission.ui.'+tab)) }}</button></nav>
-     <section v-if="detailTab==='summary'" class="commission-detail" role="tabpanel">
-      <dl class="commission-metrics"><div><dt>{{ t('admin.commission.ui.planned') }}</dt><dd>{{ detail.total_points }}</dd></div><div><dt>{{ t('admin.commission.ui.paid') }}</dt><dd>{{ detail.paid_points }}</dd></div><div><dt>{{ t('admin.commission.ui.progress') }}</dt><dd>{{ detail.paid_count }} / {{ detail.target_count }}</dd></div></dl>
+     <section class="commission-detail">
+      <dl class="commission-metrics report-summary-tags"><div><dt>{{ t('admin.commission.ui.planned') }}</dt><dd>{{ detail.total_points }}</dd></div><div><dt>{{ t('admin.commission.ui.paid') }}</dt><dd>{{ detail.paid_points }}</dd></div><div><dt>{{ t('admin.commission.ui.progress') }}</dt><dd>{{ detail.paid_count }} / {{ detail.target_count }}</dd></div></dl>
       <dl class="commission-facts"><dt>{{ t('admin.commission.ui.mode') }}</dt><dd>{{ modeLabel(detail.payout_mode) }}</dd><dt>{{ t('admin.commission.ui.updated') }}</dt><dd>{{ formatDate(detail.updated_at) }}</dd></dl>
       <p v-if="detail.payout_mode==='mixed' && detail.state==='awaiting_approval'" class="commission-warning">{{ t('admin.copy.f52ae3e2') }}</p><p v-if="detail.state==='blocked'" class="commission-warning">{{ t('admin.copy.df5f714e') }}</p><p v-if="detail.state==='failed' && detail.paid_count!=='0'" class="commission-warning">{{ t('admin.copy.a28d321d') }}</p>
      </section>
-     <CommissionPaymentTargets v-if="detailTab==='targets'" :key="detail.id+':'+detail.version+':'+detail.paid_count" :account="account" :brand-id="brandId" :payment-id="detail.id" @session-invalid="emit('session-invalid')" />
-     <template v-if="detailTab==='adjustments'"><p v-if="detail.state!=='paid'" class="commission-note">{{ t('admin.commission.ui.noAdjustment') }}</p><CommissionAdjustmentsManagement :key="`commission-adjustments:${account.id}:${brandId}:${detail.id}`" :account="account" :brand-id="brandId" :payment-id="detail.id" :payment-state="detail.state" :brand-status="brandStatus" @session-invalid="emit('session-invalid')" /></template>
-     <ManagementList embedded v-if="detailTab==='paymentHistory'" class="commission-detail"><p v-if="historyError" class="commission-warning">{{ displayPublicError(historyError) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadHistory)">{{ t('admin.commission.ui.retryRead') }}</button></p>
+     <details class="commission-technical" @toggle="toggleTargets">
+      <summary>{{ t('admin.commission.ui.targets') }}</summary>
+      <CommissionPaymentTargets v-if="showTargets" :key="detail.id+':'+detail.version+':'+detail.paid_count" :account="account" :brand-id="brandId" :payment-id="detail.id" @session-invalid="emit('session-invalid')" />
+     </details>
+     <details class="commission-technical" @toggle="toggleAdjustments">
+      <summary>{{ t('admin.commission.ui.adjustments') }}</summary>
+      <p v-if="detail.state!=='paid'" class="commission-note">{{ t('admin.commission.ui.noAdjustment') }}</p>
+      <CommissionAdjustmentsManagement v-else-if="showAdjustments" :key="detail.id" :account="account" :brand-id="brandId" :payment-id="detail.id"
+       :payment-state="detail.state" :brand-status="brandStatus" embedded @writing-change="adjustmentLocked = $event" @session-invalid="emit('session-invalid')" />
+     </details>
+     <details class="commission-technical" @toggle="toggleHistory">
+      <summary>{{ t('admin.commission.ui.paymentHistory') }}</summary>
+      <ManagementList embedded class="commission-detail"><p v-if="historyError" class="commission-warning">{{ displayPublicError(historyError) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadHistory)">{{ t('admin.commission.ui.retryRead') }}</button></p>
       <ManagementTable :entries="historyPage?.items??[]" :columns="historyColumns" :empty="!!historyPage&&!historyPage.items.length" :empty-label="t('admin.commission.ui.empty')"><template #operation="{entry}">{{ t(adminKey('admin.commission.ui.'+entry.operation)) }}</template><template #actor="{entry}"><AssociationName v-if="entry.actor_type==='admin'&&entry.actor_id" :record="entry" kind="actor" :id="entry.actor_id" :locale="locale" /><span v-else>{{ t('admin.commission.ui.system') }}</span></template><template #state="{entry}">{{ entry.state ? stateLabel(entry.state) : '—' }}</template><template #time="{entry}">{{ formatDate(entry.created_at) }}</template></ManagementTable>
 
      <template #pagination><TablePagination v-if="historyPage" class="commission-pager" :total="historyPage.total_count" :page="Math.floor(historyPage.offset / historyPageSize + 1)" :count="historyPage.items.length" :locale="associationLocale" :page-size="historyPageSize" :previous-disabled="historyBusy||historyPage.offset===0" :next-disabled="historyBusy||BigInt(historyPage.offset+historyPageSize)>=BigInt(historyPage.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadHistory((target - 1) * historyPageSize)" :change-page-size="async (size: number) => { historyPageSize = size; await loadHistory(0) }" :busy="historyBusy" /></template></ManagementList>
+     </details>
 
     </template>
    </section>

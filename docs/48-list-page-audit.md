@@ -43,6 +43,7 @@
 | `platform-web/src/NotificationsPanel.vue` | 消息投递：刷新、空表及分页；失败保留已读取的记录 |
 | `platform-web/src/NotificationTemplatesPanel.vue` | 通知模板是固定事件目录，展示全部已支持事件并使用共享表格/工具栏，不伪造分页 |
 | `platform-web/src/ReportsPanel.vue` | 六类业务报表：查询、导出、汇总和结果属于同一列表，实际总数驱动分页 |
+| `platform-web/src/BetFrequencyPanel.vue` | 投注频率：按彩种和日期查询平台汇总，使用共享汇总区、明细表及服务端分页；成功空结果保留表头，汇总和明细可分别显示；只读，无行操作或批量动作 |
 | `platform-web/src/BetOrdersPanel.vue` | 注单入口：实际列表由 `shared/src/ConfiguredOrdersPanel.vue` 承载 |
 | `platform-web/src/BrandDomainsPanel.vue` | 平台域名入口：复用 `admin-web/src/BrandDomains.vue`，不维护第二套列表 |
 | `platform-web/src/OfficialDrawCalendar.vue` | 月历是固定七列日历，不属于业务记录分页 |

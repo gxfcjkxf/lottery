@@ -25,12 +25,13 @@ for(const locale of ['en','zh-CN'] as const)for(const mode of ['first','read-onl
   const input=r.postDataJSON();expect(input.rule_id).toBe(gameId)
   expect(input.version).toBe(mode==='outdated'?3:0)
   if(mode==='first')expect(input.min_points).toBe('0.25')
+  if(mode==='outdated'&&writes.length===1)return route.fulfill({status:400,json:{success:false,error:{code:'CONFIGURED_SALES_ODDS_INVALID',message:'Invalid betting odds'}}})
   saved={...input,version:input.version+1}
   if(mode==='first'&&writes.length===1)return route.fulfill({status:503,json:{success:false,error:{code:'SERVICE_UNAVAILABLE',message:'Unknown result'}}})
   return ok(saved)
  })
  const props={surface:'admin',brandId:gameId,gameId,locale,snapshot:null,canWrite:mode!=='read-only'}
- await page.route('**/configured-sales-harness',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main id="app" class="management-console panel" style="margin:12px;padding:12px;min-width:0"></main><script id="harness-data" type="application/json">${JSON.stringify({component:'ConfiguredPublishing',props,locale})}</script><script type="module" src="/tests/layout-harness.ts"></script></body></html>`}))
+ await page.route('**/configured-sales-harness',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main id="app" class="management-console panel" style="margin:12px;padding:12px;min-width:0"></main><script id="harness-data" type="application/json">${JSON.stringify({component:'ConfiguredPublishing',props,locale,operationToasts:mode==='outdated'})}</script><script type="module" src="/tests/layout-harness.ts"></script></body></html>`}))
  await page.goto(`${origins.brand}/configured-sales-harness`)
  await expect(page.getByRole('heading',{name:zh?'投注配置':'Betting configuration'})).toBeVisible()
  if(mode==='read-only'){
@@ -53,6 +54,14 @@ for(const locale of ['en','zh-CN'] as const)for(const mode of ['first','read-onl
   }
   await expect(page.locator('.configured-odds-editor')).toHaveCount(0)
   await save.click()
+  if(mode==='outdated'){
+   await expect(page.getByText(zh?'部分赔率缺失或不符合当前规则，请检查盘口赔率。':'Odds are missing or invalid for the current rules. Review Plates & odds.',{exact:true})).toBeVisible()
+   await expect(page.getByRole('button',{name:zh?'重试':'Retry',exact:true})).toHaveCount(0)
+   await expect(page.getByRole('button',{name:zh?'重新读取配置':'Reload configuration',exact:true})).toHaveCount(0)
+   await expect(minimum).toHaveValue('1')
+   await page.screenshot({path:info.outputPath(`sales-validation-${locale}.png`)})
+   await save.click()
+  }
   if(mode==='first'){
    await expect(page.getByRole('button',{name:zh?'重试':'Retry'})).toBeVisible()
    await expect(minimum).toBeDisabled()

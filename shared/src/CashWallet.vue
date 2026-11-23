@@ -472,7 +472,6 @@ useOperationToast(notice, (v) => v, "success");
   <section class="currency-wallet" :aria-busy="loading">
     <template v-if="data">
       <div class="cash-toolbar cash-actions">
-        <slot name="actions-start" />
         <button
           v-if="mode === 'overview'"
           type="button"
@@ -507,9 +506,10 @@ useOperationToast(notice, (v) => v, "success");
         >
           {{ t("cash.exchange") }}
         </button>
+        <slot name="actions-end" />
       </div>
       <p v-if="!agent && mode !== 'overview'" class="cash-flow-help muted">{{ t(mode === 'deposit' ? 'cash.depositExchangeHelp' : 'cash.withdrawalExchangeHelp') }}</p>
-      <div v-if="mode !== 'deposit'" class="cash-balances">
+      <div v-if="mode !== 'deposit'" class="cash-balances stat-strip">
         <button
           v-for="b in visibleBalances"
           :key="b.currency"
@@ -521,18 +521,18 @@ useOperationToast(notice, (v) => v, "success");
           @click="currency = b.currency"
         >
           <strong>{{ t(`cash.${b.currency}`) }}</strong>
-          <dl>
+          <dl class="stat-strip">
             <div>
               <dt>{{ t("cash.deposited") }}</dt>
-              <dd>{{ b.deposited }}</dd>
+              <dd data-wallet-amount="deposited">{{ b.deposited }}</dd>
             </div>
             <div>
               <dt>{{ t("cash.withdrawable") }}</dt>
-              <dd>{{ b.withdrawable }}</dd>
+              <dd data-wallet-amount="available">{{ b.withdrawable }}</dd>
             </div>
             <div>
               <dt>{{ t("cash.reserved") }}</dt>
-              <dd>{{ b.reserved }}</dd>
+              <dd data-wallet-amount="withdrawal">{{ b.reserved }}</dd>
             </div>
           </dl>
         </button>
@@ -971,19 +971,17 @@ useOperationToast(notice, (v) => v, "success");
 .cash-actions {
   justify-content: flex-start;
 }
-.cash-balances {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
-  gap: 8px;
-}
-.cash-balance:only-child { grid-column: 1 / -1; }
+.cash-balances { align-items: stretch; gap: 8px; }
 .cash-balance {
-  container-type: inline-size;
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  flex: 1 1 max-content;
   min-width: 0;
+  max-width: 100%;
   text-align: start;
-  padding: 12px;
+  padding: 8px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
@@ -994,32 +992,8 @@ useOperationToast(notice, (v) => v, "success");
   border-color: var(--primary);
   box-shadow: inset 0 0 0 1px var(--primary);
 }
-.cash-balance dl {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-}
-.cash-balance dl > div {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 4px;
-}
-.cash-balance dt {
-  color: var(--muted);
-}
-.cash-balance dd {
-  margin: 0;
-  white-space: nowrap;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-@container (min-width: 480px) {
-  .cash-balance dl {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 16px;
-  }
-}
+.cash-balance dt { color: var(--muted); }
+.cash-balance dd { font-weight: 650; }
 .cash-detail {
   display: grid;
   gap: 8px;
@@ -1092,14 +1066,8 @@ fieldset {
   .currency-wallet { gap: 8px; }
   .cash-record-table tr { gap: 4px 8px; padding-block: 8px; }
   .user-record-list > .cash-toolbar { padding-block: 8px; }
-  .cash-balances {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 @media (max-width: 360px) {
-  .cash-balances {
-    grid-template-columns: 1fr;
-  }
   .cash-detail > div {
     flex-wrap: wrap;
   }

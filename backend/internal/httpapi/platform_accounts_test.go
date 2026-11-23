@@ -6,8 +6,74 @@ import (
 	"testing"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
+	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
+	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 )
+
+func TestDefaultPlatformAdminIsPrivateAndProtected(t *testing.T) {
+	f := managedFixture(t)
+	ctx := context.Background()
+	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `DELETE FROM admin_account_roles WHERE account_id=$1`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `DELETE FROM admin_brand_scopes WHERE account_id=$1`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	role := grantPlatformPermission(t, f, "admin.view.platform", "admin.write.platform", "admin.delete.platform")
+	operator := platformAdminToken(t, f)
+	const password = "owner-fixture-password-2026"
+	hash, err := authcrypto.HashPassword(password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := ids.New()
+	if _, err := f.pool.Exec(ctx, `INSERT INTO admin_accounts(id,username,password_hash,is_super_admin) VALUES($1,'prior_owner',$2,true)`, owner, hash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)`, owner, role); err != nil {
+		t.Fatal(err)
+	}
+	const path = "/api/v1/platform/platform-accounts"
+	update := map[string]any{"version": 1, "status": "active", "role_ids": []string{role}}
+	// Simulate a stored receipt from before the default-account restriction.
+	mustStatus(t, f.call("PATCH", path+"/"+owner, "owner-legacy-update", operator, "", update), 200)
+	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET username=$2 WHERE id=$1`, owner, adminsys.DefaultPlatformAdminUsername); err != nil {
+		t.Fatal(err)
+	}
+	list := func(token string, offset string, total string, expectedID string) {
+		t.Helper()
+		response := f.call("GET", path+"?limit=1&offset="+offset, "", token, "", nil)
+		mustStatus(t, response, 200)
+		var data struct {
+			Items []adminsys.AdminRecord `json:"items"`
+			Total string                 `json:"total_count"`
+		}
+		managedData(t, response, &data)
+		if data.Total != total ||
+			(expectedID == "" && len(data.Items) != 0) ||
+			(expectedID != "" && (len(data.Items) != 1 || data.Items[0].ID != expectedID)) {
+			t.Fatalf("unexpected account page: %+v", data)
+		}
+	}
+	list(operator, "0", "1", f.root)
+	list(operator, "1", "1", "")
+	mustStatus(t, f.call("PATCH", path+"/"+owner, "owner-legacy-update", operator, "", update), 404)
+	mustStatus(t, f.call("PATCH", path+"/"+owner, "owner-hidden-update", operator, "", map[string]any{"version": 2, "status": "disabled", "role_ids": []string{role}}), 404)
+	mustStatus(t, f.call("POST", path+"/"+owner+"/reset-password", "owner-hidden-reset", operator, "", map[string]any{"version": 2, "password": "replacement-fixture-password"}), 404)
+	mustStatus(t, f.call("POST", path+"/"+owner+"/delete", "owner-hidden-delete", operator, "", map[string]any{"version": 2}), 404)
+
+	login := f.call("POST", "/api/v1/platform/auth/login", "default-owner-login", "", "", map[string]string{"identifier": adminsys.DefaultPlatformAdminUsername, "password": password})
+	mustStatus(t, login, 200)
+	var auth identity.AdminAuthentication
+	managedData(t, login, &auth)
+	list(auth.AccessToken, "0", "2", owner)
+	list(auth.AccessToken, "1", "2", f.root)
+	mustStatus(t, f.call("POST", path+"/"+owner+"/delete", "owner-self-delete", auth.AccessToken, "", map[string]any{"version": 2}), 403)
+}
 
 func TestPlatformAccountManagementHTTP(t *testing.T) {
 	f := managedFixture(t)

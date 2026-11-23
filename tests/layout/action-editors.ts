@@ -69,7 +69,33 @@ export function registerActionEditorTests(reflow = false) {
       await expectInsideViewport(dialog)
       await expectNoPageOverflow(page)
       await page.screenshot({path:info.outputPath(`action-editor-${name}-${locale}-${width}.png`)})
-      if (name === 'agent-edit') await dialog.screenshot({path:info.outputPath(`agent-detail-${locale}-${width}.png`)})
+      if (name === 'agent-edit') {
+       const facts = await dialog.locator('.agent-detail dl > div').evaluateAll(rows => rows.map(row => {
+        const label = row.querySelector('dt')!
+        const value = row.querySelector('dd')!
+        return {
+         left: label.getBoundingClientRect().left,
+         right: value.getBoundingClientRect().right,
+         align: getComputedStyle(value).textAlign,
+        }
+       }))
+       expect(facts).toHaveLength(3)
+       for (const fact of facts) {
+        expect(['end', 'right']).toContain(fact.align)
+        expect(fact.left).toBeCloseTo(facts[0].left, 1)
+        expect(fact.right).toBeCloseTo(facts[0].right, 1)
+       }
+       const option = await dialog.getByRole('checkbox').evaluate(input => {
+        const label = input.closest('label')!.querySelector('span')!
+        const box = input.getBoundingClientRect()
+        return { left: label.getBoundingClientRect().left, right: box.right, width: box.width, align: getComputedStyle(label).textAlign }
+       })
+       expect(['start', 'left']).toContain(option.align)
+       expect(option.left).toBeCloseTo(facts[0].left, 1)
+       expect(option.right).toBeCloseTo(facts[0].right, 1)
+       expect(option.width).toBe(18)
+       await dialog.screenshot({path:info.outputPath(`agent-detail-${locale}-${width}.png`)})
+      }
      }
      if(reflow) await page.setViewportSize(preset)
     }
@@ -100,12 +126,8 @@ export function registerActionEditorTests(reflow = false) {
      await review('account-password')
     } else if(component === 'AgentManagement') {
      await page.locator('.agent-directory-table .member-account').click()
+     await expect(dialog.locator('.owner-join-code')).toContainText(code.code)
      await review('agent-edit')
-     await page.keyboard.press('Escape')
-     Object.assign(props,{mode:'settings'})
-     await page.reload()
-     await page.getByRole('button',{name:zh?'编辑':'Edit',exact:true}).click()
-     await review('agent-policy')
     }
     expect(writes).toBe(0)
     expect(errors).toEqual([])

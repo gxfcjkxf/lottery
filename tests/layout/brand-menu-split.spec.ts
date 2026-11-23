@@ -204,7 +204,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
 }
 
 for (const locale of ['zh-CN', 'en'] as const) {
-  test(`brand betting limits compact form (${locale})`, async ({ page }, info) => {
+  test(`brand betting limits save inline (${locale})`, async ({ page }, info) => {
     await installLayoutApi(page, locale)
     const permissions = ['bet_policy.view.brand', 'bet_policy.write.brand']
     let configured = false, version = 1, minPoints = '1', saves = 0
@@ -236,6 +236,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
       expect(route.request().headers()['x-brand-id']).toBe(gameId)
       if (path === '/api/v1/admin/bet-limits') return reply({ items: [{ id: gameId, name: 'Mark Six', configured }, { id: secondGame, name: locale === 'zh-CN' ? '加拿大快开彩种' : 'Canada fast draw', configured: true }] })
       if (path === `/api/v1/admin/platform-games/${gameId}/bet-limits`) return reply({ brand_id: gameId, game_id: gameId, version, min_points: minPoints, max_points: '100', max_period_points: '1000', max_user_period_points: '500' })
+      if (path === `/api/v1/admin/platform-games/${secondGame}/bet-limits`) return reply({ brand_id: gameId, game_id: secondGame, version: 1, min_points: '5', max_points: '100', max_period_points: '1000', max_user_period_points: '500' })
       throw Error(`Unexpected limits request: ${path}`)
     })
     await page.goto(origins.brand)
@@ -258,43 +259,45 @@ for (const locale of ['zh-CN', 'en'] as const) {
     await expect(panel.locator('.game-tag').last()).toHaveClass(/is-configured/)
     await expect(panel.locator('.game-tag').last().getByRole('button')).toHaveText(locale === 'zh-CN' ? '修改' : 'Edit')
     expect(await panel.locator('.game-tag').first().evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe(await panel.locator('.game-tag').last().evaluate(node => getComputedStyle(node).backgroundColor))
+    const games = panel.locator('.game-tags button')
+    const editor = panel.locator('.game-limits-editor')
+    const save = editor.getByRole('button', { name: locale === 'zh-CN' ? '保存' : 'Save', exact: true })
+    const minimum = editor.locator('input').first()
+    await games.first().click()
+    await expect(editor).toBeVisible()
+    await expect(editor.getByRole('heading')).toBeFocused()
+    await expect(games.first()).toHaveAttribute('aria-pressed', 'true')
+    await expect(editor.locator('input')).toHaveCount(4)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
     const preset = page.viewportSize()!
     for (const width of info.project.name.includes('reflow') ? [320, 640, 900, 901, 1440] : [preset.width]) {
       if (info.project.name.includes('reflow')) await page.setViewportSize({ width, height: preset.height })
       await expectNoPageOverflow(page)
-      await page.screenshot({ path: info.outputPath(`betting-limits-${locale}-${width}.png`), fullPage: true })
-      await panel.locator('.game-tag').first().getByRole('button').click()
-      const dialog = page.getByRole('dialog')
-      await expect(dialog).toBeVisible()
-      await expect(dialog.locator('input')).toHaveCount(4)
-      await expect(dialog.locator('select')).toHaveCount(0)
-      await dialog.locator('input').first().fill('2')
-      await expectNoPageOverflow(page)
       await page.screenshot({ path: info.outputPath(`game-limits-${locale}-${width}.png`), fullPage: true })
-      const save = dialog.getByRole('button', { name: locale === 'zh-CN' ? '保存' : 'Save', exact: true })
-      await save.scrollIntoViewIfNeeded()
-      await expect(save).toBeVisible()
-      await expect(save).toBeEnabled()
-      await save.click()
-      if (saves === 0) {
-        await expect(dialog.locator('.action-row button')).toHaveText(locale === 'zh-CN' ? '重试' : 'Retry')
-        await expect(dialog).toBeVisible()
-        await expect(panel.locator('.game-tag').first()).not.toHaveClass(/is-configured/)
-        await page.locator('.toast-error button').click()
-        await dialog.locator('.action-row button').click()
-      }
-      await expect(dialog).toHaveCount(0)
-      await expect(panel.locator('input, form')).toHaveCount(0)
-      await expect(panel.locator('.game-tag').first()).toHaveClass(/is-configured/)
-      await expect(panel.locator('.game-tag').first().getByRole('button')).toHaveText(locale === 'zh-CN' ? '修改' : 'Edit')
-      await expect(panel.locator('.game-tag').first().locator('.game-status')).toHaveText(locale === 'zh-CN' ? '已设置' : 'Configured')
-      await page.screenshot({ path: info.outputPath(`betting-limits-saved-${locale}-${width}.png`), fullPage: true })
-      await page.locator('.operation-toast-stack .toast button').evaluateAll(buttons => buttons.forEach(button => (button as HTMLButtonElement).click()))
-      await panel.locator('.game-tag').first().getByRole('button').click()
-      await expect(dialog.locator('input').first()).toHaveValue('2')
-      await dialog.getByRole('button', { name: locale === 'zh-CN' ? '关闭' : 'Close', exact: true }).click()
     }
-    expect(saves).toBeGreaterThan(0)
+    await minimum.fill('2')
+    await save.click()
+    const retry = editor.getByRole('button', { name: locale === 'zh-CN' ? '重试' : 'Retry', exact: true })
+    await expect(retry).toBeEnabled()
+    await expect(minimum).toBeDisabled()
+    await expect(games.last()).toBeDisabled()
+    await expect(panel.locator('.game-tag').first()).not.toHaveClass(/is-configured/)
+    await page.locator('.console-tabs').getByRole('button', { name: locale === 'zh-CN' ? '运行状态' : 'Status', exact: true }).click()
+    await page.locator('.console-tabs').getByRole('button', { name: title, exact: true }).click()
+    await expect(minimum).toHaveValue('2')
+    await retry.click()
+    await expect(save).toBeEnabled()
+    expect(saves).toBe(1)
+    await expect(games.first()).toHaveAttribute('aria-pressed', 'true')
+    await expect(panel.locator('.game-tag').first()).toHaveClass(/is-configured/)
+    await expect(panel.locator('.game-tag').first().locator('.game-status')).toHaveText(locale === 'zh-CN' ? '已设置' : 'Configured')
+
+    await games.last().click()
+    await expect(minimum).toHaveValue('5')
+    await expect(games.last()).toHaveAttribute('aria-pressed', 'true')
+    await games.first().click()
+    await expect(minimum).toHaveValue('2')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
     await page.reload()
     await expect(page.locator('.management-console')).toBeVisible()
     if (await more.isVisible()) await more.click()
@@ -504,39 +507,96 @@ for (const locale of ['zh-CN', 'en'] as const) {
 }
 
 for (const locale of ['zh-CN', 'en'] as const) {
-  test(`brand agent settings load only policies (${locale})`, async ({ page }, info) => {
+  test(`brand agent rules save inline (${locale})`, async ({ page }, info) => {
     await installLayoutApi(page, locale)
     const zh = locale === 'zh-CN', at = '2026-10-27T00:00:00Z'
+    const permissions = ['agent_policy.view.brand', 'commission_policy.view.brand', 'agent_policy.write.brand']
+    const writes: { body: string | null; key: string | undefined }[] = []
+    let policy = { brand_id: gameId, version: 1, config: { enabled: true, max_depth: 5, loss_ratio_cap: '0.25', turnover_ratio_cap: '0.03', mode: 'loss', cycle: 'monthly' }, updated_at: at }
     await page.route('**/api/v1/admin/**', async route => {
-      expect(route.request().method()).toBe('GET')
-      const path = new URL(route.request().url()).pathname
+      const request = route.request(), path = new URL(request.url()).pathname
       const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
-      if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'agent_settings_reviewer', super_admin: false, brand_ids: [gameId], permissions_by_brand: { [gameId]: ['agent_policy.view.brand', 'agent_policy.write.brand', 'commission_policy.view.brand'] } } })
-      if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, code: 'layout', name: 'Aurora', status: 'active', member_count: '0', agent_count: '0', recharge_quota_available: '0', created_at: at }] })
-      expect(route.request().headers()['x-brand-id']).toBe(gameId)
-      if (path.endsWith('/agent-policy')) return reply({ brand_id: gameId, version: 1, config: { enabled: true, max_depth: 5, loss_ratio_cap: '0.25', turnover_ratio_cap: '0.03', mode: 'loss', cycle: 'monthly' }, updated_at: at })
+      if (request.method() === 'PUT') {
+        expect(path).toBe('/api/v1/admin/agent-policy')
+        expect(request.headers()['x-brand-id']).toBe(gameId)
+        expect(request.headers()['idempotency-key']).toBeTruthy()
+        writes.push({ body: request.postData(), key: request.headers()['idempotency-key'] })
+        if (writes.length === 1) {
+          const body = request.postDataJSON()
+          expect(body.version).toBe(policy.version)
+          expect(body.config).toEqual({ ...policy.config, max_depth: 6, loss_ratio_cap: '0.3' })
+          policy = { ...policy, version: 2, config: body.config }
+          return route.abort('failed')
+        }
+        if (writes.length === 2) return reply(policy)
+        policy = { ...policy, version: 3, config: { ...policy.config, max_depth: 8 } }
+        return route.fulfill({ status: 409, json: { success: false, error: { code: 'AGENT_VERSION_CONFLICT', message: 'Settings changed' } } })
+      }
+      expect(request.method()).toBe('GET')
+      if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'agent_settings_reviewer', super_admin: false, brand_ids: [gameId], permissions_by_brand: { [gameId]: permissions } } })
+      if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, code: 'layout', name: 'Aurora', status: 'active', member_count: '0', agent_count: '0', recharge_quota_available: '1000', created_at: at }] })
+      expect(request.headers()['x-brand-id']).toBe(gameId)
+      if (path.endsWith('/agent-policy')) return reply(policy)
       if (path.endsWith('/commission-policy')) return reply({ brand_id: gameId, version: 1, config: { enabled: false, calendar: null, payout_mode: 'manual' }, created_at: at, updated_at: at, revision_id: gameId })
       throw Error(`Unexpected agent settings request: ${path}`)
     })
-    await page.goto(origins.brand)
-    await expect(page.locator('.management-console')).toBeVisible()
-    const more = page.locator('.mobile-nav > button').last()
-    if (await more.isVisible()) await more.click()
-    await openBrandPage(page, zh ? '品牌设置' : 'Brand settings')
-    await page.locator('.console-tabs').getByRole('button', { name: zh ? '代理设置' : 'Agent settings', exact: true }).click()
-    const panel = page.locator('.agent-management')
-    await expect(panel.locator('.am-facts')).toContainText('25%')
+    const tabs = page.locator('.console-tabs')
+    const agentTab = tabs.getByRole('button', { name: zh ? '代理设置' : 'Agent settings', exact: true })
+    const statusTab = tabs.getByRole('button', { name: zh ? '运行状态' : 'Status', exact: true })
+    async function openSettings() {
+      await page.goto(origins.brand)
+      await expect(page.locator('.management-console')).toBeVisible()
+      const more = page.locator('.mobile-nav > button').last()
+      if (await more.isVisible()) await more.click()
+      await openBrandPage(page, zh ? '品牌设置' : 'Brand settings')
+      await agentTab.click()
+    }
+    await openSettings()
+    const panel = page.locator('.agent-settings-policy')
+    const save = panel.getByRole('button', { name: zh ? '保存' : 'Save', exact: true })
+    const cap = panel.getByRole('textbox', { name: zh ? '占成比例上限' : 'Profit share cap', exact: true })
+    const depth = panel.getByRole('spinbutton')
+    await expect(cap).toHaveValue('25')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
     const preset = page.viewportSize()!
-    for (const width of info.project.name.includes('reflow') ? [320, 900, 901, 1440] : [preset.width]) {
+    for (const width of info.project.name.includes('reflow') ? [320, 640, 900, 1440] : [preset.width]) {
       if (info.project.name.includes('reflow')) await page.setViewportSize({ width, height: preset.height })
       await expectNoPageOverflow(page)
       await page.screenshot({ path: info.outputPath(`agent-settings-${locale}-${width}.png`), fullPage: true })
     }
-    await panel.getByRole('button', { name: zh ? '编辑' : 'Edit', exact: true }).click()
-    const dialog = page.getByRole('dialog')
-    await expect(dialog.getByRole('textbox', { name: zh ? '占成比例上限' : 'Profit share cap', exact: true })).toHaveValue('25')
-    await dialog.getByRole('button', { name: zh ? '关闭' : 'Close', exact: true }).click()
-    await expect(dialog).toHaveCount(0)
+    await depth.fill('6')
+    await cap.fill('30')
+    await save.click()
+    const retry = panel.getByRole('button', { name: zh ? '重试' : 'Retry', exact: true })
+    await expect(retry).toBeEnabled()
+    await expect(cap).toBeDisabled()
+    expect(writes).toHaveLength(1)
+    await statusTab.click()
+    await agentTab.click()
+    await expect(cap).toHaveValue('30')
+    await expect(cap).toBeDisabled()
+    await retry.click()
+    await expect(save).toBeEnabled()
+    expect(writes).toHaveLength(2)
+    expect(writes[0]).toEqual(writes[1])
+    await expect(depth).toHaveValue('6')
+
+    await depth.fill('7')
+    await save.click()
+    const reload = panel.locator('.ui-form-actions button[type=button]')
+    await expect(reload).toBeEnabled()
+    await expect(depth).toBeDisabled()
+    await reload.click()
+    await expect(depth).toHaveValue('8')
+    await expect(save).toBeEnabled()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    expect(writes).toHaveLength(3)
+
+    permissions.pop()
+    await openSettings()
+    await expect(panel.locator('.am-facts')).toContainText('30%')
+    await expect(panel.locator('form')).toHaveCount(0)
+    expect(writes).toHaveLength(3)
   })
 }
 
@@ -586,10 +646,9 @@ for (const locale of ['zh-CN', 'en'] as const) {
   await review(points,'points-actions')
   await page.locator('.console-tabs').getByRole('button',{name:zh?'代理设置':'Agent settings',exact:true}).click()
   const agents=page.locator('.agent-management')
-  await expect(agents.locator('.am-facts')).toBeVisible()
-  await review(agents,'agent-edit-actions')
-  await agents.getByRole('button',{name:zh?'编辑':'Edit',exact:true}).click()
-  await review(page.getByRole('dialog'),'agent-save-actions')
+  await expect(agents.locator('form')).toBeVisible()
+  await review(agents,'agent-save-actions')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.locator('.toast')).toHaveCount(0)
   expect(errors).toEqual([])
  })

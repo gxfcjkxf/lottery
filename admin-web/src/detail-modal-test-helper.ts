@@ -8,7 +8,7 @@ export const DetailModalTestComponent = defineComponent({
   emits: ['close'],
   setup(props, { attrs, slots, emit }) {
     return () => props.open ? h('dialog', { ...attrs, role: 'dialog', 'aria-label': props.title, open: true }, [
-      h('header', [h('h2', { id: props.titleId }, props.title), h('button', { type: 'button', disabled: props.closeDisabled, 'aria-label': props.closeLabel, onClick: () => emit('close') }, props.closeLabel)]),
+      h('header', [h('h2', { id: props.titleId }, props.title), slots['heading-extra']?.(), h('button', { type: 'button', disabled: props.closeDisabled, 'aria-label': props.closeLabel, onClick: () => emit('close') }, props.closeLabel)]),
       slots.default?.(), slots.footer?.(),
     ]) : null
   },

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportValueTone } from "@lottery/shared"
 import { formatPoints } from '@lottery/shared'
 
 const showSummary = ref(true), showDetails = ref(true)
@@ -78,7 +79,7 @@ const names: Record<string, string> = {
 };
  function metric(field: string) { return t(adminKey(names[field]!)); }
 function exact(value: string) { return formatPoints(value, displayLocale.value).replace(/^-/, "−"); }
-function count(totals: RewardReport["summary"], field: string) { return exact((totals as unknown as Record<string, string>)[field]!); }
+function metricValue(totals: RewardReport["summary"], field: string) { return (totals as unknown as Record<string, string>)[field]!; }
 function groupLabel(group: string) { return group === "day" ? t('admin.copy.f91541ed') : group === "member" ? t('admin.copy.5073d20c') : group === "order" ? t('admin.copy.2e709a31') : t('admin.copy.70a80209'); }
 function stateLabel(key: string) { return key === "granted" ? t('admin.copy.86b01b91') : key === "revoked" ? t('admin.copy.176004df') : key; }
 function hasNext(report: RewardReport) { return BigInt(report.query.offset) + BigInt(report.items.length) < BigInt(report.total_groups) && report.query.offset + pageSize.value <= 1_000_000; }
@@ -111,8 +112,8 @@ useOperationToast(() => error.value, value => displayPublicError(value), 'error'
     <div v-if="showSummary || showDetails" class="report-results">
 
     <template v-if="result && committed">
-      <dl v-if="showSummary" class="metrics report-metrics report-summary-tags" data-testid="reward-report-summary"><div v-for="field in fields" :key="field"><dt><span>{{ metric(field) }}</span></dt><dd><strong>{{ count(result.summary, field) }}</strong></dd></div></dl>
-      <div v-if="showDetails" class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ result.query.group_by === 'state' ? t('admin.copy.5d42f3a0') : t('admin.copy.b96f43c6') }}</th><th v-for="field in fields" :key="field">{{ metric(field) }}</th></tr></thead><tbody><tr v-for="item in result.items" :key="item.key"><td :data-label="String(result.query.group_by === 'state' ? t('admin.copy.5d42f3a0') : t('admin.copy.b96f43c6'))">{{ result.query.group_by === 'state' ? stateLabel(item.label) : associationGroupLabel(item, result.query.group_by, item.key, item.label, associationLocale) }}</td><td :data-label="String(metric(field))" v-for="field in fields" :key="field">{{ count(item.totals, field) }}</td></tr><tr v-if="!result.items.length"><td :colspan="fields.length + 1" class="empty-state">{{ t('admin.copy.24e33023') }}</td></tr></tbody></table></div>
+      <dl v-if="showSummary" class="metrics report-metrics report-summary-tags" data-testid="reward-report-summary"><div v-for="field in fields" :key="field"><dt><span>{{ metric(field) }}</span></dt><dd><strong :data-numeric-tone="reportValueTone(field, metricValue(result.summary, field))">{{ exact(metricValue(result.summary, field)) }}</strong></dd></div></dl>
+      <div v-if="showDetails" class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ result.query.group_by === 'state' ? t('admin.copy.5d42f3a0') : t('admin.copy.b96f43c6') }}</th><th v-for="field in fields" :key="field">{{ metric(field) }}</th></tr></thead><tbody><tr v-for="item in result.items" :key="item.key"><td :data-label="String(result.query.group_by === 'state' ? t('admin.copy.5d42f3a0') : t('admin.copy.b96f43c6'))">{{ result.query.group_by === 'state' ? stateLabel(item.label) : associationGroupLabel(item, result.query.group_by, item.key, item.label, associationLocale) }}</td><td :data-label="String(metric(field))" v-for="field in fields" :key="field"><span :data-numeric-tone="reportValueTone(field, metricValue(item.totals, field))">{{ exact(metricValue(item.totals, field)) }}</span></td></tr><tr v-if="!result.items.length"><td :colspan="fields.length + 1" class="empty-state">{{ t('admin.copy.24e33023') }}</td></tr></tbody></table></div>
 
     </template>
     <p v-global-loading v-else-if="busy" class="definition" aria-live="polite">{{ t('admin.copy.27342bf3') }}</p>

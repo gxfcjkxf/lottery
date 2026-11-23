@@ -39,3 +39,8 @@ useOperationToast(() => error.value, value => displayError(value), 'error');
   </dl>
  </article>
 </template>
+
+<style scoped>
+.brand-settings-panel > h2 { margin: 0; font-size: var(--body-font-size); }
+.confirm-list { margin: 0; }
+</style>

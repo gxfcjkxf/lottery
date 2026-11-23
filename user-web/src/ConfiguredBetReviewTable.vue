@@ -18,7 +18,7 @@ const rows = computed(() => props.lines.map(line => ({
 <template>
   <table class="bet-review-table">
     <thead><tr><th scope="col">{{ ui('user.orders.column.content') }}</th><th scope="col">{{ ui('user.orders.column.odds') }}</th><th scope="col">{{ ui('user.orders.column.stake') }}</th></tr></thead>
-    <tbody><tr v-for="(row, index) in rows" :key="index"><td>{{ row.label }}</td><td><span v-for="(price, priceIndex) in row.prices" :key="priceIndex" class="bet-review-price"><span v-if="price.label" class="bet-review-price-label">{{ price.label }}</span><span class="bet-review-price-value">{{ price.value }}</span></span></td><td>{{ row.stake }}</td></tr></tbody>
+    <tbody><tr v-for="(row, index) in rows" :key="index"><td>{{ row.label }}</td><td><span v-for="(price, priceIndex) in row.prices" :key="priceIndex" class="bet-review-price"><span v-if="price.label" class="bet-review-price-label">{{ price.label }}</span><span class="bet-review-price-value" data-numeric-tone="info">{{ price.value }}</span></span></td><td><span data-numeric-tone="info">{{ row.stake }}</span></td></tr></tbody>
   </table>
 </template>
 <style scoped>

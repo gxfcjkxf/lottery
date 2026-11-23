@@ -9,10 +9,10 @@ const props = defineProps<{ items: HistoryItem[]; showGame?: boolean; showMember
 const ui = (key: keyof typeof bettingHistoryCatalog.en) => bettingHistoryCatalog[props.locale][key]
 const labels = computed(() => createCatalogI18n(configuredRuleCatalog, props.locale).t)
 const amountColumns = [
-  { key: 'reserved', label: () => labels.value('reserved'), value: (item: HistoryItem) => item.order.quote.reserved_points },
-  { key: 'consumed', label: () => labels.value('consumed'), value: (item: HistoryItem) => item.order.result?.consumed_points },
-  { key: 'refund', label: () => ui('user.orders.column.refund'), value: (item: HistoryItem) => item.order.snapshot.catalog.funding !== 'reserve' ? item.order.result?.refund_points : undefined },
-  { key: 'release', label: () => labels.value('release'), value: (item: HistoryItem) => item.order.snapshot.catalog.funding === 'reserve' ? item.order.result?.refund_points : undefined },
+  { key: 'reserved', tone: 'warning', label: () => labels.value('reserved'), value: (item: HistoryItem) => item.order.quote.reserved_points },
+  { key: 'consumed', tone: 'danger', label: () => labels.value('consumed'), value: (item: HistoryItem) => item.order.result?.consumed_points },
+  { key: 'refund', tone: 'success', label: () => ui('user.orders.column.refund'), value: (item: HistoryItem) => item.order.snapshot.catalog.funding !== 'reserve' ? item.order.result?.refund_points : undefined },
+  { key: 'release', tone: 'success', label: () => labels.value('release'), value: (item: HistoryItem) => item.order.snapshot.catalog.funding === 'reserve' ? item.order.result?.refund_points : undefined },
 ]
 function positive(value: string | undefined) { return value !== undefined && pointsMinor(value) > 0n }
 const visibleAmounts = computed(() => amountColumns.filter(column => props.items.some(item => positive(column.value(item)))))
@@ -29,10 +29,10 @@ const columns = computed(() => [...(props.showGame ? ['game' as const] : []), ..
      <td class="history-period" :data-label="ui('user.orders.column.period')"><span class="history-value">{{ item.period_no }}</span></td>
      <td class="history-content" :data-label="ui('user.orders.column.content')"><div class="history-value"><p v-for="(line,index) in item.order.quote.lines" :key="index">{{ configuredTicketLabel(item.order.snapshot,line,locale) }}</p></div></td>
      <td class="history-outcomes" :data-label="ui('user.orders.column.outcome')"><div class="history-value"><p v-for="(_,index) in item.order.quote.lines" :key="index"><OrderOutcome :outcome="item.order.result?.lines[index]?.outcome" :locale="locale" /></p></div></td>
-     <td class="history-odds" :data-label="ui('user.orders.column.odds')"><div class="history-value"><p v-for="(line,index) in item.order.quote.lines" :key="index">{{ configuredTicketPrices(item.order.snapshot,line,locale).join(' / ') }}</p></div></td>
-     <td class="history-amount" :data-label="ui('user.orders.column.stake')"><span class="history-value">{{ item.order.quote.bet_points }}</span></td>
-     <td class="history-amount" :data-label="ui('user.orders.column.prize')"><span class="history-value">{{ item.order.result ? item.order.result.prize_points : '—' }}</span></td>
-     <td v-for="column in visibleAmounts" :key="column.key" class="history-amount" :class="{ 'history-amount-empty': !positive(column.value(item)) }" :data-label="column.label()"><span class="history-value">{{ positive(column.value(item)) ? column.value(item) : '—' }}</span></td>
+     <td class="history-odds" :data-label="ui('user.orders.column.odds')"><div class="history-value"><p v-for="(line,index) in item.order.quote.lines" :key="index" data-numeric-tone="info">{{ configuredTicketPrices(item.order.snapshot,line,locale).join(' / ') }}</p></div></td>
+     <td class="history-amount" :data-label="ui('user.orders.column.stake')"><span class="history-value" data-numeric-tone="info">{{ item.order.quote.bet_points }}</span></td>
+     <td class="history-amount" :data-label="ui('user.orders.column.prize')"><span class="history-value" :data-numeric-tone="item.order.result ? 'success' : undefined">{{ item.order.result ? item.order.result.prize_points : '—' }}</span></td>
+     <td v-for="column in visibleAmounts" :key="column.key" class="history-amount" :class="{ 'history-amount-empty': !positive(column.value(item)) }" :data-label="column.label()"><span class="history-value" :data-numeric-tone="positive(column.value(item)) ? column.tone : undefined">{{ positive(column.value(item)) ? column.value(item) : '—' }}</span></td>
      <td :data-label="ui('user.orders.column.status')"><span class="history-value history-status">{{ labels(item.order.status==='settled'?'state.settled':'state.placed') }}</span></td>
      <td class="history-time" :data-label="ui('user.orders.column.time')"><time class="history-value" :datetime="item.placed_at">{{ formatDisplayDateTime(item.placed_at,locale) }}</time></td>
     </tr>

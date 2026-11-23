@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
@@ -218,6 +219,14 @@ func registerConfiguredAdminRoutes(register func(string, string, http.HandlerFun
 				_, e = svc.WriteConfiguredAvailability(ctx, tx, fresh, brand, id, platformlottery.ConfiguredAvailabilityInput{
 					RuleID: out.RuleID, Version: in.Availability.Version, Items: in.Availability.Items,
 				}, meta)
+			}
+			switch {
+			case errors.Is(e, platformlottery.ErrConfiguredSalesOdds):
+				return mutation.Fail(400, "CONFIGURED_SALES_ODDS_INVALID", "Betting odds are invalid for the current rules"), nil
+			case errors.Is(e, platformlottery.ErrConfiguredSalesLimits):
+				return mutation.Fail(400, "CONFIGURED_SALES_LIMITS_INVALID", "Betting limits are invalid"), nil
+			case errors.Is(e, platformlottery.ErrVersionConflict):
+				return mutation.Fail(409, "CONFIGURED_SALES_VERSION_CONFLICT", "Betting configuration changed; reload before saving"), nil
 			}
 			return platformLotteryResult(200, out, e)
 		})

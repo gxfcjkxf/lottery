@@ -181,7 +181,7 @@ function wholePoints(value: string, signed = false) {
 .distribution-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .distribution-heading h2 { margin: 0; font-size: 16px; color: var(--ink); }
 .distribution-total { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; color: var(--ink-secondary); }
-.distribution-total strong { color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.distribution-total strong { color: var(--info-text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .distribution-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
 .distribution-number { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow-sm); transition: border-color 150ms ease, box-shadow 150ms ease; }
 .distribution-number:hover { border-color: var(--ink-secondary); }

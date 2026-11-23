@@ -183,12 +183,26 @@ for (const locale of ['en','zh-CN'] as const) for(const path of ['/wallet','/log
     const result={primary,light,ink,onPrimary,bg:target.backgroundColor,color:target.color,button:button?getComputedStyle(button).backgroundColor:null,buttonInk:button?getComputedStyle(button).color:null}
     probe.remove();return result
    },path)
-   if(path==='/wallet'){expect(colors.bg).toBe(colors.light);expect(await page.locator('.cash-record-table .empty-state').evaluate(el=>getComputedStyle(el,'::before').backgroundImage)).toContain(mode==='dark'?'%23a0b0b9':'%2364748b');await expect(page.locator('.customer-service-button')).toHaveCSS('color',colors.onPrimary);await expect(page.locator('.customer-service-button')).toHaveCSS('background-color',colors.primary)}
+   if(path==='/wallet'){
+    await expect(page.locator('.total-primary strong')).toHaveCSS('color', mode === 'dark' ? 'rgb(56, 189, 248)' : 'rgb(3, 105, 161)')
+    await expect(page.locator('.wallet-available b')).toHaveCSS('color', mode === 'dark' ? 'rgb(110, 231, 183)' : 'rgb(4, 120, 87)')
+    await expect(page.locator('.metric-amount strong').first()).toHaveCSS('color', mode === 'dark' ? 'rgb(160, 176, 185)' : 'rgb(100, 116, 139)')
+    await expect(page.locator('.metric-amount strong').last()).toHaveCSS('color', mode === 'dark' ? 'rgb(251, 191, 36)' : 'rgb(180, 83, 9)')
+    const cashAmounts = page.locator('.cash-balance').first().locator('dd')
+    await expect(cashAmounts.nth(0)).toHaveCSS('color', mode === 'dark' ? 'rgb(56, 189, 248)' : 'rgb(3, 105, 161)')
+    await expect(cashAmounts.nth(1)).toHaveCSS('color', mode === 'dark' ? 'rgb(110, 231, 183)' : 'rgb(4, 120, 87)')
+    await expect(cashAmounts.nth(2)).toHaveCSS('color', mode === 'dark' ? 'rgb(251, 191, 36)' : 'rgb(180, 83, 9)')
+    expect(colors.bg).toBe(colors.light);expect(await page.locator('.cash-record-table .empty-state').evaluate(el=>getComputedStyle(el,'::before').backgroundImage)).toContain(mode==='dark'?'%23a0b0b9':'%2364748b');await expect(page.locator('.customer-service-button')).toHaveCSS('color',colors.onPrimary);await expect(page.locator('.customer-service-button')).toHaveCSS('background-color',colors.primary)}
    else {expect(colors.color).toBe(colors.primary);expect(colors.button).toBe(colors.primary);expect(colors.buttonInk).toBe(colors.onPrimary)}
    expect(await page.locator('html').evaluate(el=>getComputedStyle(el).getPropertyValue('--slider-chevron'))).toContain(mode==='dark'?"stroke='%23071510'":"stroke='white'")
    await expect(page.locator('.operation-toast-stack .toast-error')).toHaveCount(0)
    await expectNoPageOverflow(page)
    await page.screenshot({path:info.outputPath(`player-${path.slice(1)}-${locale}-${theme}-${mode}.png`)})
+  }
+  if(path==='/wallet' && info.project.name.endsWith('reflow')){
+   await page.setViewportSize({width:320,height:800})
+   await expectNoPageOverflow(page)
+   await page.screenshot({path:info.outputPath(`player-wallet-${locale}-320.png`)})
   }
  expect(errors).toEqual([])
 })

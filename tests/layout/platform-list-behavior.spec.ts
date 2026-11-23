@@ -117,6 +117,14 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
     await expect(dialog.locator('.panel-heading [data-refresh-button], .management-list-toolbar [data-refresh-button]')).toHaveCount(content === 'platform-wallet-balances' ? 1 : 0)
     await expect(dialog.locator('.table-pagination [data-refresh-button]')).toHaveCount(0)
     if (content === 'platform-wallet-balances') {
+      const points = dialog.locator('.reward-fields dd span')
+      for (const [index, color] of ['rgb(3, 105, 161)', 'rgb(4, 120, 87)', 'rgb(100, 116, 139)', 'rgb(180, 83, 9)'].entries()) {
+        await expect(points.nth(index)).toHaveCSS('color', color)
+      }
+      const cash = dialog.locator('.detail-section').first().locator('tbody tr').first().locator('td span')
+      await expect(cash.nth(0)).toHaveCSS('color', 'rgb(3, 105, 161)')
+      await expect(cash.nth(1)).toHaveCSS('color', 'rgb(4, 120, 87)')
+      await expect(cash.nth(2)).toHaveCSS('color', 'rgb(180, 83, 9)')
       expect(ledgerReads).toHaveLength(0)
       await expect(dialog.getByTestId('platform-wallet-ledger')).toHaveCount(0)
     } else {
@@ -320,28 +328,27 @@ for (const locale of ['zh-CN', 'en'] as const) test(`notification template names
   expect(new Set(expectedNames).size).toBe(keys.length)
   await expectRealEntry(page,'platform');await expectListLayout(page)
   await page.screenshot({path:info.outputPath(`template-names-${locale}.png`)})
+  const editor=page.getByTestId('platform-template-detail')
   const withdrawalIndex=keys.indexOf('withdrawal.order.reviewing')
   await rows.nth(withdrawalIndex).click()
-  await expect(page.getByRole('dialog')).toHaveAccessibleName(expectedNames[withdrawalIndex])
-  await expect(page.getByRole('dialog').locator('.template-languages input').first()).toHaveValue(notificationCatalog['withdrawal.order.reviewing']['zh-CN'].title)
+  await expect(editor).toHaveAccessibleName(expectedNames[withdrawalIndex])
+  await expect(editor.locator('.template-languages input').first()).toHaveValue(notificationCatalog['withdrawal.order.reviewing']['zh-CN'].title)
   const otherLocale=locale==='en'?'zh-CN':'en'
   // Switching the interface language must not alter either language’s saved notification content.
-  await page.getByRole('dialog').getByRole('button',{name:locale==='en'?'Close':'关闭',exact:true}).click()
   await selectLanguage(page,otherLocale)
   await expect(rows).toHaveText(keys.map(key=>names[key][otherLocale]))
   for(const index of [0,2,4,8,9,11,12,15]) {
     await rows.nth(index).click()
-    await expect(page.getByRole('dialog')).toHaveAccessibleName(names[keys[index]][otherLocale])
-    await expect(page.getByRole('dialog').locator('.template-languages input').nth(0)).toHaveValue(notificationCatalog[keys[index]]['zh-CN'].title)
-    await expect(page.getByRole('dialog').locator('.template-languages input').nth(1)).toHaveValue(notificationCatalog[keys[index]].en.title)
-    await page.getByRole('dialog').getByRole('button',{name:otherLocale==='en'?'Close':'关闭',exact:true}).click()
+    await expect(editor).toHaveAccessibleName(names[keys[index]][otherLocale])
+    await expect(editor.locator('.template-languages input').nth(0)).toHaveValue(notificationCatalog[keys[index]]['zh-CN'].title)
+    await expect(editor.locator('.template-languages input').nth(1)).toHaveValue(notificationCatalog[keys[index]].en.title)
   }
   await selectLanguage(page,locale)
   await expect(rows).toHaveText(expectedNames)
   await rows.first().click()
-  const dialog=page.getByRole('dialog')
-  await expect(dialog.locator('.template-languages textarea')).toHaveCount(2)
-  await expect(dialog.locator('.template-history')).toHaveCount(0)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(editor.locator('.template-languages textarea')).toHaveCount(2)
+  await expect(editor.locator('.template-history')).toHaveCount(0)
   expect(reads.some(path=>path.includes('/history'))).toBe(false)
   const preset=page.viewportSize()!
   for(const width of info.project.name.includes('reflow')?[320,1040,1440]:[preset.width]){
@@ -349,7 +356,6 @@ for (const locale of ['zh-CN', 'en'] as const) test(`notification template names
     await expectRealEntry(page,'platform');await expectListLayout(page)
     await page.screenshot({path:info.outputPath(`current-template-${locale}-${width}.png`)})
   }
-  await dialog.getByRole('button',{name:locale==='en'?'Close':'关闭',exact:true}).click()
   await page.locator('.account-trigger').click()
   await page.getByRole('menuitem',{name:locale==='en'?'Maintenance tools':'维护工具',exact:true}).click()
   await expect(page.getByTestId('platform-maintenance-tools').getByRole('button')).toHaveText([locale==='en'?'Deliveries':'发送记录'])
@@ -367,6 +373,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
   test(`platform betting frequency stays independent of the selected brand (${locale})`, async ({ page }, info) => {
     const zh = locale === 'zh-CN'
     const updatedAt = '2026-11-20T16:30:00Z'
+    let emptyResult = false
     const reads: URLSearchParams[] = []
     const items = Array.from({ length: 21 }, (_, i) => ({
       play_id: `play-${i}`,
@@ -399,6 +406,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
       if (pathname.endsWith('/reports/bet-frequency/games')) return reply({ items: [{ id: gameId, name: zh ? '六合彩' : 'Mark Six' }] })
       expect(pathname).toBe('/api/v1/platform/reports/bet-frequency')
       reads.push(searchParams)
+      if (emptyResult) return reply({ effective_item_count: '0', play_count: '0', items: [] })
       const offset = Number(searchParams.get('offset'))
       const limit = Number(searchParams.get('limit'))
       return reply({ effective_item_count: '100', play_count: '21', items: items.slice(offset, offset + limit) })
@@ -453,9 +461,103 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await panel.getByRole('checkbox', { name: zh ? '显示汇总' : 'Show summary' }).uncheck()
     await expect(panel.locator('.report-summary-tags')).toHaveCount(0)
     expect(reads).toHaveLength(2)
+    emptyResult = true
+    await panel.getByRole('checkbox', { name: zh ? '显示明细' : 'Show details' }).check()
+    await search.click()
+    const empty = panel.locator('td.empty-state')
+    await expect(empty).toBeVisible()
+    await expect(empty).toHaveAttribute('colspan', '3')
+    await expect.poll(() => empty.evaluate(cell => getComputedStyle(cell, '::before').content)).toBe('""')
+    await expect(panel.locator('thead th')).toHaveCount(3)
+    await expect(panel.locator('.table-pagination')).toHaveCount(0)
+    await reviewRealPage(page, info, `bet-frequency-empty-${locale}`)
+
     await panel.getByRole('button', { name: zh ? '清空' : 'Clear', exact: true }).click()
     await expect(search).toBeDisabled()
     await page.getByRole('tab', { name: zh ? '注单' : 'Orders', exact: true }).click()
     await expect(page.locator('.topbar-brand-picker .select-control-trigger')).toContainText('Layout trial')
   })
 }
+
+for (const locale of ['en', 'zh-CN'] as const) test(`platform commission cycles omit local midnight and hide the run UUID in cycle and payment views (${locale})`, async ({ page }, info) => {
+  await installLayoutApi(page, locale)
+  const zh = locale === 'zh-CN'
+  const at = '2026-11-22T16:00:00Z'
+  const cycle = {
+    id: ids(1), brand_id: gameId, window_from: '2026-11-15T16:00:00Z', window_to: zh ? at : '2026-11-22T16:15:00Z',
+    anchor_order_id: ids(2), calendar: { timezone: 'Asia/Singapore', cycle: 'weekly', boundary_time: '00:00:00', weekday: 1, month_day: null, short_month: '' },
+    state: 'ready', version: 1, target_count: '19', scan_complete: true, current_run_id: ids(3), current_generation: '1',
+    evidence_epoch: '0', evidence_current: true, calculated_count: '19', earning_count: '0', total_points: '0',
+    created_by: null, creation_actor_type: 'system', reason: '', created_at: at, updated_at: at, last_error_code: null, creation_audit_log_id: ids(4),
+  }
+  const payment = {
+    id: ids(5), brand_id: gameId, cycle_id: cycle.id, run_id: cycle.current_run_id, state: 'paid', payout_mode: 'automatic',
+    version: 1, evidence_epoch: '0', total_points: '0', paid_points: '0', target_count: '0', paid_count: '0',
+    creation_audit_log_id: ids(6), last_error_code: null, created_at: at, updated_at: at,
+  }
+  const associations = { [`cycle:${cycle.id}`]: { name: '', from: cycle.window_from, to: cycle.window_to } }
+  await page.route('**/api/v1/platform/**', async route => {
+    const request = route.request()
+    const { pathname, searchParams } = new URL(request.url())
+    expect(request.method()).toBe('GET')
+    const reply = (data: unknown) => route.fulfill({ json: { success: true, data, associations } })
+    if (pathname.endsWith('/presentation')) return reply({ display_name: 'Layout trial', logo_text: 'L', logo_url: '' })
+    if (pathname.endsWith('/me')) return reply({ account: { id: gameId, username: 'cycle_reviewer', super_admin: true, platform_permissions: ['platform_settings.view.platform'] } })
+    if (pathname.endsWith('/platform-settings')) return reply({
+      display_name: 'Layout trial', logo_text: 'L', logo_url: '', theme: 'jade', timezone: 'Asia/Singapore',
+      date_format: zh ? 'YYYY-MM-DD' : 'DD/MM/YYYY', time_format: zh ? 'HH:mm:ss' : 'hh:mm:ss A', version: 1, updated_at: at,
+    })
+    if (pathname.endsWith('/brands')) return reply({ items: [{ id: gameId, name: 'Layout trial', code: 'layout', status: 'active', member_count: '0', agent_count: '0', recharge_quota_available: '0', created_at: at }] })
+    expect(request.headers()['x-brand-id']).toBe(gameId)
+    const pagination = { limit: Number(searchParams.get('limit')), offset: Number(searchParams.get('offset')) }
+    if (pathname.endsWith('/commission-cycles')) return reply({ brand_id: gameId, items: [cycle], total_count: '1', ...pagination })
+    if (pathname.endsWith(`/commission-cycles/${cycle.id}`)) return reply(cycle)
+    if (pathname.endsWith(`/commission-cycles/${cycle.id}/earnings`)) return reply({ brand_id: gameId, cycle_id: cycle.id, items: [], total_count: '0', ...pagination })
+    if (pathname.endsWith('/commission-payments')) return reply({ brand_id: gameId, items: [payment], total_count: '1', ...pagination })
+    if (pathname.endsWith(`/commission-payments/${payment.id}`)) return reply(payment)
+    throw Error(`Unexpected commission request: ${pathname}`)
+  })
+
+  await page.goto(origins.platform)
+  await expect(page.locator('.management-console')).toBeVisible()
+  const toggle = page.locator('button[aria-controls="platform-navigation"]')
+  if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') === 'false') await toggle.click()
+  await page.locator('.sidebar').getByRole('button', { name: zh ? '佣金' : 'Commission', exact: true }).click()
+  await page.getByTestId('platform-commission-secondary-nav').getByRole('button', { name: zh ? '周期' : 'Cycles', exact: true }).click()
+  await selectControl(page.locator('.topbar-brand-picker .select-control-trigger'), gameId)
+  await expectRealEntry(page, 'platform')
+  const range = zh ? '2026-11-16 → 2026-11-23' : '16/11/2026 → 23/11/2026 12:15:00 AM'
+  const row = page.getByTestId('platform-commission-list').getByRole('button', { name: range, exact: true })
+  await expect(row).toBeVisible()
+  await reviewRealPage(page, info, `commission-cycles-${locale}`)
+  await row.press('Enter')
+  const dialog = page.getByRole('dialog', { name: zh ? '详情 · 周期' : 'Detail · Cycle' })
+  await expect(dialog.getByText(range, { exact: true })).toHaveCount(1)
+  await expect(dialog).not.toContainText(cycle.current_run_id)
+  const earnings = dialog.getByRole('heading', { name: zh ? '佣金收益' : 'Commission earnings' })
+  await expect(earnings).toBeVisible()
+  await expect(dialog.getByText(zh ? '暂无佣金收益。' : 'No commission earnings.', { exact: true })).toBeVisible()
+  await expect(dialog.locator('dd').filter({ hasText: zh ? '2026-11-23 00:00:00' : '23/11/2026 12:00:00 AM' })).toHaveCount(2)
+  await reviewRealPage(page, info, `commission-cycle-detail-${locale}`)
+  await earnings.scrollIntoViewIfNeeded()
+  await expect(earnings).toBeInViewport()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(row).toBeFocused()
+
+  if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') === 'false') await toggle.click()
+  await page.getByTestId('platform-commission-secondary-nav').getByRole('button', { name: zh ? '派发' : 'Payments', exact: true }).click()
+  const payments = page.getByTestId('platform-commission-list')
+  await expect(payments.getByText(range, { exact: true })).toBeVisible()
+  await reviewRealPage(page, info, `commission-payments-${locale}`)
+  const paymentRow = payments.getByRole('button', { name: payment.id, exact: true })
+  await paymentRow.press('Enter')
+  const paymentDialog = page.getByRole('dialog', { name: zh ? '详情 · 派发' : 'Detail · Payment' })
+  await expect(paymentDialog.getByText(range, { exact: true })).toBeVisible()
+  await expect(paymentDialog).not.toContainText(payment.run_id)
+  await expect(paymentDialog.locator('dd').filter({ hasText: zh ? '2026-11-23 00:00:00' : '23/11/2026 12:00:00 AM' })).toHaveCount(2)
+  await reviewRealPage(page, info, `commission-payment-detail-${locale}`)
+  await page.keyboard.press('Escape')
+  await expect(paymentDialog).toHaveCount(0)
+  await expect(paymentRow).toBeFocused()
+})

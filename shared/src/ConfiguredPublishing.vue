@@ -216,7 +216,7 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
    <button v-if="canWrite&&(!oddsOnly||oddsGroups.length)&&(surface==='platform'||sales)" v-write-guard="busy" type="button" class="button button-primary"
     :disabled="busy||!ready||(!pending&&!canSave)"
     @click="withGlobalLoading(save)">{{t(pending&&!busy?'retryWrite':oddsOnly?'saveOddsSettings':surface==='admin'?'saveSales':'saveRules')}}</button>
-   <button v-if="error&&!pending" type="button" class="button button-secondary" :disabled="busy" @click="withGlobalLoading(load)">{{t('retryRead')}}</button>
+   <button v-if="error&&!ready" type="button" class="button button-secondary" :disabled="busy" @click="withGlobalLoading(load)">{{t('reloadConfiguration')}}</button>
   </div>
  </section>
 </template>

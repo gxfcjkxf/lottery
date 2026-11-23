@@ -53,10 +53,11 @@ export function platformDateBoundary(value: string, end: boolean, timezone: stri
   throw new TypeError('This report date has no midnight in its timezone')
 }
 
-export function formatPlatformDateTime(value: string | null | undefined, settings: PlatformDisplaySettings, locale: 'en' | 'zh-CN'): string {
+export function formatPlatformDateTime(value: string | null | undefined, settings: PlatformDisplaySettings, locale: 'en' | 'zh-CN', options?: { omitMidnight: boolean }): string {
   if (!value) return '—'
   const valueParts = parts(value, settings.timezone)
   const date = settings.date_format === 'DD/MM/YYYY' ? `${valueParts.day}/${valueParts.month}/${valueParts.year}` : settings.date_format === 'MM/DD/YYYY' ? `${valueParts.month}/${valueParts.day}/${valueParts.year}` : `${valueParts.year}-${valueParts.month}-${valueParts.day}`
+  if (options?.omitMidnight && valueParts.hour === '00' && valueParts.minute === '00' && valueParts.second === '00') return date
   const hour24 = Number(valueParts.hour)
   const hour12 = hour24 % 12 || 12
   const time = settings.time_format === 'hh:mm:ss A' ? `${String(hour12).padStart(2, '0')}:${valueParts.minute}:${valueParts.second} ${hour24 >= 12 ? (locale === 'zh-CN' ? '下午' : 'PM') : (locale === 'zh-CN' ? '上午' : 'AM')}` : `${valueParts.hour}:${valueParts.minute}:${valueParts.second}`

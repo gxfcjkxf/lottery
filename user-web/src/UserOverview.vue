@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { pointsMinor } from '@lottery/shared'
+import { signedPointsTone } from '@lottery/shared'
 import SiteIcon from '@lottery/shared/SiteIcon'
 
 import { onMounted,onUnmounted,ref,watch } from 'vue'
@@ -18,10 +18,10 @@ function background(event:Event){const value=(event as CustomEvent<Wallet>).deta
 onMounted(()=>window.addEventListener(WALLET_SNAPSHOT_EVENT,background))
 onUnmounted(()=>{disposed=true;generation++;controller?.abort();window.removeEventListener(WALLET_SNAPSHOT_EVENT,background)})
 </script>
-<template><div class="user-overview-grid"><div><span><SiteIcon name="wallet" />{{ t('workspace.points') }}</span><slot /></div><div><span><SiteIcon name="ticket" />{{ t('workspace.unsettled') }}</span><strong>{{ summary?formatPoints(summary.unsettled_points,locale):'—' }}</strong></div><div><span><SiteIcon name="chart" />{{ t('workspace.today') }}</span><strong :class="{'net-negative':summary&&pointsMinor(summary.today_net_points)<0n}">{{ summary?formatPoints(summary.today_net_points,locale):'—' }}</strong></div></div><p v-if="failed" class="overview-error" role="alert">{{ t('workspace.failed') }}</p></template>
+<template><div class="user-overview-grid stat-strip"><div class="stat-pair"><span><SiteIcon name="wallet" />{{ t('workspace.points') }}</span><slot /></div><div class="stat-pair"><span><SiteIcon name="ticket" />{{ t('workspace.unsettled') }}</span><strong :data-numeric-tone="summary ? 'warning' : undefined">{{ summary?formatPoints(summary.unsettled_points,locale):'—' }}</strong></div><div class="stat-pair"><span><SiteIcon name="chart" />{{ t('workspace.today') }}</span><strong :data-numeric-tone="summary ? signedPointsTone(summary.today_net_points) : undefined">{{ summary?formatPoints(summary.today_net_points,locale):'—' }}</strong></div></div><p v-if="failed" class="overview-error" role="alert">{{ t('workspace.failed') }}</p></template>
 <style scoped>
-.user-overview-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:10px 8px;background:var(--surface);border-bottom:1px solid var(--line);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);gap:8px}
-.user-overview-grid span{display:inline-flex;align-items:center;justify-content:center;gap:5px;--site-icon-size:16px}
+.user-overview-grid{justify-content:center;padding:6px 8px;background:var(--surface);border-bottom:1px solid var(--line);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);gap:4px 16px}
+.user-overview-grid span{display:inline-flex;align-items:center;justify-content:center;gap:5px}
 .user-overview-grid :deep(.header-points){height:auto;max-width:100%}.user-overview-grid :deep(.header-points>strong){overflow:visible;white-space:normal;overflow-wrap:anywhere}
-.user-overview-grid>div{display:flex;align-items:center;justify-content:center;flex-flow:row wrap;gap:6px;min-width:0;border-right:1px solid var(--line);overflow-wrap:anywhere}.user-overview-grid>div:last-child{border:0}.user-overview-grid span{font-size:var(--body-font-size);color:var(--muted)}.user-overview-grid strong{font-size:16px;color:var(--primary-dark);font-variant-numeric:tabular-nums}.user-overview-grid .net-negative{color:var(--danger-text)}.overview-error{font-size:var(--body-font-size);text-align:center;color:var(--danger-text);margin:0;padding:8px}
+.user-overview-grid span{font-size:var(--body-font-size);color:var(--muted)}.user-overview-grid strong{font-size:16px;font-variant-numeric:tabular-nums}.overview-error{font-size:var(--body-font-size);text-align:center;color:var(--danger-text);margin:0;padding:8px}
 </style>

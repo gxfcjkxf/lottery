@@ -38,9 +38,9 @@ const baseAccount: AdminAccount = {
   },
 };
 
-type HostNode = { tag: string; style: {display:string}; props: Record<string, unknown>; children: HostNode[]; text: string; parent?: HostNode; value?: string; checked?: boolean; addEventListener: (...args: unknown[]) => void; removeEventListener: (...args: unknown[]) => void; getRootNode: () => HostNode; options: HostNode[] };
+type HostNode = { tag: string; style: {display:string}; focus: () => void; props: Record<string, unknown>; children: HostNode[]; text: string; parent?: HostNode; value?: string; checked?: boolean; addEventListener: (...args: unknown[]) => void; removeEventListener: (...args: unknown[]) => void; getRootNode: () => HostNode; options: HostNode[] };
 function element(tag: string): HostNode {
-  return { tag, style: {display:""}, props: {}, children: [], text: "", value: "", checked: false, addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((child) => child.tag === "option"); } };
+  return { tag, style: {display:""}, focus() {}, props: {}, children: [], text: "", value: "", checked: false, addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((child) => child.tag === "option"); } };
 }
 const renderer = createRenderer<HostNode, HostNode>({
   createElement: element,
@@ -154,9 +154,9 @@ describe("CommissionCyclesManagement", () => {
     expect(buttonTexts(mounted.container).some((label) => /确认审核|确认派发|Approve commission|Pay out/i.test(label))).toBe(false);
     const cycleRow = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-cycle-id"]===cycleId);
     (cycleRow!.props.onClick as () => void)(); await flush();
-    const historyButton=findNode(mounted.container,n=>n.tag==='button' && textOf(n)==='核算记录');(historyButton!.props.onClick as ()=>void)();await flush();
+    const historyButton=findNode(mounted.container,n=>n.tag==='button' && textOf(n)==='核算历史');(historyButton!.props.onClick as ()=>void)();await flush();
     expect(textOf(mounted.container) + operationToastText()).toContain("需重新核算");
-    const secondRun = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes(runB));
+    const secondRun = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-run-id"] === runB);
     (secondRun!.props.onClick as () => void)(); await flush();
     expect(reads.calculations).toHaveBeenCalledWith(brandA, cycleId, runB, 20, 0);
     expect(reads.runEarnings).toHaveBeenCalledWith(brandA, cycleId, runB, 20, 0);
@@ -165,7 +165,7 @@ describe("CommissionCyclesManagement", () => {
     expect(textOf(mounted.container) + operationToastText()).not.toContain("按代理汇总整个周期的收入后统一舍入");
     expect(textOf(mounted.container) + operationToastText()).toContain("整周期舍入积分 2");
     expect(textOf(mounted.container) + operationToastText()).toContain("整周期精确合计 3/2");
-    expect(textOf(mounted.container) + operationToastText()).toContain("9007199254740999");
+    expect(textOf(mounted.container)).not.toContain("9007199254740999");
     mounted.app.unmount();
   });
 
@@ -195,7 +195,7 @@ describe("CommissionCyclesManagement", () => {
     const mounted = mount(baseAccount, brandA); await flush();
     const cycleRow = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-cycle-id"] === cycleId);
     (cycleRow!.props.onClick as () => void)(); await flush();
-    const historyButton=findNode(mounted.container,n=>n.tag==='button' && textOf(n)==='核算记录');(historyButton!.props.onClick as ()=>void)();await flush();
+    const historyButton=findNode(mounted.container,n=>n.tag==='button' && textOf(n)==='核算历史');(historyButton!.props.onClick as ()=>void)();await flush();
     const secondRun = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-run-id"] === runB);
     (secondRun!.props.onClick as () => void)(); await flush();
     const agentInput = findNode(mounted.container, (node) => node.tag === "select-control" && node.props["aria-label"] === "代理账号");
@@ -208,7 +208,7 @@ describe("CommissionCyclesManagement", () => {
     clickHostButton(filter); await flush();
     expect(reads.allocations).toHaveBeenLastCalledWith(brandA, cycleId, runB, { limit: 20, offset: 0, agent_id: actorA });
     expect(textOf(mounted.container) + operationToastText()).toContain("输赢"); expect(textOf(mounted.container) + operationToastText()).toContain("流水");
-    expect(reads.allocations.mock.calls.some(([, , runId]) => runId !== runB)).toBe(true); // Initial history reads are bound to the previously selected run.
+    expect(reads.allocations.mock.calls.every(([, , runId]) => runId === runB)).toBe(true);
     mounted.app.unmount();
   });
 
@@ -236,7 +236,11 @@ describe("CommissionCyclesManagement", () => {
     const mounted = mount(baseAccount, brandA); await flush();
     const cycleRow = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-cycle-id"] === cycleId);
     (cycleRow!.props.onClick as () => void)(); await flush();
-    const historyButton=findNode(mounted.container,n=>n.tag==='button' && textOf(n)==='核算记录');(historyButton!.props.onClick as ()=>void)();await flush();
+    const historyButton=findNode(mounted.container,n=>n.tag==='button' && textOf(n)==='核算历史');(historyButton!.props.onClick as ()=>void)();await flush();
+    const firstRun = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-run-id"] === runA);
+    (firstRun!.props.onClick as () => void)(); await flush();
+    const back = findNode(mounted.container, (node) => node.tag === "button" && textOf(node) === "返回核算历史");
+    (back!.props.onClick as () => void)(); await flush();
     const secondRun = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-run-id"] === runB);
     (secondRun!.props.onClick as () => void)(); await flush();
     oldRunRead.reject(new AdminApiError("expired old run", 401)); await flush();

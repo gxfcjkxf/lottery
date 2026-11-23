@@ -199,7 +199,7 @@ useOperationToast(() => notice.value, value => display(value), 'success');
         {{ t('admin.copy.dc40b640') }}
       </div>
       <section v-if="policy && !canWrite" class="policy-card">
-        <dl class="current-limits">
+        <dl class="current-limits stat-strip">
           <div>
             <dt>{{ t('admin.copy.3b96f2f6') }}</dt>
             <dd>{{ policy.max_balance_points ?? t('admin.copy.bd97fa74') }}</dd>
@@ -263,12 +263,11 @@ useOperationToast(() => notice.value, value => display(value), 'success');
 
 <style scoped>
 .policy-head h2 { margin: 0; font-size: 16px; }
-.policy-form, .current-limits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; min-width: 0; }
+.policy-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; min-width: 0; }
 .policy-form label { display: grid; gap: 6px; min-width: 0; }
 .policy-form input { width: 100%; min-width: 0; box-sizing: border-box; }
 .policy-form .field-error, .policy-form > .ui-form-actions { grid-column: 1 / -1; }
-.current-limits div { min-width: 0; }
 .current-limits dt { color: var(--muted); }
-.current-limits dd { margin: 4px 0 0; font-weight: 600; overflow-wrap: anywhere; }
-@media (max-width: 620px) { .policy-form, .current-limits { grid-template-columns: minmax(0, 1fr); } }
+.current-limits dd { font-weight: 600; }
+@media (max-width: 620px) { .policy-form { grid-template-columns: minmax(0, 1fr); } }
 </style>

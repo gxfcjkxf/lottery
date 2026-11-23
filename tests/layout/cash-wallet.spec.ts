@@ -327,7 +327,11 @@ for (const locale of ["en", "zh-CN"] as const) {
   test(`exchange shows current source balance ${locale}`, async ({page}, info) => {
     await userFixture(page, locale);
     await page.goto(origins.user + '/wallet');
-    await page.locator('.currency-wallet').getByRole('button', {name:zh?'兑换':'Exchange',exact:true}).click();
+    const toolbar = page.locator('.currency-wallet .cash-actions');
+    await expect(toolbar.locator('button, a')).toHaveText(
+      zh ? ['充值', '提现', '兑换', '明细', '流水'] : ['Deposit', 'Withdrawal', 'Exchange', 'Details', 'Transactions'],
+    );
+    await toolbar.getByRole('button', {name:zh?'兑换':'Exchange',exact:true}).click();
     const dialog=page.getByRole('dialog');
     await expect(dialog.locator('.cash-exchange-balance dt')).toHaveText(zh?'当前资金':'Current funds');
     await expect(dialog.locator('.cash-exchange-balance dd')).toHaveText('12 CNY');
@@ -998,9 +1002,15 @@ for (const locale of ['en', 'zh-CN'] as const) for (const agent of [false, true]
   await expect(row(3)).toContainText(address.slice(-6));
 });
 
-for (const locale of ['en', 'zh-CN'] as const) test(`agent withdrawal account returns to draft ${locale}`, async ({page}) => {
+for (const locale of ['en', 'zh-CN'] as const) test(`agent withdrawal account returns to draft ${locale}`, async ({page}, info) => {
   const zh=locale==='zh-CN';const fixture=await userFixture(page,locale,true);
   await page.goto(origins.agent+'/#/withdrawal');
+  const points = page.locator('.agent-wallet .console-facts dd span');
+  await expect(points.nth(0)).toHaveCSS('color', 'rgb(4, 120, 87)');
+  await expect(points.nth(1)).toHaveCSS('color', 'rgb(3, 105, 161)');
+  await expect(page.locator('.cash-balance').first().locator('dd').last()).toHaveCSS('color', 'rgb(180, 83, 9)');
+  await widths(page, info.project.name.includes('reflow'), width =>
+    page.screenshot({path: info.outputPath(`agent-wallet-${locale}-${width}.png`)}));
   await page.locator('.currency-wallet').getByRole('button',{name:zh?'提现':'Withdrawal',exact:true}).click();
   let dialog=page.getByRole('dialog');
   await dialog.getByLabel(zh?'金额':'Amount',{exact:true}).fill('1.25');

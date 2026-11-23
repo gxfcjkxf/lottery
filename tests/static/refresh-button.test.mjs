@@ -52,6 +52,19 @@ test('text recovery exception requires an explicit recovery label and a failure/
   }
 });
 
+test('configuration recovery actions require their actual failure or conflict guard', () => {
+  for (const [path, label, condition, inverse] of [
+    ['admin-web/src/AgentManagement.vue', "t('admin.copy.3dc463ff')", 'policyReloadRequired && !pendingPolicy', '!policyReloadRequired && !pendingPolicy'],
+    ['platform-web/src/NotificationTemplatesPanel.vue', "t('templates.reload')", 'conflict', '!conflict'],
+    ['shared/src/ConfiguredPublishing.vue', "t('reloadConfiguration')", 'error&&!ready', '!error&&ready'],
+  ]) {
+    assert.equal(isRecoveryRead(label, [condition], path), true);
+    assert.equal(isRecoveryRead(label, [inverse], path), false);
+    assert.equal(isRecoveryRead(label, [], path), false);
+    assert.equal(isRecoveryRead(label, [condition], 'platform-web/src/App.vue'), false);
+  }
+});
+
 test('console data refresh never lives inside pagination', () => {
   for (const { path, ancestors } of refreshButtonCandidates()) {
     if (path.startsWith('user-web/') || ancestors.some(node => node.tag === 'Teleport')) continue;

@@ -342,17 +342,6 @@ func TestConfiguredLimitsCapsAndPriceCeilings(t *testing.T) {
 	if err != nil || out.PrizePoints != 500 {
 		t.Fatal("cap before overflow", out, err)
 	}
-	if err := e.CheckPriceCeilings(p); err != nil {
-		t.Fatal(err)
-	}
-	p.Plates["new_plate"]["custom_price"] = "999.999999"
-	if err := e.CheckPriceCeilings(p); err == nil {
-		t.Fatal("brand exceeds platform")
-	}
-	delete(p.Plates["new_plate"], "custom_price")
-	if err := e.CheckPriceCeilings(p); err == nil {
-		t.Fatal("missing ceiling")
-	}
 	// Unknown plates are not silently enabled by adding a complete price book.
 	c, b, p = configuredCustom(t)
 	p.Plates["unconfigured"] = map[string]string{"custom_price": "2"}

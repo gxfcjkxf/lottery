@@ -32,8 +32,8 @@ const baseAccount: AdminAccount = {
 };
 const PaymentComponent = compileComponent();
 
-type HostNode = { tag: string; style: {display:string}; props: Record<string, unknown>; children: HostNode[]; text: string; parent?: HostNode; value?: string; checked?: boolean; addEventListener: (...args: unknown[]) => void; removeEventListener: (...args: unknown[]) => void; getRootNode: () => HostNode; options: HostNode[] };
-function element(tag: string): HostNode { return { tag, style: {display:""}, props: {}, children: [], text: "", value: "", checked: false, addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((child) => child.tag === "option"); } }; }
+type HostNode = { tag: string; style: {display:string}; focus: () => void; props: Record<string, unknown>; children: HostNode[]; text: string; parent?: HostNode; value?: string; checked?: boolean; addEventListener: (...args: unknown[]) => void; removeEventListener: (...args: unknown[]) => void; getRootNode: () => HostNode; options: HostNode[] };
+function element(tag: string): HostNode { return { tag, style: {display:""}, focus() {}, props: {}, children: [], text: "", value: "", checked: false, addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((child) => child.tag === "option"); } }; }
 const renderer = createRenderer<HostNode, HostNode>({
   createElement: element, createText: (text) => ({ ...element("#text"), text }), createComment: (text) => ({ ...element("#comment"), text }),
   setText: (node, text) => { node.text = text; }, setElementText: (node, text) => { node.text = text; node.children = []; },
@@ -50,7 +50,7 @@ function compileComponent(): Component {
   const javascript = transpileScript(compiled);
   // Child behavior has its own real component tests and browser workflow;
   // isolate these payout control tests from the child's additional reads.
-  const modules: Record<string, unknown> = {"@lottery/shared/ManagementList.vue":{default:ManagementListTestComponent},"@lottery/shared/MemberActionsMenu.vue":{default:MemberActionsMenuTestComponent}, "@lottery/shared/TablePagination.vue": {default:TablePaginationTestComponent},  "@lottery/shared/SelectControl.vue": SelectControlTestComponent, "./SelectControl.vue": SelectControlTestComponent,
+  const modules: Record<string, unknown> = {"@lottery/shared/ManagementList.vue":{default:ManagementListTestComponent},"@lottery/shared/MemberActionsMenu.vue":{default:MemberActionsMenuTestComponent}, "@lottery/shared/TablePagination.vue": {default:TablePaginationTestComponent},  "@lottery/shared/SelectControl.vue": {default:SelectControlTestComponent}, "./SelectControl.vue": SelectControlTestComponent,
     './commission-list-query': CommissionQueryForTest,
     '@lottery/shared/ManagementTable.vue': {default:ManagementTableForTest},
     '@lottery/shared/PlatformTemporalInput.vue': {default:{props:['modelValue'],setup:(props:any,{emit}:any)=>()=>h('input',{value:props.modelValue,'onUpdate:modelValue':(value:string)=>emit('update:modelValue',value)})}},
@@ -120,7 +120,7 @@ describe("CommissionPaymentsManagement", () => {
     const mounted = mount(baseAccount, brand, "active", cycleId); await flush();
     expect(findNode(mounted.container, node => node.tag === "select-control" && node.props["aria-label"] === "周期")).toBeNull();
     (findNode(mounted.container, node => node.tag === "form" && String(node.props.class).includes("commission-toolbar"))!.props.onSubmit as (event: Event) => void)({preventDefault(){}} as Event); await flush();
-    click(button(mounted.container, "待审核")); await flush();
+    setModel(findNode(mounted.container, node => node.tag === "select-control" && node.props["aria-label"] === "状态"), "awaiting_approval"); await flush();
     const reads = installed.calls.filter(call => call.url.includes("/commission-payments?"));
     expect(reads.length).toBeGreaterThanOrEqual(3);
     for (const call of reads) expect(new URL(call.url, "http://local").searchParams.get("cycle_id")).toBe(cycleId);

@@ -42,9 +42,10 @@ const comparisons = computed(() => data.value ? [
 const tasks = computed(() => data.value ? [
   { label: 'overview.withdrawals', value: data.value.withdrawal_count },
 ] : [])
-const fields: { key: keyof OverviewDay; label: string }[] = [
-  { key: 'net_points', label: 'overview.net' }, { key: 'order_count', label: 'overview.orders' },
-  { key: 'bettor_count', label: 'overview.bettors' }, { key: 'refund_points', label: 'overview.refunds' },
+const fields: { key: keyof OverviewDay; label: string; tone: string }[] = [
+  { key: 'stake_points', label: 'overview.stakes', tone: 'overview-stake' },
+  { key: 'net_points', label: 'overview.net', tone: '' }, { key: 'order_count', label: 'overview.orders', tone: 'overview-member' },
+  { key: 'bettor_count', label: 'overview.bettors', tone: 'overview-member' }, { key: 'refund_points', label: 'overview.refunds', tone: 'overview-win' },
 ]
 const metrics = [
   { key: 'stake_points', label: 'overview.trendStakes' },
@@ -103,24 +104,30 @@ onBeforeUnmount(() => { readGeneration++; controller.abort(); clearInterval(time
     </div>
     <template v-else-if="data">
       <section v-if="scope === 'brand'" class="panel overview-tasks overview-tasks-priority"><h2>{{ t('overview.tasks') }}</h2><button v-for="task in tasks" :key="task.label" type="button" class="button button-secondary overview-task overview-task-action" @click="emit('openWithdrawals')"><span>{{ t(task.label) }}</span><strong :class="BigInt(task.value) === 0n ? 'overview-neutral' : 'overview-pending'">{{ number(task.value) }}</strong></button></section>
-      <section class="overview-stats" :aria-label="t('overview.totalMembers')">
-        <article v-for="card in cards" :key="card.label" class="panel overview-stat">
-          <p class="overview-muted overview-stat-label"><span class="overview-stat-icon"><SiteIcon :name="card.icon" /></span>{{ t(card.label) }}</p><strong class="overview-value overview-member">{{ number(card.value) }}</strong>
+      <section class="panel overview-stats stat-strip" :aria-label="t('overview.totalMembers')">
+        <article v-for="card in cards" :key="card.label" class="overview-stat stat-pair">
+          <p class="overview-muted overview-stat-label"><span class="overview-stat-icon"><SiteIcon :name="card.icon" /></span>{{ t(card.label) }}</p><strong class="overview-member">{{ number(card.value) }}</strong>
         </article>
       </section>
       <section v-if="scope === 'platform'" class="panel overview-tasks overview-tasks-priority"><h2>{{ t('overview.tasks') }}</h2><button v-for="task in tasks" :key="task.label" type="button" class="button button-secondary overview-task overview-task-action" @click="emit('openWithdrawals')"><span>{{ t(task.label) }}</span><strong :class="BigInt(task.value) === 0n ? 'overview-neutral' : 'overview-pending'">{{ number(task.value) }}</strong></button></section>
       <div class="overview-section-heading"><h2>{{ t('overview.betting') }}</h2></div>
-      <section class="overview-comparisons">
-        <article v-for="item in comparisons" :key="item.title" class="panel overview-business">
-          <div class="overview-section-heading"><h3>{{ t(item.title) }}</h3></div>
-          <p class="overview-muted">{{ t('overview.stakes') }}</p><strong class="overview-value overview-stake">{{ number(item.day.stake_points) }}</strong>
-          <div class="overview-mini-grid"><div v-for="field in fields" :key="field.key"><p class="overview-muted">{{ t(field.label) }}</p><strong :class="field.key === 'net_points' ? netTone(item.day.net_points) : field.key === 'refund_points' ? 'overview-pending' : 'overview-member'">{{ field.key === 'net_points' ? net(item.day[field.key]) : number(item.day[field.key]) }}</strong></div></div>
+      <section class="overview-comparisons stat-strip">
+        <article v-for="item in comparisons" :key="item.title" class="panel overview-business stat-strip">
+          <h3>{{ t(item.title) }}</h3>
+          <dl class="stat-strip">
+            <div v-for="field in fields" :key="field.key">
+              <dt class="overview-muted">{{ t(field.label) }}</dt>
+              <dd :class="field.key === 'net_points' ? netTone(item.day.net_points) : field.tone">
+                {{ field.key === 'net_points' ? net(item.day[field.key]) : number(item.day[field.key]) }}
+              </dd>
+            </div>
+          </dl>
         </article>
       </section>
-      <section class="overview-current" :aria-label="t('overview.unsettled')">
-        <div><p class="overview-muted">{{ t('overview.unsettled') }}</p><strong class="overview-pending">{{ number(data.unsettled_points) }}</strong></div>
-        <div><p class="overview-muted">{{ t('overview.available') }}</p><strong class="overview-win">{{ number(data.available_points) }}</strong></div>
-        <div><p class="overview-muted">{{ t('overview.withdrawalPoints') }}</p><strong class="overview-pending">{{ number(data.withdrawal_points) }}</strong></div>
+      <section class="panel overview-current stat-strip" :aria-label="t('overview.unsettled')">
+        <div class="stat-pair"><p class="overview-muted">{{ t('overview.unsettled') }}</p><strong class="overview-pending">{{ number(data.unsettled_points) }}</strong></div>
+        <div class="stat-pair"><p class="overview-muted">{{ t('overview.available') }}</p><strong class="overview-win">{{ number(data.available_points) }}</strong></div>
+        <div class="stat-pair"><p class="overview-muted">{{ t('overview.withdrawalPoints') }}</p><strong class="overview-pending">{{ number(data.withdrawal_points) }}</strong></div>
       </section>
       <section class="panel overview-trend">
         <div class="overview-section-heading"><h2>{{ t('overview.trend') }}</h2><div class="overview-actions" role="group" :aria-label="t('overview.trend')"><button v-for="option in metrics" :key="option.key" type="button" class="button" :class="metric === option.key ? 'button-primary' : 'button-secondary'" :aria-pressed="metric === option.key" @click="metric = option.key">{{ t(option.label) }}</button></div></div>
@@ -143,27 +150,32 @@ onBeforeUnmount(() => { readGeneration++; controller.abort(); clearInterval(time
 </template>
 
 <style scoped>
-.overview { min-width: 0; }
+.overview { min-width: 0; display: grid; gap: var(--console-block-gap); }
+.overview > .page-heading { margin: 0; }
 .overview p, .overview h2, .overview h3 { margin: 0; }
 .overview h2 { font-size: 16px; }
 .overview h3 { font-size: 14px; }
 .overview-muted { font-size: var(--body-font-size); color: var(--muted); }
 .overview-section-heading, .overview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.overview-section-heading { justify-content: space-between; margin-bottom: 12px; }
-.overview-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--canvas); background-size: cover; background-position: center; }
-.overview-stat { padding: 14px; min-width: 0; margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); }
-.overview-stat-label { display: flex; align-items: center; gap: 8px; }
-.overview-stat-icon { display: inline-grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--primary-dark); background: var(--primary-light); }
-.overview-value { display: block; font-family: var(--font-mono, ui-monospace, monospace); font-size: 28px; line-height: 1.3; font-weight: 750; letter-spacing: -.5px; margin: 6px 0; }
-.overview strong { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.overview-comparisons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.overview-business { padding: 16px; min-width: 0; margin: 0; }
-.overview-business .overview-value { font-size: 30px; }
-.overview-mini-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
-.overview-mini-grid strong, .overview-current strong { display: block; font-size: 18px; margin-top: 4px; }
-.overview-current { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0 20px; }
-.overview-current > div { min-width: 0; }
-.overview-trend, .overview-ranking, .overview-tasks { padding: 16px; min-width: 0; }
+.overview-section-heading { justify-content: space-between; }
+.overview-stats, .overview-current, .overview-business, .overview-tasks, .overview-trend, .overview-ranking {
+  margin: 0;
+  padding: 8px 12px;
+  min-width: 0;
+}
+.overview-stats, .overview-current, .overview-business { column-gap: 20px; }
+.overview-stat-label { display: inline-flex; align-items: center; gap: 6px; }
+.overview-stat-icon { display: inline-flex; color: var(--primary-dark); }
+.overview-comparisons { align-items: stretch; gap: var(--console-block-gap); }
+.overview-business { flex: 1 1 max-content; max-width: 100%; align-items: baseline; column-gap: 16px; }
+.overview-business dl { column-gap: 14px; }
+.overview-business dd, .overview-stat strong, .overview-current strong {
+  font-size: 16px;
+  line-height: 1.35;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.overview-trend > .overview-section-heading { margin-bottom: 8px; }
 .overview-chart { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
 .overview-chart-column { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
 .overview-chart-value, .overview-chart-date { font-size: var(--body-font-size); font-variant-numeric: tabular-nums; color: var(--muted); overflow-wrap: anywhere; }
@@ -171,27 +183,23 @@ onBeforeUnmount(() => { readGeneration++; controller.abort(); clearInterval(time
 .overview-bar { position: absolute; background: var(--line); width: 64%; max-width: 44px; left: 50%; transform: translateX(-50%); border-radius: 4px 4px 0 0; transition: background-color 150ms ease; }
 .overview-chart-column:nth-child(n+5) .overview-bar { background: color-mix(in srgb, var(--primary) 55%, var(--line)); }
 .overview-chart-column:last-child .overview-bar { background: var(--primary); }
-.overview-bar-stake { background: color-mix(in srgb, var(--warning) 60%, var(--line)); }
-.overview-chart-column:last-child .overview-bar-stake { background: var(--warning-text); }
+.overview-bar-stake { background: color-mix(in srgb, var(--info) 60%, var(--line)); }
+.overview-chart-column:last-child .overview-bar-stake { background: var(--info-text); }
 .overview-bar-loss { background: var(--danger); border-radius: 0 0 4px 4px; }
 .overview-baseline { position: absolute; height: 1px; left: 0; right: 0; background: var(--line); }
-.overview-ranking { margin-top: 16px; }
 .overview-brand-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .overview-brand-row > span { min-width: 0; overflow-wrap: anywhere; }
 .overview-brand-row > span:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
-.overview-tasks-priority { margin: 0 0 20px; border-left: 3px solid var(--warning-text); }
-.overview .overview-task-action { width: 100%; min-height: 44px; margin-top: 10px; padding: 10px 12px; text-align: left; }
-.overview-task { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); }
-.overview-task strong { font-size: 18px; }
-.overview .overview-member { color: var(--primary-dark); }
-.overview .overview-stake, .overview .overview-pending { color: var(--warning-text); }
+.overview-tasks-priority { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; border-left: 3px solid var(--warning-text); }
+.overview .overview-task-action { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: baseline; max-width: 100%; }
+.overview-task strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+.overview .overview-member, .overview .overview-stake { color: var(--info-text); }
+.overview .overview-pending { color: var(--warning-text); }
 .overview .overview-win { color: var(--success-text); }
 .overview .overview-loss { color: var(--danger-text); }
 .overview .overview-neutral { color: var(--muted); }
-@media (max-width: 900px) { .overview-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 620px) {
-  .overview-comparisons, .overview-current { grid-template-columns: minmax(0, 1fr); }
-  .overview-current > div { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .overview-stats, .overview-current, .overview-business, .overview-business dl { column-gap: 8px; }
   .overview-chart { gap: 4px; }
 }
 </style>

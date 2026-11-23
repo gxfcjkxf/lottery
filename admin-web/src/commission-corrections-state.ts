@@ -6,6 +6,7 @@ export interface CommissionCorrectionIntentScope {
   brandId: string;
   operation: CommissionCorrectionOperation;
   targetId?: string;
+  cycleId?: string;
 }
 export interface PendingCommissionCorrectionIntent extends CommissionCorrectionIntentScope {
   readonly body: Readonly<CommissionCorrectionPolicyBody | CommissionCorrectionActionBody>;
@@ -41,7 +42,7 @@ function copyBody(scope: CommissionCorrectionIntentScope, body: CommissionCorrec
     : { version: body.version, reason: body.reason });
 }
 function validIntent(intent: PendingCommissionCorrectionIntent, expected: CommissionCorrectionIntentScope): boolean {
-  if (!validScope(expected) || !validScope(intent) || commissionCorrectionIntentKey(intent) !== commissionCorrectionIntentKey(expected) || !KEY.test(intent.key) || !intent.body || typeof intent.body !== "object" || Array.isArray(intent.body) || !validReason(intent.body.reason)) return false;
+  if (!validScope(expected) || !validScope(intent) || (intent.cycleId !== undefined && !UUID.test(intent.cycleId)) || commissionCorrectionIntentKey(intent) !== commissionCorrectionIntentKey(expected) || !KEY.test(intent.key) || !intent.body || typeof intent.body !== "object" || Array.isArray(intent.body) || !validReason(intent.body.reason)) return false;
   if (!Number.isSafeInteger(intent.body.version) || intent.body.version < 1 || intent.body.version >= Number.MAX_SAFE_INTEGER) return false;
   return expected.operation === "policy"
     ? Object.keys(intent.body).sort().join(",") === "enabled,reason,version" && typeof (intent.body as CommissionCorrectionPolicyBody).enabled === "boolean"

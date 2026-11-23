@@ -32,7 +32,7 @@ const props = withDefaults(
 );
 const ui = useUserI18n().t;
 const copy = computed(() => ({
-  title: ui('user.wallet.title'), refresh: ui('user.wallet.refresh'), loading: ui('user.wallet.loading'), reading: ui('user.wallet.reading'), unauthenticated: ui('user.wallet.unauthenticated'), recheck: ui('user.wallet.recheck'), retry: ui('user.wallet.retry'), balance: ui('user.wallet.balance'), points: ui('user.wallet.points'), frozen: ui('user.wallet.frozen'), withdrawal: ui('user.wallet.withdrawal'), buckets: ui('user.wallet.buckets'), ledger: ui('user.wallet.ledger'), empty: ui('user.wallet.empty'), page: (number: number) => ui('user.wallet.page', { number }), previous: ui('user.wallet.previous'), next: ui('user.wallet.next'), sources: { recharge: ui('user.wallet.source.recharge'), winning: ui('user.wallet.source.winning'), gift: ui('user.wallet.source.gift'), commission: ui('user.wallet.source.commission') }, states: { available: ui('user.wallet.state.available'), manual_frozen: ui('user.wallet.state.manualFrozen'), system_frozen: ui('user.wallet.state.systemFrozen'), withdrawal: ui('user.wallet.state.withdrawal') }, networkError: ui('user.wallet.networkError'), brandMismatch: ui('user.wallet.brandMismatch'),
+  title: ui('user.wallet.title'), refresh: ui('user.wallet.refresh'), loading: ui('user.wallet.loading'), reading: ui('user.wallet.reading'), unauthenticated: ui('user.wallet.unauthenticated'), recheck: ui('user.wallet.recheck'), retry: ui('user.wallet.retry'), balance: ui('user.wallet.balance'), frozen: ui('user.wallet.frozen'), withdrawal: ui('user.wallet.withdrawal'), buckets: ui('user.wallet.buckets'), ledger: ui('user.wallet.ledger'), empty: ui('user.wallet.empty'), page: (number: number) => ui('user.wallet.page', { number }), previous: ui('user.wallet.previous'), next: ui('user.wallet.next'), sources: { recharge: ui('user.wallet.source.recharge'), winning: ui('user.wallet.source.winning'), gift: ui('user.wallet.source.gift'), commission: ui('user.wallet.source.commission') }, states: { available: ui('user.wallet.state.available'), manual_frozen: ui('user.wallet.state.manualFrozen'), system_frozen: ui('user.wallet.state.systemFrozen'), withdrawal: ui('user.wallet.state.withdrawal') }, networkError: ui('user.wallet.networkError'), brandMismatch: ui('user.wallet.brandMismatch'),
 }));
 function ledgerLabel(entry:LedgerEntry):string{
  if(entry.entry_type==="currency_exchange_credit")return ui("cash.to_points");
@@ -195,25 +195,25 @@ async function changePage(direction: number) {
     </div>
     <template v-else-if="wallet">
       <p v-if="error" class="state-error" role="alert">{{ displayPublicError(error) }}</p>
-      <div v-if="props.view === 'overview'" class="totals">
-        <article class="total-card total-primary">
-          <div class="balance-card-head">
+      <div v-if="props.view === 'overview'" class="totals stat-strip">
+        <article class="total-card total-primary stat-strip">
+          <div class="balance-card-head stat-pair">
             <span>{{ copy.balance }}</span>
-            <div class="balance-amount"><strong>{{ formatIntegerAmount(wallet.display_points) }}</strong><span>{{ copy.points }}</span></div>
+            <div class="balance-amount"><strong data-wallet-amount="total">{{ formatIntegerAmount(wallet.display_points) }}</strong></div>
 
           </div>
-          <div class="wallet-available">
+          <div class="wallet-available stat-pair">
             <span>{{ ui('user.wallet.availableBalance') }}</span>
-            <b>{{ formatIntegerAmount(wallet.available_points) }} <small>{{ copy.points }}</small></b>
+            <b data-wallet-amount="available">{{ formatIntegerAmount(wallet.available_points) }}</b>
           </div>
         </article>
-        <article class="total-card key-value-row">
+        <article class="total-card stat-pair">
           <span class="total-label key-value-label">{{ copy.frozen }}</span>
-          <div class="metric-amount key-value-value"><strong>{{ formatIntegerAmount(wallet.frozen_points) }}</strong><span>{{ copy.points }}</span></div>
+          <div class="metric-amount key-value-value"><strong data-wallet-amount="frozen">{{ formatIntegerAmount(wallet.frozen_points) }}</strong></div>
         </article>
-        <article class="total-card key-value-row">
+        <article class="total-card stat-pair">
           <span class="total-label key-value-label">{{ copy.withdrawal }}</span>
-          <div class="metric-amount key-value-value"><strong>{{ formatIntegerAmount(wallet.withdrawal_points) }}</strong><span>{{ copy.points }}</span></div>
+          <div class="metric-amount key-value-value"><strong data-wallet-amount="withdrawal">{{ formatIntegerAmount(wallet.withdrawal_points) }}</strong></div>
         </article>
       </div>
 
@@ -230,9 +230,9 @@ async function changePage(direction: number) {
               <h3>{{ copy.sources[row.source] }}</h3>
             </header>
             <dl>
-              <div v-for="bucketState in states" :key="bucketState" :class="{ 'bucket-available': bucketState === 'available' }">
+              <div v-for="bucketState in states" :key="bucketState">
                 <dt>{{ copy.states[bucketState] }}</dt>
-                <dd>{{ formatIntegerAmount(row.values[bucketState]) }}</dd>
+                <dd :data-wallet-amount="bucketState">{{ formatIntegerAmount(row.values[bucketState]) }}</dd>
               </div>
             </dl>
           </article>
@@ -270,34 +270,24 @@ async function changePage(direction: number) {
 .wallet-summary { width: 100%; margin: 0 auto; min-width: 0; color: var(--ink); }
 .wallet-head { display: flex; flex-direction: row; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 12px; }
 .wallet-head h1 { font-size: 24px; margin: 0; }
-.totals { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(0, 1fr)); gap: 12px; }
+.totals { align-items: stretch; gap: 8px; }
 .total-card, .panel, .state-card { min-width: 0; background: var(--surface-card); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow-sm); }
-.total-card { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.total-card { flex: 0 1 auto; max-width: 100%; padding: 8px 12px; }
 .total-label { font-size: 14px; font-weight: 600; color: var(--ink-secondary); }
-.total-card.key-value-row { grid-template-columns: fit-content(60%) minmax(0, 1fr) !important; }
 .balance-amount, .metric-amount { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; min-width: 0; font-variant-numeric: tabular-nums; }
-.balance-amount strong { font-size: 36px; line-height: 1.2; overflow-wrap: anywhere; min-width: 0; }
-.metric-amount strong { font-size: 28px; line-height: 1.2; overflow-wrap: anywhere; min-width: 0; }
-.balance-amount > span, .metric-amount > span { font-size: var(--body-font-size); }
-.metric-amount > span { color: var(--muted); }
+.balance-amount strong { font-size: 22px; line-height: 1.2; overflow-wrap: anywhere; min-width: 0; }
+.metric-amount strong { font-size: 18px; line-height: 1.2; overflow-wrap: anywhere; min-width: 0; }
 .total-primary { background: var(--primary-light); border-color: var(--primary-ring); color: var(--ink); gap: 10px; box-shadow: var(--shadow); }
-.balance-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; font-size: 14px; font-weight: 600; }
-.balance-card-head { flex-wrap: wrap; }
-.balance-card-head .balance-amount { flex: 1 1 8ch; justify-content: flex-end; }
-.key-value-value.metric-amount { justify-content: flex-end; }
-.wallet-available { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; width: 100%; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--line); font-size: var(--body-font-size); }
-.wallet-available b { min-width: 0; font-size: 20px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.wallet-available small { font-size: var(--body-font-size); font-weight: 400; }
+.balance-card-head { font-size: var(--body-font-size); font-weight: 600; }
+.wallet-available { font-size: var(--body-font-size); }
+.wallet-available b { min-width: 0; font-size: 18px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .panel { margin-top: 20px; }
 .bucket-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .bucket-source { min-width: 0; padding: 16px; background: var(--canvas); border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .source-head { margin-bottom: 12px; }
 .source-head h3 { margin: 0; font-size: 15px; }
-.bucket-source dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 0; }
-.bucket-source dl > div { min-width: 0; }
 .bucket-source dt { font-size: var(--body-font-size); color: var(--muted); }
 .bucket-source dd { margin: 0; font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.bucket-available dd { color: var(--success-text); }
 .ledger-table { width: 100%; border-collapse: collapse; font-size: var(--body-font-size); }
 .ledger-table th, .ledger-table td { position: static; padding: 8px var(--table-cell-padding-inline); text-align: left; vertical-align: middle; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .ledger-table .ledger-amount { text-align: right; }
@@ -325,10 +315,7 @@ async function changePage(direction: number) {
 .state-card { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; line-height: 1.6; }
 .state-error { color: var(--danger); }
 @media (max-width: 700px) {
-  .totals { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .total-primary { grid-column: 1 / -1; }
-  .total-card, .panel, .state-card { padding: 16px; }
-  .metric-amount strong { font-size: 24px; }
+  .panel, .state-card { padding: 16px; }
   .bucket-grid { grid-template-columns: minmax(0, 1fr); }
   .panel { margin-top: 16px; }
 }
@@ -336,7 +323,6 @@ async function changePage(direction: number) {
   .wallet-heading-copy { display: none; }
   .wallet-head { justify-content: flex-end; margin: 0; }
   .wallet-head:has(button) { margin-bottom: 12px; }
-  .balance-amount strong { font-size: 32px; }
 }
 
 .ledger-result{margin:8px 0 0}.ledger-result>div{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px}.ledger-result dt{color:var(--muted)}.ledger-result dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}

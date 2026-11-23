@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportValueTone } from "@lottery/shared"
 const filterReset = ref(0)
 const showSummary = ref(true), showDetails = ref(true)
 
@@ -178,15 +179,15 @@ useOperationToast(error, value => displayPublicError(value), 'error');
 
 
       <section v-if="showSummary" class="management-list-summary" data-testid="platform-reports-summary">
-        <SummaryFacts class="report-summary-tags" :fields="fields.map(field=>({label:label(metricLabels,field),value:report!.summary[field]}))" />
+        <SummaryFacts class="report-summary-tags" :fields="fields.map(field=>({label:label(metricLabels,field),value:report!.summary[field],tone:reportValueTone(field,report!.summary[field])}))" />
       </section>
       <section v-if="showSummary && report.balances" class="management-list-summary" data-testid="platform-reports-balances">
         <div class="panel-heading"><div><h2>{{ copy.balances }}</h2></div></div>
-        <SummaryFacts class="report-summary-tags" :fields="balanceFields.map(field=>({label:label(metricLabels,field),value:report!.balances![field]}))" />
+        <SummaryFacts class="report-summary-tags" :fields="balanceFields.map(field=>({label:label(metricLabels,field),value:report!.balances![field],tone:reportValueTone(field,report!.balances![field])}))" />
       </section>
       <div v-if="showDetails" data-testid="platform-reports-list">
         <div class="table-wrap"><table class="console-table" :class="{'console-responsive-table':!report.items.length}"><thead><tr><th>{{ label(groupLabels, submitted.query.group_by) }}</th><th v-for="field in fields" :key="field">{{ label(metricLabels, field) }}</th></tr></thead><tbody>
-          <tr v-for="item in report.items" :key="item.key"><td :data-label="String(label(groupLabels, submitted.query.group_by))">{{ submitted.query.group_by === 'state' ? label(groupLabels, item.key) : associationGroupLabel(item, submitted.query.group_by, item.key, item.label, associationLocale) }}</td><td :data-label="String(label(metricLabels, field))" v-for="field in fields" :key="field">{{ item.totals[field] }}</td></tr>
+          <tr v-for="item in report.items" :key="item.key"><td :data-label="String(label(groupLabels, submitted.query.group_by))">{{ submitted.query.group_by === 'state' ? label(groupLabels, item.key) : associationGroupLabel(item, submitted.query.group_by, item.key, item.label, associationLocale) }}</td><td :data-label="String(label(metricLabels, field))" v-for="field in fields" :key="field"><span :data-numeric-tone="reportValueTone(field, item.totals[field])">{{ item.totals[field] }}</span></td></tr>
           <tr v-if="!report.items.length"><td :colspan="fields.length + 1" class="empty-state">{{ copy.empty }}</td></tr>
         </tbody></table></div>
 

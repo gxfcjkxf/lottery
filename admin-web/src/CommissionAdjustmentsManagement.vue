@@ -26,7 +26,7 @@ import { withGlobalLoading } from '@lottery/shared';
 import { vRefreshButton } from '@lottery/shared';
 import { vGlobalLoading } from "@lottery/shared";
 import { vInlineValidation } from '@lottery/shared'
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import { useAdminI18n } from "./i18n";
 import { commissionAdjustmentPermissions, createCommissionAdjustmentsApi, validCommissionAdjustmentDelta, validCommissionAdjustmentPoints, validCommissionAdjustmentReason, type CommissionAdjustment, type CommissionAdjustmentTarget } from "./commission-adjustments-api";
@@ -35,8 +35,8 @@ const historyPageSize = ref(20)
 const targetPageSize = ref(20)
 
 
-const props = defineProps<{ account: AdminAccount; brandId: string; paymentId: string; paymentState: string; brandStatus?: string }>();
-const emit = defineEmits<{ (event: "session-invalid"): void }>();
+const props = defineProps<{ account: AdminAccount; brandId: string; paymentId: string; paymentState: string; brandStatus?: string; embedded?: boolean }>();
+const emit = defineEmits<{ (event: "session-invalid"): void; (event: "writing-change", value: boolean): void }>();
 const { t, message } = useAdminI18n();
 const api = createCommissionAdjustmentsApi(fetch);
 
@@ -136,8 +136,22 @@ async function loadHistory(id: string, offset = historyOffset.value) {
   finally { if (ticket === historyTicket && active(generation,captured,session)) historyLoading.value = false; }
 }
 const detailOpen=ref(false)
-async function chooseTarget(id: string) {
+const adjustmentHeading = ref<HTMLElement | null>(null);
+let adjustmentEntry: HTMLButtonElement | undefined;
+let listScrollTop = 0;
+async function backToAdjustmentTargets() {
+  detailOpen.value = false;
+  await nextTick();
+  adjustmentEntry?.focus();
+  const scrollArea = adjustmentEntry?.closest('.detail-modal-content');
+  if (scrollArea) scrollArea.scrollTop = listScrollTop;
+}
+async function chooseTarget(id: string, event?: MouseEvent) {
+  const trigger = event?.currentTarget as HTMLButtonElement | undefined;
+  adjustmentEntry = trigger?.closest('tr')?.querySelector<HTMLButtonElement>('[data-target-id]') ?? trigger;
+  listScrollTop = adjustmentEntry?.closest('.detail-modal-content')?.scrollTop ?? 0;
   detailOpen.value=true;
+  if (props.embedded) void nextTick(() => adjustmentHeading.value?.focus());
   historyReady.value=false; selectedId.value = id; points.value = ""; reason.value = ""; history.value = []; historyTotal.value = "0"; historyOffset.value = 0; dialog.value = null; receipt.value = null;
   const pending = getPendingCommissionAdjustmentIntent(scopeFor(id));
   conflict.value = pending && isCommissionAdjustmentConflict(pending) ? pending : null;
@@ -214,6 +228,7 @@ function discardConflict() {
   clearPendingCommissionAdjustmentIntent(scopeFor(intent.targetId),intent.key); conflict.value = null; conflictRefreshed.value = false; discardChecked.value = false; writeError.value = ""; notice.value = message('admin.copy.702b35bf');
 }
 function cancelDialog() { dialog.value = null; confirmed.value = false; }
+watch(() => writing.value || Boolean(unknown.value && rights.value.write && props.brandStatus !== "disabled"), value => emit("writing-change", value), { flush: "sync", immediate: true });
 watch(stamp, reset, { immediate: true });
 onUnmounted(() => { alive = false; generation++; targetTicket++; historyTicket++; writeTicket++; readLane++; });
 
@@ -232,22 +247,27 @@ useOperationToast(() => historyError.value, value => displayPublicError(value), 
       <p v-if="props.brandStatus === 'disabled'" role="status">{{ t('admin.copy.d21d148a') }}</p>
 
       <p v-if="unknown" v-show="!writing" class="pending-intent">{{ t('admin.copy.3e878895') }} · {{ unknown.body.points }} <button class="button button-secondary" type="button" :disabled="!rights.write || writing || props.brandStatus === 'disabled'" @click="recover">{{ t('admin.copy.589bf172') }}</button></p>
-      <ManagementList><template #filters><form v-inline-validation novalidate class="commission-toolbar ui-filter-bar" @submit.prevent="withGlobalLoading(searchTargets)"><label><FilterAssociationSearch :reset-key="filterReset" v-model="agentDraft" v-model:pending="agentDraftSearchPending" :brand-id="brandId" surface="admin" resource="commission" kind="agent" :label="t('admin.commission.ui.agent')" :locale="associationLocale" :scope-key="stamp" :enabled="rights.view" /></label><button class="button button-primary" type="submit" data-testid="adjustment-search" :disabled="agentDraftSearchPending || loading || writing || Boolean(unknown) || Boolean(conflict)">{{ t('admin.commission.ui.query') }}</button></form></template>
+      <ManagementList v-show="!embedded || !detailOpen || !selected" :embedded="embedded"><template #filters><form v-inline-validation novalidate class="commission-toolbar ui-filter-bar" @submit.prevent="withGlobalLoading(searchTargets)"><label><FilterAssociationSearch :reset-key="filterReset" v-model="agentDraft" v-model:pending="agentDraftSearchPending" :brand-id="brandId" surface="admin" resource="commission" kind="agent" :label="t('admin.commission.ui.agent')" :locale="associationLocale" :scope-key="stamp" :enabled="rights.view" /></label><button class="button button-primary" type="submit" data-testid="adjustment-search" :disabled="agentDraftSearchPending || loading || writing || Boolean(unknown) || Boolean(conflict)">{{ t('admin.commission.ui.query') }}</button></form></template>
       <p v-if="agentDraft!==agentFilter" class="commission-note">{{ t('admin.commission.ui.filtersChanged') }}</p>
       <ManagementTable :entries="targets" :columns="targetColumns" :empty="!loading && !error && targets.length===0" :empty-label="t('admin.commission.ui.empty')">
-       <template #agent="{entry}"><button type="button" class="text-button" :data-target-id="entry.id" :aria-pressed="selectedId===entry.id" @click="withGlobalLoading(chooseTarget,entry.id)"><AssociationName :record="entry" kind="agent" :id="entry.agent_id" :locale="associationLocale" /></button></template>
+       <template #agent="{entry}"><button type="button" class="text-button" :data-target-id="entry.id" :aria-pressed="selectedId===entry.id" @click="withGlobalLoading(chooseTarget,entry.id,$event)"><AssociationName :record="entry" kind="agent" :id="entry.agent_id" :locale="associationLocale" /></button></template>
        <template #original="{entry}">{{ entry.original_points }}</template><template #adjusted="{entry}">{{ entry.adjusted_points??'—' }}</template>
-       <template #actions="{entry}"><MemberActionsMenu :id="'CommissionAdjustmentsManagement-'+entry.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" class="button target-card" :aria-pressed="selectedId===entry.id" @click="withGlobalLoading(chooseTarget,entry.id)">{{ t('admin.commission.ui.view') }}</button></MemberActionsMenu></template>
+       <template #actions="{entry}"><MemberActionsMenu :id="'CommissionAdjustmentsManagement-'+entry.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" class="button target-card" :aria-pressed="selectedId===entry.id" @click="withGlobalLoading(chooseTarget,entry.id,$event)">{{ t('admin.commission.ui.view') }}</button></MemberActionsMenu></template>
       </ManagementTable>
       <template #pagination><TablePagination v-if="targetsReady" class="commission-pager" :aria-label="t('admin.commission.ui.targets')" :total="targetTotal" :page="Math.floor(targetOffset / targetLimit + 1)" :count="targets.length" :locale="associationLocale" :page-size="targetPageSize" :previous-disabled="targetOffset === 0 || loading" :next-disabled="!hasTargetNext || loading" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageTargets((target - 1) * targetLimit)" :change-page-size="async (size: number) => { targetPageSize = size; await loadTargets(0) }" :busy="loading" /></template></ManagementList>
-      <DetailModal v-if="selected && detailOpen" :open="!dialog" :title="t('admin.copy.01db40da')" :close-label="t('association.close')" :close-disabled="writing" @close="detailOpen=false">
+      <component :is="embedded ? 'section' : DetailModal" v-if="selected && detailOpen" class="commission-detail"
+       v-bind="embedded ? {} : { open: !dialog, title: t('admin.copy.01db40da'), closeLabel: t('association.close'), closeDisabled: writing }" @close="detailOpen=false">
+       <div v-if="embedded" class="commission-heading">
+        <h3 ref="adjustmentHeading" tabindex="-1">{{ t('admin.commission.ui.adjustments') }}</h3>
+        <button type="button" class="text-button" :disabled="writing || Boolean(unknown)" @click="backToAdjustmentTargets">{{ t('admin.commission.ui.backToAdjustmentTargets') }}</button>
+       </div>
       <article v-if="selected" class="target-detail">
         <h3><AssociationName :record="selected" kind="agent" :id="selected.agent_id" :locale="associationLocale" /></h3>
         <dl><dt>{{ t('admin.copy.5dbf3829') }}</dt><dd>{{ selected.original_points }}</dd><dt>{{ t('admin.copy.0eca5c00') }}</dt><dd>{{ selected.adjusted_points ?? "—" }}</dd></dl>
         <form class="ui-form ui-facts-form" novalidate v-inline-validation @submit.prevent="withGlobalLoading(prepare)"><label class="ui-field-row"><span>{{ t('admin.copy.2f024587') }}</span><input v-model="points" inputmode="decimal" autocomplete="off" data-testid="adjustment-points" :disabled="!available"></label><p>{{ t('admin.copy.451e940a') }} {{ selected.adjusted_points ?? "—" }} → {{ points || "—" }} · Δ {{ deltaPreview || "—" }}</p><button class="button button-primary" type="submit" data-testid="adjustment-review" :disabled="!canPrepare">{{ t('admin.copy.da7028ac') }}</button></form>
       </article>
       <ManagementList embedded v-if="selected" class="adjustment-history"><template #heading><h3>{{ t('admin.copy.d55ecbbf') }}</h3></template><p v-global-loading v-if="historyLoading">{{ t('admin.copy.27342bf3') }}</p><p v-else-if="historyError" role="alert" class="commission-warning">{{ displayPublicError(historyError) }} <button class="button button-secondary" v-refresh-button="t('admin.commission.ui.retryRead')" type="button" @click="withGlobalLoading(loadHistory,selectedId,historyOffset)">{{ t('admin.commission.ui.retryRead') }}</button></p><p v-else-if="history.length === 0" class="empty-state">{{ t('admin.copy.d7301a2b') }}</p><article v-for="item in history" :key="item.id" class="history-card"><strong> {{ item.delta_points }}</strong><dl><dt>{{ t('admin.copy.a592c0e8') }}</dt><dd>{{ item.points_before }}</dd><dt>{{ t('admin.copy.00c00ace') }}</dt><dd>{{ item.points_after }}</dd><dt>{{ t('admin.copy.cef73d0f') }}</dt><dd><AssociationName :record="item" kind="admin" :id="item.created_by" :locale="associationLocale" /></dd><dt v-if="item.reason">{{ t('admin.copy.5ec7c8ba') }}</dt><dd v-if="item.reason">{{ item.reason }}</dd></dl></article><template #pagination><TablePagination v-if="historyReady" class="commission-pager" :aria-label="t('admin.copy.d55ecbbf')" :total="historyTotal" :page="Math.floor(historyOffset / historyPageSize + 1)" :count="history.length" :locale="associationLocale" :page-size="historyPageSize" :previous-disabled="historyOffset === 0 || historyLoading" :next-disabled="!hasHistoryNext || historyLoading" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageHistory((target - 1) * historyPageSize)" :change-page-size="async (size: number) => { historyPageSize = size; await loadHistory(selectedId, 0) }" :busy="historyLoading" /></template></ManagementList>
-      </DetailModal>
+      </component>
       <article v-if="receipt" class="receipt" data-testid="adjustment-receipt"><h3>{{ t('admin.copy.e671d5a1') }}</h3><p>{{ receipt.points_before }} → {{ receipt.points_after }} · Δ {{ receipt.delta_points }}</p></article>
       <article v-if="conflict" data-testid="adjustment-conflict" role="alert"><header class="console-page-heading"><div class="console-page-actions"><button class="button button-secondary" v-refresh-button="t('admin.copy.894e2a7d')" type="button" data-testid="adjustments-refresh" :disabled="loading" @click="withGlobalLoading(loadTargets, 0)">{{ t('admin.copy.894e2a7d') }}</button></div></header><p v-if="conflictRefreshed">{{ t('admin.copy.f96322ad') }}</p><p v-if="conflictTargetMissing">{{ t('admin.copy.93f14581') }}</p><button class="button button-secondary" v-refresh-button="t('admin.copy.0ded9cd5')" type="button" :disabled="conflictRefreshBusy" @click="withGlobalLoading(refreshConflict)">{{ t('admin.copy.0ded9cd5') }}</button><label><input type="checkbox" v-model="discardChecked" :disabled="!conflictRefreshed || conflictRefreshBusy">{{ t('admin.copy.d42166af') }}</label><button class="button button-secondary" type="button" :disabled="!conflictRefreshed || !discardChecked || conflictRefreshBusy" @click="discardConflict">{{ t('admin.copy.1abc7148') }}</button></article>
     </template>

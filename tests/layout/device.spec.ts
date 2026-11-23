@@ -168,9 +168,17 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await expect(page.locator('.workspace-topbar')).toBeVisible();
     await expect(page.locator('.workspace-overview')).toBeHidden();
     await expect(wallet.locator('.total-card')).toHaveCount(3);
-    await expect(wallet.locator('.total-primary strong')).toHaveText('170');
-    await expect(wallet.locator('.wallet-available b')).toHaveText(locale === 'en' ? '120 pts' : '120 分');
-    await expect(wallet.locator('.metric-amount strong')).toHaveText(['50', '40']);
+    await expect(wallet.locator('.balance-amount')).toHaveText('170');
+    await expect(wallet.locator('.wallet-available b')).toHaveText('120');
+    await expect(wallet.locator('.metric-amount')).toHaveText(['50', '40']);
+    const viewport = page.viewportSize()!;
+    if (info.project.name.endsWith('reflow')) await page.setViewportSize({ width: 1440, height: viewport.height });
+    if (page.viewportSize()!.width >= 1280) {
+      const rows = await wallet.locator('.totals > article, .total-primary > .stat-pair').evaluateAll(items =>
+        items.map(item => item.getBoundingClientRect().top));
+      expect(Math.max(...rows) - Math.min(...rows)).toBeLessThan(12);
+    }
+    if (info.project.name.endsWith('reflow')) await page.setViewportSize(viewport);
     await expect(wallet.locator('.wallet-available')).toHaveCSS('color', 'rgb(17, 24, 39)');
     await expect(wallet.locator('.bucket-grid, .ledger-panel')).toHaveCount(0);
     await expect(wallet.locator('.wallet-links a')).toHaveCount(0);

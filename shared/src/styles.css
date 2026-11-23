@@ -78,6 +78,23 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+[data-wallet-amount="total"],
+[data-wallet-amount="deposited"],
+[data-numeric-tone="info"] { color: var(--info-text); }
+
+[data-wallet-amount="available"],
+[data-numeric-tone="success"] { color: var(--success-text); }
+
+[data-wallet-amount="frozen"],
+[data-wallet-amount="manual_frozen"],
+[data-wallet-amount="system_frozen"],
+[data-numeric-tone="muted"] { color: var(--muted); }
+
+[data-wallet-amount="withdrawal"],
+[data-numeric-tone="warning"] { color: var(--warning-text); }
+
+[data-numeric-tone="danger"] { color: var(--danger-text); }
+
 * { box-sizing: border-box; }
 small { font-size: inherit; }
 

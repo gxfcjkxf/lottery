@@ -2,25 +2,18 @@
 import { themeIds, themeCatalog, applyTheme } from "@lottery/shared/theme"
 import CashConsole from "@lottery/shared/CashConsole.vue"
 import SelectControl from '@lottery/shared/SelectControl.vue'
-import { useOperationToast } from "@lottery/shared";
-import { vWriteGuard } from "@lottery/shared";
-import { usePlatformI18n as usePublicErrorI18n } from "./i18n";
-const publicErrorI18n = usePublicErrorI18n();
-const publicErrorMessage = publicErrorI18n.errorMessage;
-const displayPublicError = publicErrorI18n.displayError;
-import { withGlobalLoading } from '@lottery/shared';
+import { useOperationToast, vInlineValidation, vWriteGuard, withGlobalLoading } from '@lottery/shared'
 import TimeZoneSelect from '@lottery/shared/TimeZoneSelect.vue'
 import CommissionSettings from './CommissionSettings.vue'
 import SecuritySettingsPanel from './SecuritySettingsPanel.vue'
-import DetailModal from '@lottery/shared/DetailModal.vue'
-import { vInlineValidation } from '@lottery/shared'
 import { computed, ref, watch } from 'vue'
 import { usePlatformI18n } from './i18n'
-import { createPlatformApi, type PlatformSettings, type PlatformAccount } from './platform-api'
+import { createPlatformApi, PlatformApiError, type PlatformSettings, type PlatformSettingsRequest, type PlatformAccount } from './platform-api'
 
 const props = defineProps<{ initial: PlatformSettings; locale: 'en' | 'zh-CN'; canManage: boolean; account: PlatformAccount; brandId: string; brandStatus: string }>()
-const emit = defineEmits<{ saved: [settings: PlatformSettings]; failure: [cause: unknown]; completed: [] }>()
+const emit = defineEmits<{ saved: [settings: PlatformSettings]; reloaded: [settings: PlatformSettings]; failure: [cause: unknown]; completed: [] }>()
 const tab = defineModel<'general' | 'auth' | 'commission' | 'currency'>('tab', { default: 'general' })
+const pending = defineModel<PlatformSettingsRequest | null>('pendingGeneral', { required: true })
 const canViewGeneral = computed(() => props.account.platform_permissions.includes('platform_settings.view.platform'))
 const securityVisited = ref(false)
 const commissionVisited = ref(false)
@@ -30,47 +23,61 @@ watch(tab, value => {
   if (value === 'commission') commissionVisited.value = true
 }, { immediate: true })
 const api = createPlatformApi()
-const { t } = usePlatformI18n()
-const form = ref({
-  theme: props.initial.theme,
-  version: props.initial.version,
-  display_name: props.initial.display_name,
-  logo_text: props.initial.logo_text,
-  logo_url: props.initial.logo_url,
-  timezone: props.initial.timezone,
-  date_format: props.initial.date_format,
-  time_format: props.initial.time_format,
-})
-const current = ref(props.initial)
-const editorOpen = ref(false)
-watch(() => props.initial, value => { current.value = value })
-function startEdit() {
-  const { theme, version, display_name, logo_text, logo_url, timezone, date_format, time_format } = current.value
-  form.value = { theme, version, display_name, logo_text, logo_url, timezone, date_format, time_format }
-  error.value = ''; editorOpen.value = true
+const { t, errorMessage, displayError } = usePlatformI18n()
+function toForm({ theme, version, display_name, logo_text, logo_url, timezone, date_format, time_format }: PlatformSettings) {
+  return { theme, version, display_name, logo_text, logo_url, timezone, date_format, time_format }
 }
+const form = ref({ ...(pending.value?.body ?? toForm(props.initial)) })
+watch(() => props.initial, value => {
+  if (!pending.value) form.value = toForm(value)
+})
 const busy = ref(false)
-const error = ref<string | import("@lottery/shared").LocalizedMessage>("")
+const conflict = ref(false)
+const canSave = computed(() => canViewGeneral.value && props.canManage)
+const error = ref<ReturnType<typeof errorMessage> | null>(null)
 const copy = computed(() => ({
-  title: t('common.platformSettings'), description: t('common.platformSettingsDescription'), displayName: t('common.platformDisplayName'), logoText: t('common.platformLogoText'), logoUrl: t('common.platformLogoUrl'), timezone: t('common.timeZone'), dateFormat: t('common.dateFormat'), timeFormat: t('common.timeFormat'), save: t('common.saveSettings'), saving: t('common.saving'), dateYMD: t('common.dateFormatYmd'), dateDMY: t('common.dateFormatDmy'), dateMDY: t('common.dateFormatMdy'), time24: t('common.timeFormat24'), time12: t('common.timeFormat12'),
+  title: t('common.platformSettings'), displayName: t('common.platformDisplayName'), logoText: t('common.platformLogoText'), logoUrl: t('common.platformLogoUrl'), timezone: t('common.timeZone'), dateFormat: t('common.dateFormat'), timeFormat: t('common.timeFormat'), save: t('common.saveSettings'), saving: t('common.saving'), dateYMD: t('common.dateFormatYmd'), dateDMY: t('common.dateFormatDmy'), dateMDY: t('common.dateFormatMdy'), time24: t('common.timeFormat24'), time12: t('common.timeFormat12'),
 }))
 
 async function save() {
-  busy.value = true; error.value = ''
+  if (!canSave.value || busy.value || conflict.value) return
+  const request = pending.value ?? { body: { ...form.value }, key: crypto.randomUUID() }
+  pending.value = request
+  busy.value = true
+  error.value = null
   try {
-    const next = await api.updatePlatformSettings(form.value)
+    const next = await api.updatePlatformSettings(request.body, request.key)
+    pending.value = null
     applyTheme(next.theme)
-    current.value = next
-    form.value.version = next.version
-    editorOpen.value = false
+    form.value = toForm(next)
     emit('saved', next)
   } catch (cause) {
-    error.value = cause instanceof Error ? publicErrorMessage(cause) : publicErrorMessage(cause)
-    emit('failure', cause)
+    if (cause instanceof PlatformApiError && cause.status >= 400 && cause.status < 500) {
+      pending.value = null
+      conflict.value = cause.status === 409
+    }
+    error.value = errorMessage(cause)
+    if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) emit('failure', cause)
   } finally { busy.value = false }
 }
 
-useOperationToast(error, value => displayPublicError(value), 'error');
+async function reload() {
+  if (busy.value || !canViewGeneral.value) return
+  busy.value = true
+  error.value = null
+  try {
+    const next = await api.platformSettings()
+    applyTheme(next.theme)
+    form.value = toForm(next)
+    conflict.value = false
+    emit('reloaded', next)
+  } catch (cause) {
+    error.value = errorMessage(cause, 'read')
+    if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) emit('failure', cause)
+  } finally { busy.value = false }
+}
+
+useOperationToast(error, displayError, 'error')
 </script>
 
 <template>
@@ -81,36 +88,33 @@ useOperationToast(error, value => displayPublicError(value), 'error');
     </div>
     <p v-if="tab === 'general' && !canViewGeneral" role="status">{{ t('platform.error.PERMISSION_DENIED') }}</p>
     <section v-show="tab === 'general' && canViewGeneral" class="panel brand-settings-panel">
-      <dl class="confirm-list">
-        <div><dt>{{ themeCatalog[locale].theme }}</dt><dd>{{ themeCatalog[locale][current.theme] }}</dd></div>
-        <div><dt>{{ copy.displayName }}</dt><dd>{{ current.display_name }}</dd></div>
-        <div><dt>{{ copy.logoText }}</dt><dd>{{ current.logo_text }}</dd></div>
-        <div><dt>{{ copy.logoUrl }}</dt><dd>{{ current.logo_url || '—' }}</dd></div>
-        <div><dt>{{ copy.timezone }}</dt><dd>{{ current.timezone }}</dd></div>
-        <div><dt>{{ copy.dateFormat }}</dt><dd>{{ current.date_format === 'YYYY-MM-DD' ? copy.dateYMD : current.date_format === 'DD/MM/YYYY' ? copy.dateDMY : copy.dateMDY }}</dd></div>
-        <div><dt>{{ copy.timeFormat }}</dt><dd>{{ current.time_format === 'HH:mm:ss' ? copy.time24 : copy.time12 }}</dd></div>
-      </dl>
-      <div class="ui-form-actions"><button type="button" class="button button-secondary" :disabled="!canManage" @click="startEdit">{{ t('common.editSettings') }}</button></div>
+      <form v-write-guard="busy" novalidate v-inline-validation class="brand-form platform-settings-form ui-form" @submit.prevent="withGlobalLoading(save)">
+        <fieldset class="platform-settings-fields" :disabled="!canSave || busy || Boolean(pending) || conflict">
+          <label>{{ copy.displayName }}<input v-model.trim="form.display_name" maxlength="120" required /></label>
+          <label>{{ copy.logoText }}<input v-model.trim="form.logo_text" maxlength="8" required /></label>
+          <label>{{ themeCatalog[locale].theme }}<SelectControl v-model="form.theme" :label="themeCatalog[locale].theme" :options="themeIds.map(value => ({value, label: themeCatalog[locale][value]}))" /></label>
+          <label>{{ copy.logoUrl }}<input v-model.trim="form.logo_url" maxlength="512" /></label>
+          <label>{{ copy.timezone }}<TimeZoneSelect v-model="form.timezone" :locale="locale" required /></label>
+          <label>{{ copy.dateFormat }}<SelectControl v-model="form.date_format" :label="String(copy.dateFormat)" :options="[{ value: 'YYYY-MM-DD', label: (String(copy.dateYMD)).trim() }, { value: 'DD/MM/YYYY', label: (String(copy.dateDMY)).trim() }, { value: 'MM/DD/YYYY', label: (String(copy.dateMDY)).trim() }]" /></label>
+          <label>{{ copy.timeFormat }}<SelectControl v-model="form.time_format" :label="String(copy.timeFormat)" :options="[{ value: 'HH:mm:ss', label: (String(copy.time24)).trim() }, { value: 'hh:mm:ss A', label: (String(copy.time12)).trim() }]" /></label>
+        </fieldset>
+        <p v-if="pending && !busy" role="alert">{{ t('security.unknown') }}</p>
+        <p v-if="conflict" role="alert">{{ t('security.conflict') }}</p>
+        <div v-if="canSave" class="ui-form-actions">
+          <button v-if="conflict" class="button button-secondary" type="button" :disabled="busy" @click="withGlobalLoading(reload)">{{ t('security.reread') }}</button>
+          <button v-else type="submit" class="button button-primary" :disabled="busy">{{ busy ? copy.saving : pending ? t('security.retry') : copy.save }}</button>
+        </div>
+      </form>
     </section>
     <CashConsole v-if="tab === 'currency'" base-path="/api/v1/platform" platform mode="settings" :actor-id="account.id" :locale="locale" :permissions="account.platform_permissions" @saved="emit('completed')" @failure="emit('failure',$event)" />
     <SecuritySettingsPanel v-if="securityVisited" v-show="tab === 'auth'" :account="account" @locked="securityLocked = $event" @failure="emit('failure', $event)" />
-    <CommissionSettings :can-view="account.platform_permissions.includes('platform_settings.view.platform')" v-if="commissionVisited" v-show="tab === 'commission'" :timezone="current.timezone" :can-manage="canManage" @saved="emit('completed')" @failure="emit('failure', $event)" />
-    <DetailModal v-if="editorOpen && canViewGeneral" :title="copy.title" :close-label="t('platform.copy.27b2fd29')" :close-disabled="busy" @close="!busy && (editorOpen = false)">
-    <form v-write-guard="busy" novalidate v-inline-validation class="brand-form platform-settings-form ui-form" @submit.prevent="withGlobalLoading(save)">
-      <div class="form-row"><label>{{ copy.displayName }}<input v-model.trim="form.display_name" maxlength="120" required /></label><label>{{ copy.logoText }}<input v-model.trim="form.logo_text" maxlength="8" required /></label></div>
-      <label>{{ themeCatalog[locale].theme }}<SelectControl v-model="form.theme" :label="themeCatalog[locale].theme" :options="themeIds.map(value => ({value, label: themeCatalog[locale][value]}))" /></label>
-      <label>{{ copy.logoUrl }}<input v-model.trim="form.logo_url" maxlength="512" /></label>
-      <div class="form-row"><label>{{ copy.timezone }}<TimeZoneSelect v-model="form.timezone" :locale="locale" required /></label><label>{{ copy.dateFormat }}<SelectControl v-model="form.date_format" :label="String(copy.dateFormat)" :options="[{ value: 'YYYY-MM-DD', label: (String(copy.dateYMD)).trim() }, { value: 'DD/MM/YYYY', label: (String(copy.dateDMY)).trim() }, { value: 'MM/DD/YYYY', label: (String(copy.dateMDY)).trim() }]" /></label></div>
-      <div class="form-row"><label>{{ copy.timeFormat }}<SelectControl v-model="form.time_format" :label="String(copy.timeFormat)" :options="[{ value: 'HH:mm:ss', label: (String(copy.time24)).trim() }, { value: 'hh:mm:ss A', label: (String(copy.time12)).trim() }]" /></label></div>
-
-      <div class="form-actions ui-form-actions"><button type="submit" class="button button-primary" :disabled="busy">{{ busy ? copy.saving : copy.save }}</button></div>
-    </form>
-    </DetailModal>
+    <CommissionSettings :can-view="account.platform_permissions.includes('platform_settings.view.platform')" v-if="commissionVisited" v-show="tab === 'commission'" :timezone="initial.timezone" :can-manage="canManage" @saved="emit('completed')" @failure="emit('failure', $event)" />
   </div>
 </template>
 
 <style scoped>
-.platform-settings-page > .panel > .confirm-list { margin-bottom: 0; }
+.platform-settings-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 640px) { .platform-settings-fields { grid-template-columns: minmax(0, 1fr); } }
 .platform-settings-page { display: grid; gap: 12px; min-width: 0; }
 .platform-settings-page > .page-heading, .platform-settings-page > .console-tabs { margin-bottom: 0; }
 </style>

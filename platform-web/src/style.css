@@ -494,7 +494,7 @@ button:disabled {
 }
 .query-submit { flex: 0 0 auto; }
 
-.wallet-query input, .brand-form input, .brand-form textarea {
+.wallet-query input, .brand-form :is(input:not([type="checkbox"], [type="radio"]), textarea) {
   height: 32px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -512,7 +512,7 @@ button:disabled {
   min-height: 64px;
 }
 
-.wallet-query input:focus, .brand-form input:focus, .brand-form textarea:focus {
+.wallet-query input:focus, .brand-form :is(input:not([type="checkbox"], [type="radio"]), textarea):focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-ring);
   background: var(--surface);

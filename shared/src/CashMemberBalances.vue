@@ -67,9 +67,9 @@ useOperationToast(error, (v) => v, "error");
             <td :data-label="t('cash.currency')">
               {{ t(`cash.${b.currency}`) }}
             </td>
-            <td :data-label="t('cash.deposited')">{{ b.deposited }}</td>
-            <td :data-label="t('cash.withdrawable')">{{ b.withdrawable }}</td>
-            <td :data-label="t('cash.reserved')">{{ b.reserved }}</td>
+            <td :data-label="t('cash.deposited')"><span data-wallet-amount="deposited">{{ b.deposited }}</span></td>
+            <td :data-label="t('cash.withdrawable')"><span data-wallet-amount="available">{{ b.withdrawable }}</span></td>
+            <td :data-label="t('cash.reserved')"><span data-wallet-amount="withdrawal">{{ b.reserved }}</span></td>
           </tr>
         </tbody>
       </table>

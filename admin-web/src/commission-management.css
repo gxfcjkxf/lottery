@@ -18,10 +18,6 @@
 .commission-tabs button[aria-selected=true] { background: var(--primary-light); border-color: var(--primary); color: var(--primary-dark); }
 .commission-detail { display: grid; gap: 12px; min-width: 0; }
 .commission-detail .panel { margin: 0; }
-.commission-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 8px; }
-.commission-metrics > div { padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow-sm); }
-.commission-metrics dt { color: var(--muted); }
-.commission-metrics dd { margin: 6px 0 0; font-size: 20px; font-weight: 750; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .commission-note { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
 .commission-warning { padding: 10px 12px; border-left: 3px solid var(--warning); background: var(--accent-light); overflow-wrap: anywhere; }
 .commission-technical { color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px; overflow-wrap: anywhere; }
@@ -47,3 +43,32 @@
 @media (max-width: 700px) {
  .report-view .totals dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.management-console .console-tabs.commission-cycle-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-column: 1 / -1; margin: 6px 0 0; }
+.management-console .commission-cycle-tabs button { padding-inline: 6px; white-space: normal; overflow-wrap: anywhere; }
+.commission-cycle-dialog .commission-detail h3 { margin: 0; }
+.commission-cycle-dialog .commission-technical summary { color: var(--ink); font-weight: 600; min-height: var(--control-height); align-content: center; }
+.commission-history-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.commission-history-row .text-button { margin-inline-start: auto; }
+@media (max-width: 620px) {
+  .management-console .console-tabs.commission-cycle-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.commission-cycle-dialog.has-cycle-period .detail-modal-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  row-gap: 2px;
+}
+.commission-cycle-dialog .commission-cycle-period {
+  grid-column: 1;
+  margin: 0;
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.commission-cycle-dialog.has-cycle-period .detail-modal-close { grid-column: 2; grid-row: 1 / span 2; }

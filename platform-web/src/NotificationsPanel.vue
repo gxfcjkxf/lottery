@@ -16,12 +16,13 @@ import { vRefreshButton } from '@lottery/shared';
 import { usePlatformI18n } from "./i18n"
 const ui = usePlatformI18n().t
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { createPlatformNotificationsApi, type Delivery } from './notifications-api'
+import { createPlatformNotificationsApi, type Delivery, type TemplateWrite } from './notifications-api'
 import { formatPlatformDateTime, type PlatformDisplaySettings } from './platform-format'
 const pageSize = ref(50)
 
 
 const props = defineProps<{ view: 'deliveries' | 'templates'; brandId: string; accountId: string; canManage: boolean; canViewTemplates: boolean; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings }>()
+const pendingWrite = defineModel<TemplateWrite | null>('pendingWrite', { default: null })
 const emit = defineEmits<{ failure: [cause: unknown] }>()
 const api = createPlatformNotificationsApi()
 const deliveries = ref<Delivery[]>([])
@@ -86,6 +87,6 @@ useOperationToast(error, value => displayPublicError(value), 'error');
       <template #pagination><TablePagination class="wallet-pagination" data-testid="platform-delivery-pages" :total="deliveryTotal" :page="Math.floor(deliveryOffset / pageSize + 1)" :count="deliveries.length" :locale="locale" :page-size="pageSize" :previous-disabled="loading || deliveryOffset === 0 || !brandId" :next-disabled="loading || !deliveryMore" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => loadDeliveries((target - 1) * pageSize)" :change-page-size="async (size: number) => { pageSize = size; await loadDeliveries(0) }" :busy="loading" /></template></ManagementList>
     </template>
 
-    <NotificationTemplatesPanel v-else :key="accountId" :account-id="accountId" :can-manage="canManage" :can-view="canViewTemplates" :locale="locale" :display-settings="displaySettings" @failure="emit('failure', $event)" />
+    <NotificationTemplatesPanel v-else v-model:pending-write="pendingWrite" :key="accountId" :account-id="accountId" :can-manage="canManage" :can-view="canViewTemplates" :locale="locale" :display-settings="displaySettings" @failure="emit('failure', $event)" />
   </div>
 </template>

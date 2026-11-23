@@ -28,7 +28,7 @@ import { vGlobalLoading } from "@lottery/shared";
 import { formatDisplayDateTime } from "@lottery/shared";
 const displayLocale = useAdminI18n().locale;
 import DetailModal from "@lottery/shared/DetailModal.vue"
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import type { LocalizedMessage } from "@lottery/shared";
 import { adminKey, useAdminI18n } from "./i18n";
@@ -55,15 +55,95 @@ const runPageSize = ref(20)
 const cyclePageSize = ref(20)
 
 
-const props = defineProps<{ account: AdminAccount; brandId: string; initialCycleId?: string; brandStatus?: string; covered?: boolean }>();
-const emit = defineEmits<{ (event: "session-invalid"): void; (event: "open-payments", cycleId: string): void; (event: "open-corrections", cycleId: string): void }>();
+const props = defineProps<{ account: AdminAccount; brandId: string; initialCycleId?: string; brandStatus?: string }>();
+const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const { t, locale, message, display } = useAdminI18n();
 const api = createCommissionCyclesApi();
 
 const fromDraft = ref(''), toDraft = ref(''), stateDraft = ref(''), agentDraft = ref('');
 const committedFilter = ref<CommissionListQuery>({});
 const searched = ref(true), showCreate = ref(false), showTasks = ref(false);
-const detailTab = ref<'result'|'details'|'history'>('result');
+const cycleTabs = ['result', 'paymentRecords', 'cycleCorrections', 'calculationHistory'] as const;
+type CycleTab = (typeof cycleTabs)[number];
+const detailTab = ref<CycleTab>('result');
+const visitedTabs = ref<CycleTab[]>(['result']);
+const showCalculation = ref(false);
+const paymentsLocked = ref(false);
+const correctionsLocked = ref(false);
+const detailLocked = computed(() => paymentsLocked.value || correctionsLocked.value);
+const calculationEntry = ref<HTMLButtonElement | null>(null);
+const calculationHeading = ref<HTMLElement | null>(null);
+const runHeading = ref<HTMLElement | null>(null);
+const cycleDetail = ref<HTMLElement | null>(null);
+let activeCycleId = '';
+let detailListScrollTop = 0;
+let runEntry: HTMLButtonElement | undefined;
+function setPaymentsLocked(value: boolean) { paymentsLocked.value = value; }
+function setCorrectionsLocked(value: boolean) { correctionsLocked.value = value; }
+function resetDetailNavigation() {
+  detailTab.value = 'result';
+  visitedTabs.value = ['result'];
+  showCalculation.value = false;
+  paymentsLocked.value = correctionsLocked.value = false;
+  runEntry = undefined;
+}
+function resetRunDetails(runId = '') {
+  calculationTicket++; runEarningTicket++; allocationTicket++;
+  selectedRunId.value = runId;
+  allocationOffset.value = calculationOffset.value = runEarningOffset.value = 0;
+  allocations.value = calculations.value = runEarnings.value = null;
+  allocationAgentFilter.value = allocationOrderFilter.value = '';
+  allocationAgentFilterSearchPending.value = false;
+  calculationsLoading.value = runEarningsLoading.value = allocationsLoading.value = false;
+  calculationsError.value = runEarningsError.value = allocationsError.value = '';
+}
+async function openTab(tab: CycleTab) {
+  if (detailLocked.value || writing.value || tab === detailTab.value) return;
+  showCalculation.value = false;
+  resetRunDetails();
+  detailTab.value = tab;
+  if (!visitedTabs.value.includes(tab)) visitedTabs.value.push(tab);
+  cycleDetail.value?.parentElement?.scrollTo({ top: 0 });
+  if (tab === 'calculationHistory' && selectedCycle.value && !runs.value) await loadRuns(selectedCycle.value.id, 0);
+}
+function moveTab(event: KeyboardEvent) {
+  const index = cycleTabs.indexOf(detailTab.value);
+  const target = { ArrowLeft: (index + 3) % 4, ArrowRight: (index + 1) % 4, Home: 0, End: 3 }[event.key];
+  if (target === undefined || detailLocked.value || writing.value) return;
+  event.preventDefault();
+  const tab = cycleTabs[target]!;
+  (event.currentTarget as HTMLElement).querySelector<HTMLButtonElement>('#commission-cycle-tab-' + tab)?.focus();
+  void withGlobalLoading(openTab, tab);
+}
+async function openCalculation() {
+  const cycle = selectedCycle.value;
+  if (!cycle?.current_run_id) return;
+  const { id, current_run_id } = cycle;
+  resetRunDetails(current_run_id);
+  detailListScrollTop = cycleDetail.value?.parentElement?.scrollTop ?? 0;
+  showCalculation.value = true;
+  await nextTick();
+  calculationHeading.value?.focus();
+  await Promise.all([loadAllocations(id, current_run_id, 0), loadCalculations(id, current_run_id, 0)]);
+}
+async function returnToResult() {
+  showCalculation.value = false;
+  resetRunDetails();
+  await nextTick();
+  calculationEntry.value?.focus();
+  const scrollArea = cycleDetail.value?.parentElement;
+  if (scrollArea) scrollArea.scrollTop = detailListScrollTop;
+}
+async function returnToHistory() {
+  resetRunDetails();
+  await nextTick();
+  runEntry?.focus();
+  const scrollArea = cycleDetail.value?.parentElement;
+  if (scrollArea) scrollArea.scrollTop = detailListScrollTop;
+  runEntry = undefined;
+}
+const selectedRun = computed(() => runs.value?.items.find(run => run.id === selectedRunId.value));
+
 const columns = computed(() => [
  {key:'cycle',label:t('admin.commission.ui.cycle'),cellClass:'commission-cycle-cell'}, {key:'state',label:t('admin.commission.ui.state')},
  {key:'agents',label:t('admin.commission.ui.agents'),cellClass:'numeric'}, {key:'points',label:t('admin.commission.ui.points'),cellClass:'numeric'},
@@ -83,16 +163,6 @@ async function applyFilters() {
 }
 
 function dirtyFilters() { cycleTicket++; cycles.value=[]; cycleTotal.value='0'; cycleOffset.value=0; loading.value=false; searched.value=false; }
-async function openTab(tab: 'result'|'details'|'history') {
- if (tab !== detailTab.value) { allocationAgentFilter.value = allocationOrderFilter.value = ''; allocationAgentFilterSearchPending.value = false; }
- detailTab.value=tab;
- const cycle=selectedCycle.value; if (!cycle) return;
- if (tab==='history' && !runs.value) await loadRuns(cycle.id,0);
- if (tab==='details' && cycle.current_run_id) {
-  selectedRunId.value=cycle.current_run_id;
-  await Promise.all([loadAllocations(cycle.id,cycle.current_run_id,0),loadCalculations(cycle.id,cycle.current_run_id,0)]);
- }
-}
 async function openTasks() { showTasks.value=true; await loadDiscoveries(0); }
 
 const knownConflictKeys = new Set<string>();
@@ -206,6 +276,7 @@ function currentWrite(ticket: number, captured: string, session: number) {
   return alive && ticket === writeTicket && captured === scopeStamp.value && session === commissionCycleSessionGeneration();
 }
 function clearVisible() {
+  activeCycleId = ''; resetDetailNavigation();
   cycles.value = []; cycleTotal.value = "0"; cycleOffset.value = 0; selectedCycle.value = null;
   receipt.value = null;
   earnings.value = null; runs.value = null; selectedRunId.value = ""; calculations.value = null;
@@ -275,14 +346,16 @@ async function loadDiscoveries(offset = discoveryOffset.value) {
 }
 async function loadCycle(id: string) {
   const ticket = ++detailTicket, captured = scopeStamp.value, session = commissionCycleSessionGeneration();
-  detailLoading.value = true; detailTab.value="result"; detailError.value = ""; selectedCycle.value = null; retryReason.value = "";
+  activeCycleId = id; resetDetailNavigation();
+  detailLoading.value = true; detailError.value = ""; selectedCycle.value = null; retryReason.value = "";
   earningTicket++; runTicket++; calculationTicket++; runEarningTicket++; allocationTicket++;
   earnings.value = null; runs.value = null; calculations.value = null; selectedRunId.value = "";
   runEarnings.value = null; allocations.value = null; allocationAgentFilter.value = allocationOrderFilter.value = "";
   earningsError.value = runsError.value = calculationsError.value = runEarningsError.value = allocationsError.value = ""; refreshPending();
   try {
     const item = await api.read(props.brandId, id);
-    if (!current(ticket, detailTicket, captured, session) || item.id !== id) return;
+    if (!current(ticket, detailTicket, captured, session)) return;
+    if (item.id !== id) throw new AdminApiError('Unexpected commission cycle', 502, 'INVALID_RESPONSE');
     selectedCycle.value = item;
     await loadEarnings(id, 0);
   } catch (cause) { if (current(ticket, detailTicket, captured, session)) { sessionExpired(cause, captured, session); detailError.value = readFailure(cause); } }
@@ -312,17 +385,16 @@ async function loadRuns(cycleId: string, offset = runOffset.value) {
     if (!current(ticket, runTicket, captured, session) || selectedCycle.value?.id !== cycleId) return;
     if (page.cycle_id !== cycleId || page.items.some((row) => row.cycle_id !== cycleId)) throw new Error(t('admin.copy.4d720ae2'));
     runs.value = page; runOffset.value = page.offset;
-    const selected = page.items.find((run) => run.id === selectedRunId.value) ?? page.items[0];
-    if (selected) await selectRun(selected.id);
   } catch (cause) { if (current(ticket, runTicket, captured, session) && selectedCycle.value?.id === cycleId) { sessionExpired(cause, captured, session); runsError.value = readFailure(cause); } }
   finally { if (current(ticket, runTicket, captured, session)) runsLoading.value = false; }
 }
-async function selectRun(runId: string) {
+async function selectRun(runId: string, event?: MouseEvent) {
   if (!selectedCycle.value || !runs.value?.items.some((item) => item.id === runId)) return;
-  selectedRunId.value = runId; calculationOffset.value = runEarningOffset.value = allocationOffset.value = 0;
-  allocationAgentFilter.value = allocationOrderFilter.value = "";
-  calculations.value = null; runEarnings.value = null; allocations.value = null;
-  calculationsError.value = runEarningsError.value = allocationsError.value = "";
+  runEntry = event?.currentTarget as HTMLButtonElement | undefined;
+  detailListScrollTop = cycleDetail.value?.parentElement?.scrollTop ?? 0;
+  resetRunDetails(runId);
+  await nextTick();
+  runHeading.value?.focus();
   await Promise.all([loadCalculations(selectedCycle.value.id, runId, 0), loadRunEarnings(selectedCycle.value.id, runId, 0), loadAllocations(selectedCycle.value.id, runId, 0)]);
 }
 
@@ -525,6 +597,8 @@ watch([fromDraft,toDraft,stateDraft,agentDraft],dirtyFilters,{flush:'sync'});
 watch(scopeStamp, resetScope, { immediate: true });
 onUnmounted(() => { alive = false; generation++; cycleTicket++; detailTicket++; earningTicket++; runTicket++; calculationTicket++; discoveryTicket++; writeTicket++; });
 function closeDetails() {
+  if (detailLocked.value || writing.value) return;
+  activeCycleId = ''; resetDetailNavigation();
   detailTicket++; earningTicket++; runTicket++; calculationTicket++; runEarningTicket++; allocationTicket++; selectedCycle.value = null; detailLoading.value = false; detailError.value = '';
 }
 
@@ -538,7 +612,6 @@ useOperationToast(() => calculationsError.value, value => displayPublicError(val
 useOperationToast(() => runEarningsError.value, value => displayPublicError(value), 'error');
 useOperationToast(() => allocationsError.value, value => displayPublicError(value), 'error');
 useOperationToast(() => discoveryError.value, value => displayPublicError(value), 'error');
-defineExpose({ openCycle: loadCycle })
 const allocationReset=ref(0)
 
 </script>
@@ -563,6 +636,7 @@ const allocationReset=ref(0)
     <ManagementList :busy="loading"><template #actions>   <div class="commission-actions console-page-actions commission-list-actions">
     <button v-if="rights.run && !account.super_admin && brandStatus !== 'disabled'" type="button" class="button" @click="withGlobalLoading(openCreate)">{{ t('admin.commission.ui.manual') }}</button>
     <button v-if="rights.view" type="button" class="button" aria-haspopup="dialog" @click="withGlobalLoading(openTasks)">{{ t('admin.commission.ui.tasks') }}</button>
+    <slot name="actions" />
 
    </div></template><template #filters>    <form novalidate v-inline-validation class="commission-toolbar ui-filter-bar" @submit.prevent="withGlobalLoading(applyFilters)">
      <label><PlatformTemporalInput :label="t('admin.commission.ui.from')" :placeholder="t('admin.commission.ui.from')" v-model="fromDraft" type="date" :locale="locale" /></label>
@@ -580,7 +654,7 @@ const allocationReset=ref(0)
      <template #agents="{entry}">{{ cycleComplete(entry)?exact(entry.earning_count):'—' }}</template>
      <template #points="{entry}">{{ cycleComplete(entry)?exact(entry.total_points):t('admin.commission.ui.incomplete') }}</template>
      <template #updated="{entry}">{{ date(entry.updated_at) }}</template>
-     <template #actions="{entry}"><MemberActionsMenu :id="'CommissionCyclesManagement-'+entry.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" class="button" @click="withGlobalLoading(loadCycle,entry.id)">{{ t('admin.commission.ui.view') }}</button><button type="button" role="menuitem" class="button" :data-cycle-payments="entry.id" :disabled="!entry.current_run_id" aria-haspopup="dialog" @click="emit('open-payments',entry.id)">{{ t('admin.commission.ui.paymentsAction') }}</button><button type="button" role="menuitem" class="button" :data-cycle-corrections="entry.id" :disabled="!entry.current_run_id" aria-haspopup="dialog" @click="emit('open-corrections',entry.id)">{{ t('admin.commission.ui.correctionsAction') }}</button></MemberActionsMenu></template>
+     <template #actions="{entry}"><MemberActionsMenu :id="'CommissionCyclesManagement-'+entry.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" class="button" @click="withGlobalLoading(loadCycle,entry.id)">{{ t('admin.commission.ui.viewCycle') }}</button></MemberActionsMenu></template>
     </ManagementTable>
     <template #pagination><TablePagination class="commission-pager" :total="cycleTotal" :page="Math.floor(cycleOffset / cyclePageSize + 1)" :count="cycles.length" :locale="locale" :page-size="cyclePageSize" :previous-disabled="loading || cycleOffset===0" :next-disabled="loading || !cycleHasNext" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageCycles(target - (Math.floor(cycleOffset / cyclePageSize + 1)))" :change-page-size="async (size: number) => { cyclePageSize = size; await loadCycles(0) }" :busy="loading" /></template></ManagementList>
       <DetailModal v-if="showTasks" :title="t('admin.commission.ui.tasks')" :close-label="t('association.close')" :open="!selectedDiscovery && !review" @close="showTasks=false; selectedDiscovery=null"><ManagementList embedded class="discoveries"><header v-if="discoveryError" class="console-page-heading"><div class="console-page-actions"><button v-refresh-button="t('admin.copy.894e2a7d')" type="button" class="button" :disabled="discoveryLoading || !rights.view" @click="withGlobalLoading(loadDiscoveries, discoveryOffset)">{{ t('admin.copy.894e2a7d') }}</button></div></header><div v-if="!discoveryLoading && !discoveryError && !discoveries.length" class="empty empty-state">{{ t('admin.copy.6f161c9e') }}</div><article v-for="item in discoveries" :key="item.id" :data-discovery-id="item.id" class="discovery-row" :class="{ selected: selectedDiscovery?.id === item.id }"><button type="button" class="discovery-select" @click="selectDiscovery(item)"><span class="row-head"><b>{{ statusText(item.state) }}</b><span class="id">{{ item.id }}</span></span><span>{{ t('admin.copy.11c28a36') }} <span v-if="item.cycle_id" class="id"><AssociationName :record="item" kind="cycle" :id="item.cycle_id" :locale="associationLocale" /></span><span v-else>{{ t('admin.copy.941137c1') }}</span></span><span>{{ item.window_from ? `${date(item.window_from)} – ${date(item.window_to)}` : t('admin.copy.6a0bb6fb') }}</span><span v-if="item.last_error_code" class="error-text">{{ t('admin.copy.c0a94db8') }}: {{ item.last_error_code ? displayPublicError(publicErrorMessage({ code: item.last_error_code })) : "—" }}</span><span>{{ t('admin.copy.c4397333') }} {{ date(item.next_check_at) }}</span></button><button v-if="item.state === 'failed' && rights.retry && !account.super_admin" type="button" class="button button-quiet" @click="selectDiscovery(item); retryReason = ''">{{ t('admin.copy.e57b7cb7') }}</button></article>
@@ -591,33 +665,102 @@ const allocationReset=ref(0)
 <div v-if="selectedDiscovery" class="retry-box"><header v-if="discoveryError" class="console-page-heading"><div class="console-page-actions"><button v-refresh-button="t('admin.copy.894e2a7d')" type="button" class="button" :disabled="discoveryLoading || !rights.view" @click="withGlobalLoading(loadDiscoveries, discoveryOffset)">{{ t('admin.copy.894e2a7d') }}</button></div></header><h3>{{ t('admin.copy.c1fe5e47') }} · {{ selectedDiscovery.id }}</h3><p>{{ selectedDiscovery.last_error_code ? displayPublicError(publicErrorMessage({ code: selectedDiscovery.last_error_code })) : t('admin.copy.85b71678') }} · {{ t('admin.copy.c4397333') }} {{ date(selectedDiscovery.next_check_at) }}</p><div v-if="selectedDiscovery.state === 'failed' && rights.retry && !account.super_admin" class="ui-form-actions"><button type="button" class="button button-primary" :disabled="!canRetryDiscovery" @click="beginReview(retryIntent('retry_discovery'))">{{ t('admin.copy.4dfcbb0b') }}</button></div></div>
 </DetailModal>
 
-   <DetailModal v-if="selectedCycle || detailLoading || detailError" :open="!review && !covered" :title="t('admin.nav.commissionCycles')" :close-label="t('association.close')" @close="closeDetails"><div class="commission-detail">
-    <header class="console-page-heading commission-heading"><div v-if="selectedCycle" class="commission-actions console-page-actions ui-form-actions"><button v-if="detailError || ['enumerating','waiting','calculating','summarizing'].includes(selectedCycle.state)" class="button" v-refresh-button="t('admin.copy.894e2a7d')" @click="withGlobalLoading(loadCycle,selectedCycle.id)">{{ t('admin.copy.894e2a7d') }}</button><button class="button" @click="emit('open-payments',selectedCycle.id)">{{ t('admin.commission.ui.openPayments') }}</button><button class="button" :disabled="!selectedCycle.current_run_id" @click="emit('open-corrections',selectedCycle.id)">{{ t('admin.commission.ui.correctionsAction') }}</button></div></header>
+   <DetailModal v-if="selectedCycle || detailLoading || detailError" :open="!review"
+     class="commission-cycle-dialog" :class="{ 'has-cycle-period': selectedCycle }" :title="t('admin.commission.ui.cycleDetail')" :close-label="t('association.close')"
+     :close-disabled="detailLocked || writing" @close="closeDetails">
+    <template #heading-extra>
+     <p v-if="selectedCycle" class="commission-cycle-range commission-cycle-period"><span>{{ date(selectedCycle.window_from) }}</span><span> → {{ date(selectedCycle.window_to) }}</span></p>
+      <nav v-if="selectedCycle" class="console-tabs commission-cycle-tabs" role="tablist" :aria-label="t('admin.commission.ui.cycleDetail')" @keydown="moveTab">
+       <button v-for="tab in cycleTabs" :id="'commission-cycle-tab-'+tab" :key="tab" type="button" :class="{ selected: detailTab===tab }" role="tab"
+         :aria-selected="detailTab===tab" :aria-controls="'commission-cycle-panel-'+tab" :tabindex="detailTab===tab ? 0 : -1"
+         :disabled="(detailLocked || writing) && detailTab!==tab" @click="withGlobalLoading(openTab,tab)">{{ t(adminKey('admin.commission.ui.'+tab)) }}</button>
+      </nav>
+    </template>
+    <div ref="cycleDetail" class="commission-detail">
     <p v-if="detailLoading" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
-    <p v-if="detailError" class="commission-warning" role="alert">{{ displayPublicError(detailError) }}</p>
+    <p v-if="detailError" class="commission-warning" role="alert">{{ displayPublicError(detailError) }}
+      <button type="button" class="button" :disabled="detailLoading" v-refresh-button="t('admin.commission.ui.retryRead')" @click="withGlobalLoading(loadCycle,activeCycleId)">{{ t('admin.commission.ui.retryRead') }}</button>
+    </p>
     <template v-if="selectedCycle">
-     <div class="commission-heading"><b>{{ date(selectedCycle.window_from) }} – {{ date(selectedCycle.window_to) }}</b><span class="commission-status" :class="cycleState(selectedCycle)">{{ cycleStateLabel(selectedCycle) }}</span></div>
-     <p v-if="selectedCycle.last_error_code" class="commission-warning">{{ displayPublicError(publicErrorMessage({code:selectedCycle.last_error_code})) }}</p>
-     <button v-if="selectedCycle.state==='failed' && rights.retry && !account.super_admin && brandStatus !== 'disabled'" class="button button-primary" :disabled="!canRetryCycle" @click="beginReview(retryIntent('retry_cycle'))">{{ t('admin.copy.a6f031a3') }}</button>
-     <nav class="commission-tabs" role="tablist"><button v-for="tab in (['result','details','history'] as const)" :key="tab" class="button" role="tab" :aria-selected="detailTab===tab" @click="withGlobalLoading(openTab,tab)">{{ t(adminKey('admin.commission.ui.'+tab)) }}</button></nav>
-     <ManagementList embedded v-if="detailTab==='result'" class="commission-detail" role="tabpanel">
-      <dl class="commission-metrics"><div><dt>{{ t('admin.commission.ui.points') }}</dt><dd>{{ cycleComplete(selectedCycle)?exact(selectedCycle.total_points):t('admin.commission.ui.incomplete') }}</dd></div><div><dt>{{ t('admin.commission.ui.agents') }}</dt><dd>{{ cycleComplete(selectedCycle)?exact(selectedCycle.earning_count):'—' }}</dd></div></dl>
+     <section v-show="detailTab==='result'" id="commission-cycle-panel-result" role="tabpanel" aria-labelledby="commission-cycle-tab-result" class="commission-detail">
+      <ManagementList embedded v-if="!showCalculation" class="commission-detail">
+      <div class="commission-heading">
+       <h3>{{ t('admin.commission.ui.thisCalculation') }}</h3>
+       <span class="commission-status" :class="cycleState(selectedCycle)">{{ cycleComplete(selectedCycle) ? t('admin.commission.ui.calculationComplete') : cycleStateLabel(selectedCycle) }}</span>
+      </div>
+      <p v-if="selectedCycle.last_error_code" class="commission-warning">{{ displayPublicError(publicErrorMessage({code:selectedCycle.last_error_code})) }}</p>
+      <div v-if="selectedCycle.state==='failed' && rights.retry && !account.super_admin && brandStatus!=='disabled'" class="ui-form-actions">
+       <button type="button" class="button button-primary" :disabled="!canRetryCycle" @click="beginReview(retryIntent('retry_cycle'))">{{ t('admin.copy.a6f031a3') }}</button>
+      </div>
+      <div v-if="['enumerating','waiting','calculating','summarizing'].includes(selectedCycle.state)" class="ui-form-actions">
+       <button type="button" class="button" v-refresh-button="t('admin.copy.894e2a7d')" @click="withGlobalLoading(loadCycle,selectedCycle.id)">{{ t('admin.copy.894e2a7d') }}</button>
+      </div>
+      <dl class="commission-metrics report-summary-tags"><div><dt>{{ t('admin.commission.ui.points') }}</dt><dd>{{ cycleComplete(selectedCycle)?exact(selectedCycle.total_points):t('admin.commission.ui.incomplete') }}</dd></div><div><dt>{{ t('admin.commission.ui.agents') }}</dt><dd>{{ cycleComplete(selectedCycle)?exact(selectedCycle.earning_count):'—' }}</dd></div></dl>
+      <div class="commission-heading">
+       <h3>{{ t('admin.commission.ui.agentCommission') }}</h3>
+       <button v-if="selectedCycle.current_run_id" ref="calculationEntry" type="button" class="text-button" @click="withGlobalLoading(openCalculation)">{{ t('admin.commission.ui.viewCalculationDetails') }}</button>
+      </div>
+      <p v-if="earningsLoading" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
+      <p v-if="earningsError" class="commission-warning" role="alert">{{ displayPublicError(earningsError) }}
+       <button type="button" class="button" v-refresh-button="t('admin.commission.ui.retryRead')" @click="withGlobalLoading(loadEarnings,selectedCycle.id)">{{ t('admin.commission.ui.retryRead') }}</button>
+      </p>
       <ManagementTable :entries="earnings?.items ?? []" :columns="earningColumns" :empty="!!earnings && !earnings.items.length" :empty-label="t('admin.commission.ui.empty')"><template #agent="{entry}"><AssociationName :record="entry" kind="agent" :id="entry.agent_id" :locale="locale" /></template><template #points="{entry}">{{ cycleComplete(selectedCycle)?exact(entry.points):t('admin.commission.ui.incomplete') }}</template></ManagementTable>
 
      <template #pagination><TablePagination v-if="earnings" class="commission-pager" :total="earnings.total_count" :page="Math.floor(earningOffset / earningPageSize + 1)" :count="earnings.items.length" :locale="locale" :page-size="earningPageSize" :previous-disabled="earningsLoading || earningOffset===0" :next-disabled="earningsLoading || BigInt(earningOffset+earningPageSize)>=BigInt(earnings.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageEarnings(target - (Math.floor(earningOffset / earningPageSize + 1)))" :change-page-size="async (size: number) => { earningPageSize = size; await loadEarnings(selectedCycle!.id, 0) }" :busy="earningsLoading" /></template></ManagementList>
-     <section v-if="detailTab==='details'" class="commission-detail" role="tabpanel">
+     <section v-if="showCalculation" class="commission-detail">
+      <div class="commission-heading">
+       <h3 ref="calculationHeading" tabindex="-1">{{ t('admin.commission.ui.details') }}</h3>
+       <button type="button" class="text-button" @click="returnToResult">{{ t('admin.commission.ui.backToResult') }}</button>
+      </div>
       <ManagementList embedded><template #filters><form v-inline-validation novalidate class="commission-toolbar ui-filter-bar" @submit.prevent="withGlobalLoading(filterAllocations)"><label><FilterAssociationSearch :reset-key="allocationReset" v-model="allocationAgentFilter" v-model:pending="allocationAgentFilterSearchPending" :brand-id="brandId" surface="admin" resource="commission" kind="agent" :label="t('filter.agent')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" @update:model-value="allocationFilterChanged" /></label><label><FilterAssociationSelect v-model="allocationOrderFilter" :brand-id="brandId" surface="admin" resource="commission" kind="bet_order" :label="t('filter.bet_order')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" @update:model-value="allocationFilterChanged" /></label><button class="button button-primary" :disabled="allocationAgentFilterSearchPending || allocationsLoading || !selectedRunId" >{{ t('admin.commission.ui.query') }}</button></form></template>
       <article v-for="(row,index) in allocations?.items ?? []" :key="index" class="panel">
        <b><AssociationName :record="row" kind="agent" :id="row.agent_id" :locale="locale" /></b>
        <dl class="commission-facts"><dt>{{ t('admin.commission.ui.order') }}</dt><dd>{{ row.order_id }}</dd><dt>{{ t('filter.member') }}</dt><dd><AssociationName :record="row" kind="member" :id="row.bettor_member_id" :locale="locale" /></dd><dt>{{ t('admin.commission.ui.base') }}</dt><dd>{{ exact(row.base_points) }}</dd><dt>{{ t('admin.commission.ui.ratio') }}</dt><dd>{{ percent(row.agent_ratio) }}</dd><dt>{{ t('admin.commission.ui.downstream') }}</dt><dd>{{ percent(row.downstream_ratio) }}</dd><dt>{{ t('admin.commission.ui.difference') }}</dt><dd>{{ percent(row.difference_ratio) }}</dd><dt>{{ t('admin.commission.ui.exact') }}</dt><dd>{{ exact(row.exact_amount) }}</dd></dl>
       </article>
+      <p v-if="allocationsLoading" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
+      <p v-if="allocationsError" class="commission-warning" role="alert">{{ displayPublicError(allocationsError) }}
+       <button type="button" class="button" v-refresh-button="t('admin.commission.ui.retryRead')" @click="withGlobalLoading(loadAllocations,selectedCycle.id,selectedRunId)">{{ t('admin.commission.ui.retryRead') }}</button>
+      </p>
       <p v-if="allocations && !allocations.items.length" class="empty-state">{{ t('admin.commission.ui.empty') }}</p>
       <template #pagination><TablePagination v-if="allocations" class="commission-pager" :total="allocations.total_count" :page="Math.floor(allocationOffset / allocationPageSize + 1)" :count="allocations.items.length" :locale="locale" :page-size="allocationPageSize" :previous-disabled="allocationsLoading || allocationOffset===0" :next-disabled="allocationsLoading || BigInt(allocationOffset+allocationPageSize)>=BigInt(allocations.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageAllocations(target - (Math.floor(allocationOffset / allocationPageSize + 1)))" :change-page-size="async (size: number) => { allocationPageSize = size; await loadAllocations(selectedCycle!.id, selectedRunId, 0) }" :busy="allocationsLoading" /></template></ManagementList>
 
      <details class="commission-technical"><summary>{{ t('admin.commission.ui.sources') }}</summary><ManagementList embedded><article v-for="item in calculations?.items ?? []" :key="item.id" class="panel"><b>{{ statusText(item.reason) }} · {{ statusText(item.status) }}</b><p>{{ item.order_id }}</p><p>{{ t('admin.copy.96730052') }} {{ item.stake_points }} · {{ t('admin.copy.31452fe8') }} {{ item.prize_points }} · {{ t('admin.commission.ui.base') }} {{ item.base_points }}</p></article><template #pagination><TablePagination v-if="calculations" class="commission-pager" :total="calculations.total_count" :page="Math.floor(calculationOffset / calculationPageSize + 1)" :count="calculations.items.length" :locale="locale" :page-size="calculationPageSize" :previous-disabled="calculationsLoading || calculationOffset===0" :next-disabled="calculationsLoading || BigInt(calculationOffset+calculationPageSize)>=BigInt(calculations.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageCalculations(target - (Math.floor(calculationOffset / calculationPageSize + 1)))" :change-page-size="async (size: number) => { calculationPageSize = size; await loadCalculations(selectedCycle!.id, selectedRunId, 0) }" :busy="calculationsLoading" /></template></ManagementList></details>
      </section>
-            <section v-if="detailTab === 'history'" class="subsection"><ManagementList embedded><div class="section-title"><div><h3>{{ t('admin.copy.c29e7175') }}</h3></div><span v-global-loading v-if="runsLoading" class="tag">{{ t('admin.copy.ab7239f3') }}</span></div><button v-for="run in runs?.items ?? []" :key="run.id" :data-run-id="run.id" type="button" class="run-row" :class="{ selected: selectedRunId === run.id }" @click="withGlobalLoading(selectRun, run.id)"><b>{{ statusText(run.state) }} · {{ t('admin.copy.c8648ca9') }} {{ run.generation }}</b><span class="id">{{ run.id }}</span><span>{{ t('admin.copy.57546450') }} {{ exact(run.calculated_count) }} · {{ t('admin.copy.043f32b3') }} {{ exact(run.earning_count) }} · {{ t('admin.copy.ec082fa7') }} {{ exact(run.total_points) }}</span></button><template #pagination><TablePagination v-if="runs" class="pager" :total="runs.total_count" :page="Math.floor(runOffset / runPageSize + 1)" :count="runs.items.length" :locale="locale" :page-size="runPageSize" :previous-disabled="runsLoading || runOffset === 0" :next-disabled="runsLoading || BigInt(runOffset + runPageSize) >= BigInt(runs.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageRuns(target - (Math.floor(runOffset / runPageSize + 1)))" :change-page-size="async (size: number) => { runPageSize = size; await loadRuns(selectedCycle!.id, 0) }" :busy="runsLoading" /></template></ManagementList>
-              <div v-if="selectedRunId" class="calculations"><ManagementList embedded><h4>{{ t('admin.copy.685b8e96') }} · {{ selectedRunId }}</h4><span v-global-loading v-if="calculationsLoading" class="tag">{{ t('admin.copy.ab7239f3') }}</span><article v-for="item in calculations?.items ?? []" :key="item.id" class="calc-row"><b>{{ statusText(item.reason) }} · {{ statusText(item.status) }}</b><span class="id">{{ item.order_id }} · <AssociationName :record="item" kind="member" :id="item.member_id" :locale="associationLocale" /></span><span>{{ t('admin.copy.96730052') }} {{ exact(item.stake_points) }} · {{ t('admin.copy.31452fe8') }} {{ exact(item.prize_points) }} · {{ t('admin.copy.ef515018') }} {{ exact(item.base_points) }}</span></article><template #pagination><TablePagination v-if="calculations" class="pager" :total="calculations.total_count" :page="Math.floor(calculationOffset / calculationPageSize + 1)" :count="calculations.items.length" :locale="locale" :page-size="calculationPageSize" :previous-disabled="calculationsLoading || calculationOffset === 0" :next-disabled="calculationsLoading || BigInt(calculationOffset + calculationPageSize) >= BigInt(calculations.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageCalculations(target - (Math.floor(calculationOffset / calculationPageSize + 1)))" :change-page-size="async (size: number) => { calculationPageSize = size; await loadCalculations(selectedCycle!.id, selectedRunId, 0) }" :busy="calculationsLoading" /></template></ManagementList>
+     </section>
+     <section v-show="detailTab==='paymentRecords'" id="commission-cycle-panel-paymentRecords" class="commission-detail" role="tabpanel" aria-labelledby="commission-cycle-tab-paymentRecords">
+      <p v-if="!selectedCycle.current_run_id" class="empty-state">{{ t('admin.commission.ui.calculationNotReady') }}</p>
+      <slot v-else-if="visitedTabs.includes('paymentRecords')" name="payments" :cycle-id="selectedCycle.id" :set-locked="setPaymentsLocked" />
+     </section>
+     <section v-show="detailTab==='cycleCorrections'" id="commission-cycle-panel-cycleCorrections" class="commission-detail" role="tabpanel" aria-labelledby="commission-cycle-tab-cycleCorrections">
+      <p v-if="!selectedCycle.current_run_id" class="empty-state">{{ t('admin.commission.ui.calculationNotReady') }}</p>
+      <slot v-else-if="visitedTabs.includes('cycleCorrections')" name="corrections" :cycle-id="selectedCycle.id" :set-locked="setCorrectionsLocked" />
+     </section>
+     <section v-show="detailTab==='calculationHistory'" id="commission-cycle-panel-calculationHistory" class="commission-detail" role="tabpanel" aria-labelledby="commission-cycle-tab-calculationHistory">
+      <ManagementList v-show="!selectedRun" embedded>
+       <p v-if="runsLoading" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
+       <p v-else-if="runsError" class="commission-warning" role="alert">{{ displayPublicError(runsError) }}
+        <button type="button" class="button" v-refresh-button="t('admin.commission.ui.retryRead')" @click="withGlobalLoading(loadRuns,selectedCycle.id)">{{ t('admin.commission.ui.retryRead') }}</button>
+       </p>
+       <p v-else-if="runs && !runs.items.length" class="empty-state">{{ t('admin.commission.ui.empty') }}</p>
+       <div v-for="run in runs?.items ?? []" :key="run.id" class="commission-history-row">
+        <time :datetime="run.created_at">{{ date(run.created_at) }}</time>
+        <span class="commission-status" :class="run.state">{{ run.id===selectedCycle.current_run_id ? t('admin.commission.ui.currentResult') : statusText(run.state) }}</span>
+        <strong v-if="run.state==='ready'">{{ exact(run.total_points) }} {{ t('admin.commission.ui.pointsUnit') }}</strong>
+        <button type="button" :data-run-id="run.id" class="text-button" @click="withGlobalLoading(selectRun,run.id,$event)">{{ t('admin.commission.ui.viewRun') }}</button>
+       </div>
+       <template #pagination><TablePagination v-if="runs" class="pager" :total="runs.total_count" :page="Math.floor(runOffset / runPageSize + 1)" :count="runs.items.length" :locale="locale" :page-size="runPageSize" :previous-disabled="runsLoading || runOffset === 0" :next-disabled="runsLoading || BigInt(runOffset + runPageSize) >= BigInt(runs.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageRuns(target - (Math.floor(runOffset / runPageSize + 1)))" :change-page-size="async (size: number) => { runPageSize = size; await loadRuns(selectedCycle!.id, 0) }" :busy="runsLoading" /></template></ManagementList>
+      <div v-if="selectedRun" class="commission-detail">
+       <div class="commission-heading">
+        <h3 ref="runHeading" tabindex="-1">{{ date(selectedRun.created_at) }}</h3>
+        <button type="button" class="text-button" @click="returnToHistory">{{ t('admin.commission.ui.backToHistory') }}</button>
+       </div>
+       <dl class="commission-metrics report-summary-tags">
+        <div><dt>{{ t('admin.commission.ui.points') }}</dt><dd>{{ selectedRun.state==='ready' ? exact(selectedRun.total_points) : t('admin.commission.ui.incomplete') }}</dd></div>
+        <div><dt>{{ t('admin.commission.ui.agents') }}</dt><dd>{{ selectedRun.state==='ready' ? exact(selectedRun.earning_count) : '—' }}</dd></div>
+       </dl>
+       <ManagementList embedded>
+        <h4>{{ t('admin.commission.ui.sources') }}</h4>
+        <span v-global-loading v-if="calculationsLoading" class="tag">{{ t('admin.copy.ab7239f3') }}</span><article v-for="item in calculations?.items ?? []" :key="item.id" class="calc-row"><b>{{ statusText(item.reason) }} · {{ statusText(item.status) }}</b><span class="id">{{ item.order_id }} · <AssociationName :record="item" kind="member" :id="item.member_id" :locale="associationLocale" /></span><span>{{ t('admin.copy.96730052') }} {{ exact(item.stake_points) }} · {{ t('admin.copy.31452fe8') }} {{ exact(item.prize_points) }} · {{ t('admin.copy.ef515018') }} {{ exact(item.base_points) }}</span></article><template #pagination><TablePagination v-if="calculations" class="pager" :total="calculations.total_count" :page="Math.floor(calculationOffset / calculationPageSize + 1)" :count="calculations.items.length" :locale="locale" :page-size="calculationPageSize" :previous-disabled="calculationsLoading || calculationOffset === 0" :next-disabled="calculationsLoading || BigInt(calculationOffset + calculationPageSize) >= BigInt(calculations.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageCalculations(target - (Math.floor(calculationOffset / calculationPageSize + 1)))" :change-page-size="async (size: number) => { calculationPageSize = size; await loadCalculations(selectedCycle!.id, selectedRunId, 0) }" :busy="calculationsLoading" /></template></ManagementList>
                 <section class="subsection historical"><ManagementList embedded><h4>{{ t('admin.copy.666c29a4') }}</h4>
                   <div class="section-title"><h4>{{ t('admin.copy.e6563a7a') }}</h4><span v-global-loading v-if="runEarningsLoading" class="tag">{{ t('admin.copy.ab7239f3') }}</span></div><article v-for="row in runEarnings?.items ?? []" :key="row.id" class="run-earning-row"><b class="id"><AssociationName :record="row" kind="agent" :id="row.agent_id" :locale="associationLocale" /></b><span>{{ t('admin.copy.56b2d19b') }} <AssociationName :record="row" kind="member" :id="row.member_id" :locale="associationLocale" /> {{ t('admin.copy.54e851cb') }} {{ exact(row.points) }}</span><span>{{ t('admin.copy.d7344f9c') }} {{ exact(row.exact_amount) }}</span></article><p v-if="runEarnings && !runEarnings.items.length" class="empty empty-state">{{ t('admin.copy.a2f78367') }}</p><template #pagination><TablePagination v-if="runEarnings" class="pager" :total="runEarnings.total_count" :page="Math.floor(runEarningOffset / runEarningPageSize + 1)" :count="runEarnings.items.length" :locale="locale" :page-size="runEarningPageSize" :previous-disabled="runEarningsLoading || runEarningOffset === 0" :next-disabled="runEarningsLoading || BigInt(runEarningOffset + runEarningPageSize) >= BigInt(runEarnings.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageRunEarnings(target - (Math.floor(runEarningOffset / runEarningPageSize + 1)))" :change-page-size="async (size: number) => { runEarningPageSize = size; await loadRunEarnings(selectedCycle!.id, selectedRunId, 0) }" :busy="runEarningsLoading" /></template></ManagementList>
                   <ManagementList embedded><div class="section-title allocation-heading"><h4>{{ t('admin.copy.d4543586') }}</h4><span v-global-loading v-if="allocationsLoading" class="tag">{{ t('admin.copy.ab7239f3') }}</span></div>
@@ -634,7 +777,8 @@ const allocationReset=ref(0)
                     <span>{{ t('admin.copy.ca243f72') }} {{ exact(row.exact_amount) }}</span>
                     <small>{{ t('admin.copy.f5703e2b') }} {{ row.calculation_id }} · {{ date(row.created_at) }}</small>
                   </article>
-                  <p v-if="allocations && !allocations.items.length" class="empty empty-state">{{ t('admin.copy.ae2a5503') }}</p>
+                  <p v-if="allocationsError" class="commission-warning" role="alert">{{ displayPublicError(allocationsError) }}</p>
+      <p v-if="allocations && !allocations.items.length" class="empty empty-state">{{ t('admin.copy.ae2a5503') }}</p>
                   <template #pagination><TablePagination v-if="allocations" class="pager" :total="allocations.total_count" :page="Math.floor(allocationOffset / allocationPageSize + 1)" :count="allocations.items.length" :locale="locale" :page-size="allocationPageSize" :previous-disabled="allocationsLoading || allocationOffset === 0" :next-disabled="allocationsLoading || BigInt(allocationOffset + allocationPageSize) >= BigInt(allocations.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageAllocations(target - (Math.floor(allocationOffset / allocationPageSize + 1)))" :change-page-size="async (size: number) => { allocationPageSize = size; await loadAllocations(selectedCycle!.id, selectedRunId, 0) }" :busy="allocationsLoading" /></template></ManagementList>
                 </section>
               </div>
@@ -661,9 +805,8 @@ const allocationReset=ref(0)
 .commission-list-actions { margin-inline-start:auto; justify-content:flex-end; }
 .subsection { display:grid; gap:10px; }
 .section-title,.row-head,.actions { display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:space-between; }
-.run-row,.data-row,.calc-row,.run-earning-row,.allocation-row,.discovery-select { display:grid;gap:6px;text-align:left;overflow-wrap:anywhere; }
-.run-row,.calc-row,.run-earning-row,.allocation-row,.discovery-row { padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface); }
-.run-row.selected { border-color:var(--primary);background:var(--primary-light); }
+.data-row,.calc-row,.run-earning-row,.allocation-row,.discovery-select { display:grid;gap:6px;text-align:left;overflow-wrap:anywhere; }
+.calc-row,.run-earning-row,.allocation-row,.discovery-row { padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface); }
 .id { overflow-wrap:anywhere; }
 .pending { border-color:var(--warning); }
 .pending-item { padding-block:8px; }

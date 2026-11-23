@@ -9,7 +9,21 @@ export function registerWorkspaceTests(){
   await installLayoutApi(page,locale);await installWalletLayoutApi(page)
   await page.goto(`${origins.user}/`)
   await expect(page.locator('.configured-options button')).toHaveCount(49)
+  const accountOverview=page.locator('.workspace-overview-toggle')
+  await accountOverview.click()
+  const accountStats=page.locator('.user-overview-grid > .stat-pair')
+  await expect(accountStats).toHaveCount(3)
+  await expect(accountStats.nth(1)).toContainText('120')
   const preset=page.viewportSize()!
+  if(info.project.name.endsWith('reflow'))await page.setViewportSize({width:1440,height:preset.height})
+  if(page.viewportSize()!.width>=1280){
+   const tops=await accountStats.evaluateAll(items=>items.map(item=>item.getBoundingClientRect().top))
+   expect(Math.max(...tops)-Math.min(...tops)).toBeLessThan(6)
+  }
+  if(info.project.name.endsWith('reflow'))await page.setViewportSize({width:320,height:preset.height})
+  await expectNoPageOverflow(page)
+  if(info.project.name.endsWith('reflow'))await page.setViewportSize(preset)
+  await accountOverview.click()
   for(const width of info.project.name.endsWith('reflow')?[320,620,999,1000,1001,1440,1920]:[preset.width]){
    if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:800})
    const layout=await page.locator('.configured-selection').evaluate(selection=>{

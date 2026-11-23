@@ -312,7 +312,7 @@ onBeforeUnmount(() => {
           <dl class="notification-bet-summary">
             <div><dt>{{ ui('user.notifications.betGame') }}</dt><dd>{{ betOrder.game_name }}</dd></div>
             <div><dt>{{ ui('user.orders.column.period') }}</dt><dd>{{ betOrder.period_no }}</dd></div>
-            <div><dt>{{ ui('user.orders.column.stake') }}</dt><dd>{{ betOrder.quote.bet_points }}</dd></div>
+            <div><dt>{{ ui('user.orders.column.stake') }}</dt><dd><span data-numeric-tone="info">{{ betOrder.quote.bet_points }}</span></dd></div>
             <div><dt>{{ ui('user.orders.column.time') }}</dt><dd>{{ formatDisplayDateTime(betOrder.placed_at, locale) }}</dd></div>
           </dl>
           <ConfiguredBetReviewTable :snapshot="betOrder.snapshot" :lines="betOrder.quote.lines" :locale="catalogLocale" />

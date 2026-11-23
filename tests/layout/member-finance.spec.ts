@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 import { selectControl } from '../select-control'
 import { openBrandPage } from './real-console-session'
 import { expect, test } from '@playwright/test'
-import { expectNoPageOverflow, gameId, installLayoutApi, origins } from './fixture'
+import { cashBalanceFixture, expectNoPageOverflow, gameId, installLayoutApi, origins } from './fixture'
 
 for (const locale of ['zh-CN', 'en'] as const) test(`member finance opens from row actions and preserves the member query (${locale})`, async ({ page }, info) => {
   await installLayoutApi(page, locale)
@@ -35,7 +35,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`member finance opens from r
       return reply({ items: [{ id: memberId, global_user_id: memberId, brand_id: gameId, username: 'member001', phone: '', display_name: '', notes: '', tags: [], status: 'normal', online: false, display_points: '0', joined_at: '2026-10-24T00:00:00Z' }], limit: Number(url.searchParams.get('limit')), offset: Number(url.searchParams.get('offset')), total_count: '101' })
     }
     if (path.endsWith('/cash/orders')) return reply({items:[],total_count:'0'})
-    if (path.endsWith(`/cash/balances/${memberId}`)) return reply({items:[]})
+    if (path.endsWith(`/cash/balances/${memberId}`)) return reply(cashBalanceFixture())
     if (path.endsWith(`/wallets/${memberId}`)) return reply({ account_id: gameId, brand_id: gameId, member_id: memberId, version: 1, display_points: '0', available_points: '0', frozen_points: '0', withdrawal_points: '0', recharge_points: '0', winning_points: '0', gift_points: '0', commission_points: '0', manual_frozen_points: '0', system_frozen_points: '0', by_source: buckets })
     if (path.endsWith('/recharge-quota/entries')) {
       quotaQueries.push(url.searchParams.get('offset')!)
@@ -86,6 +86,14 @@ for (const locale of ['zh-CN', 'en'] as const) test(`member finance opens from r
     await expect(area.locator('.page-head, .finance-members, .lookup')).toHaveCount(0)
     await expect(list).toHaveCount(1)
     if (name === (zh ? '积分' : 'Points')) {
+      const points = detail.locator('.wallet-panel .totals strong')
+      const cash = detail.locator('.detail-section tbody tr').first().locator('td span')
+      for (const [index, color] of ['rgb(3, 105, 161)', 'rgb(4, 120, 87)', 'rgb(100, 116, 139)', 'rgb(180, 83, 9)'].entries()) {
+        await expect(points.nth(index)).toHaveCSS('color', color)
+      }
+      await expect(cash.nth(0)).toHaveCSS('color', 'rgb(3, 105, 161)')
+      await expect(cash.nth(1)).toHaveCSS('color', 'rgb(4, 120, 87)')
+      await expect(cash.nth(2)).toHaveCSS('color', 'rgb(180, 83, 9)')
       const form = detail.locator('.operations-grid form')
       await expect(form).toHaveCount(1)
       await expect(form.getByRole('heading')).toHaveText(zh ? '积分调整' : 'Points adjustment')
@@ -206,6 +214,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`member finance opens from r
     await expect(page.locator('.breadcrumbs b')).toHaveText(zh?'会员管理':'Member management')
   }
   await openBrandPage(page, zh ? '充值记录' : 'Recharge records')
+  await selectControl(page.getByTestId('recharge-record-type'), 'manual')
   const records = page.locator('.console-recharges-table')
   await expect(records.locator('tbody tr')).toHaveCount(1)
   await expect(page.locator('.finance-management > .console-panel > .table-pagination')).toBeVisible()
@@ -506,6 +515,11 @@ for(const locale of ['en','zh-CN'] as const)test(`platform reports display summa
  await page.goto(url)
  const summary=page.getByTestId('platform-reports-summary'),details=page.getByTestId('platform-reports-list'),pagination=page.getByTestId('platform-reports-pages')
  await expect(summary.locator('.report-summary-tags > div')).toHaveCount(fields.length)
+ for(const [field,color] of [['stake_points','rgb(3, 105, 161)'],['won_count','rgb(4, 120, 87)'],['lost_count','rgb(190, 18, 60)'],['unfinalized_stake_points','rgb(180, 83, 9)']] as const){
+  const index=fields.indexOf(field)
+  await expect(summary.locator('dd span').nth(index)).toHaveCSS('color',color)
+  await expect(details.locator('tbody td span').nth(index)).toHaveCSS('color',color)
+ }
  await expect(details).toBeVisible();await expect(pagination).toBeVisible()
  await expect(page.getByRole('button',{name:/导出|Export/})).toHaveCount(0)
  await expect(page.getByRole('heading',{name:locale==='en'?'Grouped data':'分组数据',exact:true})).toHaveCount(0)

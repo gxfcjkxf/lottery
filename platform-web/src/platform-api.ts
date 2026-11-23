@@ -14,6 +14,7 @@ export interface PlatformCommissionPolicy {
  config: { enabled: boolean; payout_mode: 'manual' | 'automatic'; calendar: null | { timezone: string; cycle: 'weekly' | 'monthly'; boundary_time: string; weekday: number | null; month_day: number | null; short_month: '' | 'last_day' | 'skip' } }
 }
 export interface PlatformSettings { theme: ThemeId; version: number; display_name: string; logo_text: string; logo_url: string; timezone: string; date_format: 'YYYY-MM-DD' | 'DD/MM/YYYY' | 'MM/DD/YYYY'; time_format: 'HH:mm:ss' | 'hh:mm:ss A'; updated_at: string; audit_log_id?: string }
+export interface PlatformSettingsRequest { body: Omit<PlatformSettings, 'audit_log_id' | 'updated_at'>; key: string }
 export type PlatformPresentation = Pick<PlatformSettings, 'display_name' | 'logo_text' | 'logo_url'>
 export interface BrandCreateInput { code: string; name: string; default_locale: 'en' | 'zh-CN'; timezone: string; reason?: string }
 interface BetFrequencyGame { id: string; name: string }
@@ -138,7 +139,7 @@ export function createPlatformApi(fetcher: typeof fetch = fetch) {
       if (!isPlatformSettings(data)) apiError('Invalid platform settings response', 0, 'INVALID_RESPONSE')
       return data
     },
-    async updatePlatformSettings(input: Omit<PlatformSettings, 'audit_log_id' | 'updated_at'>, key = crypto.randomUUID()) {
+    async updatePlatformSettings(input: PlatformSettingsRequest['body'], key: string) {
       const data = await request<unknown>('/platform-settings', { method: 'PATCH', body: input, key })
       if (!isPlatformSettings(data)) apiError('Invalid platform settings response', 0, 'INVALID_RESPONSE')
       return data

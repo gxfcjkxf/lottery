@@ -73,6 +73,13 @@ export function registerPlatformOverviewTests(reflow = false) {
         if (reflow) await page.setViewportSize({ width, height: preset.height })
         await expectNoPageOverflow(page)
         await expect(overview.locator('.overview-stats > article')).toHaveCount(4)
+        if (width === 1440) {
+          expect(await overview.locator('.overview-current').evaluate(container => container.getBoundingClientRect().bottom <= window.innerHeight)).toBe(true)
+          for (const selector of ['.overview-stats > article', '.overview-current > div', '.overview-business:first-child dl > div']) {
+            const tops = await overview.locator(selector).evaluateAll(items => items.map(item => item.getBoundingClientRect().top))
+            expect(Math.max(...tops) - Math.min(...tops)).toBeLessThan(6)
+          }
+        }
         await expect(overview.locator('.overview-chart-column')).toHaveCount(7)
       }
       const group = overview.getByRole('group')

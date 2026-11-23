@@ -1,7 +1,7 @@
 import type { CommissionPaymentActionBody, CommissionPaymentPolicyBody } from "./commissionPayments-api";
 
 export type CommissionPaymentOperation = "policy" | "approve" | "retry";
-export interface CommissionPaymentIntentScope { accountId: string; brandId: string; operation: CommissionPaymentOperation; targetId?: string }
+export interface CommissionPaymentIntentScope { accountId: string; brandId: string; operation: CommissionPaymentOperation; targetId?: string; cycleId?: string }
 export interface PendingCommissionPaymentIntent extends CommissionPaymentIntentScope {
   readonly body: Readonly<CommissionPaymentPolicyBody | CommissionPaymentActionBody>;
   readonly key: string;
@@ -35,7 +35,7 @@ function canonicalBody(operation: CommissionPaymentOperation, body: CommissionPa
     : { version: body.version, reason: body.reason });
 }
 function validIntent(intent: PendingCommissionPaymentIntent, scope: CommissionPaymentIntentScope): boolean {
-  if (!validScope(scope) || !validScope(intent) || commissionPaymentIntentKey(intent) !== commissionPaymentIntentKey(scope) || !KEY.test(intent.key) || !intent.body || typeof intent.body !== "object" || Array.isArray(intent.body) || !validReason(intent.body.reason)) return false;
+  if (!validScope(scope) || !validScope(intent) || (intent.cycleId !== undefined && !UUID.test(intent.cycleId)) || commissionPaymentIntentKey(intent) !== commissionPaymentIntentKey(scope) || !KEY.test(intent.key) || !intent.body || typeof intent.body !== "object" || Array.isArray(intent.body) || !validReason(intent.body.reason)) return false;
   if (!Number.isSafeInteger(intent.body.version) || intent.body.version < 1 || intent.body.version >= Number.MAX_SAFE_INTEGER) return false;
   return scope.operation === "policy"
     ? Object.keys(intent.body).sort().join(",") === "enabled,reason,version" && typeof (intent.body as CommissionPaymentPolicyBody).enabled === "boolean"
@@ -43,7 +43,8 @@ function validIntent(intent: PendingCommissionPaymentIntent, scope: CommissionPa
 }
 function copy(intent: PendingCommissionPaymentIntent): PendingCommissionPaymentIntent {
   return Object.freeze({ accountId: intent.accountId, brandId: intent.brandId, operation: intent.operation,
-    ...(intent.targetId === undefined ? {} : { targetId: intent.targetId }), body: canonicalBody(intent.operation, intent.body), key: intent.key });
+    ...(intent.targetId === undefined ? {} : { targetId: intent.targetId }),
+    ...(intent.cycleId === undefined ? {} : { cycleId: intent.cycleId }), body: canonicalBody(intent.operation, intent.body), key: intent.key });
 }
 export function getPendingCommissionPaymentIntent(scope: CommissionPaymentIntentScope): PendingCommissionPaymentIntent | null {
   if (!validScope(scope)) return null;

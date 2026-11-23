@@ -67,7 +67,7 @@ onBeforeUnmount(() => {
       <header class="modal-heading detail-modal-heading">
         <h2 :id="titleId" tabindex="-1" autofocus>{{ title }}</h2>
         <slot name="heading-extra" />
-        <button type="button" class="icon-button detail-modal-close" :aria-label="closeLabel" :disabled="closeDisabled" @click="emit('close')"><SiteIcon name="close" /></button>
+        <button type="button" class="detail-modal-close" :aria-label="closeLabel" :disabled="closeDisabled" @click="emit('close')"><SiteIcon name="close" /></button>
       </header>
       <div class="detail-modal-content"><slot /></div>
       <div v-if="$slots.footer" class="detail-modal-footer ui-form-actions"><slot name="footer" /></div>
@@ -113,7 +113,10 @@ onBeforeUnmount(() => {
 .detail-modal-heading h2 { margin: 0; font-size: 20px; font-weight: 750; overflow-wrap: anywhere; }
 .detail-modal-heading h2:focus { outline: none; }
 .detail-modal .detail-modal-close { --site-icon-size:16px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:var(--control-height); height:var(--control-height); min-width:var(--control-height); min-height:var(--control-height); padding:0; border:0; border-radius:var(--radius-sm); background:transparent; color:var(--muted); box-shadow:none; cursor:pointer; transition:background-color 150ms,color 150ms; }
-.detail-modal .detail-modal-close:hover { background:var(--canvas); color:var(--ink); }
+@media (hover: hover) {
+  .detail-modal .detail-modal-close:hover { background:var(--canvas); color:var(--ink); }
+}
+.detail-modal .detail-modal-close:focus-visible { outline:2px solid var(--primary); outline-offset:-2px; }
 .detail-modal-content { flex: 1 1 auto; min-width: 0; min-height: 0; margin: 0; padding: 12px 16px; overflow: auto; overflow-wrap: anywhere; }
 .detail-modal-footer {
   flex: 0 0 auto;

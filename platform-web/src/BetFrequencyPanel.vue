@@ -43,7 +43,7 @@ const page = ref(1)
 let mounted = true
 
 const columns = computed(() => [
-  { key: 'play', label: t('betFrequency.play') },
+  { key: 'play', label: t('betFrequency.play'), cellClass: 'frequency-play' },
   { key: 'count', label: t('betFrequency.items'), cellClass: 'frequency-number' },
   { key: 'share', label: t('betFrequency.share'), cellClass: 'frequency-number' },
 ])
@@ -143,9 +143,9 @@ onBeforeUnmount(() => { mounted = false })
       </form>
     </template>
     <template v-if="result && showSummary" #summary>
-      <dl class="report-summary-tags bet-frequency-summary">
-        <div><dt>{{ t('betFrequency.items') }}</dt><dd>{{ integerFormat.format(BigInt(result.effective_item_count)) }}</dd></div>
-        <div><dt>{{ t('betFrequency.activePlays') }}</dt><dd>{{ integerFormat.format(BigInt(result.play_count)) }}</dd></div>
+      <dl class="report-summary-tags">
+        <div><dt>{{ t('betFrequency.items') }}</dt><dd><span data-numeric-tone="info">{{ integerFormat.format(BigInt(result.effective_item_count)) }}</span></dd></div>
+        <div><dt>{{ t('betFrequency.activePlays') }}</dt><dd><span data-numeric-tone="info">{{ integerFormat.format(BigInt(result.play_count)) }}</span></dd></div>
       </dl>
     </template>
     <div v-if="catalogFailed" class="empty-state" role="alert">
@@ -156,8 +156,8 @@ onBeforeUnmount(() => { mounted = false })
     <p v-if="queryError" class="empty-state" role="alert">{{ t(queryError) }}</p>
     <ManagementTable v-if="result && showDetails" :entries="entries" :columns="columns" :empty="!entries.length" :empty-label="t('betFrequency.empty')" table-class="frequency-table">
       <template #play="{ entry }">{{ entry.label[locale] }}</template>
-      <template #count="{ entry }">{{ integerFormat.format(BigInt(entry.effective_item_count)) }}</template>
-      <template #share="{ entry }">{{ share(entry.effective_item_count, result.effective_item_count) }}</template>
+      <template #count="{ entry }"><span data-numeric-tone="info">{{ integerFormat.format(BigInt(entry.effective_item_count)) }}</span></template>
+      <template #share="{ entry }"><span data-numeric-tone="muted">{{ share(entry.effective_item_count, result.effective_item_count) }}</span></template>
     </ManagementTable>
     <template v-if="result && showDetails && result.play_count !== '0'" #pagination>
       <TablePagination
@@ -171,15 +171,11 @@ onBeforeUnmount(() => { mounted = false })
 </template>
 
 <style scoped>
-.bet-frequency-summary > div {
-  grid-template-columns: max-content max-content !important;
-  column-gap: 8px !important;
-}
 :deep(.frequency-number) { font-variant-numeric: tabular-nums; }
 @media (max-width: 1080px) {
   .management-list :deep(.frequency-table td.frequency-number) { grid-column: auto; }
-  .management-list :deep(.frequency-table tr:not(:has(.empty-state)) > td:first-child) { font-weight: 650; }
-  .management-list :deep(.frequency-table tr:not(:has(.empty-state)) > td:first-child::before) { content: none; }
+  .management-list :deep(.frequency-table td.frequency-play) { font-weight: 650; }
+  .management-list :deep(.frequency-table td.frequency-play::before) { content: none; }
 }
 @media (min-width: 1081px) {
   .management-list :deep(.frequency-table th:nth-child(n+2)),

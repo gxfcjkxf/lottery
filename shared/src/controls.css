@@ -253,7 +253,7 @@ button[data-write-locked], form[data-write-locked] button[type=submit], form[dat
 
 /* Opt in short fields; long/complex editors retain their existing structure. */
 #app .ui-form label.ui-field-row { grid-template-columns: fit-content(38%) minmax(0, 1fr); align-items: center; gap: 4px 8px; }
-#app .ui-form label.ui-field-row > :is(input, .select-control, .platform-temporal-input) { width: 100%; min-width: 0; }
+#app .ui-form label.ui-field-row > :is(input:not([type="checkbox"], [type="radio"]), .select-control, .platform-temporal-input) { width: 100%; min-width: 0; }
 #app .ui-form label.ui-field-row > :is(small, .field-error) { grid-column: 2; }
 
 /* Simple dialog fields share one label column; nested editors keep their layout. */
@@ -271,12 +271,12 @@ button[data-write-locked], form[data-write-locked] button[type=submit], form[dat
 #app .detail-modal :is(.ui-form > label, .ui-form > fieldset > label, .ui-form > .form-grid > label, .ui-form > .form-row > label, label.ui-field-row) > input:not([type="checkbox"], [type="radio"]) { --input-width: min(100%, var(--ui-field-control-width, 100%)); }
 #app .detail-modal :is(.ui-form > label, .ui-form > fieldset > label, .ui-form > .form-grid > label, .ui-form > .form-row > label, label.ui-field-row) > :is(small, .field-error, .inline-validation-error) { grid-column: 2; text-align: start; }
 #app .detail-modal :is(.ui-form > label, .ui-form > fieldset > label, .ui-form > .form-grid > label, .ui-form > .form-row > label, label.ui-field-row):has(> input:is([type="checkbox"], [type="radio"])):not(:has(> span + input[type="checkbox"])) { padding-inline-start: calc(var(--ui-form-label-width) + var(--ui-form-label-gap)); text-align: start; }
-#app .detail-modal :is(.ui-form > label, .ui-form > fieldset > label, .ui-form > .form-grid > label, .ui-form > .form-row > label, label.ui-field-row) > input:is([type="checkbox"], [type="radio"]) { margin: 0; justify-self: start; }
+#app .detail-modal :is(.ui-form > label, .ui-form > fieldset > label, .ui-form > .form-grid > label, .ui-form > .form-row > label, label.ui-field-row) > input:is([type="checkbox"], [type="radio"]) { margin: 0; justify-self: var(--ui-field-control-align, start); }
 #app .detail-modal :is(.role-identity, .ui-form > .form-row, .ui-form > .form-grid, .brand-operation-options, .automation-fields, .rule-flat-fields, .rule-initial-prices, .configured-sales-limits) { grid-template-columns: minmax(0, 1fr); }
 /* Quantities stay compact; identifiers, account numbers and long text keep their width. */
 #app .detail-modal :is(.ui-form label, label.ui-field-row):has(> input:is([type="number"], [inputmode="decimal"], .ui-number-input), > .am-ratio-input) { --ui-field-control-width: 160px; --ui-field-value-align: end; }
 #app .detail-modal .ui-facts-form { --ui-field-label-align: start; --ui-field-control-align: end; }
-#app .detail-modal .ui-facts-form .select-control { justify-content: flex-end; }
+#app .detail-modal .ui-facts-form :is(.select-control, .am-ratio-input) { justify-content: flex-end; }
 #app .detail-modal .ui-facts-form .ui-field-row > span:first-child { color: var(--muted); font-weight: 400; }
 #app .detail-modal .automation-fields > label.ui-field-row { margin-block: 0; }
 #app .detail-modal .ui-form-field { display: grid; grid-template-columns: var(--ui-form-label-width) minmax(0, 1fr); align-items: center; gap: 6px var(--ui-form-label-gap); min-width: 0; min-height: var(--control-height); text-align: end; }

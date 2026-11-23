@@ -154,7 +154,7 @@ describe('platform API boundary', () => {
 
   it('exposes only the intended platform API methods', async () => {
     const api = createPlatformApi()
-    expect(Object.keys(api).sort()).toEqual(['audit', 'brands', 'changePassword', 'commissionSettings', 'createBrand', 'deleteBrand', 'deleteMemberAccount', 'login', 'logout', 'me', 'platformSettings', 'presentation', 'updateCommissionSettings', 'updatePlatformSettings', 'users'])
+    expect(Object.keys(api).sort()).toEqual(['audit', 'betFrequency', 'betFrequencyGames', 'brands', 'changePassword', 'commissionSettings', 'createBrand', 'deleteBrand', 'deleteMemberAccount', 'login', 'logout', 'me', 'platformSettings', 'presentation', 'updateCommissionSettings', 'updatePlatformSettings', 'users'])
     expect(PlatformApiError).toBeDefined()
   })
   it('reads public branding before authentication and rejects incomplete or private fields', async () => {

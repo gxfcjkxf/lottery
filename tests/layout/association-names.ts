@@ -10,7 +10,7 @@ const bootstrapPermissions = [...new Set(Array.from(
 
 export function registerAssociationNameTests() {
  for (const locale of ['en', 'zh-CN'] as const) {
-  test(`brand role details do not break new account creation (${locale})`, async ({ page }, info) => {
+  test(`brand role details do not break new account creation (${locale})`, async ({ page, browserName }, info) => {
    const zh=locale==='zh-CN', errors:string[]=[], role='bbbbbbbb-bbbb-4bbb-8bbb-000000000001', created='cccccccc-cccc-4ccc-8ccc-000000000001'
    const writes:{body:unknown;key:string|undefined}[]=[]
    page.on('pageerror',error=>errors.push(error.message))
@@ -59,16 +59,36 @@ export function registerAssociationNameTests() {
    await newAccount.click()
    const form=page.getByRole('dialog',{name:zh?'新建账号':'New account',exact:true})
    await expect(form).toBeVisible()
+   const close = form.locator('.detail-modal-close')
+   await expect(close).toHaveCSS('border-top-width', '0px')
+   await expect(close).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+   await expect(close).toHaveCSS('outline-style', 'none')
    await expect(form).toContainText(zh?'密码':'Password')
    await expect(form).not.toContainText(/100.*(?:角色|roles)/)
    await expectNoPageOverflow(page)
    await page.screenshot({path:info.outputPath('account-character-limit.png')})
-   await form.locator('.detail-modal-close').click()
+   const tab = browserName === 'webkit' ? 'Alt+Tab' : 'Tab'
+   await page.keyboard.press(tab)
+   await expect(close).toBeFocused()
+   await expect(close).toHaveCSS('outline-style', 'solid')
+   await expect(close).toHaveCSS('outline-offset', '-2px')
+   await close.click()
    await expect(form).toHaveCount(0);await newAccount.click();await expect(form).toBeVisible()
+   if (info.project.name.endsWith('reflow')) await page.setViewportSize({ width: 320, height: 800 })
    await form.locator('input[autocomplete="off"]').fill('dialog_test')
    await form.locator('input[type="password"]').fill('fixture-password-2026')
-   await form.getByRole('checkbox').check()
+   const checkbox = form.getByRole('checkbox')
+   await checkbox.check()
+   await expect(checkbox).toHaveCSS('box-shadow', 'none')
+   await expect(checkbox).toHaveCSS('outline-style', 'none')
    await page.screenshot({path:info.outputPath(`new-brand-account-${locale}.png`)})
+   await form.locator('input[type="password"]').click()
+   await page.keyboard.press(tab)
+   await expect(checkbox).toBeFocused()
+   await expect(checkbox).toHaveCSS('outline-style', 'solid')
+   await page.keyboard.press('Space')
+   await expect(checkbox).not.toBeChecked()
+   await checkbox.check()
    await form.getByRole('button',{name:zh?'保存':'Save',exact:true}).click()
    await expect(form).toHaveCount(0)
    await expect(page.getByTestId('platform-access-list')).toContainText('dialog_test')

@@ -18,7 +18,7 @@ useOperationToast(error,v=>i18n.errorText(v),'error')
 </script>
 <template>
  <section class="console-stack agent-wallet">
-  <div v-if="wallet" class="management-list-summary"><SummaryFacts :fields="[{label:t('points'),value:formatPoints(wallet.available_points,locale)},{label:t('commission'),value:formatPoints(wallet.commission_points,locale)}]" /></div>
+  <div v-if="wallet" class="management-list-summary"><SummaryFacts class="report-summary-tags" :fields="[{label:t('points'),value:formatPoints(wallet.available_points,locale),tone:'success'},{label:t('commission'),value:formatPoints(wallet.commission_points,locale),tone:'info'}]" /></div>
   <button v-if="error" type="button" class="text-button" v-refresh-button :aria-label="t('retryRead')" @click="withGlobalLoading(load)">{{t('retryRead')}}</button>
   <CashWallet api-base="/api/v1/agent" :read-available-points="readAvailablePoints" :member="member" :mode="mode" agent :t="t" :locale="locale" :error-text="i18n.errorText" @auth-expired="emit('session-invalid')" @deposit="emit('deposit')" @withdrawal="emit('withdrawal')" @exchanged="load" @manage-accounts="emit('manage-accounts', $event)" />
  </section>

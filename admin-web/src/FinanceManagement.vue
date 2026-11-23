@@ -750,22 +750,22 @@ useOperationToast(() => rechargeError.value, value => display(value), 'error');
             {{ t('admin.copy.894e2a7d') }}
           </button>
         </div>
-        <div class="totals">
-          <article class="total prominent">
+        <div class="totals stat-strip">
+          <article class="total stat-pair prominent">
             <span>{{ t('admin.copy.628e6b32') }}</span
-            ><strong>{{ formatIntegerAmount(wallet.display_points) }}</strong>
+            ><strong data-wallet-amount="total">{{ formatIntegerAmount(wallet.display_points) }}</strong>
           </article>
-          <article class="total">
+          <article class="total stat-pair">
             <span>{{ t('admin.copy.e9231c7d') }}</span
-            ><strong>{{ formatIntegerAmount(wallet.available_points) }}</strong>
+            ><strong data-wallet-amount="available">{{ formatIntegerAmount(wallet.available_points) }}</strong>
           </article>
-          <article class="total">
+          <article class="total stat-pair">
             <span>{{ t('admin.copy.4816eabf') }}</span
-            ><strong>{{ formatIntegerAmount(wallet.frozen_points) }}</strong>
+            ><strong data-wallet-amount="frozen">{{ formatIntegerAmount(wallet.frozen_points) }}</strong>
           </article>
-          <article class="total">
+          <article class="total stat-pair">
             <span>{{ t('admin.copy.f56770cc') }}</span
-            ><strong>{{
+            ><strong data-wallet-amount="withdrawal">{{
               formatIntegerAmount(wallet.withdrawal_points)
             }}</strong>
           </article>
@@ -783,7 +783,7 @@ useOperationToast(() => rechargeError.value, value => display(value), 'error');
           >
             <b>{{ sourceName(bucket.source) }}</b
             ><span>{{ stateName(bucket.state) }}</span
-            ><strong>{{ formatIntegerAmount(bucket.value) }}</strong>
+            ><strong :data-wallet-amount="bucket.state">{{ formatIntegerAmount(bucket.value) }}</strong>
           </div>
         </div>
         </details>
@@ -1135,18 +1135,13 @@ useOperationToast(() => rechargeError.value, value => display(value), 'error');
   margin: 0;
 }
 .totals {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 9px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 .total {
-  display: grid;
-  gap: 6px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 11px;
-  min-width: 0;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
 }
 .total span {
   font-size: var(--body-font-size);
@@ -1330,9 +1325,6 @@ useOperationToast(() => rechargeError.value, value => display(value), 'error');
   }
   .lookup label {
     max-width: 100%;
-  }
-  .totals {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .panel {
     padding: 13px;

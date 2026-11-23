@@ -1,10 +1,6 @@
 <script setup lang="ts">
-import { useOperationToast } from "@lottery/shared";
-import { formValidationText } from '@lottery/shared'
-import { vWriteGuard } from "@lottery/shared";
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { withGlobalLoading, vGlobalLoading, vInlineValidation } from '@lottery/shared';
-import DetailModal from '@lottery/shared/DetailModal.vue';
+import { formValidationText, useOperationToast, vGlobalLoading, vInlineValidation, vWriteGuard, withGlobalLoading } from '@lottery/shared';
 import { usePlatformI18n } from './i18n';
 import { PlatformApiError, type PlatformAccount } from './platform-api';
 import { createSecuritySettingsApi, securityIntents, type AuthSettings, type SecurityKind, type SecurityIntent } from './security-settings-api';
@@ -14,20 +10,13 @@ const { t, errorMessage, displayError } = usePlatformI18n();
 const api = createSecuritySettingsApi();
 const selected = computed(() => props.kind);
 const auth = ref<AuthSettings | null>(null);
-const editorOpen = ref(false), draftAuth = ref<AuthSettings | null>(null);
-const loading = ref(false), busy = ref(false), readFailed = ref(false), freshConflict = ref(false);
+const loading = ref(false), busy = ref(false), readFailed = ref(false);
 const pending = ref<SecurityIntent | null>(null), error = ref<ReturnType<typeof errorMessage> | null>(null), saved = ref(false);
 let generation = 0;
 const scope = () => `${props.account.id}::${selected.value}`;
-const resource = computed(() => 'auth_config');
-const canView = computed(() => props.account.platform_permissions.includes(`${resource.value}.view.platform`));
-const canWrite = computed(() => props.account.platform_permissions.includes(`${resource.value}.write.platform`));
+const canView = computed(() => props.account.platform_permissions.includes('auth_config.view.platform'));
+const canWrite = computed(() => props.account.platform_permissions.includes('auth_config.write.platform'));
 const editable = computed(() => canWrite.value && !props.blocked && !loading.value && !busy.value && !pending.value && !readFailed.value);
-function startEdit() {
-  if (!canView.value || !editable.value) return;
-  draftAuth.value = auth.value ? { ...auth.value } : null;
-  error.value = null; saved.value = false; editorOpen.value = true;
-}
 function report(cause: unknown, read = false) {
  error.value = errorMessage(cause, read ? 'read' : 'write');
  if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) emit('failure', cause); }
@@ -37,35 +26,33 @@ async function load() {
   try {
     const value = await api.read(kind, '');
     if (token !== generation) return;
-    auth.value = value as AuthSettings;
-    readFailed.value = false; freshConflict.value = pending.value?.phase === 'conflict';
+    auth.value = value;
+    readFailed.value = false;
+    if (pending.value?.phase === 'conflict') {
+      securityIntents.clear(scope());
+      pending.value = null;
+    }
   } catch (cause) { if (token === generation) { readFailed.value = true; report(cause, true); } }
   finally { if (token === generation) loading.value = false; }
 }
 async function save() {
   if (pending.value) { await submit(); return; }
   if (!editable.value) return;
-  const body = selected.value === 'auth' && draftAuth.value ? { version: draftAuth.value.version, inherit_platform: false, captcha_enabled: draftAuth.value.captcha_enabled, telegram_enabled: draftAuth.value.telegram_enabled, telegram_client_id: draftAuth.value.telegram_client_id.trim(), reason: '' } : null;
+  const body = selected.value === 'auth' && auth.value ? { version: auth.value.version, inherit_platform: false, captcha_enabled: auth.value.captcha_enabled, telegram_enabled: auth.value.telegram_enabled, telegram_client_id: auth.value.telegram_client_id.trim(), reason: '' } : null;
   if (!body) return;
   pending.value = { kind: selected.value, body: JSON.stringify(body), key: crypto.randomUUID(), phase: 'review' };
   securityIntents.set(scope(), pending.value); saved.value = false; await submit();
 }
-function openPending() {
-  if (!pending.value) return;
-  draftAuth.value = JSON.parse(pending.value.body) as AuthSettings;
-  editorOpen.value = true;
-}
-async function discardConflict() { if (!freshConflict.value || busy.value) return; securityIntents.clear(scope()); pending.value = null; editorOpen.value = false; await load(); }
 async function submit() {
   const intent = pending.value;
-  if (!intent || intent.phase === 'conflict' || busy.value || !canWrite.value) return;
+  if (!intent || intent.phase === 'conflict' || busy.value || loading.value || !canView.value || !canWrite.value || props.blocked) return;
   const own = scope(), token = generation, epoch = securityIntents.epoch();
   busy.value = true; error.value = null;
   pending.value = { ...intent, phase: 'unknown' }; securityIntents.set(own, pending.value);
   try {
-    await api.write('', intent); if(epoch !== securityIntents.epoch()) return; securityIntents.clear(own);
+    const receipt = await api.write('', intent); if(epoch !== securityIntents.epoch()) return; securityIntents.clear(own);
     if (token !== generation) return;
-    pending.value = null; editorOpen.value = false; saved.value = true; await load();
+    pending.value = null; auth.value = receipt; saved.value = true; await load();
   } catch (cause) {
     if(epoch !== securityIntents.epoch()) return;
     const status = cause instanceof PlatformApiError ? cause.status : 0;
@@ -73,16 +60,17 @@ async function submit() {
     if (phase) securityIntents.set(own, { ...intent, phase }); else securityIntents.clear(own);
     if (token !== generation) return;
     pending.value = securityIntents.get(own);
-    report(cause); if (phase === 'conflict') { freshConflict.value = false; await load(); }
+    report(cause);
   } finally { if (scope() === own) busy.value = false; }
 }
 watch(() => [props.account.id, props.kind, canView.value, canWrite.value], () => {
-  ++generation; loading.value = false; error.value = null; editorOpen.value = false; draftAuth.value = null; auth.value = null; busy.value = false; saved.value = false; readFailed.value = false;
+  ++generation; loading.value = false; error.value = null; auth.value = null; busy.value = false; saved.value = false; readFailed.value = false;
   pending.value = securityIntents.get(scope());
-  if (pending.value) openPending();
-  if (canView.value) void withGlobalLoading(load);
+  if (!canView.value) return;
+  if (pending.value) auth.value = JSON.parse(pending.value.body) as AuthSettings;
+  else void withGlobalLoading(load);
 }, { immediate: true, flush: 'sync' });
-watch(() => Boolean(pending.value) || busy.value || editorOpen.value, value => emit('locked', value), { immediate: true });
+watch(() => Boolean(pending.value) || busy.value, value => emit('locked', value), { immediate: true });
 onBeforeUnmount(() => { ++generation; });
 useOperationToast(saved, () => t('security.saved'), 'success');
 
@@ -92,46 +80,26 @@ useOperationToast(error, value => displayError(value), 'error');
 <template>
   <section class="security-settings-section brand-settings-panel" :data-kind="kind">
     <p v-if="!canView" role="status">{{ t('security.noPermission') }}</p>
-    <p v-global-loading v-else-if="loading && !(auth)">{{ t('platform.copy.fa02e7b1') }}</p>
-    <template v-else-if="canView && (auth)">
-      <dl v-if="selected === 'auth' && auth" class="confirm-list">
-        <div><dt>{{ t('security.captcha') }}</dt><dd>{{ t(auth.captcha_enabled ? 'platform.copy.997d5f45' : 'platform.copy.6762439b') }}</dd></div>
-        <div><dt>{{ t('security.telegram') }}</dt><dd>{{ t(auth.telegram_enabled ? 'platform.copy.997d5f45' : 'platform.copy.6762439b') }}</dd></div>
-        <div v-if="auth.telegram_enabled"><dt>{{ t('security.clientId') }}</dt><dd>{{ auth.telegram_client_id || '—' }}</dd></div>
-      </dl>
-      <div class="ui-form-actions"><button class="button button-secondary" type="button" :disabled="!editable" @click="startEdit">{{ t('common.editSettings') }}</button></div>
-    </template>
-    <DetailModal class="brand-settings-dialog" v-if="editorOpen && canView" :title="t('settings.tab.auth')" :close-label="t('platform.copy.27b2fd29')" :close-disabled="busy" @close="!busy && (editorOpen = false)">
-
-    <form v-write-guard="busy" class="ui-form" v-if="selected === 'auth' && draftAuth" novalidate v-inline-validation @submit.prevent="withGlobalLoading(save)">
+    <p v-global-loading v-else-if="loading && !auth">{{ t('platform.copy.fa02e7b1') }}</p>
+    <form v-else-if="auth" v-write-guard="busy" class="brand-form ui-form" novalidate v-inline-validation @submit.prevent="withGlobalLoading(save)">
       <fieldset :disabled="!editable">
-      <label class="check"><input v-model="draftAuth.captcha_enabled" type="checkbox" :disabled="!editable">{{ t('security.captcha') }}</label>
-      <label class="check"><input v-model="draftAuth.telegram_enabled" type="checkbox" :disabled="!editable">{{ t('security.telegram') }}</label>
-      <label class="field">{{ t('security.clientId') }}<input v-model="draftAuth.telegram_client_id" inputmode="numeric" pattern="[1-9][0-9]*" :required="draftAuth.telegram_enabled" :data-validation-format="formValidationText('positiveInteger')" :disabled="!editable"></label>
+        <label class="check"><input v-model="auth.captcha_enabled" type="checkbox">{{ t('security.captcha') }}</label>
+        <label class="check"><input v-model="auth.telegram_enabled" type="checkbox">{{ t('security.telegram') }}</label>
+        <label class="field">{{ t('security.clientId') }}<input v-model="auth.telegram_client_id" inputmode="numeric" pattern="[1-9][0-9]*" :required="auth.telegram_enabled" :data-validation-format="formValidationText('positiveInteger')"></label>
       </fieldset>
       <p v-if="pending?.phase === 'unknown' && !busy" role="alert">{{ t('security.unknown') }}</p>
       <p v-if="pending?.phase === 'conflict'" role="alert">{{ t('security.conflict') }}</p>
-      <div class="form-actions ui-form-actions">
-        <button v-if="pending?.phase !== 'conflict'" class="button button-primary" :disabled="busy || loading || !canWrite || props.blocked || (!pending && !editable)" type="submit">{{ t(busy ? 'platform.copy.fa02e7b1' : pending ? 'security.retry' : 'security.save') }}</button>
-        <button v-if="pending?.phase === 'conflict' && !freshConflict" class="button button-secondary" type="button" :disabled="busy || loading" @click="withGlobalLoading(load)">{{ t('security.reread') }}</button>
-        <button v-if="pending?.phase === 'conflict' && freshConflict" class="button button-secondary" type="button" :disabled="busy" @click="withGlobalLoading(discardConflict)">{{ t('security.startAgain') }}</button>
+      <div v-if="canWrite || readFailed" class="ui-form-actions">
+        <button v-if="readFailed || pending?.phase === 'conflict'" class="button button-secondary" type="button" :disabled="busy || loading" @click="withGlobalLoading(load)">{{ t('security.reread') }}</button>
+        <button v-else class="button button-primary" :disabled="busy || loading || blocked" type="submit">{{ t(busy ? 'platform.copy.fa02e7b1' : pending ? 'security.retry' : 'security.save') }}</button>
       </div>
     </form>
-    </DetailModal>
-    <button v-if="pending && !editorOpen" class="button button-secondary" type="button" @click="openPending">{{ t('security.retry') }}</button>
-    <button v-if="readFailed" class="button button-secondary" type="button" :disabled="busy || loading" @click="withGlobalLoading(load)">{{ t('security.reread') }}</button>
-
-
+    <button v-else-if="readFailed" class="button button-secondary" type="button" @click="withGlobalLoading(load)">{{ t('security.reread') }}</button>
   </section>
 </template>
 <style scoped>
-.confirm-list { margin-bottom: 0; }
-.security-settings-section form { display:grid; gap:12px; min-width:0; }
-.security-settings-section fieldset { display:grid; gap:12px; margin:0; padding:0; border:0; min-width:0; }
-.check { min-width:0; overflow-wrap:anywhere; }
-.check { display:flex; align-items:center; gap:8px; min-height:var(--control-height); }
+.security-settings-section .check { flex-direction:row; align-items:center; gap:8px; min-width:0; min-height:var(--control-height); overflow-wrap:anywhere; }
 .check input { width:18px; height:18px; min-height:18px; margin:0; accent-color:var(--primary); }
-.field { align-self:start; align-content:start; height:auto; padding:0; border:0; border-radius:0; background:transparent; display:grid; gap:6px; min-width:0; max-width:480px; }
+.security-settings-section .field { min-width:0; max-width:480px; }
 .field input { width:100%; min-width:0; box-sizing:border-box; }
-.muted, small { color:var(--muted); }
 </style>

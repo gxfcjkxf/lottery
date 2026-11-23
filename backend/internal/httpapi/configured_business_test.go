@@ -102,21 +102,33 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 		t.Fatal(appliedSale)
 	}
 	mustStatus(t, f.call("POST", salesPath, "configured-sales-first", f.token, managedBrand, sales), 200)
-	mustStatus(t, f.call("POST", salesPath, "configured-sales-stale", f.token, managedBrand, sales), 409)
+	stale := f.call("POST", salesPath, "configured-sales-stale", f.token, managedBrand, sales)
+	mustStatus(t, stale, 409)
+	if !strings.Contains(stale.Body.String(), `"CONFIGURED_SALES_VERSION_CONFLICT"`) {
+		t.Fatal("missing sales conflict code", stale.Body.String())
+	}
 	changedSale := sales
 	changedSale.Enabled = false
 	mustStatus(t, f.call("POST", salesPath, "configured-sales-first", f.token, managedBrand, changedSale), 409)
 	invalidSale := sales
 	invalidSale.Version = 1
 	invalidSale.MaxPoints = 0
-	mustStatus(t, f.call("POST", salesPath, "configured-sales-invalid", f.token, managedBrand, invalidSale), 400)
-	// Price ceilings apply equally to initial sales and edits.
+	invalidLimits := f.call("POST", salesPath, "configured-sales-invalid", f.token, managedBrand, invalidSale)
+	mustStatus(t, invalidLimits, 400)
+	if !strings.Contains(invalidLimits.Body.String(), `"CONFIGURED_SALES_LIMITS_INVALID"`) {
+		t.Fatal("missing sales limits error code", invalidLimits.Body.String())
+	}
+	// The common rules still constrain the valid odds range.
 	invalidSale = sales
 	invalidSale.Version = 1
 	rawPrices, _ := json.Marshal(sales.Prices)
 	json.Unmarshal(rawPrices, &invalidSale.Prices)
-	invalidSale.Prices.Plates["A"]["lucky_price"] = "999"
-	mustStatus(t, f.call("POST", salesPath, "configured-sales-price-ceiling", f.token, managedBrand, invalidSale), 400)
+	invalidSale.Prices.Plates["A"]["lucky_price"] = "1001"
+	invalidOdds := f.call("POST", salesPath, "configured-sales-price-out-of-range", f.token, managedBrand, invalidSale)
+	mustStatus(t, invalidOdds, 400)
+	if !strings.Contains(invalidOdds.Body.String(), `"CONFIGURED_SALES_ODDS_INVALID"`) {
+		t.Fatal("missing sales odds error code", invalidOdds.Body.String())
+	}
 	if _, e := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='platform_game.sell.brand'`, role); e != nil {
 		t.Fatal(e)
 	}
@@ -364,7 +376,7 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 	editedSale := appliedSale
 	editedRaw, _ := json.Marshal(appliedSale.Prices)
 	json.Unmarshal(editedRaw, &editedSale.Prices)
-	editedSale.Prices.Plates["A"]["lucky_price"] = "2"
+	editedSale.Prices.Plates["A"]["lucky_price"] = "2.6"
 	brandChange := platformlottery.ConfiguredSalesInput{ConfiguredSales: editedSale, Availability: &platformlottery.ConfiguredAvailabilityScope{
 		Version: 1, Items: platformlottery.ConfiguredOptionStates{},
 	}}
@@ -384,6 +396,19 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 		t.Fatal("brand odds and availability did not apply together exactly once", brandState, err)
 	}
 	mustStatus(t, f.call("POST", "/api/v1/configured/preview", "", f.userToken, managedBrand, in), 409)
+	brandEngine, err := platformlottery.ConfiguredSalesEngine(version, nextSale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextPreview := in
+	nextPreview.SalesVersion = nextSale.Version
+	nextPreview.SnapshotHash = brandEngine.SnapshotHash()
+	brandQuote := f.call("POST", "/api/v1/configured/preview", "", f.userToken, managedBrand, nextPreview)
+	mustStatus(t, brandQuote, 200)
+	managedData(t, brandQuote, &q)
+	if len(q.Lines) != 1 || q.Lines[0].Prices["hit"] != "2.6" {
+		t.Fatal("preview did not use brand odds above platform odds", q)
+	}
 	mustStatus(t, f.call("POST", "/api/v1/configured/orders", "configured-http-order", f.userToken, managedBrand, in), 201)
 	snap.Prices.Plates["A"]["lucky_price"] = "3"
 	nextSnapshot, err := json.Marshal(snap)

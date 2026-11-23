@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportValueTone } from "@lottery/shared"
 import { formatPoints } from '@lottery/shared'
 
 const showSummary = ref(true), showDetails = ref(true)
@@ -110,14 +111,14 @@ useOperationToast(() => error.value, value => displayPublicError(value), 'error'
     <div v-if="showSummary || showDetails" class="report-results">
 
     <template v-if="result">
-      <section v-if="showSummary" class="totals" data-testid="commission-report-summary"><dl class="commission-metrics report-summary-tags"><div v-for="field in headlineFields" :key="field"><dt>{{ label(field) }}</dt><dd>{{ exact(result.summary[field]) }}</dd></div></dl></section>
-      <div v-if="showDetails" class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ t('admin.copy.b96f43c6') }}</th><th v-for="field in headlineFields" :key="field">{{ label(field) }}</th><th>{{ t('admin.commission.ui.reportDetails') }}</th></tr></thead><tbody><tr v-for="item in result.items" :key="item.key"><td :data-label="t('admin.copy.b96f43c6')">{{ associationGroupLabel(item,result.query.group_by,item.key,item.label,associationLocale) }}</td><td v-for="field in headlineFields" :key="field" :data-label="label(field)">{{ exact(item.totals[field]) }}</td><td :data-label="t('admin.commission.ui.reportDetails')"><button type="button" class="text-button" @click="metricDetail=item.totals">{{ t('admin.commission.ui.moreMetrics') }}</button></td></tr><tr v-if="!result.items.length"><td :colspan="headlineFields.length + 2" class="empty-state">{{ t('admin.copy.24e33023') }}</td></tr></tbody></table></div>
+      <section v-if="showSummary" class="totals" data-testid="commission-report-summary"><dl class="commission-metrics report-summary-tags"><div v-for="field in headlineFields" :key="field"><dt>{{ label(field) }}</dt><dd><span :data-numeric-tone="reportValueTone(field, result.summary[field])">{{ exact(result.summary[field]) }}</span></dd></div></dl></section>
+      <div v-if="showDetails" class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ t('admin.copy.b96f43c6') }}</th><th v-for="field in headlineFields" :key="field">{{ label(field) }}</th><th>{{ t('admin.commission.ui.reportDetails') }}</th></tr></thead><tbody><tr v-for="item in result.items" :key="item.key"><td :data-label="t('admin.copy.b96f43c6')">{{ associationGroupLabel(item,result.query.group_by,item.key,item.label,associationLocale) }}</td><td v-for="field in headlineFields" :key="field" :data-label="label(field)"><span :data-numeric-tone="reportValueTone(field, item.totals[field])">{{ exact(item.totals[field]) }}</span></td><td :data-label="t('admin.commission.ui.reportDetails')"><button type="button" class="text-button" @click="metricDetail=item.totals">{{ t('admin.commission.ui.moreMetrics') }}</button></td></tr><tr v-if="!result.items.length"><td :colspan="headlineFields.length + 2" class="empty-state">{{ t('admin.copy.24e33023') }}</td></tr></tbody></table></div>
 
     </template>
     <p v-global-loading v-else-if="busy" class="definition" aria-live="polite">{{ t('admin.copy.27342bf3') }}</p>
     </div>
   <template #pagination v-if="showDetails && (result)"><TablePagination class="pages" :aria-label="t('admin.commission.ui.postingPages')" :total="result.total_groups" :page="Math.floor(result.query.offset / pageSize + 1)" :count="result.items.length" :locale="associationLocale" :page-size="pageSize" :previous-disabled="agentDraftSearchPending || memberSearchPending || busy || result.query.offset === 0" :next-disabled="agentDraftSearchPending || memberSearchPending || busy || !hasNext(result)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => run((target - 1) * pageSize, result!.query)" :change-page-size="async (size: number) => { pageSize = size; await run(0, result!.query) }" :busy="busy" /></template></ManagementList>
-  <DetailModal v-if="metricDetail" :title="t('admin.commission.ui.reportDetails')" :close-label="t('association.close')" @close="metricDetail=null"><dl class="report-extra"><div v-for="field in extraFields" :key="field"><dt>{{ label(field) }}</dt><dd>{{ exact(metricDetail[field]) }}</dd></div></dl></DetailModal>
+  <DetailModal v-if="metricDetail" :title="t('admin.commission.ui.reportDetails')" :close-label="t('association.close')" @close="metricDetail=null"><dl class="report-extra"><div v-for="field in extraFields" :key="field"><dt>{{ label(field) }}</dt><dd><span :data-numeric-tone="reportValueTone(field, metricDetail[field])">{{ exact(metricDetail[field]) }}</span></dd></div></dl></DetailModal>
 </template>
 
 <style scoped>

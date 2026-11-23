@@ -63,12 +63,17 @@ func platformAccountWrite(w http.ResponseWriter, r *http.Request, d Dependencies
 		if !fresh.SuperAdmin || !access.Authorize(fresh, resource, action, access.ScopePlatform, "") {
 			return adminsys.ErrDenied
 		}
+		if resource == "admin" && id != "" && id != fresh.ID {
+			return adminsys.ProtectDefaultPlatformAdmin(ctx, tx, id)
+		}
 		return nil
 	}, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) { return run(ctx, tx, fresh) })
 	if errors.Is(err, identity.ErrSession) {
 		result, err = mutation.Fail(401, "AUTH_SESSION_REVOKED", "管理会话已变化，请重新登录"), nil
 	} else if errors.Is(err, adminsys.ErrDenied) {
 		result, err = mutation.Fail(403, "PERMISSION_DENIED", "无平台账号管理权限"), nil
+	} else if errors.Is(err, adminsys.ErrNotFound) {
+		result, err = managementError(err)
 	}
 	permission := "admin.write.platform"
 	if operation == "platform.account.delete" {
@@ -109,7 +114,7 @@ func registerPlatformAccountRoutes(handle func(string, string, http.HandlerFunc)
 			}
 			data := map[string]any{"items": items}
 			if err == nil && kind == "platform-accounts" {
-				data, err = countedItems(r.Context(), d.Admins.DB, items, `SELECT count(*)::text FROM admin_accounts a WHERE a.is_super_admin AND a.status <> 'deleted' AND NOT EXISTS(SELECT 1 FROM admin_brand_scopes s WHERE s.account_id=a.id)`)
+				data["total_count"], err = d.Admins.CountPlatformAdmins(r.Context(), actor)
 			} else if err == nil {
 				data, err = countedItems(r.Context(), d.Admins.DB, items, `SELECT count(*)::text FROM roles WHERE brand_id IS NULL`)
 			}

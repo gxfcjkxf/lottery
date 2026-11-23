@@ -141,38 +141,6 @@ func (e *ConfiguredEngine) DefaultSettlementContext() ConfiguredSettlementContex
 func (e *ConfiguredEngine) SnapshotHash() string   { return e.hash }
 func (e *ConfiguredEngine) DefinitionHash() string { return e.definitionHash }
 
-// CheckPriceCeilings is a pure exact comparison for the later brand-sales
-// integration. Both books must cover the same declared plates and price cells.
-func (e *ConfiguredEngine) CheckPriceCeilings(ceilings ConfiguredPrices) error {
-	if !configuredID(ceilings.Version) || len(ceilings.Plates) != len(e.snapshot.Prices.Plates) {
-		return ErrInvalid
-	}
-	lo, _ := parseOdds(e.snapshot.Catalog.PriceMin)
-	hi, _ := parseOdds(e.snapshot.Catalog.PriceMax)
-	for plate, book := range e.snapshot.Prices.Plates {
-		ceiling, ok := ceilings.Plates[plate]
-		if !ok || len(ceiling) != len(book) {
-			return ErrInvalid
-		}
-		for key, value := range book {
-			limit, err := parseOdds(ceiling[key])
-			if err != nil {
-				return err
-			}
-			if limit.Cmp(lo) < 0 || limit.Cmp(hi) > 0 {
-				return ErrInvalid
-			}
-			actual, err := parseOdds(value)
-			if err != nil {
-				return err
-			}
-			if actual.Cmp(limit) > 0 {
-				return ErrInvalid
-			}
-		}
-	}
-	return nil
-}
 func (e *ConfiguredEngine) PriceKeys() []string {
 	keys := map[string]bool{}
 	for _, p := range e.snapshot.Catalog.Plays {
