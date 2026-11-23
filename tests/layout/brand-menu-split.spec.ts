@@ -83,7 +83,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
       if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, code: 'layout', allow_custom_games: true, name: 'Aurora', status: 'active', member_count: '0', agent_count: '0', recharge_quota_available: '0', created_at: '2026-10-25T00:00:00Z' }] })
       expect(route.request().headers()['x-brand-id']).toBe(gameId)
       if (path.endsWith('/accounts')) return reply({ items: [actor, target], total_count:'2' })
-      if (path.endsWith('/roles')) return reply({ total_count:'1', items: [{ id: roleId, brand_id: gameId, code: 'operations', name: 'Operations', status: 'active', version: 1, is_bootstrap: false, permissions: ['admin.view.brand'] }] })
+      if (path.endsWith('/roles')) return reply({ total_count:'1', items: [{ id: roleId, brand_id: gameId, code: 'operations', name: 'Operations', status: 'disabled', version: 1, is_bootstrap: false, permissions: ['admin.view.brand'] }] })
       throw Error(`Unexpected accounts request: ${path}`)
     })
     await page.goto(origins.brand)
@@ -112,8 +112,21 @@ for (const locale of ['zh-CN', 'en'] as const) {
       if (info.project.name.includes('reflow')) await page.setViewportSize({ width, height: preset.height })
       await rows.last().locator('.member-menu-trigger').click()
       await page.getByRole('menuitem',{name:zh?'编辑':'Edit',exact:true}).click()
-      await expect(page.getByRole('dialog')).toBeVisible()
+      const dialog = page.getByRole('dialog')
+      const note = dialog.locator('.permissions .empty-state')
+      await expect(note).toHaveText(zh ? '没有当前账号可安全分配的启用角色。' : 'There are no active roles this account can safely assign.')
+      await expect(note).toHaveCSS('font-size', '14px')
+      expect(await note.evaluate(element => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        const bounds = element.getBoundingClientRect()
+        return [...range.getClientRects()].every(line =>
+          line.left >= bounds.left - 1 && line.right <= bounds.right + 1 &&
+          line.top >= bounds.top - 1 && line.bottom <= bounds.bottom + 1
+        )
+      })).toBe(true)
       await expectNoPageOverflow(page)
+      if (width === 320) await dialog.screenshot({ path: info.outputPath(`brand-account-320-${locale}.png`) })
       await page.keyboard.press('Escape')
       await expect(page.getByRole('dialog')).toHaveCount(0)
     }

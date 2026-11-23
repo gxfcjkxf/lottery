@@ -238,12 +238,12 @@ async function clearCatalog() { lifecycleDraft.value = 'active'; await searchCat
     <div v-if="surface === 'user'" class="platform-lottery-toolbar"><h2 v-if="!unifiedCatalog">{{t('title')}}</h2></div>
 
 
-    <ManagementTable v-if="surface === 'admin'" table-class="brand-lottery-table" :entries="brandCatalogGames" :columns="[{key:'name',label:t('name')},{key:'sales',label:t('salesConfiguration')},{key:'status',label:t('status')},...((oddsOnly || canConnect || canSell) ? [{key:'actions',label:t('actions')}] : [])]" :empty="!loading && !brandLoading && !error && !brandCatalogGames.length" :empty-label="t('empty')">
+    <ManagementTable v-if="surface === 'admin'" table-class="brand-lottery-table" :entries="brandCatalogGames" :columns="[{key:'name',label:t('name')},{key:'sales',label:t('bettingStatus')},{key:'status',label:t('gameStatus')},...((oddsOnly || canConnect || canSell) ? [{key:'actions',label:t('actions')}] : [])]" :empty="!loading && !brandLoading && !error && !brandCatalogGames.length" :empty-label="t('empty')">
       <template #name="{entry:game}">{{game.name}}</template>
       <template #sales="{entry:game}">{{game.connected ? t(game.sales_status==='ready'?'salesReady':game.sales_status==='outdated'?'salesOutdated':game.sales_status==='disabled'?'salesDisabled':'salesUnconfigured') : '—'}}</template>
       <template #status="{entry:game}">{{t(game.status === 'offline' ? 'offline' : game.connected && game.brand_enabled ? 'shortEnabled' : 'shortDisabled')}}</template>
       <template #actions="{entry:game}"><MemberActionsMenu v-if="game.connected && (oddsOnly || canSell) || !oddsOnly && !game.connected && canConnect && game.status === 'active'" :id="`brand-lottery-actions-${game.id}`" :label="t('actions')">
-        <button v-if="game.connected && (oddsOnly || canSell)" type="button" role="menuitem" :disabled="loading" @click="salesGame=game">{{t(oddsOnly?'salesOdds':'salesConfiguration')}}</button>
+        <button v-if="game.connected && (oddsOnly || canSell)" type="button" role="menuitem" :disabled="loading" @click="salesGame=game">{{t(oddsOnly?'salesOdds':'bettingSettings')}}</button>
         <button v-if="!oddsOnly && !game.connected && canConnect && game.status === 'active'" type="button" role="menuitem" :disabled="loading" @click="begin('connect', game)">{{t('shortEnable')}}</button>
         <button v-else-if="!oddsOnly && canSell && game.connected" type="button" role="menuitem" :disabled="loading" @click="changeAvailability(game)">{{t(game.brand_enabled ? 'shortDisable' : 'shortEnable')}}</button>
       </MemberActionsMenu></template>
@@ -281,7 +281,7 @@ async function clearCatalog() { lifecycleDraft.value = 'active'; await searchCat
         <template v-else-if="view === 'model'"><button v-if="canManagePlatform" class="button button-primary" :disabled="loading || modelLocked" @click="begin('model')">{{ t('editModel') }}</button><p v-if="canManagePlatform && modelLocked" class="platform-lottery-note">{{ t('modelLocked') }}</p><NumberModelEditor :model-value="detail.game.model" :locale="locale" disabled read-only /></template>
       </template>
     </component>
-    <DetailModal class="lottery-sales-modal" v-if="surface!=='user'&&salesGame" :class="{ 'lottery-odds-modal': surface==='platform'||oddsOnly }" :title="`${salesGame.name} · ${t(surface==='platform'||oddsOnly?'salesOdds':'salesConfiguration')}`" :close-label="t('close')" :close-disabled="salesLocked" @close="salesGame=null">
+    <DetailModal class="lottery-sales-modal" v-if="surface!=='user'&&salesGame" :class="{ 'lottery-odds-modal': surface==='platform'||oddsOnly }" :title="`${salesGame.name} · ${t(surface==='platform'||oddsOnly?'salesOdds':'bettingSettings')}`" :close-label="t('close')" :close-disabled="salesLocked" @close="salesGame=null">
       <ConfiguredPublishing :odds-only="surface==='platform'||oddsOnly" :surface="surface" :brand-id="brandId" :game-id="salesGame.id" :locale="locale" :snapshot="null" :can-write="surface==='platform'?canManagePlatform:!!canSell" @locked="salesLocked=$event" @saved="salesGame=null;withGlobalLoading(load)" @failure="emit('failure',$event)" />
     </DetailModal>
     <PeriodOpeningDialog v-if="openingPeriod" :key="openingPeriod.id" :period="openingPeriod" :locale="locale" @close="openingPeriod=null" @saved="openingPeriod=null;withGlobalLoading(open,detail!.game,view,periodOffset)" @failure="emit('failure',$event)" />

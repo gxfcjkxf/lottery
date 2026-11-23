@@ -1,4 +1,3 @@
-import { selectControl } from '../select-control'
 import {expect,test,type Page} from '@playwright/test'
 import {readFileSync} from 'node:fs'
 import {resolve} from 'node:path'
@@ -16,7 +15,7 @@ async function mount(page:Page,component:string,props:unknown){
   installRouter='.provide(userI18nKey,userI18n).use(router)'
  }
  const surfaceStyle=component.startsWith('user-web/')?'user-web/src/style.css':(props as {surface:string}).surface==='platform'?'platform-web/src/style.css':'admin-web/src/style.css'
- await page.route('**/__configured-business',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'${vuePath}';import Component from'/@fs/${resolve(component)}';import'/@fs/${resolve('shared/src/styles.css')}';import'/@fs/${resolve(surfaceStyle)}';import'/@fs/${resolve('shared/src/controls.css')}';${routerSetup}createApp(Component,${JSON.stringify(props)})${installRouter}.mount('#app')</script></html>`}));await page.goto(origin+'/__configured-business')
+ await page.route('**/__configured-business',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp,h}from'${vuePath}';import Component from'/@fs/${resolve(component)}';import OperationToastHost from'/@fs/${resolve('shared/src/OperationToastHost.vue')}';import'/@fs/${resolve('shared/src/styles.css')}';import'/@fs/${resolve(surfaceStyle)}';import'/@fs/${resolve('shared/src/controls.css')}';${routerSetup}const props=${JSON.stringify(props)};createApp({render:()=>[h(Component,props),h(OperationToastHost,{locale:props.locale==='en'?'en':'zh-CN'})]})${installRouter}.mount('#app')</script></html>`}));await page.goto(origin+'/__configured-business')
 }
 async function noOverflow(page:Page){expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)}
 for(const locale of ['en','zh-CN'] as const){
@@ -36,7 +35,7 @@ for(const locale of ['en','zh-CN'] as const){
   await page.getByRole('button',{name:zh?'保存':'Save',exact:true}).click()
   await expect(page.getByRole('button',{name:zh?'重试':'Retry',exact:true})).toBeVisible()
   await page.getByRole('button',{name:zh?'重试':'Retry',exact:true}).click()
-  await expect(page.getByRole('status')).toHaveText(zh?'已保存':'Saved')
+  await expect(page.locator('.toast-success .toast-message')).toHaveText(zh?'已保存':'Saved')
   expect(calls).toHaveLength(2);expect(calls[1]).toEqual(calls[0])
   await noOverflow(page);await page.screenshot({path:info.outputPath(`rules-save-${locale}.png`),fullPage:true})
   await page.unroute('**/api/**');let savedSales:any=null
@@ -47,16 +46,21 @@ for(const locale of ['en','zh-CN'] as const){
    expect(path.endsWith('/sales')).toBe(true)
    if(r.method()==='GET'&&savedSales)return ok({...savedSales,version:1})
    if(r.method()==='GET')return route.fulfill({status:404,json:{success:false,error:{code:'RESOURCE_NOT_FOUND',message:'Not configured'}}})
-   const body=r.postDataJSON();if(Number(body.prices.plates.A.lucky_price)>2.5)return route.fulfill({status:400,json:{success:false,error:{code:'PLATFORM_GAME_INVALID',message:'Invalid sales'}}})
+   const body=r.postDataJSON()
    savedSales=body;return ok({...body,version:1})
   })
   await mount(page,'shared/src/ConfiguredPublishing.vue',{surface:'admin',brandId:game,gameId:game,locale,snapshot:null,canWrite:true})
-  await selectControl(page.getByRole('combobox',{name:zh?'启用':'Enabled',exact:true}), 'true')
-  for(const text of zh?['赔率表','盘口','A']:['Odds table','Plates','A'])await page.locator('summary').filter({hasText:new RegExp(`^${text}$`)}).first().click()
-  const price=page.getByLabel('lucky_price',{exact:true}).first();await price.fill('3')
-  await page.getByRole('button',{name:zh?'保存':'Save',exact:true}).click();await expect(page.getByRole('alert')).toBeVisible()
-  await price.fill('2.4');await page.getByRole('button',{name:zh?'保存':'Save',exact:true}).click()
-  await expect.poll(()=>savedSales?.prices.plates.A.lucky_price).toBe('2.4');expect(savedSales.rule_id).toBe(versionID);expect(savedSales.enabled).toBe(true)
+  await page.getByRole('switch',{name:zh?'启用投注':'Enable betting'}).check()
+  const minimum=page.getByLabel(zh?'每注最低积分':'Minimum entry stake',{exact:true})
+  const save=page.getByRole('button',{name:zh?'保存投注设置':'Save betting settings',exact:true})
+  await minimum.fill('0')
+  await expect(save).toBeDisabled()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await minimum.fill('2.4')
+  await save.click()
+  await expect.poll(()=>savedSales?.min_points).toBe('2.4')
+  expect(savedSales.prices).toEqual(sample().prices)
+  expect(savedSales.rule_id).toBe(versionID);expect(savedSales.enabled).toBe(true)
   await noOverflow(page);expect(errors).toEqual([])
  })
  test(`configured real confirmation preserves uncertain intent across reload (${locale})`,async({page},info)=>{
@@ -66,7 +70,7 @@ for(const locale of ['en','zh-CN'] as const){
   await page.route('**/api/**',route=>{
    const r=route.request(),path=new URL(r.url()).pathname,ok=(data:unknown,status=200)=>route.fulfill({status,json:{success:true,data}})
    if(path.endsWith('/me/betting-preferences'))return ok({brand_id:game,member_id:game,quick_amounts:[]})
-   if(path.endsWith('/platform-games/'+game))return ok({game:{id:game,name:'Lucky game'},plays:[],rule_protocol:'configured',periods:[]})
+   if(path.endsWith('/platform-games/'+game))return ok({game:{id:game,name:'Lucky game'},periods:[],total_count:'0'})
    if(path.endsWith('/wallet')){const balance=orders.length?'115':available;const by_source=Object.fromEntries(['recharge','winning','gift','commission'].map(source=>[source,{available:source==='recharge'?balance:'0',manual_frozen:'0',system_frozen:'0',withdrawal:'0'}]));return ok({account_id:game,brand_id:game,member_id:game,version:1,display_points:balance,available_points:balance,frozen_points:'0',withdrawal_points:'0',recharge_points:balance,winning_points:'0',gift_points:'0',commission_points:'0',manual_frozen_points:'0',system_frozen_points:'0',by_source})}
    if(path.endsWith('/orders')&&r.method()==='GET')return ok({items:orders})
    if(path.endsWith('/games/'+game)){const next=JSON.parse(JSON.stringify(snapshot));if(changed)next.prices.plates.A.lucky_price='2';return ok({game:{id:game,name:'Lucky game',status:'active',brand_enabled:true},snapshot:next,rule_id:versionID,snapshot_hash:changed?'new-frozen':'frozen',sales:{version:changed?2:1,enabled:true,rule_id:versionID,prices:next.prices},period:{id:game,period_no:'2026001',bet_start_at:new Date(Date.now()-3600000).toISOString(),bet_end_at:new Date(Date.now()+3600000).toISOString(),draw_at:new Date(Date.now()+3660000).toISOString()}})}
@@ -81,13 +85,14 @@ for(const locale of ['en','zh-CN'] as const){
   await page.locator('.configured-stakes--dock input[type="number"]').fill('10')
   const bet=page.locator('.configured-stakes--dock').getByRole('button',{name:zh?'投注':'Bet',exact:true})
   await expect(bet).toBeDisabled()
-  await expect(page.locator('.configured-funds-toast')).toContainText(zh?'可用积分不足':'Insufficient available points')
+  const fundsWarning=page.locator('.operation-toast-stack .toast-error').filter({hasText:zh?'可用积分不足':'Insufficient available points'})
+  await expect(fundsWarning).toBeVisible()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   expect(writes).toHaveLength(0)
   available='100'
   await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')))
   await expect(bet).toBeEnabled()
-  await expect(page.locator('.configured-funds-toast')).toHaveCount(0)
+  await expect(fundsWarning).toHaveCount(0)
   await bet.click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('dialog')).toContainText('2.5')

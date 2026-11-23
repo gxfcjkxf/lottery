@@ -26,10 +26,10 @@ export async function loadPlatformDisplaySettings(fetcher: typeof fetch = fetch)
 }
 
 /** All human-readable timestamps use the platform policy, never the device locale/zone. */
-export function formatDisplayDateTime(value: string | null | undefined, locale: string): string {
+export function formatDisplayDateTime(value: string | null | undefined, locale: string, options?: { dateOnly: boolean }): string {
   const language = locale === 'zh' || locale === 'zh-CN' ? 'zh-CN' : 'en'
   if (!platformDisplaySettings.value) return displaySettingsCatalog[language].unavailable
-  return formatPlatformDateTime(value, platformDisplaySettings.value, language)
+  return formatPlatformDateTime(value, platformDisplaySettings.value, language, options)
 }
 
 /** Compact month/day and 24-hour minute display, still using the platform timezone. */

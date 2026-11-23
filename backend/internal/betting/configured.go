@@ -80,16 +80,28 @@ func (s Service) ConfiguredCatalog(ctx context.Context, brand, game string) (any
 	if e != nil {
 		return nil, e
 	}
-	v, e := platformlottery.ReadConfiguredPublication(ctx, s.DB, game)
+	tx, e := s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if e != nil {
 		return nil, e
 	}
-	sales, e := platformlottery.ReadConfiguredSales(ctx, s.DB, brand, game, false)
+	defer tx.Rollback(ctx)
+	v, e := platformlottery.ReadConfiguredPublication(ctx, tx, game)
+	if e != nil {
+		return nil, e
+	}
+	sales, e := platformlottery.ReadConfiguredSales(ctx, tx, brand, game, false)
 	if e != nil {
 		return nil, e
 	}
 	engine, e := platformlottery.ConfiguredSalesEngine(v, sales)
 	if e != nil {
+		return nil, e
+	}
+	availability, e := platformlottery.ReadConfiguredAvailability(ctx, tx, brand, game, v.ID)
+	if e != nil {
+		return nil, e
+	}
+	if e = tx.Commit(ctx); e != nil {
 		return nil, e
 	}
 	var period *platformlottery.Period
@@ -112,10 +124,6 @@ func (s Service) ConfiguredCatalog(ctx context.Context, brand, game string) (any
 	var previousDraw any
 	if previous != nil {
 		previousDraw = map[string]any{"period_no": previous.PeriodNo, "result": previous.Result, "regular_order": previous.RegularOrder, "attributes": previous.Attributes}
-	}
-	availability, e := platformlottery.ReadConfiguredAvailability(ctx, s.DB, brand, game, v.ID)
-	if e != nil {
-		return nil, e
 	}
 	out := map[string]any{"game": detail.Game, "snapshot": snap, "rule_id": v.ID, "sales": sales, "snapshot_hash": engine.SnapshotHash(), "period": period, "previous_draw": previousDraw}
 	if disabled := availability.DisabledOptions(); len(disabled) > 0 {

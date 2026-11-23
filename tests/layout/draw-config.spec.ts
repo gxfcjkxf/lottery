@@ -41,7 +41,7 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','ad
   if(surface==='admin') {
    const table=page.locator('.brand-lottery-table')
    await expect(table.locator('tbody tr')).toHaveCount(1)
-   await table.locator('.member-menu-trigger').click();await expect(page.getByRole('menuitem')).toHaveText(zh?['投注配置','停用']:['Betting configuration','Disable']);await page.keyboard.press('Escape')
+   await table.locator('.member-menu-trigger').click();await expect(page.getByRole('menuitem')).toHaveText(zh?['投注设置','停用']:['Betting settings','Disable']);await page.keyboard.press('Escape')
    await expect(page.getByTestId('automation-settings')).toHaveCount(0)
    await expect(page.locator('.lottery-detail-page')).toHaveCount(0)
    expect(writes).toEqual([])
@@ -181,6 +181,8 @@ test('user history retains its draw results',async({page})=>{
  await page.route('**/api/**',route=>{expect(route.request().method()).toBe('GET');return route.fulfill({json:{success:true,data:{game_id:id,game_name:'History game',timezone:'UTC',mark_six:false,daily:false,choices:['2026'],selected:'2026',items:[period],has_more:false,total_count:'1'}}})})
  await page.route('**/__user-draw-history',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><div id="user-page-refresh"></div><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import Component from'/@fs${resolve('user-web/src/DrawArchive.vue')}';import{createUserI18n,userI18nKey}from'/src/i18n.ts';import{setPlatformDisplaySettings}from'/@fs${resolve('shared/src/index.ts')}';setPlatformDisplaySettings({timezone:'UTC',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'});import'/@fs${resolve('shared/src/styles.css')}';import'/@fs${resolve('shared/src/controls.css')}';const ui=createUserI18n();ui.setLocale('en');createApp(Component,{gameId:'${id}',kind:'configured',locale:'en'}).provide(userI18nKey,ui).mount('#app')</script></html>`}))
  await page.goto(origin+'/__user-draw-history')
- await expect(page.locator('.draw-archive')).toContainText('2026001')
+ const displayedPeriod=page.locator('.draw-archive .archive-period')
+ await expect(displayedPeriod).toHaveText('001')
+ await expect(displayedPeriod).toHaveAttribute('title',period.period_no)
  await expect(page.locator('.archive-number')).toHaveCount(3)
 })

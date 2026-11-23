@@ -53,12 +53,13 @@ for (const locale of ['zh-CN', 'en'] as const) test(`missing cycle selection and
   await expect(option).toHaveCount(1)
   await expect(option).toContainText('2026-10-06')
   await expect(option).toContainText('2026-10-13')
+  await expect(option).not.toContainText('00:00:00')
   await expect(page.getByRole('option',{name:zh?'全部':'All',exact:true})).toHaveCount(0)
   await option.click()
   if (width <= 900 || info.project.name.startsWith('ios') || info.project.name.startsWith('android')) {
    const lines = await picker.locator('.select-control-value > span').last().evaluate(element => {
     const text = element.firstChild!, value = text.textContent!;
-    return ['2026-10-06 00:00:00','2026-10-13 00:00:00'].map(date => {
+    return ['2026-10-06','2026-10-13'].map(date => {
      const range = document.createRange(), start = value.indexOf(date);
      range.setStart(text,start); range.setEnd(text,start+date.length);
      return [...range.getClientRects()].map(rect=>({top:rect.top,bottom:rect.bottom}));
@@ -72,6 +73,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`missing cycle selection and
   await dialog.getByRole('button',{name:zh?'核对周期':'Review cycle',exact:true}).click()
   const review=page.getByRole('dialog')
   await expect(review).toContainText(zh?'周结':'Weekly')
+  await expect(review).not.toContainText('00:00:00')
   await expect(review).not.toContainText(anchor)
   await review.locator('.detail-modal-close').click()
  }

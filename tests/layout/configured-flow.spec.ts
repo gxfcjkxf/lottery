@@ -45,8 +45,9 @@ for(const locale of ['en','zh-CN'] as const)test(`Canada28 groups retain origina
  const firstKey=first.decisions!.outcomes.find(o=>o.price_key)!.price_key!,sumKey=sum.decisions!.outcomes.find(o=>o.price_key)!.price_key!
  snapshot.prices.plates.A![firstKey]='2.15';snapshot.prices.plates.A![sumKey]='15.25'
  const requests:any[]=[],placed:any[]=[]
+ let ruleId=gameId,salesVersion=1
  await page.route('**/api/v1/configured/games',route=>route.fulfill({json:{success:true,data:{games:[{id:gameId,name:zh?'加拿大28':'Canada28'}],total_count:'1'}}}))
- await page.route(`**/api/v1/configured/games/${gameId}`,route=>{const now=Date.now();return route.fulfill({json:{success:true,data:{game:{id:gameId,name:zh?'加拿大28':'Canada28',status:'active',brand_enabled:true},snapshot,rule_id:gameId,snapshot_hash:'grouped-canada',sales:{version:1,enabled:true},previous_draw:null,period:{id:gameId,period_no:'3500001',bet_start_at:new Date(now-10000).toISOString(),bet_end_at:new Date(now+3600000).toISOString(),draw_at:new Date(now+3660000).toISOString()}}}})})
+ await page.route(`**/api/v1/configured/games/${gameId}`,route=>{const now=Date.now();return route.fulfill({json:{success:true,data:{game:{id:gameId,name:zh?'加拿大28':'Canada28',status:'active',brand_enabled:true},snapshot,rule_id:ruleId,snapshot_hash:'grouped-canada',sales:{version:salesVersion,enabled:true},previous_draw:null,period:{id:gameId,period_no:'3500001',bet_start_at:new Date(now-10000).toISOString(),bet_end_at:new Date(now+3600000).toISOString(),draw_at:new Date(now+3660000).toISOString()}}}})})
  await page.route('**/api/v1/configured/preview',route=>{
   const body=route.request().postDataJSON(),rs=body.requests;requests.push(rs)
   return route.fulfill({json:{success:true,data:{...body,game_id:gameId,actor_context:'grouped-canada-review',definition_hash:'grouped-canada',lines:rs.map((r:any)=>({play_id:r.play_id,options:r.options,plate:r.plate,stake:r.points,prices:{hit:r.play_id==='big'?'2.15':'15.25'}})),bet_points:String(rs.length*Number(rs[0].points))}}})
@@ -146,10 +147,20 @@ for(const locale of ['en','zh-CN'] as const)test(`Canada28 groups retain origina
  await selection.locator('.configured-options button').nth(9).click()
  await selection.locator('.configured-dock-actions .button-primary').click()
  await expect(page.getByRole('dialog').locator('tbody tr')).toHaveCount(2)
+
+ // A platform-only price update leaves the brand's snapshot and odds intact.
+ ruleId='aaaaaaaa-aaaa-4aaa-8aaa-000000000002'
+ salesVersion++
+ await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')))
+ await expect(page.getByRole('dialog')).toHaveCount(0)
+ await expect(selection.locator('.configured-options button[aria-pressed=true]')).toHaveCount(2)
+ await selection.locator('.configured-dock-actions .button-primary').click()
+ await expect(page.getByRole('dialog').locator('tbody tr')).toHaveCount(2)
+ await expect(page.getByRole('dialog')).toContainText('2.15')
  await page.getByRole('dialog').getByRole('button',{name:zh?'确认投注':'Confirm bet',exact:true}).click()
  await expect(page.getByRole('dialog')).toHaveCount(0)
  expect(placed).toHaveLength(1)
- expect(placed[0].requests).toEqual(requests[3])
+ expect(placed[0]).toMatchObject({rule_id:ruleId,sales_version:salesVersion,requests:requests[3]})
  await expect(selection.locator('.configured-options button[aria-pressed=true]')).toHaveCount(0)
 
  expect(errors).toEqual([])

@@ -33,14 +33,14 @@ for(const locale of ['en','zh-CN'] as const)for(const mode of ['first','read-onl
  const props={surface:'admin',brandId:gameId,gameId,locale,snapshot:null,canWrite:mode!=='read-only'}
  await page.route('**/configured-sales-harness',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main id="app" class="management-console panel" style="margin:12px;padding:12px;min-width:0"></main><script id="harness-data" type="application/json">${JSON.stringify({component:'ConfiguredPublishing',props,locale,operationToasts:mode==='outdated'})}</script><script type="module" src="/tests/layout-harness.ts"></script></body></html>`}))
  await page.goto(`${origins.brand}/configured-sales-harness`)
- await expect(page.getByRole('heading',{name:zh?'投注配置':'Betting configuration'})).toBeVisible()
+ await expect(page.getByRole('heading',{name:zh?'投注设置':'Betting settings'})).toBeVisible()
  if(mode==='read-only'){
   await expect(page.getByRole('textbox')).toHaveCount(0)
   await expect(page.getByRole('button')).toHaveCount(0)
  }else{
   await expect(page.getByText(zh?'停用投注':'Disable betting',{exact:true})).toBeVisible()
   await expect(page.getByText(zh?'启用投注':'Enable betting',{exact:true})).toBeVisible()
-  const save=page.getByRole('button',{name:zh?'保存投注配置':'Save betting configuration',exact:true})
+  const save=page.getByRole('button',{name:zh?'保存投注设置':'Save betting settings',exact:true})
   const minimum=page.getByLabel(zh?'每注最低积分':'Minimum entry stake',{exact:true})
   if(mode==='first'){
    await expect(page.getByRole('switch',{name:zh?'启用投注':'Enable betting'})).not.toBeChecked()
@@ -53,11 +53,12 @@ for(const locale of ['en','zh-CN'] as const)for(const mode of ['first','read-onl
    await page.getByRole('switch').press('Space')
   }
   await expect(page.locator('.configured-odds-editor')).toHaveCount(0)
+  if(mode==='outdated')await expect(page.getByRole('status')).toHaveText(zh?'平台规则已更新，需重新保存。':'Platform rules have changed. These settings need to be saved again.')
   await save.click()
   if(mode==='outdated'){
    await expect(page.getByText(zh?'部分赔率缺失或不符合当前规则，请检查盘口赔率。':'Odds are missing or invalid for the current rules. Review Plates & odds.',{exact:true})).toBeVisible()
    await expect(page.getByRole('button',{name:zh?'重试':'Retry',exact:true})).toHaveCount(0)
-   await expect(page.getByRole('button',{name:zh?'重新读取配置':'Reload configuration',exact:true})).toHaveCount(0)
+   await expect(page.getByRole('button',{name:zh?'重新读取':'Reload',exact:true})).toHaveCount(0)
    await expect(minimum).toHaveValue('1')
    await page.screenshot({path:info.outputPath(`sales-validation-${locale}.png`)})
    await save.click()
@@ -107,9 +108,10 @@ for(const locale of ['en','zh-CN'] as const)for(const oddsOnly of [false,true])t
  await page.goto(`${origins.brand}/sales-entry-harness`)
  await expect(page.getByText(zh?'未配置投注':'Betting not configured',{exact:true})).toBeVisible()
  await page.locator('.member-menu-trigger').click()
- await page.getByRole('menuitem',{name:oddsOnly?(zh?'盘口赔率':'Plates & odds'):(zh?'投注配置':'Betting configuration'),exact:true}).click()
+ await page.getByRole('menuitem',{name:oddsOnly?(zh?'盘口赔率':'Plates & odds'):(zh?'投注设置':'Betting settings'),exact:true}).click()
  const dialog=page.getByRole('dialog')
- await expect(dialog.getByRole('button',{name:oddsOnly?(zh?'保存':'Save'):(zh?'保存投注配置':'Save betting configuration'),exact:true})).toBeEnabled()
+ await expect(dialog).toHaveAccessibleName(`${game.name} · ${oddsOnly?(zh?'盘口赔率':'Plates & odds'):(zh?'投注设置':'Betting settings')}`)
+ await expect(dialog.getByRole('button',{name:oddsOnly?(zh?'保存':'Save'):(zh?'保存投注设置':'Save betting settings'),exact:true})).toBeEnabled()
  if(oddsOnly)await expect(dialog.getByRole('button',{name:zh?'保存':'Save',exact:true})).toBeInViewport()
  await expect(dialog.getByRole('switch')).toHaveCount(oddsOnly?0:1)
  await expect(dialog.locator('.configured-odds-editor')).toHaveCount(oddsOnly?1:0)
@@ -118,7 +120,7 @@ for(const locale of ['en','zh-CN'] as const)for(const oddsOnly of [false,true])t
  if(info.project.name.endsWith('reflow'))for(const width of [320,480,768,1280]){await page.setViewportSize({width,height:800});await expectNoPageOverflow(page);if(!oddsOnly)await expectDialogFieldColumns(dialog)}
  await expectNoPageOverflow(page)
  await page.screenshot({path:info.outputPath(`sales-entry-${locale}.png`),fullPage:true})
- await dialog.getByRole('button',{name:oddsOnly?(zh?'保存':'Save'):(zh?'保存投注配置':'Save betting configuration'),exact:true}).click()
+ await dialog.getByRole('button',{name:oddsOnly?(zh?'保存':'Save'):(zh?'保存投注设置':'Save betting settings'),exact:true}).click()
  await expect(dialog).toBeVisible()
  await expect(dialog.getByRole('button',{name:zh?'重试':'Retry',exact:true})).toBeEnabled()
  await dialog.getByRole('button',{name:zh?'重试':'Retry',exact:true}).click()

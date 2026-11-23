@@ -51,7 +51,7 @@ for (const locale of ['en','zh-CN'] as const) for (const surface of ['user','adm
   await select.click();await page.mouse.click(2,2);await expect(select).toHaveAttribute('aria-expanded','false')
   await page.getByRole('button',{name:zh?'禁用':'Disable',exact:true}).click();await expect(select).toBeDisabled()
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)
-  expect(await select.evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(info.project.use.isMobile||info.project.name==='reflow-320'?16:11)
+  expect(await select.evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(info.project.use.isMobile||info.project.name==='reflow-320'?16:12)
   await expect(page.locator('select')).toHaveCount(0)
   expect(errors).toEqual([])
  })

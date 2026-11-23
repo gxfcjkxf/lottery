@@ -128,7 +128,9 @@ async function load(background=false,catalogOnly=false){
   if(token!==generation)return
   quickAmounts.value=amounts
   periods.value=nextPeriods
-  if(data.value&&(data.value.snapshot_hash!==value.snapshot_hash||data.value.period?.id!==value.period?.id)){
+  if(data.value&&(data.value.rule_id!==value.rule_id||data.value.sales.version!==value.sales.version||
+    data.value.snapshot_hash!==value.snapshot_hash||data.value.period?.id!==value.period?.id)){
+   if(quote.value&&!pending.value)reviewOpen.value=false
    quote.value=null
    review.value=null
   }
@@ -155,7 +157,8 @@ async function load(background=false,catalogOnly=false){
  }
 }
 async function reportBetFailure(cause:unknown){
- if((cause as {code?:string}).code==='BET_OPTION_DISABLED'){
+ const code=(cause as {code?:string}).code
+ if(code==='BET_OPTION_DISABLED'||code==='BET_VERSION_CONFLICT'){
   reviewOpen.value=false
   const token=generation+1
   await load()

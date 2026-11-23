@@ -11,7 +11,7 @@ import './commission-management.css';
 import ManagementTable from '@lottery/shared/ManagementTable.vue';
 import PlatformTemporalInput from '@lottery/shared/PlatformTemporalInput.vue';
 import FilterAssociationSelect from '@lottery/shared/FilterAssociationSelect.vue';
-import { commissionDateRange, type CommissionListQuery } from './commission-list-query';
+import { commissionCycleWindow, commissionDateRange, type CommissionListQuery } from './commission-list-query';
 import CommissionPaymentTargets from './CommissionPaymentTargets.vue';
 import { useOperationToast } from "@lottery/shared";
 import { vWriteGuard } from "@lottery/shared";
@@ -387,7 +387,7 @@ useOperationToast(() => writeError.value, value => displayPublicError(value), 'e
     <p v-if="listError" class="commission-warning" role="alert">{{ t('admin.commission.ui.readFailed') }} <button :disabled="agentDraftSearchPending" v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(applyFilters)">{{ t('admin.commission.ui.retryRead') }}</button></p>
     <p v-if="loadingList" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
     <ManagementTable :entries="page?.items??[]" :columns="columns" :empty="!!page && !page.items.length" :empty-label="t(cycleId && !committedFilter.agent_id && !committedFilter.state ? 'admin.commission.ui.noPayoutRecords' : 'admin.commission.ui.empty')" data-testid="commission-payments-jobs">
-     <template #cycle="{entry}"><button class="text-button commission-link" :data-payment-id="entry.id" @click="withGlobalLoading(openPayment,entry.id,$event)"><span v-if="cycleId">{{ formatDate(entry.created_at) }}</span><AssociationName v-else :record="entry" kind="cycle" :id="entry.cycle_id" :locale="locale" /></button></template>
+     <template #cycle="{entry}"><button class="text-button commission-link" :data-payment-id="entry.id" @click="withGlobalLoading(openPayment,entry.id,$event)"><span v-if="cycleId">{{ formatDate(entry.created_at) }}</span><AssociationName v-else :record="entry" kind="cycle" :format-cycle-window="(from, to) => commissionCycleWindow(from, to, locale)" :id="entry.cycle_id" :locale="locale" /></button></template>
      <template #state="{entry}"><span class="commission-status" :class="entry.state">{{ stateLabel(entry.state) }}</span></template>
      <template #mode="{entry}">{{ modeLabel(entry.payout_mode) }}</template><template #planned="{entry}">{{ entry.total_points }}</template><template #paid="{entry}">{{ entry.paid_points }}</template><template #progress="{entry}">{{ entry.paid_count }} / {{ entry.target_count }}</template>
      <template #actions="{entry}"><MemberActionsMenu :id="'CommissionPaymentsManagement-'+entry.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" class="button" @click="withGlobalLoading(openPayment,entry.id,$event)">{{ t('admin.commission.ui.viewPayment') }}</button></MemberActionsMenu></template>
@@ -404,7 +404,7 @@ useOperationToast(() => writeError.value, value => displayPublicError(value), 'e
      <button type="button" class="button" v-refresh-button="t('admin.commission.ui.retryRead')" @click="withGlobalLoading(loadDetail,detailId)">{{ t('admin.commission.ui.retryRead') }}</button>
     </p>
     <template v-if="detail && !loadingDetail && !detailError">
-     <div class="commission-heading"><b v-if="!cycleId"><AssociationName :record="detail" kind="cycle" :id="detail.cycle_id" :locale="locale" /></b><span class="commission-status" :class="detail.state">{{ stateLabel(detail.state) }}</span></div>
+     <div class="commission-heading"><b v-if="!cycleId"><AssociationName :record="detail" kind="cycle" :format-cycle-window="(from, to) => commissionCycleWindow(from, to, locale)" :id="detail.cycle_id" :locale="locale" /></b><span class="commission-status" :class="detail.state">{{ stateLabel(detail.state) }}</span></div>
      <p v-if="detail.last_error_code" class="commission-warning">{{ displayPublicError(publicErrorMessage({code:detail.last_error_code})) }}</p>
      <p v-if="policy && !policy.enabled" class="commission-warning">{{ t('admin.commission.ui.policyOff') }}</p>
      <p v-if="policyError" class="commission-warning" role="alert">{{ displayPublicError(policyError) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadPolicy)">{{ t('admin.commission.ui.retryRead') }}</button></p>
@@ -441,7 +441,7 @@ useOperationToast(() => writeError.value, value => displayPublicError(value), 'e
 
         <p v-if="dialog.operation === 'policy' && 'enabled' in dialog.body && dialog.body.enabled" class="cp-callout" data-testid="commission-payment-enable-warning">{{ t('admin.copy.91b7e7bd') }}</p>
         <p v-if="unknownIntent && !writing" class="commission-warning">{{ t('admin.commission.ui.requestUnknown') }}</p>
-        <dl v-if="reviewSummary" class="commission-facts"><dt>{{ t('admin.commission.ui.cycle') }}</dt><dd><AssociationName :record="detail" kind="cycle" :id="reviewSummary.cycleId" :locale="locale" /></dd><dt>{{ t('admin.commission.ui.planned') }}</dt><dd>{{ reviewSummary.points }}</dd><dt>{{ t('admin.commission.ui.agents') }}</dt><dd>{{ reviewSummary.count }}</dd></dl>
+        <dl v-if="reviewSummary" class="commission-facts"><dt>{{ t('admin.commission.ui.cycle') }}</dt><dd><AssociationName :record="detail" kind="cycle" :format-cycle-window="(from, to) => commissionCycleWindow(from, to, locale)" :id="reviewSummary.cycleId" :locale="locale" /></dd><dt>{{ t('admin.commission.ui.planned') }}</dt><dd>{{ reviewSummary.points }}</dd><dt>{{ t('admin.commission.ui.agents') }}</dt><dd>{{ reviewSummary.count }}</dd></dl>
         <dl>
           <dt>{{ t('admin.copy.9c32661d') }}</dt><dd><AssociationName :record="detail" kind="brand" :id="dialog.brandId" :locale="associationLocale" /></dd>
           <dt>{{ t('admin.copy.087a786d') }}</dt><dd>{{ operationLabel(dialog.operation) }}</dd>

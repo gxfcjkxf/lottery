@@ -34,7 +34,7 @@ export async function expectCompactDisplayRows(page: Page) {
       expect(row.valueLeft).toBeGreaterThanOrEqual(row.labelRight);
       expect(row.valueTop).toBeLessThan(row.labelBottom);
       expect(row.labelTop).toBeLessThan(row.valueBottom);
-      expect(row.fontSize).toBeGreaterThanOrEqual(11);
+      expect(row.fontSize).toBeGreaterThanOrEqual(12);
     }
     expect(measured.rows[1].text).toBe('1234567890'.repeat(10));
     const wide = page.locator('#key-value-layout-probe .key-value-wide');

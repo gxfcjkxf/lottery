@@ -128,6 +128,15 @@ func (s Service) SaveConfiguredRules(ctx context.Context, tx pgx.Tx, a access.Ac
 	if _, err = tx.Exec(ctx, `INSERT INTO configured_rule_heads(game_id,version_id) VALUES($1,$2) ON CONFLICT(game_id) DO UPDATE SET version_id=excluded.version_id`, game, id); err != nil {
 		return ConfiguredVersion{}, err
 	}
+	if current.ID != "" {
+		// Carry current sales forward when only the platform's initial prices change.
+		if _, err = tx.Exec(ctx, `UPDATE configured_sales s SET rule_id=next.id,version=s.version+1
+			FROM configured_rule_versions previous,configured_rule_versions next
+			WHERE s.game_id=$1 AND s.rule_id=previous.id AND previous.id=$2 AND next.id=$3
+			AND previous.snapshot-'prices'=next.snapshot-'prices'`, game, current.ID, id); err != nil {
+			return ConfiguredVersion{}, err
+		}
+	}
 	saved, err := scanConfiguredVersion(tx.QueryRow(ctx, `SELECT `+configuredVersionFields+` FROM configured_rule_versions WHERE id=$1`, id))
 	if err == nil {
 		err = record(ctx, tx, a, "", "configured_rule.save", id, "", meta, before, saved)

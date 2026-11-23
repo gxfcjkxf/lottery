@@ -10,7 +10,7 @@
   --lottery-wave-green-light: #6ee7b7;
   --lottery-wave-green-dark: #065f46;
   --lottery-ball-ink: #ffffff;
-  /* Text colors for saved draw attributes; dark shades remain readable at 11px. */
+  /* Dark text colors for saved draw attributes. */
   --lottery-wave-green-text: var(--success-text);
   --lottery-attribute-zodiac: var(--lottery-wave-blue-dark);
   --lottery-element-metal: var(--warning-text);

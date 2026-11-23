@@ -1,4 +1,4 @@
-import { platformDisplaySettings, filterDateBoundary } from '@lottery/shared'
+import { platformDisplaySettings, filterDateBoundary, formatDisplayDateTime } from '@lottery/shared'
 import { AdminApiError } from './admin-api'
 
 export interface CommissionListQuery { from?: string; to?: string; state?: string; cycle_id?: string; agent_id?: string }
@@ -19,6 +19,14 @@ export function commissionListParams(limit: number, offset: number, filter: Read
   const query = new URLSearchParams({ limit: String(limit), offset: String(offset) })
   for (const [key,value] of Object.entries(filter)) if (value) query.set(key,value)
   return query
+}
+
+export function commissionCycleDate(value: string | null | undefined, locale: string): string {
+  return formatDisplayDateTime(value, locale, { dateOnly: true })
+}
+
+export function commissionCycleWindow(from: string, to: string, locale: string): string {
+  return `${commissionCycleDate(from, locale)} → ${commissionCycleDate(to, locale)}`
 }
 
 // Interpret day controls in the platform's configured timezone, independent of the device.

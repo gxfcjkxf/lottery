@@ -13,7 +13,7 @@ const modules: Record<string, [string, string]> = {
 const actions: Record<string, [string, string]> = {
   publish: ['发布与下架', 'Publish and take down'],
   kick: ['强制下线', 'Force sign out'],
-  connect: ['接入', 'Connect'], sell: ['投注配置', 'Betting configuration'],
+  connect: ['接入', 'Connect'], sell: ['投注设置', 'Betting settings'],
   view: ['查看', 'View'], write: ['编辑', 'Edit'], create: ['创建', 'Create'], delete: ['删除', 'Delete'], export: ['导出', 'Export'], download: ['下载', 'Download'],
   grant: ['发放', 'Grant'], revoke: ['撤销', 'Revoke'], retry: ['重试', 'Retry'], run: ['执行', 'Run'], approve: ['审批', 'Approve'], preview: ['预览', 'Preview'],
   cancel: ['取消', 'Cancel'], cancel_retry: ['取消重试', 'Cancel retry'], judge_cancel: ['判定取消', 'Judge cancellation'], mark_abnormal: ['标记异常', 'Mark abnormal'], correct: ['更正', 'Correct'], correction_retry: ['更正重试', 'Correction retry'],
@@ -80,7 +80,7 @@ const auditResources: Record<string, [string, string]> = {
   'configured': ['注单', 'Bet orders'],
   'configured_order': ['注单', 'Bet order'],
   'configured_rule': ['彩种规则', 'Game rules'],
-  'configured_sales': ['彩种投注配置', 'Game betting settings'],
+  'configured_sales': ['彩种投注设置', 'Game betting settings'],
   'bet_limits': ['投注限额', 'Bet limits'],
   'withdrawal_order': ['提现单', 'Withdrawal order'],
   'reward_order': ['奖励单', 'Reward order'],

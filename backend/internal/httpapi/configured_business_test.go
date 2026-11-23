@@ -438,6 +438,83 @@ func TestConfiguredHTTPWorkflowScopesReplayAndRevocation(t *testing.T) {
 		t.Fatal("platform odds and availability did not apply together exactly once", platformState, err)
 	}
 	mustStatus(t, f.call("POST", path, "configured-replace-stale", auth.AccessToken, "", nextInput), 409)
+	assertListed := func(want bool) {
+		t.Helper()
+		response := f.call("GET", "/api/v1/configured/games", "", f.userToken, managedBrand, nil)
+		mustStatus(t, response, 200)
+		var directory struct {
+			Games []betting.ConfiguredGameSummary
+		}
+		managedData(t, response, &directory)
+		listed := false
+		for _, entry := range directory.Games {
+			listed = listed || entry.ID == game.ID
+		}
+		if listed != want {
+			t.Fatal("wrong player catalogue", directory)
+		}
+	}
+	assertListed(true)
+	currentCatalog := f.call("GET", catalogPath, "", f.userToken, managedBrand, nil)
+	mustStatus(t, currentCatalog, 200)
+	var catalogue struct {
+		Game         platformlottery.Game
+		RuleID       string `json:"rule_id"`
+		SnapshotHash string `json:"snapshot_hash"`
+		Sales        platformlottery.ConfiguredSales
+	}
+	managedData(t, currentCatalog, &catalogue)
+	carriedSale := nextSale
+	carriedSale.RuleID = nextVersion.ID
+	carriedSale.Version++
+	if catalogue.Game.SalesStatus != "ready" || catalogue.RuleID != nextVersion.ID || !reflect.DeepEqual(catalogue.Sales, carriedSale) {
+		t.Fatal("platform odds update changed the brand sales configuration", catalogue)
+	}
+	otherSale, err := platformlottery.ReadConfiguredSales(ctx, f.pool, otherBrand, game.ID, false)
+	if err != nil || otherSale.RuleID != nextVersion.ID || otherSale.Prices.Plates["A"]["lucky_price"] != "2.5" {
+		t.Fatal("platform odds update changed the other brand's prices", otherSale, err)
+	}
+	mustStatus(t, f.call("POST", "/api/v1/configured/preview", "", f.userToken, managedBrand, nextPreview), 409)
+	nextPreview.RuleID, nextPreview.SalesVersion, nextPreview.SnapshotHash = catalogue.RuleID, catalogue.Sales.Version, catalogue.SnapshotHash
+	newQuote := f.call("POST", "/api/v1/configured/preview", "", f.userToken, managedBrand, nextPreview)
+	mustStatus(t, newQuote, 200)
+	managedData(t, newQuote, &q)
+	if q.RuleID != nextVersion.ID || len(q.Lines) != 1 || q.Lines[0].Prices["hit"] != "2.6" {
+		t.Fatal("new quote did not use current rules and brand odds", q)
+	}
+	snap.Prices.Plates["A"]["lucky_price"] = "3.1"
+	priceOnlySnapshot, err := json.Marshal(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	priceOnly := f.call("POST", path, "configured-price-only", auth.AccessToken, "", platformlottery.ConfiguredRulesInput{
+		ID: nextVersion.ID, Revision: nextVersion.Revision, Snapshot: priceOnlySnapshot,
+	})
+	mustStatus(t, priceOnly, 200)
+	managedData(t, priceOnly, &nextVersion)
+	assertListed(true)
+	carriedSale.RuleID = nextVersion.ID
+	carriedSale.Version++
+	currentSale, err := platformlottery.ReadConfiguredSales(ctx, f.pool, managedBrand, game.ID, false)
+	if err != nil || !reflect.DeepEqual(currentSale, carriedSale) {
+		t.Fatal("price-only save did not carry the brand sales configuration forward", currentSale, err)
+	}
+
+	// A gameplay change requires a brand review, even when the price keys are identical.
+	snap.Catalog.Domains["lucky"].Options[0].Mapping.Numbers = []int{8}
+	changedRules, err := json.Marshal(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := f.call("POST", path, "configured-change-gameplay", auth.AccessToken, "", platformlottery.ConfiguredRulesInput{
+		ID: nextVersion.ID, Revision: nextVersion.Revision, Snapshot: changedRules,
+	})
+	mustStatus(t, changed, 200)
+	assertListed(false)
+	brandDetail, err := (platformlottery.Service{DB: f.pool}).Detail(ctx, managedBrand, game.ID, 1, 0)
+	if err != nil || brandDetail.Game.SalesStatus != "outdated" {
+		t.Fatal("gameplay change did not require review", brandDetail.Game.SalesStatus, err)
+	}
 	var retainedRule, retainedPrice string
 	if err := f.pool.QueryRow(ctx, `SELECT rule_id::text,snapshot->'prices'->'plates'->'A'->>'lucky_price' FROM configured_orders WHERE id=$1`, order.ID).Scan(&retainedRule, &retainedPrice); err != nil || retainedRule != version.ID || retainedPrice != "2.5" {
 		t.Fatal("order rules changed", retainedRule, err)

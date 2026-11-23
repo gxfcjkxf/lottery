@@ -14,6 +14,8 @@ const exTarget={id:'77777777-7777-4777-8777-777777777777',brand_id:brand,executi
 for(const locale of ['zh-CN','en'] as const){
  test(`commission calculations and payments workflow (${locale})`,async({page},info)=>{
   const zh=locale==='zh-CN',errors:string[]=[],requests:string[]=[]
+  const periodLabel=zh?'2026-10-13 → 2026-10-20':'13/10/2026 → 20/10/2026'
+  const updatedLabel=zh?'2026-10-20 08:00:00':'20/10/2026 08:00:00 AM'
   page.on('pageerror',e=>errors.push(e.message))
   await page.route('**/api/**',async route=>{
    expect(route.request().method()).toBe('GET')
@@ -42,10 +44,11 @@ for(const locale of ['zh-CN','en'] as const){
    if(path.endsWith('/beneficiaries'))return pageData([{id:earningId,brand_id:brand,payment_id:paymentId,agent_id:agent,member_id:agent,target_id:null,original_points:'20',adjusted_points:null,state:'pending',paid_at:null}],{payment_id:paymentId})
    throw Error('Unexpected commission review request '+path)
   })
-  await installConsoleSession(page,'brand',locale,brand,['commission.view.brand','commission.run.brand','commission.retry.brand','commission_payment.approve.brand','commission_payment.retry.brand','commission_adjustment.write.brand','commission_correction.approve.brand','commission_correction.retry.brand','commission_correction.continue.brand','commission_correction.execute_retry.brand'],'aaaaaaaa-aaaa-4aaa-8aaa-000000000002')
+  await installConsoleSession(page,'brand',locale,brand,['commission.view.brand','commission.run.brand','commission.retry.brand','commission_payment.approve.brand','commission_payment.retry.brand','commission_adjustment.write.brand','commission_correction.approve.brand','commission_correction.retry.brand','commission_correction.continue.brand','commission_correction.execute_retry.brand'],'aaaaaaaa-aaaa-4aaa-8aaa-000000000002',zh?{}:{date_format:'DD/MM/YYYY',time_format:'hh:mm:ss A'})
   await page.goto(origins.brand);await expect(page.locator('.management-console')).toBeVisible();await openBrandPage(page,zh?'佣金管理':'Commission management');await expectRealEntry(page,'brand')
   await expect(page.getByRole('heading',{name:zh?'佣金管理':'Commission management',exact:true})).toBeVisible()
-  await expect(page.locator('[data-cycle-id]')).toBeVisible()
+  await expect(page.locator('[data-cycle-id]')).toHaveText(periodLabel)
+  await expect(page.getByText(updatedLabel,{exact:true})).toBeVisible()
   const preset=page.viewportSize()!
   const widths=info.project.name.includes('reflow')?[320,640,900,901,1440]:[preset.width]
   const cycleList=page.locator('.commission-cycles > .management-list')
@@ -101,7 +104,7 @@ for(const locale of ['zh-CN','en'] as const){
    }
    const tabs=details.locator('.commission-cycle-tabs').getByRole('tab')
    const period=details.locator('.commission-cycle-period')
-   const periodLabel=await period.innerText()
+   await expect(period).toHaveText(periodLabel)
    const tab=(name:string)=>details.getByRole('tab',{name,exact:true})
    const button=(name:string)=>details.getByRole('button',{name,exact:true})
    await expect(tabs).toHaveCount(4)
@@ -129,7 +132,7 @@ for(const locale of ['zh-CN','en'] as const){
    await expectListLayout(page)
    await payoutRow.click()
    await expect(page.locator('dialog[open]')).toHaveCount(1)
-   await expect(period).toHaveText(periodLabel.replace(/\s+/g,' ').trim())
+   await expect(period).toHaveText(periodLabel)
    await details.locator('summary').getByText(zh?'代理明细':'Agent details',{exact:true}).click()
    await expect(details.getByTestId('commission-payment-targets')).toContainText('aurora_agent_01')
    await expectListLayout(page)
@@ -143,6 +146,7 @@ for(const locale of ['zh-CN','en'] as const){
    await expect(paymentReview).toContainText(zh?'计划派发积分':'Planned points')
    await expect(paymentReview).toContainText('20')
    await expect(paymentReview).toContainText('Aurora')
+   await expect(paymentReview.getByText(periodLabel,{exact:true})).toBeVisible()
    await expectListLayout(page)
    await paymentReview.locator('.detail-modal-close').click()
    const paymentReadCount=requests.filter(r=>r.includes('/commission-payments?')).length
@@ -165,6 +169,7 @@ for(const locale of ['zh-CN','en'] as const){
    const correctionReview=page.getByTestId('cc-review')
    await expect(correctionReview).toBeVisible()
    await expect(correctionReview).toContainText('2')
+   await expect(correctionReview.getByText(periodLabel,{exact:true})).toBeVisible()
    await correctionReview.locator('.detail-modal-close').click()
    await expectListLayout(page)
    await expectDrawerFit()

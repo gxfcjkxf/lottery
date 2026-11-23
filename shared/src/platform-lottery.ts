@@ -61,7 +61,7 @@ export const platformLotteryCatalog = {
   backToGames: 'Back to game list',
   editOpening: 'Set opening date and time', openingHelp: 'Applies to this period, including automatic periods. Periods with bets, closed periods and published results cannot be changed.', openingInvalid: 'Enter an opening date and time before closing.',
   'error.PLATFORM_PERIOD_IN_USE': 'This period has bets or has closed. Its opening date and time cannot be changed.',
- salesOdds:'Plates & odds',salesConfiguration:'Betting configuration',editName: 'Edit', ruleUnpublished: 'Rules not published', rulePublished: 'Rules published', salesReady: 'Betting open', salesUnconfigured: 'Betting not configured', salesDisabled: 'Betting closed', salesOutdated: 'Betting rules need updating', brandNotConnected: 'Brand not connected',
+ salesOdds:'Plates & odds',bettingSettings:'Betting settings',bettingStatus:'Betting status',gameStatus:'Game status',editName: 'Edit', ruleUnpublished: 'Rules not published', rulePublished: 'Rules published', salesReady: 'Betting open', salesUnconfigured: 'Betting not configured', salesDisabled: 'Betting closed', salesOutdated: 'Betting settings need updating', brandNotConnected: 'Brand not connected',
 
  timeSettings:'Time settings', drawResults:'Draw history', drawConfiguration:'Draw configuration', drawSources:'Data sources', manualResults:'Manual results',
  gameActionTitle: '{action} “{name}”',
@@ -93,7 +93,7 @@ export const platformLotteryCatalog = {
   backToGames: '返回彩种列表',
   editOpening: '设置开盘日期时间', openingHelp: '仅修改本期，自动期次同样适用。已产生注单、已封盘或已开奖的期次不可修改。', openingInvalid: '请选择早于封盘的完整开盘日期时间。',
   'error.PLATFORM_PERIOD_IN_USE': '本期已产生注单或已封盘，不能修改开盘日期时间。',
- salesOdds:'盘口赔率',salesConfiguration:'投注配置',editName: '编辑', ruleUnpublished: '未发布规则', rulePublished: '规则已发布', salesReady: '已开放投注', salesUnconfigured: '未配置投注', salesDisabled: '未开放投注', salesOutdated: '投注规则待更新', brandNotConnected: '本品牌未接入',
+ salesOdds:'盘口赔率',bettingSettings:'投注设置',bettingStatus:'投注状态',gameStatus:'彩种状态',editName: '编辑', ruleUnpublished: '未发布规则', rulePublished: '规则已发布', salesReady: '已开放投注', salesUnconfigured: '未配置投注', salesDisabled: '未开放投注', salesOutdated: '投注设置待更新', brandNotConnected: '本品牌未接入',
 
  timeSettings:'时间设置', drawResults:'开奖记录', drawConfiguration:'开奖配置', drawSources:'开奖数据源', manualResults:'手动开奖结果',
  gameActionTitle: '{action}「{name}」',

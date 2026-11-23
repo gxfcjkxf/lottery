@@ -776,7 +776,7 @@ useOperationToast(() => notice.value, value => display(value), 'success');
 }
 .panel-title p,
 .muted {
-  font-size: 11px;
+  font-size: var(--body-font-size);
   color: var(--muted);
   margin: 0;
   line-height: 1.6;

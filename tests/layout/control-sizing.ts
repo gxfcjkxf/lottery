@@ -13,6 +13,8 @@ export function registerControlSizingTests(reflow = false) {
     if(reflow)await page.setViewportSize({width,height:preset.height})
     const desktop=await page.evaluate(()=>matchMedia('(min-width:901px) and (pointer:fine)').matches)
     for(const field of await fields.all())if(await field.isVisible())expect((await field.boundingBox())!.height).toBeGreaterThanOrEqual(desktop?32:44)
+    const input = page.locator('.login-entry input:not([type="hidden"]):visible').first()
+    await expect(input).toHaveCSS('font-size', desktop ? '14px' : '16px')
     await expectNoPageOverflow(page)
    }
   }
@@ -81,7 +83,7 @@ export function registerControlSizingTests(reflow = false) {
     for(const item of await page.locator(items).all()){
      await expect(item).toBeVisible()
      expect((await item.boundingBox())!.height).toBe(height)
-     expect(await item.evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(11)
+     expect(await item.evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(12)
     }
     if(trigger==='.member-menu-trigger'){
      await expect(page.getByRole('menuitem',{name:'编辑',exact:true})).toBeFocused()

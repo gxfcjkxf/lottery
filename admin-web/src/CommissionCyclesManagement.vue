@@ -10,7 +10,7 @@ import SelectControl from '@lottery/shared/SelectControl.vue'
 import './commission-management.css';
 import ManagementTable from '@lottery/shared/ManagementTable.vue';
 import PlatformTemporalInput from '@lottery/shared/PlatformTemporalInput.vue';
-import { commissionDateRange, type CommissionListQuery } from './commission-list-query';
+import { commissionCycleDate, commissionCycleWindow, commissionDateRange, type CommissionListQuery } from './commission-list-query';
 import { useOperationToast } from "@lottery/shared";
 import { vWriteGuard } from "@lottery/shared";
 import FilterAssociationSelect from "@lottery/shared/FilterAssociationSelect.vue";
@@ -187,7 +187,7 @@ const selectedDiscovery = ref<CommissionDiscovery | null>(null);
 const candidates = ref<CommissionCycleCandidate[]>([]), candidatesLoading = ref(false), candidatesFailed = ref(false), candidatesMore = ref(false);
 let candidateTicket = 0;
 function candidateLabel(item: CommissionCycleCandidate) {
-  return `${t(item.cycle === 'weekly' ? 'admin.commission.ui.weekly' : 'admin.commission.ui.monthly')} · ${date(item.window_from)}\n→ ${date(item.window_to)}`;
+  return `${t(item.cycle === 'weekly' ? 'admin.commission.ui.weekly' : 'admin.commission.ui.monthly')} · ${commissionCycleDate(item.window_from, locale.value)}\n→ ${commissionCycleDate(item.window_to, locale.value)}`;
 }
 async function loadCandidates(offset = 0) {
   const ticket = ++candidateTicket, captured = scopeStamp.value, session = commissionCycleSessionGeneration();
@@ -649,7 +649,7 @@ const allocationReset=ref(0)
     <p v-if="listError" role="alert" class="commission-warning">{{ t('admin.commission.ui.readFailed') }} <button :disabled="agentDraftSearchPending" class="button" v-refresh-button="t('admin.commission.ui.retryRead')" @click="withGlobalLoading(applyFilters)">{{ t('admin.commission.ui.retryRead') }}</button></p>
     <p v-if="loading" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
     <ManagementTable :entries="cycles" :columns="columns" :empty="searched && !loading && !listError && !cycles.length" :empty-label="t('admin.commission.ui.empty')">
-     <template #cycle="{entry}"><button class="text-button commission-link" :data-cycle-id="entry.id" :data-cycle-version="entry.version" @click="withGlobalLoading(loadCycle,entry.id)"><span class="commission-cycle-range"><span>{{ date(entry.window_from) }}</span><span> → {{ date(entry.window_to) }}</span></span></button></template>
+     <template #cycle="{entry}"><button class="text-button commission-link" :data-cycle-id="entry.id" :data-cycle-version="entry.version" @click="withGlobalLoading(loadCycle,entry.id)"><span class="commission-cycle-range">{{ commissionCycleWindow(entry.window_from, entry.window_to, locale) }}</span></button></template>
      <template #state="{entry}"><span class="commission-status" :class="cycleState(entry)">{{ cycleStateLabel(entry) }}</span></template>
      <template #agents="{entry}">{{ cycleComplete(entry)?exact(entry.earning_count):'—' }}</template>
      <template #points="{entry}">{{ cycleComplete(entry)?exact(entry.total_points):t('admin.commission.ui.incomplete') }}</template>
@@ -657,7 +657,7 @@ const allocationReset=ref(0)
      <template #actions="{entry}"><MemberActionsMenu :id="'CommissionCyclesManagement-'+entry.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" class="button" @click="withGlobalLoading(loadCycle,entry.id)">{{ t('admin.commission.ui.viewCycle') }}</button></MemberActionsMenu></template>
     </ManagementTable>
     <template #pagination><TablePagination class="commission-pager" :total="cycleTotal" :page="Math.floor(cycleOffset / cyclePageSize + 1)" :count="cycles.length" :locale="locale" :page-size="cyclePageSize" :previous-disabled="loading || cycleOffset===0" :next-disabled="loading || !cycleHasNext" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageCycles(target - (Math.floor(cycleOffset / cyclePageSize + 1)))" :change-page-size="async (size: number) => { cyclePageSize = size; await loadCycles(0) }" :busy="loading" /></template></ManagementList>
-      <DetailModal v-if="showTasks" :title="t('admin.commission.ui.tasks')" :close-label="t('association.close')" :open="!selectedDiscovery && !review" @close="showTasks=false; selectedDiscovery=null"><ManagementList embedded class="discoveries"><header v-if="discoveryError" class="console-page-heading"><div class="console-page-actions"><button v-refresh-button="t('admin.copy.894e2a7d')" type="button" class="button" :disabled="discoveryLoading || !rights.view" @click="withGlobalLoading(loadDiscoveries, discoveryOffset)">{{ t('admin.copy.894e2a7d') }}</button></div></header><div v-if="!discoveryLoading && !discoveryError && !discoveries.length" class="empty empty-state">{{ t('admin.copy.6f161c9e') }}</div><article v-for="item in discoveries" :key="item.id" :data-discovery-id="item.id" class="discovery-row" :class="{ selected: selectedDiscovery?.id === item.id }"><button type="button" class="discovery-select" @click="selectDiscovery(item)"><span class="row-head"><b>{{ statusText(item.state) }}</b><span class="id">{{ item.id }}</span></span><span>{{ t('admin.copy.11c28a36') }} <span v-if="item.cycle_id" class="id"><AssociationName :record="item" kind="cycle" :id="item.cycle_id" :locale="associationLocale" /></span><span v-else>{{ t('admin.copy.941137c1') }}</span></span><span>{{ item.window_from ? `${date(item.window_from)} – ${date(item.window_to)}` : t('admin.copy.6a0bb6fb') }}</span><span v-if="item.last_error_code" class="error-text">{{ t('admin.copy.c0a94db8') }}: {{ item.last_error_code ? displayPublicError(publicErrorMessage({ code: item.last_error_code })) : "—" }}</span><span>{{ t('admin.copy.c4397333') }} {{ date(item.next_check_at) }}</span></button><button v-if="item.state === 'failed' && rights.retry && !account.super_admin" type="button" class="button button-quiet" @click="selectDiscovery(item); retryReason = ''">{{ t('admin.copy.e57b7cb7') }}</button></article>
+      <DetailModal v-if="showTasks" :title="t('admin.commission.ui.tasks')" :close-label="t('association.close')" :open="!selectedDiscovery && !review" @close="showTasks=false; selectedDiscovery=null"><ManagementList embedded class="discoveries"><header v-if="discoveryError" class="console-page-heading"><div class="console-page-actions"><button v-refresh-button="t('admin.copy.894e2a7d')" type="button" class="button" :disabled="discoveryLoading || !rights.view" @click="withGlobalLoading(loadDiscoveries, discoveryOffset)">{{ t('admin.copy.894e2a7d') }}</button></div></header><div v-if="!discoveryLoading && !discoveryError && !discoveries.length" class="empty empty-state">{{ t('admin.copy.6f161c9e') }}</div><article v-for="item in discoveries" :key="item.id" :data-discovery-id="item.id" class="discovery-row" :class="{ selected: selectedDiscovery?.id === item.id }"><button type="button" class="discovery-select" @click="selectDiscovery(item)"><span class="row-head"><b>{{ statusText(item.state) }}</b><span class="id">{{ item.id }}</span></span><span>{{ t('admin.copy.11c28a36') }} <span v-if="item.cycle_id" class="id"><AssociationName :record="item" kind="cycle" :format-cycle-window="(from, to) => commissionCycleWindow(from, to, locale)" :id="item.cycle_id" :locale="associationLocale" /></span><span v-else>{{ t('admin.copy.941137c1') }}</span></span><span>{{ item.window_from && item.window_to ? commissionCycleWindow(item.window_from, item.window_to, locale) : t('admin.copy.6a0bb6fb') }}</span><span v-if="item.last_error_code" class="error-text">{{ t('admin.copy.c0a94db8') }}: {{ item.last_error_code ? displayPublicError(publicErrorMessage({ code: item.last_error_code })) : "—" }}</span><span>{{ t('admin.copy.c4397333') }} {{ date(item.next_check_at) }}</span></button><button v-if="item.state === 'failed' && rights.retry && !account.super_admin" type="button" class="button button-quiet" @click="selectDiscovery(item); retryReason = ''">{{ t('admin.copy.e57b7cb7') }}</button></article>
 
 
       <template #pagination><TablePagination class="pager" :total="discoveryTotal" :page="Math.floor(discoveryOffset / discoveryPageSize + 1)" :count="discoveries.length" :locale="locale" :page-size="discoveryPageSize" :previous-disabled="discoveryLoading || discoveryOffset === 0" :next-disabled="discoveryLoading || !discoveryHasNext" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => pageDiscoveries(target - (Math.floor(discoveryOffset / discoveryPageSize + 1)))" :change-page-size="async (size: number) => { discoveryPageSize = size; await loadDiscoveries(0) }" :busy="discoveryLoading" /></template></ManagementList></DetailModal>
@@ -669,7 +669,7 @@ const allocationReset=ref(0)
      class="commission-cycle-dialog" :class="{ 'has-cycle-period': selectedCycle }" :title="t('admin.commission.ui.cycleDetail')" :close-label="t('association.close')"
      :close-disabled="detailLocked || writing" @close="closeDetails">
     <template #heading-extra>
-     <p v-if="selectedCycle" class="commission-cycle-range commission-cycle-period"><span>{{ date(selectedCycle.window_from) }}</span><span> → {{ date(selectedCycle.window_to) }}</span></p>
+     <p v-if="selectedCycle" class="commission-cycle-range commission-cycle-period">{{ commissionCycleWindow(selectedCycle.window_from, selectedCycle.window_to, locale) }}</p>
       <nav v-if="selectedCycle" class="console-tabs commission-cycle-tabs" role="tablist" :aria-label="t('admin.commission.ui.cycleDetail')" @keydown="moveTab">
        <button v-for="tab in cycleTabs" :id="'commission-cycle-tab-'+tab" :key="tab" type="button" :class="{ selected: detailTab===tab }" role="tab"
          :aria-selected="detailTab===tab" :aria-controls="'commission-cycle-panel-'+tab" :tabindex="detailTab===tab ? 0 : -1"
@@ -824,6 +824,5 @@ const allocationReset=ref(0)
   .commission-cycle-picker :deep(.select-control-value > span),
   .commission-cycle-picker :deep(.select-control-option > span) { white-space: pre; overflow-wrap: normal; }
   .commission-cycle-range { white-space: pre-line; }
-  .commission-cycle-range > span { display: block; white-space: nowrap; }
 }
 </style>
